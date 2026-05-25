@@ -1,0 +1,30 @@
+# Build output
+/dist/
+/bin/
+
+# Compiled binaries / objects
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/beekeeper
+/beekeeper.exe
+
+# Go test / coverage artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Editor / OS cruft
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

@@ -782,22 +782,25 @@ These are the minimum required test cases for `beekeeper selftest` and the test 
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Bumblebee API stability**
+1. **Bumblebee API stability** (RESOLVED)
    - What we know: Schema `0.1.0` is stable; `entries[]` array with id/name/ecosystem/package/versions/severity is the core contract
    - What's unclear: Whether Bumblebee will add a `schema_version: "0.2.0"` soon; whether the GitHub raw URL path will change
    - Recommendation: Pin the schema version check in `internal/catalog/loader.go`; reject unknown versions with a clear error rather than silent parse
+   - **RESOLUTION:** Plan 02 Task 1 implements `ValidateSchemaVersion` that pins `SupportedSchemaVersion = "0.1.0"` and returns an error on unknown versions. Any schema change from Bumblebee is detected immediately rather than silently accepted. The risk is mitigated by hard rejection; only an upside risk (Bumblebee adds signatures earlier than expected) remains.
 
-2. **Go toolchain version pinning for reproducible builds**
+2. **Go toolchain version pinning for reproducible builds** (RESOLVED)
    - What we know: `-trimpath -buildvcs=false -mod_timestamp` covers most non-determinism
    - What's unclear: Whether the `toolchain go1.25.X` directive in `go.mod` pins the toolchain exactly enough for byte-for-byte reproducibility across different CI runners
    - Recommendation: Run `make verify-release` as a CI step from the first release tag, not just locally; fail loudly if hashes differ
+   - **RESOLUTION:** Plan 01 Task 1 pins `toolchain go1.25.0` in `go.mod`. Plan 03 Task 1 implements `make verify-release VERSION=X.Y.Z` which runs the reproducible build and compares hashes in CI — any non-determinism will fail the gate loudly on the first release. The uncertainty is operationally resolved: the measurement gate is the mitigation.
 
-3. **Windows CI performance**
+3. **Windows CI performance** (RESOLVED)
    - What we know: `windows-latest` on GitHub Actions uses Windows Server 2022; Go cold start may be slower than Linux due to antivirus scanning
    - What's unclear: Whether p95 latency target of <100ms is achievable on Windows CI for `beekeeper check`
    - Recommendation: Add a latency benchmark test in the Windows CI job from Phase 1 to measure actual cold start overhead
+   - **RESOLUTION:** Plan 06 Task 2 implements `BenchmarkCheck` in `handler_bench_test.go` that measures cold-start latency against a realistic catalog. The benchmark runs in the Windows CI job from Phase 1, providing empirical measurements. If Windows p95 exceeds 100ms, the mitigation path (warm daemon mode) is documented in CONTEXT.md as a Phase 2 option — the measurement gap is closed now; action is conditional on results.
 
 ---
 

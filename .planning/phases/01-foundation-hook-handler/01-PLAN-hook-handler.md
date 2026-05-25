@@ -20,7 +20,7 @@ must_haves:
   truths:
     - "beekeeper check reads tool call JSON from stdin and exits 0 (allow) or non-zero (block) with a structured reason"
     - "A crash, timeout, malformed input, or missing catalog index results in a block, never a silent allow"
-    - "The handler loads the catalog via mmap (not cold JSON parse) and enforces a 1MB stdin cap and 5s execution deadline"
+    - "The handler loads the catalog via mmap (not cold JSON parse) and enforces a 256MB memory cap, 1MB stdin cap, and 5s execution deadline (HOOK-04)"
     - "fail_open and fail_warn are configurable opt-ins; fail_closed is the default"
     - "Every check writes one NDJSON audit record including fail-closed decisions"
     - "beekeeper selftest runs embedded allow/block/fail-closed fixtures and exits 0 when all pass"
@@ -158,6 +158,7 @@ func RunSelftest() (passed int, failed int, err error)
   <files>internal/check/handler.go, internal/check/handler_test.go, internal/check/handler_bench_test.go, cmd/beekeeper/main.go, testdata/fixtures/oversized.json</files>
   <action>
     Create internal/check/handler.go (package `check`) implementing `RunCheck(ctx, stdin, cfg, indexPath, auditPath) Result` per RESEARCH Pattern 1. Structure:
+    - At the start of RunCheck, call `runtime/debug.SetMemoryLimit(256 * 1024 * 1024)` (256MB soft cap, HOOK-04 memory enforcement). Import `runtime/debug`. On OOM the Go runtime will GC aggressively before the hard limit; the 256MB cap is generous for a tool call evaluation but prevents runaway growth from a crafted input. Add a comment: "// HOOK-04: 256MB soft memory cap; combined with 1MB stdin LimitReader this bounds tool-call evaluation memory."
     - A top-level `defer recover()` that, on any panic, sets the Result to a block decision (Decision{Allow:false, Level:"block", Reason:"internal error (fail-closed)"}, ExitCode non-zero) — UNLESS cfg says fail-open/warn (then map per fail mode), so failures still honor the configured fail mode but default to block.
     - Wrap stdin in `io.LimitReader(stdin, 1<<20)` (1MB, HOOK-04). After decode, detect truncation: if the limited reader hit exactly the cap with more data pending, treat as oversized → block (read one extra byte test, or compare bytes read to the limit). On oversized → block with reason "stdin exceeds 1MB cap (fail-closed)".
     - `ctx, cancel := context.WithTimeout(ctx, 5*time.Second)` (HOOK-04 execution cap); check ctx.Err() before emitting the decision; on deadline exceeded → block "execution timeout (fail-closed)".
@@ -182,7 +183,7 @@ func RunSelftest() (passed int, failed int, err error)
   <acceptance_criteria>
     - `go test ./internal/check/... -count=1` exits 0
     - TestFailClosedOnPanic, TestTimeoutFailClosed, TestStdinCapEnforced, TestMalformedJSONFailsClosed, TestMissingIndexFailsClosed all assert a block (Allow false, non-zero ExitCode)
-    - `internal/check/handler.go` uses `io.LimitReader(stdin, 1<<20)`, `context.WithTimeout(ctx, 5*time.Second)`, and `catalog.OpenIndex` (HOOK-02/04) and contains a top-level `recover()`
+    - `internal/check/handler.go` uses `runtime/debug.SetMemoryLimit(256<<20)`, `io.LimitReader(stdin, 1<<20)`, `context.WithTimeout(ctx, 5*time.Second)`, and `catalog.OpenIndex` (HOOK-02/04) and contains a top-level `recover()`
     - A clean package tool call yields ExitCode 0; a Phase-1 catalog match yields Level "warn" with Allow true (single-source warn, PLCY-01 deferred)
     - TestFailOpenModeAllowsOnFailure proves fail_open opts out of block on failure (reduced-security path)
     - `BenchmarkCheck` exists and runs (`go test ./internal/check/... -run X -bench BenchmarkCheck -benchtime=10x` exits 0)

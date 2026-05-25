@@ -101,9 +101,17 @@ type CatalogLookup interface {
 </interfaces>
 </context>
 
-<feature>
-  <name>Pure Bumblebee catalog-match policy evaluation</name>
-  <files>internal/policy/types.go, internal/policy/engine.go, internal/policy/engine_test.go</files>
+<tasks>
+
+<task type="tdd">
+  <name>Task 1: Pure Bumblebee catalog-match policy evaluation (TDD)</name>
+  <read_first>
+    - .planning/phases/01-foundation-hook-handler/01-CONTEXT.md (Policy Engine Shape, internal/policy pure function requirement)
+    - CLAUDE.md (internal/policy must be pure function library — no I/O, no goroutines, no side effects)
+    - .planning/phases/01-foundation-hook-handler/01-RESEARCH.md (Pattern 3 Pure Policy Engine, CTLG-07, adversarial corpus)
+    - .planning/phases/01-foundation-hook-handler/01-02-SUMMARY.md (catalog.Entry, Index.Lookup, VerifySignature interfaces from plan 02)
+  </read_first>
+  <files>internal/policy/types.go, internal/policy/engine.go, internal/policy/engine_test.go, testdata/toolcalls/block_nx_console.json, testdata/toolcalls/allow_express.json</files>
   <behavior>
     Phase 1 evaluation rules (warn-only, single-source):
     - A tool call whose extracted (ecosystem, package) matches a catalog Entry whose Versions list contains the extracted version → Decision{Allow: true, Level: "warn", RuleIDs: ["bumblebee-catalog-match"], CatalogMatches: [one match]}. NOTE Phase 1: single source → warn, and warn does NOT block (Allow stays true) because catalog-driven blocking requires corroboration (PLCY-01, Phase 2). The warn is surfaced in the reason and audit record.
@@ -139,7 +147,22 @@ type CatalogLookup interface {
 
     REFACTOR if extraction grows unwieldy: keep extract() table-driven (command prefix → ecosystem map).
   </implementation>
-</feature>
+  <verify>
+    <automated>go test ./internal/policy/... -count=1 2>&1 && go vet ./internal/policy/... 2>&1</automated>
+  </verify>
+  <acceptance_criteria>
+    - `go test ./internal/policy/... -count=1` exits 0
+    - TestEngineImportsArePure passes — engine.go imports none of os/net/http/io/sync/time/context
+    - TestCatalogMatchProducesWarn: nrwl.angular-console@18.95.0 → Level "warn", Allow true, one CatalogMatch
+    - TestUnsignedCatalogIsWarnOnly: unsigned entry match → Level "warn", CatalogMatches[0].Signed false, Allow true
+    - TestNoMatchAllows: express@4.18.2 → Level "allow", Allow true, empty CatalogMatches
+    - `go vet ./internal/policy/...` exits 0
+  </acceptance_criteria>
+  <done>Pure `Evaluate` function with no I/O/goroutines/side effects; Bumblebee single-source matching produces warn; unsigned matches are warn-only per CTLG-07; tool-call fixtures created for downstream plans.</done>
+
+</task>
+
+</tasks>
 
 <threat_model>
 ## Trust Boundaries
