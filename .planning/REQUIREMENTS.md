@@ -173,13 +173,101 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be filled by roadmapper) | | |
+| HOOK-01 | Phase 1 | Pending |
+| HOOK-02 | Phase 1 | Pending |
+| HOOK-03 | Phase 1 | Pending |
+| HOOK-04 | Phase 1 | Pending |
+| CTLG-01 | Phase 1 | Pending |
+| CTLG-05 | Phase 1 | Pending |
+| CTLG-07 | Phase 1 | Pending |
+| SFDF-01 | Phase 1 | Pending |
+| SFDF-02 | Phase 1 | Pending |
+| SFDF-03 | Phase 1 | Pending |
+| SFDF-04 | Phase 1 | Pending |
+| PLCY-01 | Phase 2 | Pending |
+| PLCY-02 | Phase 2 | Pending |
+| PLCY-03 | Phase 2 | Pending |
+| PLCY-04 | Phase 2 | Pending |
+| PLCY-05 | Phase 2 | Pending |
+| PLCY-06 | Phase 2 | Pending |
+| PLCY-07 | Phase 2 | Pending |
+| PLCY-08 | Phase 2 | Pending |
+| CTLG-02 | Phase 2 | Pending |
+| CTLG-03 | Phase 2 | Pending |
+| CTLG-06 | Phase 2 | Pending |
+| CTLG-08 | Phase 2 | Pending |
+| CTLG-09 | Phase 2 | Pending |
+| EDXT-01 | Phase 3 | Pending |
+| EDXT-02 | Phase 3 | Pending |
+| EDXT-03 | Phase 3 | Pending |
+| EDXT-04 | Phase 3 | Pending |
+| EDXT-05 | Phase 3 | Pending |
+| EDXT-06 | Phase 3 | Pending |
+| INTG-01 | Phase 4 | Pending |
+| INTG-02 | Phase 4 | Pending |
+| INTG-03 | Phase 4 | Pending |
+| INTG-04 | Phase 4 | Pending |
+| INTG-05 | Phase 4 | Pending |
+| INTG-06 | Phase 4 | Pending |
+| INTG-07 | Phase 4 | Pending |
+| SLNX-01 | Phase 5 | Pending |
+| SLNX-02 | Phase 5 | Pending |
+| SLNX-03 | Phase 5 | Pending |
+| SLNX-04 | Phase 5 | Pending |
+| SLNX-05 | Phase 5 | Pending |
+| SLNX-06 | Phase 5 | Pending |
+| SLNX-07 | Phase 5 | Pending |
+| SLNX-08 | Phase 5 | Pending |
+| SLNX-09 | Phase 5 | Pending |
+| SLNX-10 | Phase 5 | Pending |
+| LLMF-01 | Phase 6 | Pending |
+| LLMF-02 | Phase 6 | Pending |
+| LLMF-03 | Phase 6 | Pending |
+| LLMF-04 | Phase 6 | Pending |
+| LLMF-05 | Phase 6 | Pending |
+| LLMF-06 | Phase 6 | Pending |
+| AUDT-01 | Phase 6 | Pending |
+| AUDT-02 | Phase 6 | Pending |
+| AUDT-03 | Phase 6 | Pending |
+| AUDT-04 | Phase 6 | Pending |
+| AUDT-05 | Phase 6 | Pending |
+| AUDT-06 | Phase 6 | Pending |
+| AUDT-07 | Phase 6 | Pending |
+| SMAC-01 | Phase 7 | Pending |
+| SMAC-02 | Phase 7 | Pending |
+| SMAC-03 | Phase 7 | Pending |
+| SMAC-04 | Phase 7 | Pending |
+| SWIN-01 | Phase 7 | Pending |
+| SWIN-02 | Phase 7 | Pending |
+| SWIN-03 | Phase 7 | Pending |
+| SWIN-04 | Phase 7 | Pending |
+| SWIN-05 | Phase 7 | Pending |
+| SWIN-06 | Phase 7 | Pending |
+| SFDF-05 | Phase 7 | Pending |
+| TUI-01 | Phase 8 | Pending |
+| TUI-02 | Phase 8 | Pending |
+| TUI-03 | Phase 8 | Pending |
+| TUI-04 | Phase 8 | Pending |
+| TUI-05 | Phase 8 | Pending |
+| TUI-06 | Phase 8 | Pending |
+| TUI-07 | Phase 8 | Pending |
+| TUI-08 | Phase 8 | Pending |
+| TUI-09 | Phase 8 | Pending |
+| TUI-10 | Phase 8 | Pending |
+| CODE-01 | Phase 9 | Pending |
+| CODE-02 | Phase 9 | Pending |
+| CODE-03 | Phase 9 | Pending |
+| CODE-04 | Phase 9 | Pending |
+| CODE-05 | Phase 9 | Pending |
+| CODE-06 | Phase 9 | Pending |
+| SFDF-06 | Phase 9 | Pending |
+| CTLG-04 | Phase 9 | Pending |
 
 **Coverage:**
-- v1 requirements: 63 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 63 ⚠️
+- v1 requirements: 89 total
+- Mapped to phases: 89/89
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-26*
-*Last updated: 2026-05-26 after initial definition*
+*Last updated: 2026-05-26 after roadmap creation (9 phases)*
