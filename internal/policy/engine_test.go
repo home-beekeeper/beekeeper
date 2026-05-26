@@ -422,6 +422,182 @@ func TestPackageNameNormalizedBeforeLookup(t *testing.T) {
 	}
 }
 
+// ─── EDXT-01 tests ──────────────────────────────────────────────────────────
+
+// TestExtensionInstallExtract verifies that extractExtensionInstall correctly
+// identifies editor-extension install commands and extracts ecosystem, package,
+// and version.
+func TestExtensionInstallExtract(t *testing.T) {
+	cases := []struct {
+		name      string
+		cmd       string
+		wantEco   string
+		wantPkg   string
+		wantVer   string
+		wantOK    bool
+	}{
+		{
+			name:    "code with version",
+			cmd:     "code --install-extension ms-python.python@2026.4.0",
+			wantEco: "editor-extension",
+			wantPkg: "ms-python.python",
+			wantVer: "2026.4.0",
+			wantOK:  true,
+		},
+		{
+			name:    "code without version",
+			cmd:     "code --install-extension ms-python.python",
+			wantEco: "editor-extension",
+			wantPkg: "ms-python.python",
+			wantVer: "",
+			wantOK:  true,
+		},
+		{
+			name:    "cursor with version",
+			cmd:     "cursor --install-extension foo.bar@1.0.0",
+			wantEco: "editor-extension",
+			wantPkg: "foo.bar",
+			wantVer: "1.0.0",
+			wantOK:  true,
+		},
+		{
+			name:    "windsurf recognized",
+			cmd:     "windsurf --install-extension foo.bar",
+			wantEco: "editor-extension",
+			wantPkg: "foo.bar",
+			wantVer: "",
+			wantOK:  true,
+		},
+		{
+			name:    "code-insiders recognized",
+			cmd:     "code-insiders --install-extension foo.bar",
+			wantEco: "editor-extension",
+			wantPkg: "foo.bar",
+			wantVer: "",
+			wantOK:  true,
+		},
+		{
+			name:   "npm install not recognized",
+			cmd:    "npm install left-pad",
+			wantOK: false,
+		},
+		{
+			name:   "code list-extensions not recognized",
+			cmd:    "code --list-extensions",
+			wantOK: false,
+		},
+		{
+			name:    "uppercase command case-insensitive",
+			cmd:     "CODE --INSTALL-EXTENSION ms-python.python",
+			wantEco: "editor-extension",
+			wantPkg: "ms-python.python",
+			wantVer: "",
+			wantOK:  true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			eco, pkg, ver, ok := extractExtensionInstall(tc.cmd)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v (cmd: %q)", ok, tc.wantOK, tc.cmd)
+			}
+			if !tc.wantOK {
+				return
+			}
+			if eco != tc.wantEco {
+				t.Errorf("ecosystem = %q, want %q", eco, tc.wantEco)
+			}
+			if pkg != tc.wantPkg {
+				t.Errorf("pkg = %q, want %q", pkg, tc.wantPkg)
+			}
+			if ver != tc.wantVer {
+				t.Errorf("ver = %q, want %q", ver, tc.wantVer)
+			}
+		})
+	}
+}
+
+// TestExtensionInstallBulk verifies that extractAllExtensionInstalls returns all
+// extension IDs from a bulk multi-flag command, and that Evaluate returns the worst
+// decision when any extension in a bulk command would block.
+func TestExtensionInstallBulk(t *testing.T) {
+	// Verify extractAllExtensionInstalls returns both IDs.
+	cmd := "code --install-extension a.b@1 --install-extension c.d@2"
+	ids := extractAllExtensionInstalls(cmd)
+	if len(ids) != 2 {
+		t.Fatalf("extractAllExtensionInstalls returned %d IDs, want 2: %v", len(ids), ids)
+	}
+	hasAB := false
+	hasCD := false
+	for _, id := range ids {
+		if id == "a.b" {
+			hasAB = true
+		}
+		if id == "c.d" {
+			hasCD = true
+		}
+	}
+	if !hasAB {
+		t.Errorf("expected a.b in %v", ids)
+	}
+	if !hasCD {
+		t.Errorf("expected c.d in %v", ids)
+	}
+
+	// Verify Evaluate returns the worst decision (block) when one extension is malicious.
+	// c.d is listed as blocked by two signed sources; a.b is clean.
+	idx := newFakeMulti(map[string][]CatalogMatch{
+		"editor-extension::c.d": {
+			{CatalogSource: "bumblebee", Ecosystem: "editor-extension", Package: "c.d", Signed: true, Severity: "critical"},
+			{CatalogSource: "osv", Ecosystem: "editor-extension", Package: "c.d", Signed: true, Severity: "critical"},
+		},
+	})
+	tc := ToolCall{
+		ToolName:  "Bash",
+		ToolInput: map[string]any{"command": cmd},
+	}
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q — bulk command with one blocked extension must block", d.Level, "block")
+	}
+	if d.Allow {
+		t.Error("Allow = true, want false — bulk command containing blocked extension must not allow")
+	}
+}
+
+// TestExtensionInstallVariants verifies that all four editor prefixes (code,
+// code-insiders, cursor, windsurf) are recognized as editor-extension installs.
+func TestExtensionInstallVariants(t *testing.T) {
+	cases := []struct {
+		name   string
+		cmd    string
+	}{
+		{"code", "code --install-extension ms-python.python@2026.4.0"},
+		{"code-insiders", "code-insiders --install-extension ms-python.python@2026.4.0"},
+		{"cursor", "cursor --install-extension ms-python.python@2026.4.0"},
+		{"windsurf", "windsurf --install-extension ms-python.python@2026.4.0"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			eco, pkg, ver, ok := extractExtensionInstall(tc.cmd)
+			if !ok {
+				t.Fatalf("extractExtensionInstall returned ok=false for cmd %q", tc.cmd)
+			}
+			if eco != "editor-extension" {
+				t.Errorf("ecosystem = %q, want %q", eco, "editor-extension")
+			}
+			if pkg != "ms-python.python" {
+				t.Errorf("pkg = %q, want %q", pkg, "ms-python.python")
+			}
+			if ver != "2026.4.0" {
+				t.Errorf("ver = %q, want %q", ver, "2026.4.0")
+			}
+		})
+	}
+}
+
 // TestEngineImportsArePure enforces the purity contract: engine.go must not
 // import any package that performs I/O, concurrency, or wall-clock access.
 func TestEngineImportsArePure(t *testing.T) {

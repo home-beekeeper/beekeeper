@@ -9,6 +9,16 @@ const (
 	ruleSocketCatalogMatch    = "socket-catalog-match"
 )
 
+// editorInstallPatterns are the lowercase CLI substrings that indicate an
+// agent-initiated editor-extension install. Trailing space is intentional so
+// that the extension ID is always the next token.
+var editorInstallPatterns = []string{
+	"code --install-extension ",
+	"code-insiders --install-extension ",
+	"cursor --install-extension ",
+	"windsurf --install-extension ",
+}
+
 // installPrefixes maps an install-command prefix to its package ecosystem.
 // Longest/most-specific prefixes are listed so the first match wins; "cargo
 // install" and "cargo add" both resolve to cargo.
@@ -50,6 +60,34 @@ func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds) De
 			Allow:  true,
 			Level:  "allow",
 			Reason: "no package identified",
+		}
+	}
+
+	// Bulk editor-extension install: if a single command installs 2+ extensions,
+	// evaluate each one and return the worst decision (block > warn > allow).
+	if ecosystem == "editor-extension" {
+		if cmd, cmdOK := tc.ToolInput["command"].(string); cmdOK {
+			if strings.Count(strings.ToLower(cmd), "--install-extension ") >= 2 {
+				ids := extractAllExtensionInstalls(cmd)
+				var worst Decision
+				worst = Decision{Allow: true, Level: "allow", Reason: "no catalog match"}
+				levelRank := map[string]int{"allow": 0, "warn": 1, "block": 2}
+				for _, id := range ids {
+					sub := ToolCall{
+						AgentName: tc.AgentName,
+						ToolName:  tc.ToolName,
+						ToolInput: map[string]any{
+							"ecosystem": "editor-extension",
+							"package":   id,
+						},
+					}
+					d := Evaluate(sub, idx, t)
+					if levelRank[d.Level] > levelRank[worst.Level] {
+						worst = d
+					}
+				}
+				return worst
+			}
 		}
 	}
 
@@ -173,8 +211,12 @@ func extract(input map[string]any) (ecosystem, pkg, version string, ok bool) {
 		return eco, normalize(pkgRaw), strings.TrimSpace(ver), true
 	}
 
-	// Command shape.
+	// Command shape: check for editor-extension installs first (higher priority),
+	// then fall back to the generic install-prefix table.
 	if cmd, ok2 := input["command"].(string); ok2 {
+		if eco, p, v, ok3 := extractExtensionInstall(cmd); ok3 {
+			return eco, p, v, true
+		}
 		return extractFromCommand(cmd)
 	}
 
@@ -194,6 +236,65 @@ func directPackage(input map[string]any) (ecosystem, pkg string, ok bool) {
 		return "", "", false
 	}
 	return eco, pkgRaw, true
+}
+
+// extractExtensionInstall recognises agent-initiated editor-extension installs
+// of the form "<editor> --install-extension <publisher.name[@version]>".
+// Pattern matching is case-insensitive; the extension ID is taken from the
+// original (non-lowered) cmd to preserve case for display purposes, then
+// lowercased by normalize() before return.
+// Returns ("editor-extension", pkg, version, true) on success.
+func extractExtensionInstall(cmd string) (ecosystem, pkg, version string, ok bool) {
+	trimmed := strings.TrimSpace(cmd)
+	lower := strings.ToLower(trimmed)
+
+	for _, pattern := range editorInstallPatterns {
+		idx := strings.Index(lower, pattern)
+		if idx == -1 {
+			continue
+		}
+		// Take the text after the matched pattern from the original cmd.
+		after := strings.TrimSpace(trimmed[idx+len(pattern):])
+		token := firstPackageToken(after)
+		if token == "" {
+			return "", "", "", false
+		}
+		name, ver := splitVersion(token)
+		if name == "" {
+			return "", "", "", false
+		}
+		return "editor-extension", normalize(name), strings.TrimSpace(ver), true
+	}
+	return "", "", "", false
+}
+
+// extractAllExtensionInstalls returns every publisher.name (normalized) found
+// after each "--install-extension " occurrence in cmd. It is used for bulk
+// multi-flag commands such as:
+//
+//	code --install-extension a.b@1 --install-extension c.d@2
+func extractAllExtensionInstalls(cmd string) []string {
+	const marker = "--install-extension "
+	lower := strings.ToLower(cmd)
+	var result []string
+	offset := 0
+	for {
+		idx := strings.Index(lower[offset:], marker)
+		if idx == -1 {
+			break
+		}
+		abs := offset + idx + len(marker)
+		after := strings.TrimSpace(cmd[abs:])
+		token := firstPackageToken(after)
+		if token != "" {
+			name, _ := splitVersion(token)
+			if name != "" {
+				result = append(result, normalize(name))
+			}
+		}
+		offset = abs
+	}
+	return result
 }
 
 // extractFromCommand parses an install command into (ecosystem, package,
