@@ -62,7 +62,7 @@ func TestFromDecisionMapsProvenance(t *testing.T) {
 		Quarantine:         false,
 	}
 
-	rec := FromDecision(tc, d, "test-record-id", "2026-05-26T00:00:00Z")
+	rec := FromDecision(tc, d, "test-record-id", "2026-05-26T00:00:00Z", policy.AgentContext{})
 
 	// Verify corroboration fields on the AuditRecord.
 	if rec.CorroborationCount != 2 {
@@ -120,7 +120,7 @@ func TestFromDecisionEmptyMatchesSerializesEmptyArray(t *testing.T) {
 		Reason: "no package identified",
 	}
 
-	rec := FromDecision(tc, d, "rec-id", "2026-05-26T00:00:00Z")
+	rec := FromDecision(tc, d, "rec-id", "2026-05-26T00:00:00Z", policy.AgentContext{})
 
 	data, err := json.Marshal(rec)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestFromDecisionQuarantineFlag(t *testing.T) {
 		Quarantine:         true,
 	}
 
-	rec := FromDecision(tc, d, "qid", "2026-05-26T00:00:00Z")
+	rec := FromDecision(tc, d, "qid", "2026-05-26T00:00:00Z", policy.AgentContext{})
 
 	if !rec.Quarantine {
 		t.Error("Quarantine = false, want true")
@@ -180,7 +180,7 @@ func TestFromDecisionPhase1FieldsIntact(t *testing.T) {
 		RuleIDs: []string{},
 	}
 
-	rec := FromDecision(tc, d, "record-123", "2026-05-26T12:00:00Z")
+	rec := FromDecision(tc, d, "record-123", "2026-05-26T12:00:00Z", policy.AgentContext{})
 
 	if rec.RecordType != "policy_decision" {
 		t.Errorf("RecordType = %q, want policy_decision", rec.RecordType)

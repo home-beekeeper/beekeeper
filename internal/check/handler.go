@@ -176,7 +176,8 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 
 	// Pure, synchronous policy evaluation (no I/O, no goroutines).
 	// multiIdx implements policy.MultiCatalogLookup aggregating Bumblebee+OSV+Socket.
-	decision := policy.Evaluate(toolCall, multiIdx, policy.DefaultCorroborationThresholds())
+	// AgentContext{} is the zero value — Task 2 will populate it from env vars.
+	decision := policy.Evaluate(toolCall, multiIdx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
@@ -250,7 +251,7 @@ func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
 	}
 	defer w.Close()
 
-	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339))
+	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: audit write failed: %v\n", err)
 	}

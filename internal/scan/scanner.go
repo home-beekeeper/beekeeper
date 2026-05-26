@@ -236,7 +236,7 @@ func evaluateExtension(
 			"version":   version,
 		},
 	}
-	catalogDecision := policy.Evaluate(tc, multiIdx, policy.DefaultCorroborationThresholds())
+	catalogDecision := policy.Evaluate(tc, multiIdx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 
 	now := cfg.Now()
 	ageMinutes, missing, _ := catalog.FetchMarketplaceAge(netCtx, cfg.HTTPClient, cfg.CacheDir, publisher, name, version, now)
@@ -288,7 +288,7 @@ func evaluateExtension(
 		if !hit {
 			auditDecision = cleanDecision
 		}
-		auditRec := audit.FromDecision(tc, auditDecision, generateScanID(), time.Now().UTC().Format(time.RFC3339))
+		auditRec := audit.FromDecision(tc, auditDecision, generateScanID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 		if w, err := audit.NewWriter(cfg.AuditPath); err == nil {
 			_ = w.Write(auditRec)
 			w.Close()

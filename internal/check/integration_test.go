@@ -63,7 +63,7 @@ func runCheckWithIndex(ctx context.Context, stdin io.Reader, cfg config.Config, 
 		return finalize(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath)
 	}
 
-	decision := policy.Evaluate(toolCall, idx, policy.DefaultCorroborationThresholds())
+	decision := policy.Evaluate(toolCall, idx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 
 	if ctx.Err() != nil {
 		return finalize(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath)
