@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: verifying
+status: ready_to_plan
 stopped_at: ~
 last_updated: "2026-05-26T00:00:00.000Z"
-last_activity: 2026-05-26 — Phase 1 execution complete (6/6 plans, all tests green)
+last_activity: 2026-05-26 — Phase 1 verified and complete; advancing to Phase 2
 progress:
   total_phases: 9
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
   completed_plans: 6
   percent: 11
@@ -18,23 +18,23 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-25)
+See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 1 — Foundation + Hook Handler — Execution complete, pending verification
+**Current focus:** Phase 2 — Policy Engine + Multi-Source Catalogs — Ready to plan
 
 ## Current Position
 
-Phase: 1 of 9 (Foundation + Hook Handler)
-Plan: 6 of 6 complete
-Status: Execution complete — run `/gsd-verify-work 1` to verify against success criteria
-Last activity: 2026-05-26 — Phase 1 all 6 plans executed (scaffold, catalog, self-defense, policy, audit, hook handler)
+Phase: 2 of 9 (Policy Engine + Multi-Source Catalogs)
+Plan: Not started
+Status: Ready to plan — run `/gsd-plan-phase 2` to begin
+Last activity: 2026-05-26 — Phase 1 verified (12/12 UAT checks passed); Phase 2 ready
 
 Progress: [█░░░░░░░░░] 11%
 
-## Phase 1 Execution Summary
+## Phase 1 Completion Summary
 
-### Plans completed (Wave order)
+### Plans completed (all 6/6)
 | Wave | Plan | Title | Commit | Status |
 |------|------|-------|--------|--------|
 | 1 | 01 | Project Scaffold | 5c0c515 | ✅ Done |
@@ -44,18 +44,23 @@ Progress: [█░░░░░░░░░] 11%
 | 4 | 05 | NDJSON Audit Logging | f5d6489 | ✅ Done |
 | 5 | 06 | Hook Handler + Selftest | 88c34bb | ✅ Done |
 
-### Smoke test results
-- `beekeeper selftest` → PASS: 7, FAIL: 0
-- `beekeeper version` → version: dev / commit: none / date: unknown
-- `beekeeper catalogs sync` → Synced 654 catalog entries, built mmap index
-- `beekeeper check` (clean pkg) → `{"Allow":true,"Level":"allow","Reason":"no catalog match",...}` exit 0
-- `beekeeper check` (nrwl.angular-console@18.95.0) → `{"Allow":true,"Level":"warn","Reason":"bumblebee catalog match: stepsecurity-2026-05-18-vscode-nrwl-angular-console-compromised",...}` exit 0
-- BenchmarkCheck → ~3.58ms/op (well under sub-100ms p95 target)
-- All 6 test packages pass: audit, catalog, check, config, platform, policy
+### UAT results (01-UAT.md — all automated)
+- Build + vet: pass
+- Full test suite (6 packages): pass
+- `beekeeper version`: pass
+- `beekeeper init`: pass
+- `beekeeper catalogs sync` (654 entries, mmap index): pass
+- `beekeeper check` clean package → allow, exit 0: pass
+- `beekeeper check` nrwl.angular-console@18.95.0 → warn, exit 0: pass
+- `beekeeper check` malformed JSON → block, exit 1 (fail-closed): pass
+- `beekeeper selftest` → PASS: 7, FAIL: 0: pass
+- `beekeeper audit tail` wired (no "not yet implemented"): pass
+- Self-defense files (Makefile, goreleaser, SECURITY.md, Renovate, CI, release): pass
+- `go mod verify` → all modules verified: pass
 
-### Known constraints
+### Known constraints carried forward
 - `go test -race` requires CGO + C compiler (not installed on Windows dev machine); race gate runs in CI
-- `make verify-release` requires `make` (not installed on Windows); the reproducibility logic works correctly — CI covers this
+- `make verify-release` requires `make` (not installed on Windows); reproducibility logic validated manually; CI covers it
 - Phase 1 is single-source warn semantics only; corroboration-based block enforcement is Phase 2
 
 ## Performance Metrics
@@ -76,14 +81,12 @@ Progress: [█░░░░░░░░░] 11%
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- Phase 1: `CatalogLookup` interface decouples policy engine from concrete mmap type (testability)
-- Phase 1: `internal/audit/FromDecision` takes caller-supplied recordID/timestamp (purity/testability)
-- Phase 1: selftest uses `//go:embed corpus/fixtures.json` — no runtime file dependency
-- Phase 1: `npm install` command shape maps to `npm` ecosystem; Nx Console tested via direct `editor-extension` shape
-- Phase 1: BEEI v1 mmap index format (magic 0x42454549, sorted 48-byte records, sha256 key, LE offsets)
+Recent decisions from Phase 1 (full log in PROJECT.md):
+- `CatalogLookup` interface decouples policy engine from concrete mmap type (testability)
+- `internal/audit/FromDecision` takes caller-supplied recordID/timestamp (purity)
+- Selftest uses `//go:embed corpus/fixtures.json` — no runtime file dependency
+- `npm install` command shape maps to `npm` ecosystem; editor extensions tested via direct `editor-extension` shape
+- BEEI v1 mmap index format (magic 0x42454549, sorted 48-byte records, sha256 key, LE offsets)
 
 ### Blockers/Concerns
 
@@ -107,5 +110,5 @@ Items acknowledged and carried forward:
 ## Session Continuity
 
 Last session: 2026-05-26
-Stopped at: Phase 1 execution complete; awaiting verify-work
+Stopped at: Phase 1 complete, Phase 2 ready to plan
 Resume file: None

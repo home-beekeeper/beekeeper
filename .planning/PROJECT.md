@@ -14,7 +14,11 @@ A hijacked or off-task agent cannot successfully act on the developer's machine 
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ `beekeeper check` reads tool call JSON from stdin, evals policy, exits allow/block (single-source Bumblebee warn semantics; corroboration block deferred to Phase 2) — Phase 1
+- ✓ Catalog matching against Bumblebee `threat_intel/` with mmap binary index (O(log n) lookup, zero JSON parse on hot path) — Phase 1
+- ✓ NDJSON audit log with owner-only permissions (0600) and `beekeeper audit tail` — Phase 1
+- ✓ `beekeeper catalogs sync` fetches and caches Bumblebee catalog (654 entries, mmap index) — Phase 1
+- ✓ Reproducible builds (`-trimpath -buildvcs=false`), Sigstore/cosign v3 keyless signing, Renovate dependency pinning, `SECURITY.md` — Phase 1
 
 ### Active
 
@@ -128,7 +132,7 @@ A hijacked or off-task agent cannot successfully act on the developer's machine 
 | Opt-in elevation for Sentry | New OSS tool; requiring admin at install is a trust ask before users know the project; let them evaluate unprivileged tier first | — Pending |
 | LlamaFirewall via Python sidecar, not embedded | PromptGuard 2 + PyTorch live in Python; Go embedding would require CGO and obscure the boundary | — Pending |
 | Bubble Tea for TUI | Mature, single-binary-friendly, no CGO requirement, accessible output, event-driven | — Pending |
-| Fail-closed by default for hook handler | Crash or timeout → block; `fail_open` documented as reducing security | — Pending |
+| Fail-closed by default for hook handler | Crash or timeout → block; `fail_open` documented as reducing security | Shipped Phase 1 — top-level recover() → block; explicit fail_open is an opt-in, documented as reducing security; benchmarked at ~3.58ms/op on Celeron N4020 |
 | MCP gateway localhost-only by default | Security-sensitive proxy; remote exposure requires explicit flag + config acknowledgment | — Pending |
 | eslogger on macOS v1 (not EndpointSecurity entitlement) | Entitlement path is uncertain and slow for indie OSS; eslogger works with sudo, no entitlement | — Pending |
 
@@ -150,4 +154,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-25 after initialization*
+*Last updated: 2026-05-26 after Phase 1*

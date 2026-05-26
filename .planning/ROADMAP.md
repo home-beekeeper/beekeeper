@@ -12,7 +12,7 @@ Beekeeper is built in nine phases, each delivering a coherent, independently ver
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation + Hook Handler** - Working `beekeeper check` with Bumblebee catalog, sub-100ms target, reproducible Sigstore releases
+- [x] **Phase 1: Foundation + Hook Handler** - Working `beekeeper check` with Bumblebee catalog, sub-100ms target, reproducible Sigstore releases
 - [ ] **Phase 2: Policy Engine + Multi-Source Catalogs** - Full corroboration semantics (OSV + Socket), lifecycle/path/egress/baseline policies, catalog watch daemon
 - [ ] **Phase 3: Editor Extension Defense** - Agent CLI intercept, fsnotify extension watcher, quarantine workflow, `beekeeper scan`
 - [ ] **Phase 4: Integration Surfaces** - Hook installs for Claude Code/Cursor/Codex, MCP gateway daemon, shim layer, multi-agent observability
@@ -35,12 +35,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Every release binary is reproducibly buildable via `make verify-release VERSION=X.Y.Z`, Sigstore-signed, and accompanied by `SECURITY.md` with a responsible disclosure process
   5. `go mod verify` passes in CI confirming all dependencies are pinned in `go.sum`
 **Plans**: 6 plans
-- [ ] 01-PLAN-project-scaffold.md — Go module, Cobra CLI skeleton, cross-platform state dir + permissions, CI matrix (wave 1)
-- [ ] 01-PLAN-catalog-sync.md — Bumblebee fetch, schema parse, mmap binary index, signature presence check (wave 2)
-- [ ] 01-PLAN-self-defense.md — Reproducible builds, cosign v3 signing, Renovate pinning, SECURITY.md (wave 2)
-- [ ] 01-PLAN-policy-engine.md — Pure internal/policy Evaluate, Bumblebee single-source warn semantics (wave 3)
-- [ ] 01-PLAN-audit-logging.md — Owner-only NDJSON audit writer, audit tail (wave 4)
-- [ ] 01-PLAN-hook-handler.md — Fail-closed beekeeper check, config fail mode, selftest, latency benchmark (wave 5)
+- [x] 01-PLAN-project-scaffold.md — Go module, Cobra CLI skeleton, cross-platform state dir + permissions, CI matrix (wave 1)
+- [x] 01-PLAN-catalog-sync.md — Bumblebee fetch, schema parse, mmap binary index, signature presence check (wave 2)
+- [x] 01-PLAN-self-defense.md — Reproducible builds, cosign v3 signing, Renovate pinning, SECURITY.md (wave 2)
+- [x] 01-PLAN-policy-engine.md — Pure internal/policy Evaluate, Bumblebee single-source warn semantics (wave 3)
+- [x] 01-PLAN-audit-logging.md — Owner-only NDJSON audit writer, audit tail (wave 4)
+- [x] 01-PLAN-hook-handler.md — Fail-closed beekeeper check, config fail mode, selftest, latency benchmark (wave 5)
 
 ### Phase 2: Policy Engine + Multi-Source Catalogs
 **Goal**: The policy engine enforces corroboration-based threat intelligence — two independent catalog sources (OSV offline DB and Socket PURL API) are required to block, closing the false-positive gap from single-source enforcement
@@ -150,7 +150,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation + Hook Handler | 0/6 | Planned | - |
+| 1. Foundation + Hook Handler | 6/6 | Complete | 2026-05-26 |
 | 2. Policy Engine + Multi-Source Catalogs | 0/TBD | Not started | - |
 | 3. Editor Extension Defense | 0/TBD | Not started | - |
 | 4. Integration Surfaces | 0/TBD | Not started | - |
