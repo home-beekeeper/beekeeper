@@ -50,8 +50,11 @@ var credPatterns = []credPattern{
 		re:   regexp.MustCompile(`npm_[A-Za-z0-9]{36}`),
 	},
 	{
+		// Note: intentionally broad to cover sk-..., sk-org-..., sk-proj-...
+		// Hyphens and underscores are included so sk-proj-abc... is matched in full
+		// rather than stopping at the first hyphen (WR-08).
 		name: "openai-key",
-		re:   regexp.MustCompile(`sk-[A-Za-z0-9]{20,}`),
+		re:   regexp.MustCompile(`sk-[A-Za-z0-9_-]{20,}`),
 	},
 }
 
