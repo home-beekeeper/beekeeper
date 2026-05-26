@@ -114,6 +114,11 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.reverseProxy.ServeHTTP(w, r)
 }
 
+// policyResult carries the outcome of an applyPolicy call run in a goroutine.
+type policyResult struct {
+	d policy.Decision
+}
+
 // handleToolCall evaluates the tool call against the policy engine and either:
 //   - block   → writes JSON-RPC -32001 error (upstream NEVER called)
 //   - warn    → forwards to upstream AND injects _beekeeper_warning into response
@@ -128,20 +133,44 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 	defer func() {
 		if rec := recover(); rec != nil {
 			fmt.Fprintf(os.Stderr, "beekeeper gateway: recovered panic in handleToolCall: %v\n", rec)
-			writeJSONRPCError(w, msg.ID, -32002, "internal error (fail-closed)", nil)
+			if h.cfg.FailOpen {
+				writeJSONRPCError(w, msg.ID, -32002, "internal error (fail-open: reduced security)", nil)
+			} else {
+				writeJSONRPCError(w, msg.ID, -32002, "internal error (fail-closed)", nil)
+			}
 		}
 	}()
 
 	// 500ms hard deadline for policy evaluation (CONTEXT.md: <100ms p95 target).
+	// CR-01: run applyPolicy in a goroutine so the deadline actually interrupts it
+	// if a catalog adapter blocks past the timeout.
 	evalCtx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 	defer cancel()
 
 	ac := extractAgentContext(r)
-	decision := applyPolicy(msg, h.idx, ac)
 
-	// Check if the policy evaluation timed out.
-	if evalCtx.Err() != nil {
-		writeJSONRPCError(w, msg.ID, -32002, "policy timeout (fail-closed)", nil)
+	ch := make(chan policyResult, 1)
+	go func() {
+		ch <- policyResult{d: applyPolicy(msg, h.idx, ac)}
+	}()
+
+	var decision policy.Decision
+	select {
+	case res := <-ch:
+		decision = res.d
+	case <-evalCtx.Done():
+		// Distinguish client disconnect from genuine policy timeout for logging clarity.
+		if evalCtx.Err() == context.DeadlineExceeded {
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: policy evaluation timeout (500ms)\n")
+			if h.cfg.FailOpen {
+				writeJSONRPCError(w, msg.ID, -32002, "policy timeout (fail-open: reduced security)", nil)
+			} else {
+				writeJSONRPCError(w, msg.ID, -32002, "policy timeout (fail-closed)", nil)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: client disconnected during policy evaluation\n")
+			writeJSONRPCError(w, msg.ID, -32002, "request cancelled (fail-closed)", nil)
+		}
 		return
 	}
 
@@ -179,7 +208,15 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *http.Request, msg JSONRPCMessage, bodyBytes []byte, decision policy.Decision) {
 	// Make a direct HTTP request to the upstream rather than using ReverseProxy,
 	// so we can capture and modify the response before writing it to the client.
-	upstreamURL := h.cfg.UpstreamURL + r.URL.Path
+	//
+	// WR-02: use url.JoinPath to avoid double-slash when UpstreamURL has a
+	// trailing slash (e.g. "http://localhost:3000/" + "/mcp" → double slash).
+	base, err := url.Parse(strings.TrimRight(h.cfg.UpstreamURL, "/"))
+	if err != nil {
+		writeJSONRPCError(w, msg.ID, -32002, "upstream URL invalid (fail-closed)", nil)
+		return
+	}
+	upstreamURL := base.JoinPath(r.URL.Path).String()
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		writeJSONRPCError(w, msg.ID, -32002, "upstream request creation failed (fail-closed)", nil)
@@ -187,7 +224,13 @@ func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *h
 	}
 
 	// Copy original request headers (excluding hop-by-hop headers).
+	// CR-02: never forward the Beekeeper gateway Authorization header to the
+	// upstream MCP server — the gateway token is an internal secret and must
+	// not appear in upstream logs or be accepted by the upstream server.
 	for k, vv := range r.Header {
+		if strings.EqualFold(k, "Authorization") {
+			continue // strip Beekeeper's own gateway token from upstream requests
+		}
 		for _, v := range vv {
 			req.Header.Add(k, v)
 		}
@@ -278,6 +321,10 @@ func (h *gatewayHandler) writeAudit(tc policy.ToolCall, d policy.Decision) {
 	recordID := hex.EncodeToString(raw[:])
 	rec := audit.FromDecision(tc, d, recordID, time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 	rec.Endpoint = "gateway"
+	// CR-06: apply sensitive-field redaction before writing to disk, consistent
+	// with how check/handler.go (writeAuditWithAC) handles redaction (T-04-05-02).
+	patterns := audit.DefaultRedactPatterns()
+	rec = audit.RedactRecord(rec, patterns)
 	if err := aw.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper gateway: audit write failed: %v\n", err)
 	}
