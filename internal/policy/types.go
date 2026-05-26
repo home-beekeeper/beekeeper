@@ -13,8 +13,6 @@
 // and Wave 3 integration consume.
 package policy
 
-import "github.com/mzansi-agentive/beekeeper/internal/catalog"
-
 // ToolCall is a decoded, untrusted, attacker-influenceable agent tool call.
 // ToolInput holds the raw, tool-specific arguments; package coordinates are
 // extracted defensively by the engine.
@@ -71,13 +69,6 @@ type Decision struct {
 	SourcesAgreed      []string // Phase 2: e.g. ["bumblebee", "osv"]
 	SourcesDissented   []string // Phase 2: reserved; always empty in Phase 2
 	Quarantine         bool     // Phase 2: true when 3+ signed sources agree
-}
-
-// CatalogLookup is the minimal single-source interface kept for backward
-// compatibility. The concrete *catalog.Index satisfies this interface.
-// Phase 2 callers should prefer MultiCatalogLookup.
-type CatalogLookup interface {
-	Lookup(ecosystem, pkg string) (catalog.Entry, bool)
 }
 
 // MultiCatalogLookup is the Phase 2 multi-source catalog interface. It returns

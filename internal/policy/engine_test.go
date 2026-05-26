@@ -5,8 +5,6 @@ import (
 	"go/token"
 	"os"
 	"testing"
-
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 )
 
 // fakeMultiCatalog implements MultiCatalogLookup with canned matches keyed by
@@ -36,41 +34,6 @@ func nxConsoleMatch(source string, signed bool) CatalogMatch {
 		Version:       "18.95.0",
 		Severity:      "critical",
 		Signed:        signed,
-	}
-}
-
-// fakeCatalog is retained for backward-compat — Phase 1 tests that check
-// the CatalogLookup interface still reference this. The fakeMultiCatalog is
-// the Phase 2 replacement for Evaluate.
-type fakeCatalog struct {
-	entries map[string]catalog.Entry
-}
-
-func (f fakeCatalog) Lookup(ecosystem, pkg string) (catalog.Entry, bool) {
-	e, ok := f.entries[ecosystem+"::"+pkg]
-	return e, ok
-}
-
-func newFakeCatalog(entries ...catalog.Entry) fakeCatalog {
-	m := make(map[string]catalog.Entry, len(entries))
-	for _, e := range entries {
-		m[e.Ecosystem+"::"+e.Package] = e
-	}
-	return fakeCatalog{entries: m}
-}
-
-// nxConsoleEntry is kept for catalog-level tests.
-func nxConsoleEntry(signature string) catalog.Entry {
-	return catalog.Entry{
-		ID:               "advisory-2026-nx-console",
-		Name:             "Nx Console malicious release",
-		Ecosystem:        "editor-extension",
-		Package:          "nrwl.angular-console",
-		Versions:         []string{"18.95.0"},
-		Severity:         "critical",
-		SourceURL:        "https://example.test/advisory",
-		CatalogSignature: signature,
-		CatalogSource:    "bumblebee",
 	}
 }
 

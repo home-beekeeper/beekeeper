@@ -41,15 +41,21 @@ const (
 // catalogOpener opens a catalog index by path. The default wraps
 // catalog.OpenIndex; tests substitute a fake to exercise the fail-closed panic
 // path without depending on a real index file. The returned value satisfies
-// policy.CatalogLookup; if it also implements io.Closer the handler closes it.
-type catalogOpener func(path string) (policy.CatalogLookup, error)
+// catalog.Indexer; if it also implements io.Closer the handler closes it.
+//
+// Note: this previously used policy.CatalogLookup, which was removed in Plan 05
+// to break the import cycle between internal/catalog (adapter → policy.CatalogMatch)
+// and internal/policy (CatalogLookup → catalog.Entry). catalog.Indexer is the
+// equivalent interface defined in the catalog package. Plan 08 will update this
+// to use policy.MultiCatalogLookup when the handler is rewired for corroboration.
+type catalogOpener func(path string) (catalog.Indexer, error)
 
-func defaultOpener(path string) (policy.CatalogLookup, error) {
+func defaultOpener(path string) (catalog.Indexer, error) {
 	idx, err := catalog.OpenIndex(path)
 	if err != nil {
 		return nil, err
 	}
-	// *catalog.Index satisfies policy.CatalogLookup and io.Closer directly.
+	// *catalog.Index satisfies catalog.Indexer and io.Closer directly.
 	return idx, nil
 }
 

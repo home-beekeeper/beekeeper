@@ -84,6 +84,40 @@ func TestLoadMalformedJSONErrors(t *testing.T) {
 	}
 }
 
+func TestSocketTokenLoads(t *testing.T) {
+	// A config with socket.api_token set must load the token and still default
+	// fail_mode to "closed".
+	path := writeConfig(t, `{"socket":{"api_token":"tok_abc"}}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got := cfg.SocketAPIToken(); got != "tok_abc" {
+		t.Fatalf("SocketAPIToken() = %q, want %q", got, "tok_abc")
+	}
+	if cfg.FailMode != FailModeClosed {
+		t.Fatalf("FailMode = %q, want %q (fail_mode must default to closed when omitted)", cfg.FailMode, FailModeClosed)
+	}
+	if !cfg.FailClosed() {
+		t.Fatal("FailClosed() = false, want true when fail_mode is absent")
+	}
+}
+
+func TestSocketTokenAbsentIsEmpty(t *testing.T) {
+	// A config that only sets fail_mode and omits socket block must return ""
+	// from SocketAPIToken() without error.
+	path := writeConfig(t, `{"fail_mode":"closed"}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got := cfg.SocketAPIToken(); got != "" {
+		t.Fatalf("SocketAPIToken() = %q, want \"\" when socket block absent", got)
+	}
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.json")
