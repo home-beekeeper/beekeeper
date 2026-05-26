@@ -166,7 +166,11 @@ func meanFloat(vals []float64) float64 {
 	return sum / float64(len(vals))
 }
 
-// stddevFloat computes the population standard deviation of vals given their mean.
+// stddevFloat computes the sample standard deviation of vals given their mean,
+// using Bessel's correction (n-1 denominator). Sample stddev is appropriate here
+// because historicalFreqs is a sample of past daily counts; population stddev
+// would underestimate the true spread and make the anomaly threshold too low for
+// small sample sizes (WR-07).
 // Returns 0 for an empty slice or a single value.
 func stddevFloat(vals []float64, mean float64) float64 {
 	if len(vals) < 2 {
@@ -177,5 +181,5 @@ func stddevFloat(vals []float64, mean float64) float64 {
 		diff := v - mean
 		sumSq += diff * diff
 	}
-	return math.Sqrt(sumSq / float64(len(vals)))
+	return math.Sqrt(sumSq / float64(len(vals)-1))
 }
