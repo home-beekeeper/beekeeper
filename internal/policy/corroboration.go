@@ -1,6 +1,9 @@
 package policy
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 // corroborate counts independent signed and unsigned catalog sources from a
 // slice of CatalogMatch values and determines the corroboration level.
@@ -23,7 +26,24 @@ import "sort"
 //	count      — number of distinct SIGNED sources (CorroborationCount)
 //	agreed     — sorted distinct list of ALL matched source names (signed+unsigned)
 //	dissented  — empty slice (reserved for Phase 3+; no dissent model in Phase 2)
+// validateCorroborationThresholds checks that WarnAt <= BlockAt <= QuarantineAt.
+// Returns a non-nil error if the thresholds are mis-ordered (which would make
+// the quarantine or block cases unreachable dead code).
+func validateCorroborationThresholds(t CorroborationThresholds) error {
+	if t.WarnAt > t.BlockAt {
+		return fmt.Errorf("corroboration: WarnAt (%d) must be <= BlockAt (%d)", t.WarnAt, t.BlockAt)
+	}
+	if t.BlockAt > t.QuarantineAt {
+		return fmt.Errorf("corroboration: BlockAt (%d) must be <= QuarantineAt (%d)", t.BlockAt, t.QuarantineAt)
+	}
+	return nil
+}
+
 func corroborate(matches []CatalogMatch, t CorroborationThresholds) (level string, quarantine bool, count int, agreed, dissented []string) {
+	if err := validateCorroborationThresholds(t); err != nil {
+		// Misconfigured thresholds — fail closed to block.
+		return "block", false, 0, nil, nil
+	}
 	if len(matches) == 0 {
 		return "allow", false, 0, nil, nil
 	}
