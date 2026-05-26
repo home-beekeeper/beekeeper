@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
 status: executing
-stopped_at: context exhaustion at 76% (2026-05-26) — Wave 3 (plan 03-04) not yet started
-last_updated: "2026-05-26T18:25:00.000Z"
-last_activity: "2026-05-26 — Phase 3 Wave 1+2 complete: plans 03-01,02,03,05 done (4/5); Wave 3 (03-04 CLI wiring) pending"
+stopped_at: ~
+last_updated: "2026-05-26T20:00:00.000Z"
+last_activity: "2026-05-26 — Phase 3 Wave 3 complete: 03-04 (scan orchestrator + CLI wiring) done; 5/5 plans"
 progress:
   total_phases: 9
-  completed_phases: 2
-  total_plans: 14
-  completed_plans: 19
+  completed_phases: 3
+  total_plans: 20
+  completed_plans: 20
   percent: 33
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 2 — Policy Engine + Multi-Source Catalogs — COMPLETE; ready for verify-work
+**Current focus:** Phase 3 — Editor Extension Defense — COMPLETE; ready for verify-work or Phase 4
 
 ## Current Position
 
-Phase: 2 of 9 (Policy Engine + Multi-Source Catalogs)
-Plan: 9/9 complete (all waves done)
-Status: Phase complete — run `/gsd-verify-work 2` to verify and advance to Phase 3
-Last activity: 2026-05-26 — Wave 5 complete: 02-09 (fuzz release gate + integration tests) done; 9/9 plans
+Phase: 3 of 9 (Editor Extension Defense)
+Plan: 5/5 complete (all waves done)
+Status: Phase complete — run `/gsd-verify-work 3` to verify and advance to Phase 4
+Last activity: 2026-05-26 — Phase 3 Wave 3 complete: 03-04 (scan orchestrator + CLI wiring) done; 5/5 plans
 
-Progress: [██░░░░░░░░] 22%
+Progress: [███░░░░░░░] 33%
 
 ## Phase 1 Completion Summary
 
@@ -66,25 +66,79 @@ Progress: [██░░░░░░░░] 22%
 - `make verify-release` requires `make` (not installed on Windows); reproducibility logic validated manually; CI covers it
 - Phase 1 is single-source warn semantics only; corroboration-based block enforcement is Phase 2
 
+## Phase 2 Completion Summary
+
+### Plans completed (all 9/9)
+
+| Wave | Plan | Title | Commit | Status |
+|------|------|-------|--------|--------|
+| 1 | 02-01 | Corroboration types + engine refactor | — | ✅ Done |
+| 1 | 02-02 | Sensitive path policy + output credential filtering | — | ✅ Done |
+| 1 | 02-03 | Network egress + multi-turn exfiltration + baseline | — | ✅ Done |
+| 2 | 02-04 | OSV public REST API catalog adapter | — | ✅ Done |
+| 2 | 02-05 | Socket PURL API adapter | — | ✅ Done |
+| 2 | 02-06 | Release-age + lifecycle-script policies | — | ✅ Done |
+| 3 | 02-07 | Catalog watch daemon + sanity bounds | — | ✅ Done |
+| 4 | 02-08 | Multi-source aggregator + baseline + audit + CLI | — | ✅ Done |
+| 5 | 02-09 | Fuzz CI release gates + corroboration integration tests | 6bf6f05 | ✅ Done |
+
+## Phase 3 Completion Summary
+
+### Plans completed (all 5/5)
+
+| Wave | Plan | Title | Commit | Status |
+|------|------|-------|--------|--------|
+| 1 | 03-01 | EDXT-01 extension install recognition + deps | 69536fd | ✅ Done |
+| 1 | 03-02 | Marketplace adapter + quarantine manager | a84a742 | ✅ Done |
+| 2 | 03-03 | fsnotify watch daemon + manifest parser + handler | e4e3ba4 | ✅ Done |
+| 2 | 03-05 | Editor detection + JSONC settings patch + selftest fixture | 7b1aa9d | ✅ Done |
+| 3 | 03-04 | Scan orchestrator + watch/scan/quarantine CLI + init | 9428ed3 | ✅ Done |
+
+### Key deliverables
+
+- `internal/policy`: EDXT-01 extension-install recognition (code --install-extension, cursor, windsurf)
+- `internal/catalog`: Open VSX + VS Code Marketplace age adapters; marketplace-cache on disk
+- `internal/quarantine`: list/restore/purge operations; per-item metadata NDJSON
+- `internal/watch`: fsnotify daemon + manifest parser + quarantine/notify handler (EDXT-02, EDXT-03)
+- `internal/editorinit`: editor detection (VS Code, Cursor, Windsurf) + JSONC settings patch
+- `internal/scan`: Bumblebee subprocess orchestrator + Beekeeper-own per-extension scan (EDXT-04)
+- `internal/config`: WatchSettings + AddWatchDirectory + Save
+- `cmd/beekeeper/main.go`: watch, scan, quarantine, extended init commands (EDXT-04, EDXT-05, EDXT-06)
+
+### Deviations from plan
+
+- `evaluateExtension` in scanner.go duplicates adapter construction from handler.go (noted; minimal, not shared because handler.go is quarantine/notify coupled)
+- `notify.Config{Enabled: true}` hardcoded in newWatchCmd (notification preferences deferred to a future phase)
+- `quarantine_restore`/`quarantine_purge` audit RecordTypes differ from standard `policy_decision` schema (acceptable for Phase 3 audit trail)
+
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 20
 - Average duration: ~10 min/plan
-- Total execution time: ~1 hour
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1 (Foundation + Hook Handler) | 6/6 | ~1 hour | ~10 min |
+| Phase | Plans | Avg/Plan |
+|-------|-------|----------|
+| 1 (Foundation + Hook Handler) | 6/6 | ~10 min |
+| 2 (Policy Engine + Multi-Source Catalogs) | 9/9 | ~10 min |
+| 3 (Editor Extension Defense) | 5/5 | ~10 min |
 
 ## Accumulated Context
 
 ### Decisions
 
-Recent decisions from Phase 1 (full log in PROJECT.md):
+Recent decisions from Phase 3:
+
+- Injectable `runBumblebeeFn` package var for test isolation without real binary (Windows portability)
+- Pre-seeded marketplace cache pattern for tests (avoids live network; same as handler_test.go)
+- `catalog.NewMultiIndex` nil-safe: nil first arg skips Bumblebee source gracefully
+- `WatchSettings` added to Config as pointer field (omitempty — backward-compatible)
+- `quarantine_restore`/`quarantine_purge` NDJSON records use custom RecordType values (outside standard schema — acceptable for Phase 3 completeness)
+
+Earlier decisions from Phase 1 (full log in PROJECT.md):
 
 - `CatalogLookup` interface decouples policy engine from concrete mmap type (testability)
 - `internal/audit/FromDecision` takes caller-supplied recordID/timestamp (purity)
@@ -94,7 +148,7 @@ Recent decisions from Phase 1 (full log in PROJECT.md):
 
 ### Blockers/Concerns
 
-- Phase 2: Socket PURL API free-tier rate limits undocumented — implement 24h TTL cache aggressively; validate empirically during Phase 2
+- Phase 4: MCP client differences (Claude Code vs Cursor) expose different edge cases; July 2026 spec SDK lag
 - Phase 4: MCP message parser must be fuzz-tested before v0.6.0 as a release gate (not backlog item)
 - Phase 5: eBPF CI matrix needs Ubuntu 20.04 (kernel 5.4) and 22.04 (kernel 5.15) — ubuntu-latest alone is insufficient
 - Phase 7: eslogger field coverage incomplete from documentation — build parser against real eslogger output on macos-latest CI only
@@ -107,12 +161,13 @@ Items acknowledged and carried forward:
 |----------|------|--------|-------------|
 | Testing | `go test -race` requires CGO/C compiler | CI-only | Phase 1 |
 | Build | `make verify-release` requires make on Windows | CI-only | Phase 1 |
-| Policy | Corroboration-based block (PLCY-01) | Phase 2 | Phase 1 |
 | Audit | Log rotation, sinks (syslog/OTLP/HTTPS) | Phase 6 | Phase 1 |
 | Hooks | `beekeeper hooks install` (INTG-01) | Phase 4 | Phase 1 |
+| Watch | `notify.Config` wired to config preferences | Future phase | Phase 3 |
+| Cursor | Windows extension-dir path (Assumption A1) | Needs live validation | Phase 3 |
 
 ## Session Continuity
 
-Last session: 2026-05-26T18:22:42.788Z
-Stopped at: context exhaustion at 76% (2026-05-26)
+Last session: 2026-05-26T20:00:00.000Z
+Stopped at: Phase 3 complete (5/5 plans done)
 Resume file: None
