@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1.0",
+  "_comment": "Nx Console VS Code extension 2026-05-18 compromise (verified Bumblebee entry, used as a block-case fixture).",
+  "entries": [
+    {
+      "id": "stepsecurity-2026-05-18-vscode-nrwl-angular-console-compromised",
+      "name": "nrwl.angular-console (Nx Console VS Code extension 2026-05-18 compromise)",
+      "ecosystem": "editor-extension",
+      "package": "nrwl.angular-console",
+      "versions": ["18.95.0"],
+      "severity": "critical",
+      "source_url": "https://www.stepsecurity.io/blog/nx-console-compromise"
+    }
+  ]
+}

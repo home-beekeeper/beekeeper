@@ -5,10 +5,14 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/platform"
 	"github.com/mzansi-agentive/beekeeper/internal/version"
 )
@@ -110,8 +114,26 @@ func newCatalogsCmd() *cobra.Command {
 	catalogs.AddCommand(&cobra.Command{
 		Use:   "sync",
 		Short: "Fetch and cache catalogs, then build the mmap index",
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("not yet implemented")
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			dir, err := platform.CatalogDir()
+			if err != nil {
+				return fmt.Errorf("resolve catalog directory: %w", err)
+			}
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("create catalog directory %q: %w", dir, err)
+			}
+
+			client := &http.Client{Timeout: 30 * time.Second}
+			n, err := catalog.Sync(cmd.Context(), client, dir)
+			if err != nil {
+				return fmt.Errorf("catalog sync failed: %w", err)
+			}
+
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Synced %d catalog entries\n", n)
+			fmt.Fprintf(out, "Index: %s\n", filepath.Join(dir, "bumblebee.idx"))
+			return nil
 		},
 	})
 	return catalogs

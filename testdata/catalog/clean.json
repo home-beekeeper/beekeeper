@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1.0",
+  "_comment": "Allow-case fixture: an unrelated npm package that is not a real threat.",
+  "entries": [
+    {
+      "id": "beekeeper-test-clean-npm-pkg",
+      "name": "some-internal-test-pkg (clean allow-case fixture)",
+      "ecosystem": "npm",
+      "package": "some-internal-test-pkg",
+      "versions": ["1.0.0"],
+      "severity": "low"
+    }
+  ]
+}
