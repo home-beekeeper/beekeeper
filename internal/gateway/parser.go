@@ -1,0 +1,165 @@
+// Package gateway implements the MCP gateway daemon — a stateless per-request
+// HTTP proxy that applies the Beekeeper policy engine inline to every
+// tools/call JSON-RPC request (INTG-03, INTG-04).
+//
+// This file contains the bounded JSON-RPC 2.0 parser that is the sole entry
+// point for untrusted bytes. It is isolated here so that FuzzParseMessage in
+// parser_fuzz_test.go can target it precisely without needing a running server.
+package gateway
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
+// Parser bounds (INTG-03 spec).
+const (
+	maxRequestBody    = 1 << 20 // 1MB body cap (same as check.RunCheck stdin cap)
+	maxMethodLen      = 256     // reject method names longer than 256 bytes
+	maxBatchItems     = 50      // hard cap on JSON-RPC batch size
+	maxRecursionDepth = 10      // max nesting depth for params validation
+)
+
+// JSONRPCMessage is a decoded JSON-RPC 2.0 request or response.
+// The ID field uses `any` to correctly handle string, number, and null IDs
+// (JSON-RPC 2.0 spec §5: id may be string, number, or null). Using `any`
+// allows crypto/subtle comparison and echo-back without type-asserting the id
+// (Pitfall 4: never use int or string for this field).
+type JSONRPCMessage struct {
+	JSONRPC string          `json:"jsonrpc"`           // always "2.0"
+	ID      any             `json:"id"`                // string | number | null (any)
+	Method  string          `json:"method,omitempty"`  // request method
+	Params  json.RawMessage `json:"params,omitempty"`  // request params (deferred decode)
+	Result  json.RawMessage `json:"result,omitempty"`  // response result
+	Error   *JSONRPCError   `json:"error,omitempty"`   // response error
+}
+
+// JSONRPCError is the standard JSON-RPC 2.0 error object.
+type JSONRPCError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
+}
+
+// ParseError is returned by ParseMessage for all invalid inputs.
+// Code is a standard JSON-RPC 2.0 error code:
+//   - -32700: parse error (malformed JSON, empty body)
+//   - -32600: invalid request (wrong version, oversized method, oversized batch, depth exceeded)
+//
+// ParseError.Code is always non-zero — the fuzz invariant requires this.
+type ParseError struct {
+	Code int
+	Msg  string
+}
+
+func (e *ParseError) Error() string { return e.Msg }
+
+// ParseMessage decodes a single JSON-RPC 2.0 request or the first item of a
+// batch from b. All bounds are enforced before any caller-visible state is
+// returned.
+//
+// Bounds enforced:
+//   - empty body           → ParseError{-32700, "empty body"}
+//   - invalid JSON         → ParseError{-32700, …}
+//   - jsonrpc != "2.0"     → ParseError{-32600, …}
+//   - method > 256 bytes   → ParseError{-32600, …}
+//   - batch > 50 items     → ParseError{-32600, …}
+//   - params depth > 10    → ParseError{-32600, …}
+//
+// ParseMessage never panics. Any return where err == nil guarantees
+// msg.JSONRPC == "2.0". Any return where err != nil is a *ParseError with
+// Code != 0 (the FuzzParseMessage invariant).
+func ParseMessage(b []byte) (JSONRPCMessage, error) {
+	if len(b) == 0 {
+		return JSONRPCMessage{}, &ParseError{Code: -32700, Msg: "empty body"}
+	}
+
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 {
+		return JSONRPCMessage{}, &ParseError{Code: -32700, Msg: "empty body after trim"}
+	}
+
+	if trimmed[0] == '[' {
+		return parseAsBatch(trimmed)
+	}
+	return parseSingle(trimmed)
+}
+
+// parseSingle decodes a single JSON-RPC object and validates all bounds.
+func parseSingle(b []byte) (JSONRPCMessage, error) {
+	var msg JSONRPCMessage
+	if err := json.Unmarshal(b, &msg); err != nil {
+		return JSONRPCMessage{}, &ParseError{Code: -32700, Msg: "invalid JSON: " + err.Error()}
+	}
+	if msg.JSONRPC != "2.0" {
+		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: `jsonrpc must be "2.0"`}
+	}
+	if len(msg.Method) > maxMethodLen {
+		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: fmt.Sprintf("method name exceeds %d bytes", maxMethodLen)}
+	}
+	if err := checkDepth(msg.Params, 0); err != nil {
+		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: "params depth exceeds limit: " + err.Error()}
+	}
+	return msg, nil
+}
+
+// parseAsBatch decodes a JSON-RPC batch array and validates the item count.
+// It returns the first item as the primary message (single-dispatch model).
+func parseAsBatch(b []byte) (JSONRPCMessage, error) {
+	var batch []json.RawMessage
+	if err := json.Unmarshal(b, &batch); err != nil {
+		return JSONRPCMessage{}, &ParseError{Code: -32700, Msg: "invalid batch JSON: " + err.Error()}
+	}
+	if len(batch) == 0 {
+		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: "empty batch"}
+	}
+	if len(batch) > maxBatchItems {
+		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: fmt.Sprintf("batch exceeds %d items", maxBatchItems)}
+	}
+	// Return first item; gateway handles full batch fan-out at the proxy level.
+	return parseSingle(batch[0])
+}
+
+// checkDepth verifies that a JSON value encoded in raw does not exceed
+// maxRecursionDepth levels of object/array nesting. depth is the current
+// nesting level of the caller.
+//
+// If raw is empty or null, no check is needed. Unmarshal errors here are
+// ignored — parseSingle catches them first.
+func checkDepth(raw json.RawMessage, depth int) error {
+	if depth > maxRecursionDepth {
+		return fmt.Errorf("depth %d exceeds maximum %d", depth, maxRecursionDepth)
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil // unmarshal errors are reported by parseSingle
+	}
+	return checkValueDepth(v, depth)
+}
+
+// checkValueDepth recursively walks the decoded JSON value tree, counting
+// nesting levels. It returns an error if any path exceeds maxRecursionDepth.
+func checkValueDepth(v any, depth int) error {
+	if depth > maxRecursionDepth {
+		return fmt.Errorf("depth %d exceeds maximum %d", depth, maxRecursionDepth)
+	}
+	switch val := v.(type) {
+	case map[string]any:
+		for _, child := range val {
+			if err := checkValueDepth(child, depth+1); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, item := range val {
+			if err := checkValueDepth(item, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
