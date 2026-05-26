@@ -1,0 +1,245 @@
+package policy
+
+import (
+	"go/parser"
+	"go/token"
+	"os"
+	"testing"
+)
+
+// TestEvaluatePath exercises the sensitive-path policy (PLCY-04).
+// resolvedPath is always pre-resolved by the caller (no "~" in these inputs).
+func TestEvaluatePath(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	tests := []struct {
+		name        string
+		path        string
+		wantLevel   string
+		wantAllow   bool
+		wantPattern string // if non-empty, Reason must contain this string
+	}{
+		{
+			name:        "ssh key blocked",
+			path:        "/home/u/.ssh/id_rsa",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: "/.ssh/",
+		},
+		{
+			name:        "aws credentials blocked",
+			path:        "/home/u/.aws/credentials",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: "/.aws/",
+		},
+		{
+			name:        "gnupg blocked",
+			path:        "/home/u/.gnupg/pubring.kbx",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: "/.gnupg/",
+		},
+		{
+			name:        ".env file blocked",
+			path:        "/home/u/project/.env",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".env",
+		},
+		{
+			name:        ".env.local file blocked",
+			path:        "/home/u/project/.env.local",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".env",
+		},
+		{
+			name:        ".env.production blocked by .env.* glob",
+			path:        "/home/u/project/.env.production",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".env",
+		},
+		{
+			name:      "clean go source file allowed",
+			path:      "/home/u/project/src/main.go",
+			wantLevel: "allow",
+			wantAllow: true,
+		},
+		{
+			name:      "readme allowed",
+			path:      "/home/u/project/README.md",
+			wantLevel: "allow",
+			wantAllow: true,
+		},
+		{
+			name:        "netrc blocked",
+			path:        "/home/u/.netrc",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".netrc",
+		},
+		{
+			name:        "npmrc blocked",
+			path:        "/home/u/.npmrc",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".npmrc",
+		},
+		{
+			name:        "pypirc blocked",
+			path:        "/home/u/.pypirc",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".pypirc",
+		},
+		{
+			name:        "cargo credentials blocked",
+			path:        "/home/u/.cargo/credentials.toml",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: "/.cargo/credentials.toml",
+		},
+		{
+			name:        "1Password CLI config blocked",
+			path:        "/home/u/.config/op/config",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: "/.config/op/",
+		},
+		{
+			name:        "GitHub CLI config blocked",
+			path:        "/home/u/.config/gh/hosts.yml",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: "/.config/gh/",
+		},
+		{
+			name:        "Claude config blocked",
+			path:        "/home/u/.config/Claude/settings.json",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: "/.config/Claude/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := EvaluatePath(tt.path, cfg)
+			if d.Level != tt.wantLevel {
+				t.Errorf("Level = %q, want %q", d.Level, tt.wantLevel)
+			}
+			if d.Allow != tt.wantAllow {
+				t.Errorf("Allow = %v, want %v", d.Allow, tt.wantAllow)
+			}
+			if tt.wantPattern != "" && !containsStr(d.Reason, tt.wantPattern) {
+				t.Errorf("Reason = %q, want it to contain %q", d.Reason, tt.wantPattern)
+			}
+		})
+	}
+}
+
+// TestEvaluatePathAllowlistOverride verifies that an explicit AllowPattern
+// overrides the blocklist — even for a normally-blocked path.
+func TestEvaluatePathAllowlistOverride(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+	// Explicitly allowlist a path that would normally be blocked.
+	cfg.AllowPatterns = append(cfg.AllowPatterns, "/home/u/.aws/credentials")
+
+	d := EvaluatePath("/home/u/.aws/credentials", cfg)
+	if d.Level != "allow" {
+		t.Errorf("Level = %q, want %q (allowlist must override blocklist)", d.Level, "allow")
+	}
+	if !d.Allow {
+		t.Errorf("Allow = false, want true")
+	}
+}
+
+// TestEvaluatePathWindowsStyle checks that Windows-style paths (with backslash
+// segments) are handled. The caller normalizes the path before calling.
+func TestEvaluatePathWindowsStyle(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	// Windows-style path with .ssh segment
+	d := EvaluatePath(`C:\Users\u\.ssh\id_rsa`, cfg)
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q for Windows .ssh path", d.Level, "block")
+	}
+	if d.Allow {
+		t.Errorf("Allow = true, want false")
+	}
+}
+
+// TestEvaluatePathWindowsEnv checks that a Windows .env file path is blocked.
+func TestEvaluatePathWindowsEnv(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	d := EvaluatePath(`C:\Users\u\project\.env`, cfg)
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q for Windows .env path", d.Level, "block")
+	}
+	if d.Allow {
+		t.Errorf("Allow = true, want false")
+	}
+}
+
+// TestEvaluatePathRuleID checks that block decisions carry the correct rule ID.
+func TestEvaluatePathRuleID(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+	d := EvaluatePath("/home/u/.ssh/id_rsa", cfg)
+	if len(d.RuleIDs) == 0 || d.RuleIDs[0] != "sensitive-path-policy" {
+		t.Errorf("RuleIDs = %v, want [sensitive-path-policy]", d.RuleIDs)
+	}
+}
+
+// TestPathImportsArePure enforces the purity contract for path.go: it must not
+// import any package that performs I/O, concurrency, or wall-clock access.
+func TestPathImportsArePure(t *testing.T) {
+	const filePath = "path.go"
+	src, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", filePath, err)
+	}
+
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filePath, src, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parsing %s: %v", filePath, err)
+	}
+
+	forbidden := map[string]bool{
+		"os":       true,
+		"net":      true,
+		"net/http": true,
+		"io":       true,
+		"sync":     true,
+		"time":     true,
+		"context":  true,
+	}
+
+	for _, imp := range f.Imports {
+		path := imp.Path.Value
+		if len(path) >= 2 {
+			path = path[1 : len(path)-1]
+		}
+		if forbidden[path] {
+			t.Errorf("path.go imports forbidden package %q — violates pure-library contract", path)
+		}
+	}
+}
+
+// containsStr reports whether s contains substr.
+func containsStr(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		findSubstr(s, substr))
+}
+
+func findSubstr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
