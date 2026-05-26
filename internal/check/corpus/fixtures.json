@@ -116,5 +116,19 @@
     "check_provenance": true,
     "expect_corroboration_count": 0,
     "expect_sources_agreed": []
+  },
+  {
+    "name": "EDXT-01 editor extension CLI install routes through catalog (nrwl.angular-console)",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "code --install-extension nrwl.angular-console@18.95.0"
+      }
+    },
+    "expect_level": "warn",
+    "expect_allow": true,
+    "expect_catalog_match": true,
+    "expect_rule_id": "bumblebee-catalog-match"
   }
 ]
