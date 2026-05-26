@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // ErrEcosystemLifecycleUnsupported is returned by fetchLifecycleScripts for
@@ -71,7 +72,7 @@ func fetchRegistryJSON(ctx context.Context, client *http.Client, url string, des
 // https://registry.npmjs.org/<pkg>) carries a ".time" map of version strings to
 // RFC3339 timestamps. The per-version document lacks this field.
 func fetchNPMPublishTime(ctx context.Context, client *http.Client, pkg, version string) (string, error) {
-	url := npmRegistryBase + "/" + pkg
+	url := npmRegistryBase + "/" + url.PathEscape(pkg)
 	var doc struct {
 		Time map[string]string `json:"time"`
 	}
@@ -92,7 +93,7 @@ func fetchNPMPublishTime(ctx context.Context, client *http.Client, pkg, version 
 // PyPI JSON API: GET https://pypi.org/pypi/<pkg>/<version>/json
 // → .urls[0].upload_time_iso_8601
 func fetchPyPIPublishTime(ctx context.Context, client *http.Client, pkg, version string) (string, error) {
-	url := pypiRegistryBase + "/pypi/" + pkg + "/" + version + "/json"
+	url := pypiRegistryBase + "/pypi/" + url.PathEscape(pkg) + "/" + url.PathEscape(version) + "/json"
 	var doc struct {
 		URLs []struct {
 			UploadTimeISO string `json:"upload_time_iso_8601"`
@@ -111,7 +112,7 @@ func fetchPyPIPublishTime(ctx context.Context, client *http.Client, pkg, version
 // the crates.io API: GET https://crates.io/api/v1/crates/<pkg>/<version>
 // → .version.created_at
 func fetchCratesPublishTime(ctx context.Context, client *http.Client, pkg, version string) (string, error) {
-	url := cratesRegistryBase + "/api/v1/crates/" + pkg + "/" + version
+	url := cratesRegistryBase + "/api/v1/crates/" + url.PathEscape(pkg) + "/" + url.PathEscape(version)
 	var doc struct {
 		Version struct {
 			CreatedAt string `json:"created_at"`
@@ -130,7 +131,7 @@ func fetchCratesPublishTime(ctx context.Context, client *http.Client, pkg, versi
 // RubyGems API: GET https://rubygems.org/api/v1/versions/<pkg>.json
 // Returns the built_at timestamp for the matching version.
 func fetchRubyGemsPublishTime(ctx context.Context, client *http.Client, pkg, version string) (string, error) {
-	url := rubygemsRegistryBase + "/api/v1/versions/" + pkg + ".json"
+	url := rubygemsRegistryBase + "/api/v1/versions/" + url.PathEscape(pkg) + ".json"
 	var versions []struct {
 		Number  string `json:"number"`
 		BuiltAt string `json:"built_at"`
@@ -153,7 +154,7 @@ func fetchRubyGemsPublishTime(ctx context.Context, client *http.Client, pkg, ver
 // the Go module proxy: GET https://proxy.golang.org/<module>/@v/<version>.info
 // → .Time (RFC3339)
 func fetchGoPublishTime(ctx context.Context, client *http.Client, pkg, version string) (string, error) {
-	url := goProxyBase + "/" + pkg + "/@v/" + version + ".info"
+	url := goProxyBase + "/" + url.PathEscape(pkg) + "/@v/" + url.PathEscape(version) + ".info"
 	var doc struct {
 		Time string `json:"Time"`
 	}
@@ -170,7 +171,7 @@ func fetchGoPublishTime(ctx context.Context, client *http.Client, pkg, version s
 // package@version: GET https://repo.packagist.org/p2/<pkg>.json
 // → packages[pkg][].version == version → .time
 func fetchPackagistPublishTime(ctx context.Context, client *http.Client, pkg, version string) (string, error) {
-	url := packagistRegistryBase + "/p2/" + pkg + ".json"
+	url := packagistRegistryBase + "/p2/" + url.PathEscape(pkg) + ".json"
 	var doc struct {
 		Packages map[string][]struct {
 			Version string `json:"version"`
@@ -246,7 +247,7 @@ func fetchLifecycleScripts(ctx context.Context, client *http.Client, ecosystem, 
 // scripts are defined (safe to allow). Any fetch or parse error is returned;
 // the caller treats it as RegistryCheckFailed:true.
 func fetchNPMLifecycleScripts(ctx context.Context, client *http.Client, pkg, version string) ([]string, error) {
-	url := npmRegistryBase + "/" + pkg + "/" + version
+	url := npmRegistryBase + "/" + url.PathEscape(pkg) + "/" + url.PathEscape(version)
 	var doc struct {
 		Scripts map[string]string `json:"scripts"`
 	}
