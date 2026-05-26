@@ -84,9 +84,17 @@ func RunSelftest() (passed, failed int, err error) {
 	}
 	defer idx.Close()
 
+	// Wrap the mmap index as a MultiCatalogLookup for the Phase 2 engine.
+	// The bumblebeeAdapter maps catalog.Index.Lookup results to policy.CatalogMatch
+	// entries. CatalogSource is "bumblebee"; entries with a non-empty
+	// CatalogSignature are treated as signed.
+	// NOTE: Plan 08 (Wave 3) replaces this adapter with the full multi-source
+	// aggregator. Until then, selftest runs with Bumblebee-only evaluation.
+	multi := &bumblebeeAdapter{idx: idx}
+
 	// Catalog-match (warn) and allow fixtures: evaluate via the pure engine.
 	for _, f := range fixtures {
-		d := policy.Evaluate(f.ToolCall, idx)
+		d := policy.Evaluate(f.ToolCall, multi, policy.DefaultCorroborationThresholds())
 		if fixtureMatches(f, d) {
 			passed++
 		} else {
@@ -110,6 +118,43 @@ func RunSelftest() (passed, failed int, err error) {
 	}
 
 	return passed, failed, nil
+}
+
+// bumblebeeAdapter wraps a catalog.Index to implement policy.MultiCatalogLookup.
+// It looks up the single (ecosystem, pkg) tuple from the mmap index and maps
+// the result to a policy.CatalogMatch with CatalogSource "bumblebee". Entries
+// with a non-empty CatalogSignature are treated as signed (CTLG-07).
+//
+// This adapter is used by the selftest and by the hook handler (via
+// singleSourceAdapter in handler.go) during the transitional period before
+// Plan 08 wires the full multi-source aggregator.
+type bumblebeeAdapter struct {
+	idx *catalog.Index
+}
+
+func (a *bumblebeeAdapter) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
+	e, ok := a.idx.Lookup(ecosystem, pkg)
+	if !ok {
+		return nil
+	}
+	return []policy.CatalogMatch{{
+		CatalogSource:  "bumblebee",
+		EntryID:        e.ID,
+		Ecosystem:      e.Ecosystem,
+		Package:        e.Package,
+		Severity:       e.Severity,
+		Signed:         e.CatalogSignature != "",
+		CatalogVersion: e.CatalogSource,
+	}}
+}
+
+// Close releases the underlying mmap index. Implements io.Closer for
+// catalogIndex interface use in handler.go.
+func (a *bumblebeeAdapter) Close() error {
+	if a.idx != nil {
+		return a.idx.Close()
+	}
+	return nil
 }
 
 // fixtureMatches reports whether decision d satisfies fixture f's expectations.

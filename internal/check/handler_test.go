@@ -12,7 +12,6 @@ import (
 
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
 )
 
 // buildTestIndex writes a small real mmap index in dir containing the
@@ -86,7 +85,7 @@ func TestCatalogMatchWarns(t *testing.T) {
 
 func TestFailClosedOnPanic(t *testing.T) {
 	// Inject an opener that panics, exercising the top-level recover guard.
-	panicOpener := func(string) (policy.CatalogLookup, error) {
+	panicOpener := func(string) (catalogIndex, error) {
 		panic("boom")
 	}
 	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install x"}}`)
