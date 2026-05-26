@@ -53,14 +53,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. `beekeeper catalogs watch` daemon detects a new Bumblebee `threat_intel/` entry within its poll interval and triggers an immediate scan without developer intervention
   5. Any catalog delta exceeding sanity bounds puts the affected source into degraded mode (warning-only) and the degradation is recorded in the audit log with full catalog provenance
 **Plans**: 9 plans
-- [ ] 02-01-PLAN.md — Corroboration types + engine refactor onto MultiCatalogLookup (PLCY-01, CTLG-09) (wave 1)
-- [ ] 02-02-PLAN.md — Sensitive path policy + output credential filtering, pure (PLCY-04, PLCY-08) (wave 1)
-- [ ] 02-03-PLAN.md — Network egress + multi-turn exfiltration + behavioral baseline, pure (PLCY-05, PLCY-06, PLCY-07) (wave 1)
-- [ ] 02-04-PLAN.md — OSV public REST API catalog adapter, cache-first (CTLG-02) (wave 2)
-- [ ] 02-05-PLAN.md — Socket PURL API adapter, Bearer auth + backoff + deprecation TODO (CTLG-03) (wave 2)
-- [ ] 02-06-PLAN.md — Release-age + lifecycle-script policies + registry/age-cache adapters (PLCY-02, PLCY-03) (wave 2)
-- [ ] 02-07-PLAN.md — Catalog watch daemon + sanity bounds + degraded-mode state (CTLG-06, CTLG-08) (wave 3)
-- [ ] 02-08-PLAN.md — Multi-source aggregator + baseline store + audit provenance + hook integration + CLI (CTLG-09) (wave 4)
+- [x] 02-01-PLAN.md — Corroboration types + engine refactor onto MultiCatalogLookup (PLCY-01, CTLG-09) (wave 1)
+- [x] 02-02-PLAN.md — Sensitive path policy + output credential filtering, pure (PLCY-04, PLCY-08) (wave 1)
+- [x] 02-03-PLAN.md — Network egress + multi-turn exfiltration + behavioral baseline, pure (PLCY-05, PLCY-06, PLCY-07) (wave 1)
+- [x] 02-04-PLAN.md — OSV public REST API catalog adapter, cache-first (CTLG-02) (wave 2)
+- [x] 02-05-PLAN.md — Socket PURL API adapter, Bearer auth + backoff + deprecation TODO (CTLG-03) (wave 2)
+- [x] 02-06-PLAN.md — Release-age + lifecycle-script policies + registry/age-cache adapters (PLCY-02, PLCY-03) (wave 2)
+- [x] 02-07-PLAN.md — Catalog watch daemon + sanity bounds + degraded-mode state (CTLG-06, CTLG-08) (wave 3)
+- [x] 02-08-PLAN.md — Multi-source aggregator + baseline store + audit provenance + hook integration + CLI (CTLG-09) (wave 4)
 - [ ] 02-09-PLAN.md — Fuzz CI release gates + corroboration selftest/integration tests (wave 5)
 **Research note**: Socket PURL API free-tier rate limits are not fully documented — implement 24h TTL cache per package+version aggressively and validate empirically; fsnotify Windows behavior with VS Code extension junction points needs live testing
 
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation + Hook Handler | 6/6 | Complete | 2026-05-26 |
-| 2. Policy Engine + Multi-Source Catalogs | 0/9 | Not started | - |
+| 2. Policy Engine + Multi-Source Catalogs | 8/9 | In Progress | - |
 | 3. Editor Extension Defense | 0/TBD | Not started | - |
 | 4. Integration Surfaces | 0/TBD | Not started | - |
 | 5. Linux Sentry | 0/TBD | Not started | - |
