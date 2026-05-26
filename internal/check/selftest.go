@@ -54,6 +54,11 @@ type fixture struct {
 	ExpectLevel      string          `json:"expect_level"`
 	ExpectAllow      bool            `json:"expect_allow"`
 	ExpectCatalogHit bool            `json:"expect_catalog_match"`
+	// ExpectRuleID is the exact rule ID expected in Decision.RuleIDs.
+	// Empty string ("") disables this assertion — existing fixtures without
+	// this field are unaffected. When non-empty, at least one element of
+	// RuleIDs must equal ExpectRuleID.
+	ExpectRuleID string `json:"expect_rule_id,omitempty"`
 }
 
 // RunSelftest evaluates the embedded adversarial corpus against an in-memory
@@ -99,8 +104,8 @@ func RunSelftest() (passed, failed int, err error) {
 			passed++
 		} else {
 			failed++
-			fmt.Printf("selftest FAIL [%s]: got level=%q allow=%v matches=%d, want level=%q allow=%v hit=%v\n",
-				f.Name, d.Level, d.Allow, len(d.CatalogMatches), f.ExpectLevel, f.ExpectAllow, f.ExpectCatalogHit)
+			fmt.Printf("selftest FAIL [%s]: got level=%q allow=%v matches=%d rule_ids=%v, want level=%q allow=%v hit=%v rule_id=%q\n",
+				f.Name, d.Level, d.Allow, len(d.CatalogMatches), d.RuleIDs, f.ExpectLevel, f.ExpectAllow, f.ExpectCatalogHit, f.ExpectRuleID)
 		}
 	}
 
@@ -185,5 +190,28 @@ func fixtureMatches(f fixture, d policy.Decision) bool {
 		return false
 	}
 	hit := len(d.CatalogMatches) > 0
-	return hit == f.ExpectCatalogHit
+	if hit != f.ExpectCatalogHit {
+		return false
+	}
+	// Non-allow decisions must always carry at least one rule ID so that audit
+	// records and downstream SIEM correlations have a non-empty RuleIDs field.
+	if d.Level != "allow" && len(d.RuleIDs) == 0 {
+		return false
+	}
+	// When the fixture specifies an expected rule ID, verify it is present in
+	// the decision's RuleIDs slice. An empty ExpectRuleID skips this check so
+	// existing fixtures without the field are unaffected.
+	if f.ExpectRuleID != "" {
+		found := false
+		for _, id := range d.RuleIDs {
+			if id == f.ExpectRuleID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
