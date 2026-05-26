@@ -282,11 +282,13 @@ func querySocket(
 				sleep = 60 * time.Second
 			}
 
+			// Check max retries BEFORE sleeping so the final attempt does not
+			// incur an unnecessary backoff delay before returning the error (WR-02).
 			if attempt == maxRetries {
 				return nil, true, fmt.Errorf("socket: rate limit exceeded after %d retries", maxRetries)
 			}
 
-			// Sleep with context cancellation support.
+			// Sleep only when we will actually retry.
 			select {
 			case <-time.After(sleep):
 			case <-ctx.Done():
