@@ -105,7 +105,17 @@ func parseSingle(b []byte) (JSONRPCMessage, error) {
 }
 
 // parseAsBatch decodes a JSON-RPC batch array and validates the item count.
-// It returns the first item as the primary message (single-dispatch model).
+//
+// WR-07: batch requests with more than one item are rejected with a -32600
+// error rather than silently processing only item[0] and dropping the rest.
+// A client that sends [req1, req2, req3] would otherwise receive only a
+// response for req1 with no indication that req2 and req3 were dropped,
+// potentially causing the client to block waiting for responses that never
+// arrive. Returning an explicit error is the correct behaviour when batch
+// fan-out is not implemented.
+//
+// Single-item batches ([req1]) are accepted and processed normally since
+// they have no ambiguity about dropped requests.
 func parseAsBatch(b []byte) (JSONRPCMessage, error) {
 	var batch []json.RawMessage
 	if err := json.Unmarshal(b, &batch); err != nil {
@@ -117,7 +127,12 @@ func parseAsBatch(b []byte) (JSONRPCMessage, error) {
 	if len(batch) > maxBatchItems {
 		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: fmt.Sprintf("batch exceeds %d items", maxBatchItems)}
 	}
-	// Return first item; gateway handles full batch fan-out at the proxy level.
+	// WR-07: reject multi-item batches explicitly rather than silently dropping
+	// items 1..N-1. Clients sending a batch must be informed that batch fan-out
+	// is not supported so they can switch to individual requests.
+	if len(batch) > 1 {
+		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: "batch requests are not supported by this gateway"}
+	}
 	return parseSingle(batch[0])
 }
 
