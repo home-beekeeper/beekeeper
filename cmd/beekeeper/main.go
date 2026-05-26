@@ -17,11 +17,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/mzansi-agentive/beekeeper/internal/audit"
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/check"
 	"github.com/mzansi-agentive/beekeeper/internal/config"
+	"github.com/mzansi-agentive/beekeeper/internal/editorinit"
+	"github.com/mzansi-agentive/beekeeper/internal/notify"
 	"github.com/mzansi-agentive/beekeeper/internal/platform"
+	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
+	"github.com/mzansi-agentive/beekeeper/internal/scan"
 	"github.com/mzansi-agentive/beekeeper/internal/version"
+	"github.com/mzansi-agentive/beekeeper/internal/watch"
 )
 
 func main() {
@@ -45,6 +51,9 @@ func newRootCmd() *cobra.Command {
 		newCatalogsCmd(),
 		newAuditCmd(),
 		newSelftestCmd(),
+		newWatchCmd(),
+		newScanCmd(),
+		newQuarantineCmd(),
 	)
 
 	return root
@@ -67,13 +76,15 @@ func newVersionCmd() *cobra.Command {
 	}
 }
 
-// newInitCmd creates the Beekeeper state directory tree. This is the Phase 1
-// stub: it creates state, catalogs/, and audit/ directories only — no editor
-// detection or full onboarding (that is EDXT-06, Phase 3).
+// newInitCmd creates the Beekeeper state directory tree and, on first run,
+// detects installed editors and gates configuration changes on explicit consent.
+// EDXT-06: extends Phase 1 dir creation with quarantine/marketplace-cache dirs
+// plus per-editor consent for auto-update disable and watch-dir registration.
 func newInitCmd() *cobra.Command {
-	return &cobra.Command{
+	var yes, noEditors bool
+	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Create the Beekeeper state directory",
+		Short: "Create the Beekeeper state directory and configure editor protection",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			stateDir, err := platform.StateDir()
@@ -88,17 +99,99 @@ func newInitCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve audit directory: %w", err)
 			}
+			configPath, err := platform.ConfigPath()
+			if err != nil {
+				return fmt.Errorf("resolve config path: %w", err)
+			}
 
+			// Phase 1: create state, catalogs, audit directories.
 			for _, dir := range []string{stateDir, catalogDir, auditDir} {
 				if err := os.MkdirAll(dir, 0700); err != nil {
 					return fmt.Errorf("create directory %q: %w", dir, err)
 				}
 			}
 
+			// Phase 3: create quarantine/extensions and marketplace-cache.
+			for _, dir := range []string{
+				filepath.Join(stateDir, "quarantine", "extensions"),
+				filepath.Join(catalogDir, "marketplace-cache"),
+			} {
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					return fmt.Errorf("create directory %q: %w", dir, err)
+				}
+			}
+
 			fmt.Fprintf(cmd.OutOrStdout(), "Initialized Beekeeper state directory at %s\n", stateDir)
+
+			if noEditors {
+				return nil
+			}
+
+			// EDXT-06: detect editors and gate configuration on consent.
+			editors, err := editorinit.DetectEditors()
+			if err != nil || len(editors) == 0 {
+				return nil
+			}
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
+			out := cmd.OutOrStdout()
+			in := cmd.InOrStdin()
+			configDirty := false
+
+			for _, editor := range editors {
+				if editor.SettingsPath != "" {
+					var consent bool
+					if yes {
+						consent = true
+					} else {
+						fmt.Fprintf(out, "Disable extension auto-update for %s? NOTE: comments in settings.json will be removed. [y/N] ", editor.Name)
+						var resp string
+						fmt.Fscanln(in, &resp)
+						consent = resp == "y" || resp == "Y"
+					}
+					if consent {
+						if err := editorinit.DisableExtensionAutoUpdate(editor.SettingsPath); err != nil {
+							fmt.Fprintf(out, "  Warning: could not disable auto-update for %s: %v\n", editor.Name, err)
+						} else {
+							fmt.Fprintf(out, "  Disabled extension auto-update for %s\n", editor.Name)
+						}
+					}
+				}
+
+				if editor.ExtensionDir != "" {
+					var consent bool
+					if yes {
+						consent = true
+					} else {
+						fmt.Fprintf(out, "Enable Beekeeper file-watcher for %s (%s)? [y/N] ", editor.Name, editor.ExtensionDir)
+						var resp string
+						fmt.Fscanln(in, &resp)
+						consent = resp == "y" || resp == "Y"
+					}
+					if consent {
+						cfg.AddWatchDirectory(editor.ExtensionDir)
+						configDirty = true
+						fmt.Fprintf(out, "  Registered watch directory: %s\n", editor.ExtensionDir)
+					}
+				}
+			}
+
+			if configDirty {
+				if err := config.Save(configPath, cfg); err != nil {
+					return fmt.Errorf("save config: %w", err)
+				}
+			}
+
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Auto-consent to all editor configuration prompts")
+	cmd.Flags().BoolVar(&noEditors, "no-editors", false, "Skip editor detection (scripted installs)")
+	return cmd
 }
 
 // newCheckCmd is the hook handler entry point. It reads a tool call from stdin,
@@ -132,8 +225,6 @@ func newCheckCmd() *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			// Pass catalogDir so the multi-source aggregator can locate
-			// OSV and Socket disk caches (Plan 08 cacheDir parameter).
 			result := check.RunCheck(cmd.Context(), os.Stdin, cfg, indexPath, auditPath, catalogDir)
 			os.Exit(result.ExitCode)
 			return nil // unreachable; os.Exit above is the real return path
@@ -174,8 +265,6 @@ func newCatalogsCmd() *cobra.Command {
 	})
 
 	// catalogs watch — foreground catalog watch daemon.
-	// Polls Bumblebee (default 1h interval), detects deltas, fires onDelta callback.
-	// Foreground process with SIGINT/SIGTERM cancellation; full daemonization is Phase 4.
 	catalogs.AddCommand(&cobra.Command{
 		Use:   "watch",
 		Short: "Poll catalog sources and trigger re-scans on delta (Ctrl+C to stop)",
@@ -191,9 +280,6 @@ func newCatalogsCmd() *cobra.Command {
 			}
 			stateFile := filepath.Join(stateDir, "state.json")
 
-			// Wrap the command context with signal cancellation so SIGINT/SIGTERM
-			// cleanly stops the watch loop (cobra's cmd.Context() may not be
-			// signal-aware depending on how the root was built).
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
@@ -204,15 +290,12 @@ func newCatalogsCmd() *cobra.Command {
 				StateFile:    stateFile,
 				Client:       client,
 				Sanity:       catalog.DefaultSanityConfig(),
-				// Snapshot: nil → Watch uses readBumblebeeSnapshot (production default)
 			}
 
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Starting catalog watch daemon (interval: %s, Ctrl+C to stop)...\n", cfg.PollInterval)
 
 			return catalog.Watch(ctx, cfg, func(delta catalog.CatalogDelta, sanity catalog.SanityResult) {
-				// Best-effort delta notification to stdout.
-				// Full audit integration and targeted re-scan are Phase 4.
 				if sanity.Block {
 					fmt.Fprintf(out, "catalog delta [HARD-BLOCK sanity breach]: source=%s prev=%d new=%d delta=%d — %s\n",
 						delta.Source, delta.PrevCount, delta.NewCount, delta.DeltaCount, sanity.Reason)
@@ -229,7 +312,6 @@ func newCatalogsCmd() *cobra.Command {
 	})
 
 	// catalogs verify — clear degraded mode for a named catalog source (CTLG-08).
-	// Loads state.json, clears the named source's Degraded flag, saves state.
 	var verifySource string
 	verifyCmd := &cobra.Command{
 		Use:   "verify",
@@ -253,7 +335,6 @@ func newCatalogsCmd() *cobra.Command {
 
 			ss, ok := st.Sources[verifySource]
 			if !ok {
-				// Source not in state — may not have been seen yet.
 				fmt.Fprintf(cmd.OutOrStdout(), "Source %q not found in state; nothing to clear.\n", verifySource)
 				return nil
 			}
@@ -279,6 +360,293 @@ func newCatalogsCmd() *cobra.Command {
 	catalogs.AddCommand(verifyCmd)
 
 	return catalogs
+}
+
+// newWatchCmd starts the foreground extension file-watcher daemon.
+// It detects watch directories from config or DetectEditors, then runs
+// watch.Watch until SIGINT/SIGTERM (Ctrl+C).
+func newWatchCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "watch",
+		Short: "Watch extension directories for new installations (Ctrl+C to stop)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			catalogDir, err := platform.CatalogDir()
+			if err != nil {
+				return fmt.Errorf("resolve catalog directory: %w", err)
+			}
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			configPath, err := platform.ConfigPath()
+			if err != nil {
+				return fmt.Errorf("resolve config path: %w", err)
+			}
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
+			indexPath := filepath.Join(catalogDir, "bumblebee.idx")
+			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
+			quarantineDir := filepath.Join(stateDir, "quarantine")
+
+			// Resolve watch directories: config > DetectEditors.
+			var dirs []string
+			if configDirs := cfg.WatchDirectories(); len(configDirs) > 0 {
+				dirs = configDirs
+			} else {
+				editors, _ := editorinit.DetectEditors()
+				for _, e := range editors {
+					if e.ExtensionDir != "" {
+						dirs = append(dirs, e.ExtensionDir)
+					}
+				}
+			}
+
+			handler := watch.NewHandler(
+				indexPath,
+				catalogDir,
+				quarantineDir,
+				auditPath,
+				notify.Config{Enabled: true},
+				cfg.SocketAPIToken(),
+				&http.Client{Timeout: 4 * time.Second},
+				func() time.Time { return time.Now().UTC() },
+				dirs,
+			)
+
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Starting extension watch (Ctrl+C to stop)...\n")
+			if len(dirs) == 0 {
+				fmt.Fprintf(out, "Warning: no watch directories configured. Run 'beekeeper init' to detect editors.\n")
+			}
+			for _, d := range dirs {
+				fmt.Fprintf(out, "Watching: %s\n", d)
+			}
+
+			return watch.Watch(ctx, dirs, watch.WatchConfig{}, handler)
+		},
+	}
+}
+
+// newScanCmd scans installed extensions using the Bumblebee CLI (when present)
+// and the Beekeeper-own per-extension catalog/release-age engine.
+func newScanCmd() *cobra.Command {
+	var deep bool
+	cmd := &cobra.Command{
+		Use:   "scan",
+		Short: "Scan installed extensions against catalog and release-age policy",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			catalogDir, err := platform.CatalogDir()
+			if err != nil {
+				return fmt.Errorf("resolve catalog directory: %w", err)
+			}
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			configPath, err := platform.ConfigPath()
+			if err != nil {
+				return fmt.Errorf("resolve config path: %w", err)
+			}
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
+			var dirs []string
+			if configDirs := cfg.WatchDirectories(); len(configDirs) > 0 {
+				dirs = configDirs
+			} else {
+				editors, _ := editorinit.DetectEditors()
+				for _, e := range editors {
+					if e.ExtensionDir != "" {
+						dirs = append(dirs, e.ExtensionDir)
+					}
+				}
+			}
+
+			scanCfg := scan.Config{
+				Deep:          deep,
+				ExtensionDirs: dirs,
+				IndexPath:     filepath.Join(catalogDir, "bumblebee.idx"),
+				CacheDir:      catalogDir,
+				AuditPath:     filepath.Join(auditDir, "beekeeper.ndjson"),
+				SocketToken:   cfg.SocketAPIToken(),
+				HTTPClient:    &http.Client{Timeout: 4 * time.Second},
+				Now:           func() time.Time { return time.Now().UTC() },
+			}
+
+			return scan.Scan(cmd.Context(), scanCfg, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().BoolVar(&deep, "deep", false, "Run a deep scan (passes --profile deep to Bumblebee)")
+	return cmd
+}
+
+// newQuarantineCmd groups quarantine management subcommands.
+func newQuarantineCmd() *cobra.Command {
+	qCmd := &cobra.Command{
+		Use:   "quarantine",
+		Short: "Manage quarantined extensions",
+	}
+
+	// list
+	qCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List quarantined extensions",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			qDir := filepath.Join(stateDir, "quarantine")
+			manifests, err := quarantine.List(qDir)
+			if err != nil {
+				return fmt.Errorf("list quarantined extensions: %w", err)
+			}
+			out := cmd.OutOrStdout()
+			if len(manifests) == 0 {
+				fmt.Fprintln(out, "no quarantined items")
+				return nil
+			}
+			fmt.Fprintf(out, "%-40s %-24s %-12s %-22s %s\n", "ID", "publisher.name", "version", "quarantined_at", "reason")
+			for _, m := range manifests {
+				fmt.Fprintf(out, "%-40s %-24s %-12s %-22s %s\n",
+					m.ID,
+					m.Publisher+"."+m.Name,
+					m.Version,
+					m.QuarantinedAt.Format(time.RFC3339),
+					m.Reason,
+				)
+			}
+			return nil
+		},
+	})
+
+	// restore
+	qCmd.AddCommand(&cobra.Command{
+		Use:   "restore <id>",
+		Short: "Restore a quarantined extension to its original location",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			qDir := filepath.Join(stateDir, "quarantine")
+			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
+
+			if err := quarantine.Restore(qDir, args[0]); err != nil {
+				return fmt.Errorf("restore %q: %w", args[0], err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Restored %q\n", args[0])
+
+			// Emit audit record for restore.
+			rec := audit.AuditRecord{
+				RecordType:       "quarantine_restore",
+				RecordID:         args[0],
+				Timestamp:        time.Now().UTC().Format(time.RFC3339),
+				ScannerName:      "beekeeper",
+				Decision:         "allow",
+				Reason:           "operator restore",
+				RuleIDs:          []string{"EDXT-05"},
+				CatalogMatches:   []audit.CatalogProvenance{},
+				SourcesAgreed:    []string{},
+				SourcesDissented: []string{},
+				Endpoint:         "quarantine",
+			}
+			if w, werr := audit.NewWriter(auditPath); werr == nil {
+				_ = w.Write(rec)
+				w.Close()
+			}
+			return nil
+		},
+	})
+
+	// purge
+	var purgeYes bool
+	purgeCmd := &cobra.Command{
+		Use:   "purge",
+		Short: "Remove ALL quarantined extensions (prompts for confirmation unless --yes)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			qDir := filepath.Join(stateDir, "quarantine")
+			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
+
+			if !purgeYes {
+				fmt.Fprint(cmd.OutOrStdout(), "Remove ALL quarantined items? [y/N] ")
+				var resp string
+				fmt.Fscanln(cmd.InOrStdin(), &resp)
+				if resp != "y" && resp != "Y" {
+					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return nil
+				}
+			}
+
+			purged, err := quarantine.Purge(qDir)
+			if err != nil {
+				return fmt.Errorf("purge quarantine: %w", err)
+			}
+
+			if len(purged) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No items to purge.")
+				return nil
+			}
+
+			if w, werr := audit.NewWriter(auditPath); werr == nil {
+				for _, id := range purged {
+					rec := audit.AuditRecord{
+						RecordType:       "quarantine_purge",
+						RecordID:         id,
+						Timestamp:        time.Now().UTC().Format(time.RFC3339),
+						ScannerName:      "beekeeper",
+						Decision:         "allow",
+						Reason:           "operator purge",
+						RuleIDs:          []string{"EDXT-05"},
+						CatalogMatches:   []audit.CatalogProvenance{},
+						SourcesAgreed:    []string{},
+						SourcesDissented: []string{},
+						Endpoint:         "quarantine",
+					}
+					_ = w.Write(rec)
+				}
+				w.Close()
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "Purged %d item(s).\n", len(purged))
+			return nil
+		},
+	}
+	purgeCmd.Flags().BoolVar(&purgeYes, "yes", false, "Skip confirmation prompt")
+	qCmd.AddCommand(purgeCmd)
+
+	return qCmd
 }
 
 // newAuditCmd groups audit-log subcommands.
@@ -317,7 +685,6 @@ func tailAuditLog(ctx context.Context, out io.Writer, path string) error {
 	}
 	defer f.Close()
 
-	// Stream existing content, then continue from the current end offset.
 	offset, err := io.Copy(out, f)
 	if err != nil {
 		return fmt.Errorf("read audit log: %w", err)

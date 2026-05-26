@@ -36,6 +36,11 @@ type SocketConfig struct {
 	APIToken string `json:"api_token"`
 }
 
+// WatchSettings holds file-watcher configuration (Phase 3, EDXT-06).
+type WatchSettings struct {
+	Directories []string `json:"directories,omitempty"`
+}
+
 // Config is the user-level Beekeeper configuration.
 type Config struct {
 	// FailMode controls behavior when the hook handler cannot produce a real
@@ -50,12 +55,37 @@ type Config struct {
 	// Socket holds optional Socket.dev API credentials (Phase 2).
 	// Absent or empty api_token disables the Socket catalog source gracefully.
 	Socket SocketConfig `json:"socket"`
+
+	// Watch holds Phase 3 file-watcher configuration.
+	// Absent or nil means no watch directories are configured.
+	Watch *WatchSettings `json:"watch,omitempty"`
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.
 // An empty token disables the Socket PURL source without error (CTLG-03).
 func (c Config) SocketAPIToken() string {
 	return c.Socket.APIToken
+}
+
+// WatchDirectories returns the configured watch directories, or nil if none.
+func (c Config) WatchDirectories() []string {
+	if c.Watch == nil {
+		return nil
+	}
+	return c.Watch.Directories
+}
+
+// AddWatchDirectory appends dir to Watch.Directories idempotently.
+func (c *Config) AddWatchDirectory(dir string) {
+	if c.Watch == nil {
+		c.Watch = &WatchSettings{}
+	}
+	for _, d := range c.Watch.Directories {
+		if d == dir {
+			return
+		}
+	}
+	c.Watch.Directories = append(c.Watch.Directories, dir)
 }
 
 // Load reads the config at path.
@@ -92,6 +122,19 @@ func Load(path string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Save writes cfg to path as indented JSON with 0600 permissions.
+func Save(path string, cfg Config) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("write config %q: %w", path, err)
+	}
+	return nil
 }
 
 // FailClosed reports whether failures should block. It returns true unless
