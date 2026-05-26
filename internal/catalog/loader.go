@@ -11,6 +11,19 @@ import (
 // recorded for all synced entries (CTLG-01).
 const defaultCatalogSource = "bumblebee"
 
+// Indexer is the single-source catalog lookup interface implemented by *Index.
+// It is defined here in package catalog (not in package policy) so that the
+// policy package can remain import-cycle-free: catalog adapters that produce
+// policy.CatalogMatch would otherwise create a cycle if policy imported catalog
+// for this interface.
+//
+// The hook handler (internal/check) uses this interface to open the mmap index
+// without importing its concrete type. Phase 2 callers should prefer the
+// policy.MultiCatalogLookup interface returned by the Plan 08 aggregator.
+type Indexer interface {
+	Lookup(ecosystem, pkg string) (Entry, bool)
+}
+
 // ValidateSchemaVersion returns an error if v is not the schema version
 // Beekeeper supports. Rejecting unknown versions (rather than best-effort
 // parsing) means an upstream Bumblebee schema bump fails loudly at sync time.
