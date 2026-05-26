@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -123,7 +124,7 @@ func readOSVCache(cacheDir, ecosystem, pkg, version string) ([]Entry, bool, erro
 	path := osvCachePath(cacheDir, ecosystem, pkg, version)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("read osv cache %q: %w", path, err)
