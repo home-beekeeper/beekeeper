@@ -10,7 +10,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -130,7 +132,9 @@ func newCheckCmd() *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			result := check.RunCheck(cmd.Context(), os.Stdin, cfg, indexPath, auditPath)
+			// Pass catalogDir so the multi-source aggregator can locate
+			// OSV and Socket disk caches (Plan 08 cacheDir parameter).
+			result := check.RunCheck(cmd.Context(), os.Stdin, cfg, indexPath, auditPath, catalogDir)
 			os.Exit(result.ExitCode)
 			return nil // unreachable; os.Exit above is the real return path
 		},
@@ -168,6 +172,112 @@ func newCatalogsCmd() *cobra.Command {
 			return nil
 		},
 	})
+
+	// catalogs watch — foreground catalog watch daemon.
+	// Polls Bumblebee (default 1h interval), detects deltas, fires onDelta callback.
+	// Foreground process with SIGINT/SIGTERM cancellation; full daemonization is Phase 4.
+	catalogs.AddCommand(&cobra.Command{
+		Use:   "watch",
+		Short: "Poll catalog sources and trigger re-scans on delta (Ctrl+C to stop)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			catalogDir, err := platform.CatalogDir()
+			if err != nil {
+				return fmt.Errorf("resolve catalog directory: %w", err)
+			}
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			stateFile := filepath.Join(stateDir, "state.json")
+
+			// Wrap the command context with signal cancellation so SIGINT/SIGTERM
+			// cleanly stops the watch loop (cobra's cmd.Context() may not be
+			// signal-aware depending on how the root was built).
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			client := &http.Client{Timeout: 30 * time.Second}
+			cfg := catalog.WatchConfig{
+				PollInterval: time.Hour,
+				CatalogDir:   catalogDir,
+				StateFile:    stateFile,
+				Client:       client,
+				Sanity:       catalog.DefaultSanityConfig(),
+				// Snapshot: nil → Watch uses readBumblebeeSnapshot (production default)
+			}
+
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Starting catalog watch daemon (interval: %s, Ctrl+C to stop)...\n", cfg.PollInterval)
+
+			return catalog.Watch(ctx, cfg, func(delta catalog.CatalogDelta, sanity catalog.SanityResult) {
+				// Best-effort delta notification to stdout.
+				// Full audit integration and targeted re-scan are Phase 4.
+				if sanity.Block {
+					fmt.Fprintf(out, "catalog delta [HARD-BLOCK sanity breach]: source=%s prev=%d new=%d delta=%d — %s\n",
+						delta.Source, delta.PrevCount, delta.NewCount, delta.DeltaCount, sanity.Reason)
+				} else if sanity.Alert {
+					fmt.Fprintf(out, "catalog delta [ALERT sanity breach]: source=%s prev=%d new=%d delta=%d — %s\n",
+						delta.Source, delta.PrevCount, delta.NewCount, delta.DeltaCount, sanity.Reason)
+				} else if delta.HasChanges() {
+					fmt.Fprintf(out, "catalog delta: source=%s prev_count=%d new_count=%d delta=%d prev_hash=%s new_hash=%s\n",
+						delta.Source, delta.PrevCount, delta.NewCount, delta.DeltaCount,
+						delta.PrevHash, delta.NewHash)
+				}
+			})
+		},
+	})
+
+	// catalogs verify — clear degraded mode for a named catalog source (CTLG-08).
+	// Loads state.json, clears the named source's Degraded flag, saves state.
+	var verifySource string
+	verifyCmd := &cobra.Command{
+		Use:   "verify",
+		Short: "Clear degraded mode for a catalog source after operator review",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if verifySource == "" {
+				return fmt.Errorf("--source is required")
+			}
+
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			stateFile := filepath.Join(stateDir, "state.json")
+
+			st, err := catalog.LoadState(stateFile)
+			if err != nil {
+				return fmt.Errorf("load state %q: %w", stateFile, err)
+			}
+
+			ss, ok := st.Sources[verifySource]
+			if !ok {
+				// Source not in state — may not have been seen yet.
+				fmt.Fprintf(cmd.OutOrStdout(), "Source %q not found in state; nothing to clear.\n", verifySource)
+				return nil
+			}
+
+			if !ss.Degraded {
+				fmt.Fprintf(cmd.OutOrStdout(), "Source %q is not degraded; nothing to clear.\n", verifySource)
+				return nil
+			}
+
+			ss.Degraded = false
+			ss.DegradedReason = ""
+			st.Sources[verifySource] = ss
+
+			if err := catalog.SaveState(stateFile, st); err != nil {
+				return fmt.Errorf("save state %q: %w", stateFile, err)
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "Cleared degraded mode for source %q.\n", verifySource)
+			return nil
+		},
+	}
+	verifyCmd.Flags().StringVar(&verifySource, "source", "", "catalog source name to clear (e.g. bumblebee)")
+	catalogs.AddCommand(verifyCmd)
+
 	return catalogs
 }
 
