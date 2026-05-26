@@ -93,7 +93,12 @@ func osvCachePath(cacheDir, ecosystem, pkg, version string) string {
 	if stem == "" {
 		stem = "_any"
 	}
-	return filepath.Join(cacheDir, "osv", ecosystem, pkg, stem+".json")
+	// Strip any path component from attacker-controlled inputs to prevent
+	// directory traversal (e.g. pkg="../../state" clobbering state.json).
+	safeEco := filepath.Base(ecosystem)
+	safePkg := filepath.Base(pkg)
+	safeStem := filepath.Base(stem)
+	return filepath.Join(cacheDir, "osv", safeEco, safePkg, safeStem+".json")
 }
 
 // deriveSeverity extracts a severity string from an OSV vulnerability record.
