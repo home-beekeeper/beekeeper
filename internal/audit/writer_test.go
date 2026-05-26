@@ -127,21 +127,27 @@ func TestAuditRecordJSONKeys(t *testing.T) {
 		t.Fatalf("Unmarshal to map: %v", err)
 	}
 
+	// Phase 2 (CTLG-09) adds corroboration_count, sources_agreed, sources_dissented
+	// to every AuditRecord. The quarantine field uses omitempty so it is absent
+	// when false. Total mandatory keys = 14 (11 Phase-1 + 3 Phase-2).
 	wantKeys := []string{
+		// Phase 1 keys (unchanged):
 		"record_type", "record_id", "timestamp", "scanner_name",
 		"agent_name", "tool_name", "decision", "reason",
 		"rule_ids", "catalog_matches", "endpoint",
+		// Phase 2 CTLG-09 additions:
+		"corroboration_count", "sources_agreed", "sources_dissented",
 	}
-	if len(wantKeys) != 11 {
-		t.Fatalf("test misconfigured: expected 11 keys, listed %d", len(wantKeys))
+	if len(wantKeys) != 14 {
+		t.Fatalf("test misconfigured: expected 14 keys, listed %d", len(wantKeys))
 	}
 	for _, k := range wantKeys {
 		if _, ok := generic[k]; !ok {
 			t.Errorf("marshalled AuditRecord missing JSON key %q; got %s", k, data)
 		}
 	}
-	if len(generic) != 11 {
-		t.Errorf("marshalled AuditRecord has %d keys, want 11: %s", len(generic), data)
+	if len(generic) != 14 {
+		t.Errorf("marshalled AuditRecord has %d keys, want 14: %s", len(generic), data)
 	}
 }
 

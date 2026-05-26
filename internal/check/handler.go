@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"runtime/debug"
 	"time"
@@ -40,25 +41,19 @@ const (
 
 // catalogIndex combines io.Closer with policy.MultiCatalogLookup so that the
 // hook handler can both evaluate policy decisions and release the mmap resource.
-// Phase 2 (Plan 08) will replace this with the full multi-source aggregator.
+// Plan 08 wires the full multi-source MultiIndex here.
 type catalogIndex interface {
 	io.Closer
 	policy.MultiCatalogLookup
 }
 
-// catalogOpener opens a catalog index by path. The default wraps
-// catalog.OpenIndex inside a bumblebeeAdapter; tests substitute a fake to
-// exercise the fail-closed panic path without depending on a real index file.
-type catalogOpener func(path string) (catalogIndex, error)
+// catalogOpener opens a Bumblebee mmap index by path and returns the raw
+// *catalog.Index. Tests substitute a function that returns an error or a fake to
+// exercise fail-closed paths without a real index file.
+type catalogOpener func(path string) (*catalog.Index, error)
 
-func defaultOpener(path string) (catalogIndex, error) {
-	idx, err := catalog.OpenIndex(path)
-	if err != nil {
-		return nil, err
-	}
-	// Wrap *catalog.Index in bumblebeeAdapter so it satisfies catalogIndex.
-	// Plan 08 will replace bumblebeeAdapter with the multi-source aggregator.
-	return &bumblebeeAdapter{idx: idx}, nil
+func defaultOpener(path string) (*catalog.Index, error) {
+	return catalog.OpenIndex(path)
 }
 
 // Result is the outcome of a single check: the policy Decision and the process
@@ -73,13 +68,16 @@ type Result struct {
 // an audit record, prints the Decision as JSON to stdout, and returns a Result.
 // It NEVER returns a silent allow on failure: every failure path produces a
 // block unless cfg explicitly opts into fail-open/fail-warn.
-func RunCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath string) Result {
-	return runCheck(ctx, stdin, cfg, indexPath, auditPath, defaultOpener)
+//
+// cacheDir is the Beekeeper catalogs directory (e.g. ~/.beekeeper/catalogs).
+// It is used to locate OSV and Socket caches for the multi-source aggregator.
+func RunCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string) Result {
+	return runCheck(ctx, stdin, cfg, indexPath, auditPath, cacheDir, defaultOpener)
 }
 
 // runCheck is the testable core; opener is injected so tests can force a panic
 // or error from index opening.
-func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath string, open catalogOpener) (result Result) {
+func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string, open catalogOpener) (result Result) {
 	// HOOK-04: 256MB soft memory cap; combined with 1MB stdin LimitReader this
 	// bounds tool-call evaluation memory.
 	debug.SetMemoryLimit(memLimit)
@@ -133,12 +131,36 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	}
 
 	// HOOK-02: load the catalog via the mmap index, never a cold JSON parse.
-	idx, err := open(indexPath)
+	bbIdx, err := open(indexPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: catalog index unavailable: %v\n", err)
 		return finalize(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath)
 	}
-	defer idx.Close()
+	defer bbIdx.Close()
+
+	// Build the OSV adapter. It shares ctx so the 5s deadline bounds HTTP calls.
+	// On OSV error, LookupAll returns nil — the source degrades to no-match (T-02-08-01).
+	httpClient := &http.Client{Timeout: 4 * time.Second}
+	var osvAdapter policy.MultiCatalogLookup = &catalog.OSVAdapter{
+		Client:   httpClient,
+		CacheDir: cacheDir,
+		Ctx:      ctx,
+	}
+
+	// Build the Socket adapter. Empty token → Socket disabled (not an error).
+	// Degraded Socket degrades to warn-only, never blocks (T-02-08-01).
+	var socketAdapter policy.MultiCatalogLookup
+	if token := cfg.SocketAPIToken(); token != "" {
+		socketAdapter = catalog.SocketAdapter{
+			Client:   httpClient,
+			CacheDir: cacheDir,
+			Token:    token,
+			Ctx:      ctx,
+		}
+	}
+
+	// Aggregate all three sources into a MultiIndex. Nil adapters are skipped.
+	multiIdx := catalog.NewMultiIndex(bbIdx, osvAdapter, socketAdapter)
 
 	// Re-check the deadline before the pure evaluation.
 	if ctx.Err() != nil {
@@ -146,10 +168,8 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	}
 
 	// Pure, synchronous policy evaluation (no I/O, no goroutines).
-	// idx implements policy.MultiCatalogLookup via bumblebeeAdapter.
-	// Plan 08 (Wave 3) will replace bumblebeeAdapter with the full multi-source
-	// aggregator once OSV, Socket, and Bumblebee adapters are wired together.
-	decision := policy.Evaluate(toolCall, idx, policy.DefaultCorroborationThresholds())
+	// multiIdx implements policy.MultiCatalogLookup aggregating Bumblebee+OSV+Socket.
+	decision := policy.Evaluate(toolCall, multiIdx, policy.DefaultCorroborationThresholds())
 
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
