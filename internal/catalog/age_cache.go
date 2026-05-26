@@ -110,6 +110,12 @@ func FetchPublishAge(
 				return 0, true, nil
 			}
 			age := int64(now.Sub(entry.PublishedAt).Minutes())
+			if age < 0 {
+				// Future timestamp in cache — treat as missing (fail-closed).
+				missingEntry := ageCacheEntry{CachedAt: now, Missing: true}
+				_ = writeAgeCacheEntry(path, missingEntry)
+				return 0, true, nil
+			}
 			return age, false, nil
 		}
 	}
@@ -159,5 +165,12 @@ func FetchPublishAge(
 	}
 
 	age := int64(now.Sub(publishedAt).Minutes())
+	if age < 0 {
+		// Registry returned a future timestamp (clock skew or attacker-controlled).
+		// Treat as missing so the policy engine fails closed (PLCY-02).
+		missingEntry := ageCacheEntry{CachedAt: now, Missing: true}
+		_ = writeAgeCacheEntry(path, missingEntry)
+		return 0, true, nil
+	}
 	return age, false, nil
 }
