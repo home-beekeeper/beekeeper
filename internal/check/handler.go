@@ -328,9 +328,7 @@ func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, a
 
 	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339), ac)
 	// Apply sensitive field redaction before persisting (T-04-05-02).
-	// defaultRedactPatterns() is called each invocation; patterns are compiled once
-	// per call (fast: regexp.MustCompile with a fixed set). A future optimization
-	// could cache them in a package-level var, but correctness takes precedence here.
+	// DefaultRedactPatterns() compiles regexps once via sync.Once (WR-05).
 	patterns := audit.DefaultRedactPatterns()
 	rec = audit.RedactRecord(rec, patterns)
 	if err := w.Write(rec); err != nil {

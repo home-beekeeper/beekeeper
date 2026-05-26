@@ -18,6 +18,7 @@ package audit
 
 import (
 	"regexp"
+	"sync"
 )
 
 // redactPattern is a compiled regex + replacement pair used by applyRedaction.
@@ -25,6 +26,15 @@ type redactPattern struct {
 	regex       *regexp.Regexp
 	replacement string
 }
+
+// defaultPatternsOnce guards compilation of the default redact patterns.
+// WR-05: compile regexps once at package initialisation rather than on every
+// DefaultRedactPatterns() call, which is called from writeAuditWithAC on
+// every hook invocation and from gateway writeAudit on every request.
+var (
+	defaultPatternsOnce sync.Once
+	defaultPatternsVal  []redactPattern
+)
 
 // DefaultRedactPatterns returns the default set of sensitive-field redaction
 // patterns. Each pattern uses non-backtracking character classes (no nested
@@ -35,30 +45,37 @@ type redactPattern struct {
 //  2. JWT tokens: eyJ<header>.<payload>.<sig> → [JWT_REDACTED]
 //  3. Common API key prefixes: sk-proj/sk-ant/AKIA/ghp_/glpat- → prefix[REDACTED]
 //
+// WR-05: patterns are compiled once via sync.Once and reused on subsequent
+// calls. This eliminates per-call regexp compilation overhead in the audit
+// hot path (check handler + gateway handler both call this per request).
+//
 // This function is exported so callers (check.writeAuditWithAC, gateway.writeAudit)
 // can apply redaction at the single chokepoint before writing to disk.
 func DefaultRedactPatterns() []redactPattern {
-	return []redactPattern{
-		{
-			// Bearer token in Authorization header (T-04-05-02).
-			// Non-capturing; \S+ matches any non-whitespace (no nested quantifiers).
-			regex:       regexp.MustCompile(`(?i)Authorization:\s*Bearer\s+\S+`),
-			replacement: "Authorization: Bearer [REDACTED]",
-		},
-		{
-			// JWT token: three base64url segments separated by dots.
-			// Character class [A-Za-z0-9_-]+ prevents backtracking.
-			regex:       regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`),
-			replacement: "[JWT_REDACTED]",
-		},
-		{
-			// Common API key prefixes (T-04-05-02).
-			// Alternation with fixed prefixes; character class suffix prevents backtracking.
-			// Uses a capturing group ($1) so the prefix is preserved in the replacement.
-			regex:       regexp.MustCompile(`(sk-proj-|sk-ant-|AKIA|ghp_|glpat-)[A-Za-z0-9_-]+`),
-			replacement: "${1}[REDACTED]",
-		},
-	}
+	defaultPatternsOnce.Do(func() {
+		defaultPatternsVal = []redactPattern{
+			{
+				// Bearer token in Authorization header (T-04-05-02).
+				// Non-capturing; \S+ matches any non-whitespace (no nested quantifiers).
+				regex:       regexp.MustCompile(`(?i)Authorization:\s*Bearer\s+\S+`),
+				replacement: "Authorization: Bearer [REDACTED]",
+			},
+			{
+				// JWT token: three base64url segments separated by dots.
+				// Character class [A-Za-z0-9_-]+ prevents backtracking.
+				regex:       regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`),
+				replacement: "[JWT_REDACTED]",
+			},
+			{
+				// Common API key prefixes (T-04-05-02).
+				// Alternation with fixed prefixes; character class suffix prevents backtracking.
+				// Uses a capturing group ($1) so the prefix is preserved in the replacement.
+				regex:       regexp.MustCompile(`(sk-proj-|sk-ant-|AKIA|ghp_|glpat-)[A-Za-z0-9_-]+`),
+				replacement: "${1}[REDACTED]",
+			},
+		}
+	})
+	return defaultPatternsVal
 }
 
 // applyRedaction applies each pattern to s in order and returns the result.
