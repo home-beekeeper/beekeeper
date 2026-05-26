@@ -4,7 +4,10 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -148,11 +151,65 @@ func newAuditCmd() *cobra.Command {
 	audit.AddCommand(&cobra.Command{
 		Use:   "tail",
 		Short: "Stream the live audit log to the terminal",
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("not yet implemented")
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			logPath := filepath.Join(auditDir, "beekeeper.ndjson")
+			return tailAuditLog(cmd.Context(), cmd.OutOrStdout(), logPath)
 		},
 	})
 	return audit
+}
+
+// tailAuditLog streams the NDJSON audit log to out: it prints all existing
+// content, then follows the file by polling for newly-appended bytes every
+// ~500ms until the context is cancelled (Ctrl+C). Stdlib only — no external
+// dependencies. The log is opened read-only; tailing never mutates it.
+func tailAuditLog(ctx context.Context, out io.Writer, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("audit log %q does not exist yet (run a beekeeper check first)", path)
+		}
+		return fmt.Errorf("open audit log %q: %w", path, err)
+	}
+	defer f.Close()
+
+	// Stream existing content, then continue from the current end offset.
+	offset, err := io.Copy(out, f)
+	if err != nil {
+		return fmt.Errorf("read audit log: %w", err)
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	buf := make([]byte, 32*1024)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			for {
+				n, readErr := f.ReadAt(buf, offset)
+				if n > 0 {
+					if _, werr := out.Write(buf[:n]); werr != nil {
+						return fmt.Errorf("write audit log to output: %w", werr)
+					}
+					offset += int64(n)
+				}
+				if readErr == io.EOF || n == 0 {
+					break
+				}
+				if readErr != nil {
+					return fmt.Errorf("follow audit log: %w", readErr)
+				}
+			}
+		}
+	}
 }
 
 // newSelftestCmd runs embedded adversarial fixtures. Implemented by a later plan.
