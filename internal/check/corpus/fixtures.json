@@ -1,0 +1,86 @@
+[
+  {
+    "name": "editor-extension direct shape, compromised Nx Console version",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Install",
+      "tool_input": {
+        "ecosystem": "editor-extension",
+        "package": "nrwl.angular-console",
+        "version": "18.95.0"
+      }
+    },
+    "expect_level": "warn",
+    "expect_allow": true,
+    "expect_catalog_match": true
+  },
+  {
+    "name": "npm direct shape for shai-hulud worm package",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Install",
+      "tool_input": {
+        "ecosystem": "npm",
+        "package": "shai-hulud",
+        "version": "1.0.0"
+      }
+    },
+    "expect_level": "warn",
+    "expect_allow": true,
+    "expect_catalog_match": true
+  },
+  {
+    "name": "npm install command for shai-hulud worm package",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "npm install shai-hulud@1.0.0"
+      }
+    },
+    "expect_level": "warn",
+    "expect_allow": true,
+    "expect_catalog_match": true
+  },
+  {
+    "name": "clean npm package express",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "npm install express@4.18.2"
+      }
+    },
+    "expect_level": "allow",
+    "expect_allow": true,
+    "expect_catalog_match": false
+  },
+  {
+    "name": "remediated Nx Console version not in catalog",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Install",
+      "tool_input": {
+        "ecosystem": "editor-extension",
+        "package": "nrwl.angular-console",
+        "version": "18.100.0"
+      }
+    },
+    "expect_level": "allow",
+    "expect_allow": true,
+    "expect_catalog_match": false
+  },
+  {
+    "name": "clean go package cobra",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "go get github.com/spf13/cobra@v1.10.2"
+      }
+    },
+    "expect_level": "allow",
+    "expect_allow": true,
+    "expect_catalog_match": false
+  }
+]

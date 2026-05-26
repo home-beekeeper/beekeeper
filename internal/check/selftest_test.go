@@ -1,0 +1,16 @@
+package check
+
+import "testing"
+
+func TestSelftestAllFixturesPass(t *testing.T) {
+	passed, failed, err := RunSelftest()
+	if err != nil {
+		t.Fatalf("RunSelftest returned setup error: %v", err)
+	}
+	if failed != 0 {
+		t.Fatalf("RunSelftest: %d fixtures failed (passed %d), want 0 failures", failed, passed)
+	}
+	if passed == 0 {
+		t.Fatal("RunSelftest passed 0 fixtures, expected the embedded corpus to run")
+	}
+}

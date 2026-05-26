@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
+	"github.com/mzansi-agentive/beekeeper/internal/check"
+	"github.com/mzansi-agentive/beekeeper/internal/config"
 	"github.com/mzansi-agentive/beekeeper/internal/platform"
 	"github.com/mzansi-agentive/beekeeper/internal/version"
 )
@@ -28,9 +30,9 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "beekeeper",
-		Short:         "Real-time safety harness for autonomous coding agents",
-		Long:          "Beekeeper intercepts agent tool calls before they execute and evaluates them against unified threat intelligence.",
+		Use:          "beekeeper",
+		Short:        "Real-time safety harness for autonomous coding agents",
+		Long:         "Beekeeper intercepts agent tool calls before they execute and evaluates them against unified threat intelligence.",
 		SilenceUsage: true,
 	}
 
@@ -97,13 +99,40 @@ func newInitCmd() *cobra.Command {
 	}
 }
 
-// newCheckCmd is the hook handler entry point. Implemented by Plan 05.
+// newCheckCmd is the hook handler entry point. It reads a tool call from stdin,
+// evaluates it against the mmap catalog index under hard caps, writes an audit
+// record, and exits 0 (allow) or non-zero (block) — failing CLOSED on any
+// crash, timeout, oversized input, malformed JSON, or missing index.
 func newCheckCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check",
 		Short: "Evaluate a tool call read from stdin (allow=0, block!=0)",
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("not yet implemented")
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			catalogDir, err := platform.CatalogDir()
+			if err != nil {
+				return fmt.Errorf("resolve catalog directory: %w", err)
+			}
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			configPath, err := platform.ConfigPath()
+			if err != nil {
+				return fmt.Errorf("resolve config path: %w", err)
+			}
+
+			indexPath := filepath.Join(catalogDir, "bumblebee.idx")
+			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
+			result := check.RunCheck(cmd.Context(), os.Stdin, cfg, indexPath, auditPath)
+			os.Exit(result.ExitCode)
+			return nil // unreachable; os.Exit above is the real return path
 		},
 	}
 }
@@ -212,13 +241,23 @@ func tailAuditLog(ctx context.Context, out io.Writer, path string) error {
 	}
 }
 
-// newSelftestCmd runs embedded adversarial fixtures. Implemented by a later plan.
+// newSelftestCmd runs the embedded adversarial corpus and exits non-zero if any
+// fixture produces an unexpected decision.
 func newSelftestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "selftest",
 		Short: "Run embedded adversarial fixtures as a sanity check",
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("not yet implemented")
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			passed, failed, err := check.RunSelftest()
+			fmt.Fprintf(cmd.OutOrStdout(), "PASS: %d, FAIL: %d\n", passed, failed)
+			if err != nil {
+				return fmt.Errorf("selftest error: %w", err)
+			}
+			if failed > 0 {
+				os.Exit(1)
+			}
+			return nil
 		},
 	}
 }
