@@ -20,15 +20,20 @@ func shimFilePath(shimDir, tool string) string {
 // binary, preserving signal handling and the real binary's exit code. The file
 // is written with mode 0755 (executable by owner, group, and others).
 //
+// CR-03: arguments are passed to beekeeper check as separate positional
+// parameters via --tool and --args flags rather than embedded in a heredoc
+// JSON string. This avoids shell injection through $* expansion and JSON
+// corruption from arguments containing quotes, backslashes, or newlines.
+// The tool name is a fixed string set at install time (safe to embed).
+// beekeeper check --tool/--args constructs the JSON with proper json.Marshal.
+//
 // Template: RESEARCH Pattern 9 (VERIFIED — INTG-06).
 func writeShellScript(shimDir, tool, realBin string) error {
 	content := fmt.Sprintf(`#!/bin/sh
 # beekeeper shim for %s — auto-generated, do not edit
 # Real binary: %s
 # This file is managed by 'beekeeper shim install'. Modifying it is unsupported.
-beekeeper check <<EOF
-{"tool_name":"Bash","tool_input":{"command":"%s $*"}}
-EOF
+beekeeper check --tool "%s" --args "$@"
 _bk_exit=$?
 if [ $_bk_exit -eq 0 ]; then
     exec "%s" "$@"

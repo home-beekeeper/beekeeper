@@ -15,14 +15,19 @@ func shimFilePath(shimDir, tool string) string {
 }
 
 // writeShellScript creates a Windows .cmd batch file at shimDir/tool.cmd.
-// The batch file pipes the tool call JSON to beekeeper check via stdin. If
-// ERRORLEVEL is 0 (allow), the batch file calls the real binary with all
-// forwarded arguments (%*). The real binary path is quoted to handle paths
-// containing spaces (T-04-04-02 — Tampering mitigation).
+// The batch file invokes beekeeper check with the tool name and arguments as
+// separate command-line flags rather than embedding them in an echo pipe. This
+// avoids cmd.exe command injection via %* expanding to arguments containing
+// |, >, <, &, or " characters (CR-04).
 //
 // CRITICAL: Line endings MUST be CRLF (\r\n) for cmd.exe compatibility
 // (T-04-04-05 — Pitfall 8 from RESEARCH). Any LF-only line will cause
 // silent exec failure under cmd.exe.
+//
+// CR-04: beekeeper check --tool <name> --args %* passes arguments as separate
+// parameters to beekeeper, which constructs the JSON with json.Marshal in Go
+// code rather than embedding raw %* in a shell-interpolated JSON string.
+// The tool name is a fixed string set at install time (safe to embed).
 //
 // Template: RESEARCH Pattern 9 (VERIFIED — INTG-06).
 func writeShellScript(shimDir, tool, realBin string) error {
@@ -30,7 +35,7 @@ func writeShellScript(shimDir, tool, realBin string) error {
 	// The quoted realBin path mitigates T-04-04-02 (spaces in path).
 	content := fmt.Sprintf(
 		"@echo off\r\n"+
-			"echo {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"%s %%*\"}} | beekeeper check\r\n"+
+			"beekeeper check --tool \"%s\" --args %%*\r\n"+
 			"if %%ERRORLEVEL%% EQU 0 goto :run\r\n"+
 			"exit /b %%ERRORLEVEL%%\r\n"+
 			":run\r\n"+
