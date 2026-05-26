@@ -368,10 +368,12 @@ func TestRemediatedVersionAllows(t *testing.T) {
 }
 
 // TestNpmInstallCommandExtraction: npm install command extracts ecosystem+pkg+version.
+// In Phase 2, the version on the CatalogMatch is pre-set by the adapter; the fake
+// sets it to match what the command extracts.
 func TestNpmInstallCommandExtraction(t *testing.T) {
 	idx := newFakeMulti(map[string][]CatalogMatch{
 		"npm::some-pkg": {
-			{CatalogSource: "bumblebee", EntryID: "advisory-2026-npm", Ecosystem: "npm", Package: "some-pkg", Severity: "high", Signed: false},
+			{CatalogSource: "bumblebee", EntryID: "advisory-2026-npm", Ecosystem: "npm", Package: "some-pkg", Version: "1.0.0", Severity: "high", Signed: false},
 		},
 	})
 	tc := ToolCall{
