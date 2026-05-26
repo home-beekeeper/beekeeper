@@ -114,11 +114,6 @@ func (h *gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.reverseProxy.ServeHTTP(w, r)
 }
 
-// policyResult carries the outcome of an applyPolicy call run in a goroutine.
-type policyResult struct {
-	d policy.Decision
-}
-
 // handleToolCall evaluates the tool call against the policy engine and either:
 //   - block   → writes JSON-RPC -32001 error (upstream NEVER called)
 //   - warn    → forwards to upstream AND injects _beekeeper_warning into response
@@ -149,14 +144,34 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 
 	ac := extractAgentContext(r)
 
-	ch := make(chan policyResult, 1)
+	// policyResult carries either a decision or a recovered panic value.
+	type policyResultFull struct {
+		d       policy.Decision
+		panicked bool
+		panicVal any
+	}
+	chFull := make(chan policyResultFull, 1)
 	go func() {
-		ch <- policyResult{d: applyPolicy(msg, h.idx, ac)}
+		defer func() {
+			if rec := recover(); rec != nil {
+				chFull <- policyResultFull{panicked: true, panicVal: rec}
+			}
+		}()
+		chFull <- policyResultFull{d: applyPolicy(msg, h.idx, ac)}
 	}()
 
 	var decision policy.Decision
 	select {
-	case res := <-ch:
+	case res := <-chFull:
+		if res.panicked {
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: recovered panic in policy goroutine: %v\n", res.panicVal)
+			if h.cfg.FailOpen {
+				writeJSONRPCError(w, msg.ID, -32002, "internal error (fail-open: reduced security)", nil)
+			} else {
+				writeJSONRPCError(w, msg.ID, -32002, "internal error (fail-closed)", nil)
+			}
+			return
+		}
 		decision = res.d
 	case <-evalCtx.Done():
 		// Distinguish client disconnect from genuine policy timeout for logging clarity.

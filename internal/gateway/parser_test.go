@@ -57,8 +57,8 @@ func TestParseMessage(t *testing.T) {
 				wantIDType: "float64",
 			},
 			{
-				name:       "batch with 50 items (at limit)",
-				input:      buildBatch(50),
+				name:       "batch with single item (allowed)",
+				input:      []byte(`[{"jsonrpc":"2.0","id":2,"method":"ping","params":{}}]`),
 				wantMethod: "ping",
 				wantIDType: "float64",
 			},
@@ -128,6 +128,16 @@ func TestParseMessage(t *testing.T) {
 			{
 				name:     "method name of 257 bytes (exceeds 256)",
 				input:    []byte(`{"jsonrpc":"2.0","id":1,"method":"` + strings.Repeat("x", 257) + `"}`),
+				wantCode: -32600,
+			},
+			{
+				name:     "batch with 2 items (multi-item batch not supported)",
+				input:    buildBatch(2),
+				wantCode: -32600,
+			},
+			{
+				name:     "batch with 50 items (at count limit, but multi-item not supported)",
+				input:    buildBatch(50),
 				wantCode: -32600,
 			},
 			{
