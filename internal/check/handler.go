@@ -138,13 +138,20 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	}
 	defer bbIdx.Close()
 
-	// Build the OSV adapter. It shares ctx so the 5s deadline bounds HTTP calls.
-	// On OSV error, LookupAll returns nil — the source degrades to no-match (T-02-08-01).
+	// Give network adapters a dedicated sub-context capped at 3s. This prevents
+	// a slow stdin decode (up to ~4.9s in the worst case) from leaving the OSV
+	// and Socket HTTP calls with only milliseconds before the outer 5s deadline
+	// expires, which would force both sources to degrade (WR-05).
+	netCtx, netCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer netCancel()
+
+	// Build the OSV adapter. On OSV error, LookupAll returns nil — the source
+	// degrades to no-match (T-02-08-01).
 	httpClient := &http.Client{Timeout: 4 * time.Second}
 	var osvAdapter policy.MultiCatalogLookup = &catalog.OSVAdapter{
 		Client:   httpClient,
 		CacheDir: cacheDir,
-		Ctx:      ctx,
+		Ctx:      netCtx,
 	}
 
 	// Build the Socket adapter. Empty token → Socket disabled (not an error).
@@ -155,7 +162,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 			Client:   httpClient,
 			CacheDir: cacheDir,
 			Token:    token,
-			Ctx:      ctx,
+			Ctx:      netCtx,
 		}
 	}
 
