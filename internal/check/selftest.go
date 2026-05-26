@@ -108,7 +108,7 @@ func RunSelftest() (passed, failed int, err error) {
 	// full RunCheck path (not just Evaluate). Use a default fail-closed config
 	// and a throwaway audit log under the temp dir.
 	auditPath := filepath.Join(tmpDir, "selftest.ndjson")
-	res := RunCheck(context.Background(), strings.NewReader("{bad json}"), config.Config{FailMode: config.FailModeClosed}, indexPath, auditPath)
+	res := RunCheck(context.Background(), strings.NewReader("{bad json}"), config.Config{FailMode: config.FailModeClosed}, indexPath, auditPath, tmpDir)
 	if !res.Decision.Allow && res.ExitCode != exitAllow {
 		passed++
 	} else {

@@ -46,13 +46,15 @@ func BenchmarkCheck(b *testing.B) {
 	auditPath := filepath.Join(dir, "audit", "beekeeper.ndjson")
 	cfg := config.Config{FailMode: config.FailModeClosed}
 
-	const payload = `{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install express@4.18.2"}}`
+	// Use a fictional package so OSV does not make live network calls during
+	// the benchmark, which would measure network latency rather than check latency.
+	const payload = `{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-test-clean-package-xyz-not-real@1.0.0"}}`
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		res := RunCheck(context.Background(), strings.NewReader(payload), cfg, idxPath, auditPath)
+		res := RunCheck(context.Background(), strings.NewReader(payload), cfg, idxPath, auditPath, dir)
 		if !res.Decision.Allow {
-			b.Fatalf("clean package unexpectedly blocked: %+v", res.Decision)
+			b.Fatalf("fictional clean package unexpectedly blocked: %+v", res.Decision)
 		}
 	}
 }
