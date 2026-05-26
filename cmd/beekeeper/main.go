@@ -90,7 +90,7 @@ func newInitCmd() *cobra.Command {
 			}
 
 			for _, dir := range []string{stateDir, catalogDir, auditDir} {
-				if err := os.MkdirAll(dir, 0755); err != nil {
+				if err := os.MkdirAll(dir, 0700); err != nil {
 					return fmt.Errorf("create directory %q: %w", dir, err)
 				}
 			}
