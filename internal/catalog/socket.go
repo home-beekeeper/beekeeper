@@ -303,6 +303,17 @@ func querySocket(
 			return nil, true, fmt.Errorf("socket: server error HTTP %d", resp.StatusCode)
 		}
 
+		if resp.StatusCode == http.StatusNotFound {
+			// 404 most likely means the v0/purl endpoint has been removed.
+			// DEPRECATED: v0/purl was deprecated 2026-01-05; removal scheduled 2026-07-30.
+			// Emit a prominent stderr warning so operators notice before (or after) removal day.
+			// TODO(2026-07-30): migrate to POST https://api.socket.dev/v0/packages.
+			fmt.Fprintf(os.Stderr, "DEPRECATED: Socket v0/purl endpoint returned 404 — the endpoint "+
+				"(deprecated 2026-01-05, removal 2026-07-30) may have been removed. "+
+				"Migrate to POST https://api.socket.dev/v0/packages.\n")
+			return nil, true, fmt.Errorf("socket: unexpected HTTP %d (v0/purl deprecated — see stderr)", resp.StatusCode)
+		}
+
 		if resp.StatusCode != http.StatusOK {
 			// Other non-success (e.g. 401, 403) — degrade so the check can continue.
 			return nil, true, fmt.Errorf("socket: unexpected HTTP %d", resp.StatusCode)
