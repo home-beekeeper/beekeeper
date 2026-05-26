@@ -889,22 +889,13 @@ This is not a rename/refactor phase. No existing runtime state needs migration. 
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Socket API token distribution model**
-   - What we know: Socket requires Bearer token; free tier 500 quota/hour; CONTEXT.md incorrectly stated "no key required"
-   - What's unclear: Should Beekeeper ship with a Beekeeper-project Socket token for evaluation, or require each user to register? The former reduces friction but may violate Socket's ToS.
-   - Recommendation: Require individual user tokens; document clearly in `beekeeper init --help` and README. Consider making Socket source opt-in (off by default until token configured) to avoid surprising users with "Socket source disabled" warnings.
+1. **Socket API token distribution model** — RESOLVED: Require individual user registration. Socket source is opt-in (disabled when `socket.api_token` is absent in config). `beekeeper init` prompts for token but does not require it. No shared project token. This decision is locked in CONTEXT.md (CTLG-03 section: "If Socket token is absent or empty: treat Socket source as disabled").
 
-2. **OSV offline DB vs. REST API for CTLG-02**
-   - What we know: CONTEXT.md says "use `github.com/google/osv-scanner/v2` Go library"; `localmatcher` is internal and not importable; `DoScan()` requires lockfile input not single-package query
-   - What's unclear: Does CTLG-02 specifically require the offline database, or is the REST API a valid implementation of "OSV database integration"?
-   - Recommendation: Use REST API for Phase 2 (simpler, no GB of downloads per ecosystem, no lockfile workaround). Document the OSV REST API approach as CTLG-02 fulfillment. If offline is required, the planner should note that `DoScan()` with a synthetic temp-file lockfile is the only viable library path.
+2. **OSV offline DB vs. REST API for CTLG-02** — RESOLVED: Use the public OSV REST API (`POST https://api.osv.dev/v1/query`, no auth). The `github.com/google/osv-scanner/v2` library's `localmatcher` package is internal and not importable; `DoScan()` requires lockfile input, not single-package queries. CONTEXT.md locked decision (OSV Database Integration section) confirms the REST API approach with 24h TTL cache. REQUIREMENTS.md CTLG-02 has been updated to reflect this.
 
-3. **Config schema extension for Phase 2**
-   - What we know: Phase 1 `Config` struct has only `FailMode`; Phase 2 needs socket token, corroboration thresholds, release-age settings, egress allowlists, baseline config
-   - What's unclear: Should Phase 2 land the full layered config merge (CODE-05, Phase 9) or just extend the single-level user config?
-   - Recommendation: Extend the user-level `config.json` only (consistent with Phase 1); defer layered merge to Phase 9 per ROADMAP. Add all Phase 2 config fields to `internal/config/config.go`.
+3. **Config schema extension for Phase 2** — RESOLVED: Extend the single-level user `config.json` only (consistent with Phase 1). Full layered merge (CODE-05) is deferred to Phase 9 per ROADMAP. All Phase 2 config fields (socket token, corroboration thresholds, release-age settings, egress allowlists, baseline config) are added to `internal/config/config.go`.
 
 ---
 

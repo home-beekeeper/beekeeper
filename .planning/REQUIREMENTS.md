@@ -28,7 +28,7 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 ### Catalog Management (CTLG)
 
 - [ ] **CTLG-01**: Bumblebee `threat_intel/` catalog sync — primary source, extended with `source_url`, `catalog_signature`, `catalog_source` fields; Beekeeper records set `scanner_name: "beekeeper"`
-- [ ] **CTLG-02**: OSV database offline sync — ecosystem ZIPs from `osv-vulnerabilities.storage.googleapis.com`; queried via `github.com/google/osv-scanner/v2` Go library in policy hot path
+- [ ] **CTLG-02**: OSV catalog source — queried via public REST API (`POST https://api.osv.dev/v1/query`, no auth required); results cached by package+version with 24h TTL in `~/.beekeeper/catalogs/osv-cache/`; the `osv-scanner/v2` library's `localmatcher` is internal and not usable for single-package queries
 - [ ] **CTLG-03**: Socket public API — PURL endpoint (`POST /v0/purl`), results cached by package+version with 24h TTL; exponential backoff on 429
 - [ ] **CTLG-04**: `beekeeper-self` catalog — self-quarantine feed listing known-compromised Beekeeper releases by version + signature hash; checked on every startup and catalog sync
 - [ ] **CTLG-05**: `beekeeper catalogs sync` — fetch and cache all enabled catalog sources
