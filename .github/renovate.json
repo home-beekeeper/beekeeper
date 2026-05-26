@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "SFDF-03 (pinned dependencies): Renovate keeps go.mod/go.sum and GitHub",
+    "Actions pinned with automated update PRs. postUpdateOptions gomodTidy",
+    "refreshes go.sum so PRs never go stale and CI go mod verify stays green",
+    "(RESEARCH Pitfall 4). automerge is disabled: every dependency update",
+    "requires human review."
+  ],
+  "extends": [
+    "config:recommended"
+  ],
+  "gomod": {
+    "enabled": true
+  },
+  "github-actions": {
+    "enabled": true
+  },
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "automerge": false,
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "groupName": "go modules"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions"
+    }
+  ]
+}

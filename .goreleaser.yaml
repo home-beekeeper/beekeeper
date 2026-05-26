@@ -1,0 +1,58 @@
+# GoReleaser configuration for Beekeeper
+#
+# SFDF-01 (reproducible builds): mod_timestamp pins the build to the commit
+# timestamp and -trimpath strips local paths, so a tagged release rebuilds
+# byte-for-byte. SFDF-02 (Sigstore signing): the signs section uses cosign v3
+# keyless OIDC to sign checksums.txt, with NO long-lived signing keys.
+#
+# Out of scope here (deferred to Phase 7, SFDF-05): build-provenance attestation
+# and software bill-of-materials generation are intentionally NOT configured in
+# this file. Add them only in Phase 7.
+version: 2
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Reproducibility: stamp the build with the commit time, not the build time.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/mzansi-agentive/beekeeper/internal/version.Version={{.Version}}
+      - -X github.com/mzansi-agentive/beekeeper/internal/version.Commit={{.Commit}}
+      # Commit date, NOT the build wall-clock time.
+      - -X github.com/mzansi-agentive/beekeeper/internal/version.Date={{.CommitDate}}
+    binary: beekeeper
+
+checksums:
+  name_template: "checksums.txt"
+
+# cosign v3 keyless signing of checksums.txt. Signing the checksum file
+# transitively covers every released artifact. The OIDC identity is bound into
+# the Sigstore certificate by the GitHub Actions workflow (id-token: write).
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+release:
+  draft: false

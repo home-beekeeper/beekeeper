@@ -1,0 +1,41 @@
+# Release pipeline (SFDF-01 + SFDF-02)
+#
+# Triggered by pushing a vX.Y.Z tag. GoReleaser builds reproducible
+# multi-platform binaries and cosign v3 keylessly signs checksums.txt using the
+# GitHub Actions OIDC identity. No long-lived signing keys are used or stored.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write # Required for cosign keyless OIDC signing.
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # GoReleaser needs full history + tags for changelog/version.
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod # Pins the toolchain to go.mod for reproducibility.
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
