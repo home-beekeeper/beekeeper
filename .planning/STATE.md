@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: Executing Phase 4 — Wave 1 complete (2/5 plans), Wave 2 in progress
-last_updated: "2026-05-26T22:00:00.000Z"
-last_activity: "2026-05-26 — Phase 4 Wave 1 complete: 04-01 hook installer (internal/hooks/) + 04-02 multi-agent depth tracking (policy/check/) — all tests green; Wave 2 starting (04-03 gateway, 04-04 shim)"
+status: Executing Phase 4 — Wave 2 complete (4/5 plans), Wave 3 in progress
+last_updated: "2026-05-26T22:30:00.000Z"
+last_activity: "2026-05-26 — Phase 4 Wave 2 complete: 04-03 MCP gateway (internal/gateway/ — parser+proxy+fuzz) + 04-04 shim layer (internal/shim/ — TDD) — 14 packages pass; Wave 3 starting (04-05 CLI wiring)"
 progress:
   total_phases: 9
   completed_phases: 2
