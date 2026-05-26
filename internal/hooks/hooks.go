@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -131,6 +132,10 @@ func UninstallTo(target string, dryRun bool, out io.Writer) error {
 // backupSettings copies the file at path to path + ".beekeeper-backup-<timestamp>".
 // If the file does not exist, backupSettings returns nil (not an error — the
 // installer will create the file fresh).
+//
+// WR-06: backup files are written with 0o600 (not 0o644) so sensitive
+// settings content (which may include tokens or credentials) is not
+// world-readable on multi-user systems.
 func backupSettings(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -141,7 +146,7 @@ func backupSettings(path string) error {
 	}
 	ts := time.Now().Format("20060102-150405")
 	backupPath := path + ".beekeeper-backup-" + ts
-	if err := os.WriteFile(backupPath, data, 0o644); err != nil {
+	if err := os.WriteFile(backupPath, data, 0o600); err != nil {
 		return fmt.Errorf("hooks: backup write %q: %w", backupPath, err)
 	}
 	return nil
@@ -149,12 +154,27 @@ func backupSettings(path string) error {
 
 // writeFileAtomic writes data to a temp file in the same directory then
 // renames it over path so readers never observe a partially-written file.
+//
+// CR-05: use os.CreateTemp with a randomised suffix so concurrent invocations
+// do not collide on a fixed ".beekeeper-tmp" name. A deferred os.Remove
+// cleans up the temp file if the rename fails (no-op if rename succeeds since
+// the name is changed).
 func writeFileAtomic(path string, data []byte) error {
-	tmp := path + ".beekeeper-tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful Rename
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // printDryRun prints a message showing what would be written to path.
