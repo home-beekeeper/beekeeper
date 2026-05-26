@@ -28,8 +28,14 @@ const ageCacheTTL = 24 * time.Hour
 
 // ageCachePath returns the filesystem path for a cache entry.
 // Format: <cacheDir>/age-cache/<ecosystem>/<pkg>/<version>.json
+//
+// Each attacker-controlled segment is sanitized with filepath.Base to prevent
+// directory traversal (e.g. pkg="../../state" writing outside the cache dir).
 func ageCachePath(cacheDir, ecosystem, pkg, version string) string {
-	return filepath.Join(cacheDir, "age-cache", ecosystem, pkg, version+".json")
+	return filepath.Join(cacheDir, "age-cache",
+		filepath.Base(ecosystem),
+		filepath.Base(pkg),
+		filepath.Base(version)+".json")
 }
 
 // readAgeCacheEntry reads and deserializes a cache entry from disk.
