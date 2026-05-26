@@ -131,7 +131,20 @@ func listThreatIntel(ctx context.Context, client *http.Client, token string) ([]
 }
 
 // fetch GETs url and returns its body, capping the read to a sane bound.
+// It creates a one-off http.Client with a CheckRedirect policy that strips
+// the Authorization header on any cross-host redirect, preventing token
+// leakage to an attacker-controlled DownloadURL (WR-01).
 func fetch(ctx context.Context, client *http.Client, url, token string) ([]byte, error) {
+	// Build a per-request client that inherits the caller's transport and
+	// timeout but overrides redirect behaviour to strip auth on host change.
+	fetchClient := *client
+	fetchClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+			req.Header.Del("Authorization")
+		}
+		return nil
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -141,7 +154,7 @@ func fetch(ctx context.Context, client *http.Client, url, token string) ([]byte,
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := fetchClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
