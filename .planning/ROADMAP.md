@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation + Hook Handler** - Working `beekeeper check` with Bumblebee catalog, sub-100ms target, reproducible Sigstore releases
 - [ ] **Phase 2: Policy Engine + Multi-Source Catalogs** - Full corroboration semantics (OSV + Socket), lifecycle/path/egress/baseline policies, catalog watch daemon
 - [x] **Phase 3: Editor Extension Defense** - Agent CLI intercept, fsnotify extension watcher, quarantine workflow, `beekeeper scan`
-- [ ] **Phase 4: Integration Surfaces** - Hook installs for Claude Code/Cursor/Codex, MCP gateway daemon, shim layer, multi-agent observability
+- [x] **Phase 4: Integration Surfaces** - Hook installs for Claude Code/Cursor/Codex, MCP gateway daemon, shim layer, multi-agent observability
 - [ ] **Phase 5: Linux Sentry** - Privileged systemd daemon, fanotify + cilium/ebpf event ingestion, 5-rule correlation engine, 7-day baseline
 - [ ] **Phase 6: LlamaFirewall + Audit Sinks** - Optional Python sidecar with PromptGuard 2 / CodeShield / AlignmentCheck; full audit sinks (syslog, OTLP, HTTPS); audit query/export commands
 - [ ] **Phase 7: Cross-Platform Sentry** - macOS eslogger Sentry, Windows ETW Sentry, SLSA Level 3 provenance + SBOM
@@ -92,7 +92,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Continue, OpenCode, and OpenClaw can be pointed at `beekeeper gateway` and their tool calls are evaluated through the same policy engine as native hook integrations
   4. `beekeeper shim install` places wrapper binaries for npm, pnpm, pip, cargo, go, gem, composer, npx, and pipx earlier in PATH; each shim invokes `beekeeper check` and proxies to the real binary only if allowed
   5. Subagent tool calls carry parent-context propagation, and policy decisions for child agents are recorded with parent-child lineage in the audit log
-**Plans**: TBD
+**Plans**: 5 plans
+- [x] 04-01-PLAN.md — Hook installer package (internal/hooks/): Claude Code, Cursor, Codex, gateway targets (wave 1)
+- [x] 04-02-PLAN.md — Multi-agent context propagation: AgentContext, extended Evaluate, AuditRecord lineage, audit-record command (wave 1)
+- [x] 04-03-PLAN.md — MCP gateway core: bounded parser, proxy handler, fail-closed, fuzz test RELEASE GATE (wave 2)
+- [x] 04-04-PLAN.md — Shim layer: install/uninstall/status, Unix shell scripts, Windows .cmd batch files (wave 2)
+- [ ] 04-05-PLAN.md — CLI wiring + audit redaction: hooks/gateway/shim/audit-record Cobra commands, sensitive field redaction (wave 3)
 **Research note**: MCP client implementation differences between Claude Code and Cursor expose different edge cases; July 2026 spec SDK lag may require working around SDK inconsistencies; fuzz the MCP message parser before v0.6.0 release as a release gate
 
 ### Phase 5: Linux Sentry
@@ -168,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation + Hook Handler | 6/6 | Complete | 2026-05-26 |
 | 2. Policy Engine + Multi-Source Catalogs | 9/9 | Complete | 2026-05-26 |
 | 3. Editor Extension Defense | 5/5 | Complete | 2026-05-26 |
-| 4. Integration Surfaces | 0/TBD | Not started | - |
+| 4. Integration Surfaces | 0/5 | Not started | - |
 | 5. Linux Sentry | 0/TBD | Not started | - |
 | 6. LlamaFirewall + Audit Sinks | 0/TBD | Not started | - |
 | 7. Cross-Platform Sentry | 0/TBD | Not started | - |
