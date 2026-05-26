@@ -103,33 +103,59 @@ func TestShimInstallWindows(t *testing.T) {
 // the shim directory from PATH so that a fake shim binary is not resolved as the
 // "real" binary.
 func TestShimRealBinary(t *testing.T) {
-	// Create a shim dir with a fake "testbinshim" binary inside.
+	// On Windows, exec.LookPath requires a file to have a recognized executable
+	// extension (.exe, .cmd, .bat). We use ".cmd" so the test works on Windows
+	// without requiring .exe compilation, while ".sh" provides a recognizable
+	// script on Unix. The tool name used in FindRealBinary must match the base
+	// name without extension (LookPath appends PATHEXT on Windows automatically).
+	var ext, content string
+	if runtime.GOOS == "windows" {
+		ext = ".cmd"
+		content = "@echo off\r\necho fake\r\n"
+	} else {
+		ext = ""
+		content = "#!/bin/sh\necho fake\n"
+	}
+
+	toolName := "testbinshim204" // unlikely to exist in PATH
+
+	// Create a shim dir with a fake binary inside.
 	shimDir := t.TempDir()
-	fakeInShim := filepath.Join(shimDir, "testbinshim")
-	if err := os.WriteFile(fakeInShim, []byte("#!/bin/sh\necho fake"), 0755); err != nil {
+	fakeInShim := filepath.Join(shimDir, toolName+ext)
+	if err := os.WriteFile(fakeInShim, []byte(content), 0755); err != nil {
 		t.Fatalf("setup fake shim binary: %v", err)
 	}
 
 	// Create a separate dir with the "real" binary.
 	realBinDir := t.TempDir()
-	realBin := filepath.Join(realBinDir, "testbinshim")
-	if err := os.WriteFile(realBin, []byte("#!/bin/sh\necho real"), 0755); err != nil {
+	realBin := filepath.Join(realBinDir, toolName+ext)
+	var realContent string
+	if runtime.GOOS == "windows" {
+		realContent = "@echo off\r\necho real\r\n"
+	} else {
+		realContent = "#!/bin/sh\necho real\n"
+	}
+	if err := os.WriteFile(realBin, []byte(realContent), 0755); err != nil {
 		t.Fatalf("setup real binary: %v", err)
 	}
 
 	// Set PATH so shimDir comes first, then realBinDir.
 	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+realBinDir)
 
-	// findRealBinary should skip shimDir and return realBin.
-	found, err := shim.FindRealBinary(shimDir, "testbinshim")
+	// findRealBinary should skip shimDir and return the binary from realBinDir.
+	// On Windows we look up toolName (LookPath will append .cmd from PATHEXT).
+	found, err := shim.FindRealBinary(shimDir, toolName)
 	if err != nil {
 		t.Fatalf("FindRealBinary: %v", err)
 	}
-	if filepath.Clean(found) == filepath.Clean(fakeInShim) {
-		t.Errorf("FindRealBinary returned shim path %q; must exclude shimDir", found)
+
+	// found must NOT be inside shimDir.
+	if strings.HasPrefix(filepath.Clean(found), filepath.Clean(shimDir)) {
+		t.Errorf("FindRealBinary returned path inside shimDir %q; must exclude shimDir; got %q", shimDir, found)
 	}
-	if filepath.Clean(found) != filepath.Clean(realBin) {
-		t.Errorf("FindRealBinary: want %q, got %q", realBin, found)
+	// found must be inside realBinDir.
+	if !strings.HasPrefix(filepath.Clean(found), filepath.Clean(realBinDir)) {
+		t.Errorf("FindRealBinary: want path inside %q, got %q", realBinDir, found)
 	}
 }
 
