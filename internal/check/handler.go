@@ -229,7 +229,15 @@ func readAgentContext(stdinAgentID string) policy.AgentContext {
 
 	var lineage []string
 	if l := os.Getenv("BEEKEEPER_AGENT_LINEAGE"); l != "" {
-		lineage = strings.Split(l, ",")
+		// WR-08: trim whitespace from each element after split so that
+		// "root, mid, child" (with spaces) produces ["root","mid","child"]
+		// rather than ["root"," mid"," child"] which would not match agent IDs.
+		parts := strings.Split(l, ",")
+		for _, entry := range parts {
+			if trimmed := strings.TrimSpace(entry); trimmed != "" {
+				lineage = append(lineage, trimmed)
+			}
+		}
 	}
 
 	// Env var takes precedence; fall back to stdin agent_id from Claude Code hook.
