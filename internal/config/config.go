@@ -59,6 +59,15 @@ type Config struct {
 	// Watch holds Phase 3 file-watcher configuration.
 	// Absent or nil means no watch directories are configured.
 	Watch *WatchSettings `json:"watch,omitempty"`
+
+	// RedactPatterns is an optional list of additional regex patterns used for
+	// sensitive-field redaction in audit records (Phase 4, INTG-07 / T-04-05-02).
+	// Each element is a regex pattern string. On match, the entire match is
+	// replaced with "[REDACTED]". The default patterns (Bearer tokens, JWT tokens,
+	// common API key prefixes) are always applied regardless of this field.
+	// This field is forward compatibility for custom redaction rules; the Phase 4
+	// implementation always applies the default patterns.
+	RedactPatterns []string `json:"redact_patterns,omitempty"`
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.
@@ -142,4 +151,17 @@ func Save(path string, cfg Config) error {
 // treated as fail-closed (the secure default).
 func (c Config) FailClosed() bool {
 	return c.FailMode != FailModeOpen && c.FailMode != FailModeWarn
+}
+
+// GetRedactPatterns returns the configured custom redaction pattern strings, or
+// nil when none are configured. The caller (typically writeAuditWithAC) uses this
+// alongside defaultRedactPatterns() — the default patterns are always applied;
+// this returns any additional user-configured patterns.
+//
+// Phase 4 note: custom patterns are returned for forward compatibility but are not
+// yet compiled or applied in the Phase 4 implementation. The default patterns cover
+// the three critical cases (Bearer/JWT/API-key prefixes). Custom pattern compilation
+// is a Phase 6 audit enhancement.
+func (c Config) GetRedactPatterns() []string {
+	return c.RedactPatterns
 }

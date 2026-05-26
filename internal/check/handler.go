@@ -314,6 +314,10 @@ func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
 // writeAuditWithAC appends one NDJSON record for the decision with the given
 // AgentContext lineage. An audit-write failure is logged to stderr but NEVER
 // downgrades the decision — a block stays a block even if it could not be recorded.
+//
+// Redaction (T-04-05-02): default patterns (Bearer tokens, JWT tokens, common API
+// key prefixes) are applied to every record before writing. This prevents sensitive
+// credentials that appear in tool outputs from being persisted to the audit log.
 func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, ac policy.AgentContext) {
 	w, err := audit.NewWriter(auditPath)
 	if err != nil {
@@ -323,6 +327,12 @@ func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, a
 	defer w.Close()
 
 	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339), ac)
+	// Apply sensitive field redaction before persisting (T-04-05-02).
+	// defaultRedactPatterns() is called each invocation; patterns are compiled once
+	// per call (fast: regexp.MustCompile with a fixed set). A future optimization
+	// could cache them in a package-level var, but correctness takes precedence here.
+	patterns := audit.DefaultRedactPatterns()
+	rec = audit.RedactRecord(rec, patterns)
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: audit write failed: %v\n", err)
 	}

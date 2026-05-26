@@ -22,10 +22,13 @@ import (
 	"github.com/mzansi-agentive/beekeeper/internal/check"
 	"github.com/mzansi-agentive/beekeeper/internal/config"
 	"github.com/mzansi-agentive/beekeeper/internal/editorinit"
+	"github.com/mzansi-agentive/beekeeper/internal/gateway"
+	"github.com/mzansi-agentive/beekeeper/internal/hooks"
 	"github.com/mzansi-agentive/beekeeper/internal/notify"
 	"github.com/mzansi-agentive/beekeeper/internal/platform"
 	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
 	"github.com/mzansi-agentive/beekeeper/internal/scan"
+	"github.com/mzansi-agentive/beekeeper/internal/shim"
 	"github.com/mzansi-agentive/beekeeper/internal/version"
 	"github.com/mzansi-agentive/beekeeper/internal/watch"
 )
@@ -54,6 +57,10 @@ func newRootCmd() *cobra.Command {
 		newWatchCmd(),
 		newScanCmd(),
 		newQuarantineCmd(),
+		newHooksCmd(),
+		newGatewayCmd(),
+		newShimCmd(),
+		newAuditRecordCmd(),
 	)
 
 	return root
@@ -120,6 +127,13 @@ func newInitCmd() *cobra.Command {
 					return fmt.Errorf("create directory %q: %w", dir, err)
 				}
 			}
+
+			// Phase 4: create shims directory (INTG-06).
+			shimsDir := filepath.Join(stateDir, "shims")
+			if err := os.MkdirAll(shimsDir, 0700); err != nil {
+				return fmt.Errorf("create directory %q: %w", shimsDir, err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "  Created shim directory: %s\n", shimsDir)
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Initialized Beekeeper state directory at %s\n", stateDir)
 
@@ -734,6 +748,303 @@ func newSelftestCmd() *cobra.Command {
 			if failed > 0 {
 				os.Exit(1)
 			}
+			return nil
+		},
+	}
+}
+
+// newHooksCmd groups hook installer subcommands for writing Beekeeper
+// PreToolUse/PostToolUse hooks to agent CLIs (INTG-01, INTG-02).
+func newHooksCmd() *cobra.Command {
+	hooksCmd := &cobra.Command{
+		Use:   "hooks",
+		Short: "Install or uninstall Beekeeper hooks for agent CLIs",
+	}
+
+	// hooks install
+	var target string
+	var dryRun, force bool
+	installCmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install Beekeeper PreToolUse/PostToolUse hooks for the given agent CLI",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := hooks.Install(target, dryRun, force); err != nil {
+				return fmt.Errorf("hooks install: %w", err)
+			}
+			if !dryRun {
+				fmt.Fprintf(cmd.OutOrStdout(), "Beekeeper hooks installed for target %q.\n", target)
+			}
+			return nil
+		},
+	}
+	installCmd.Flags().StringVar(&target, "target", "", "Agent CLI target (claude-code, cursor, codex, continue, opencode, openclaw)")
+	installCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print what would be written without modifying files")
+	installCmd.Flags().BoolVar(&force, "force", false, "Overwrite existing hooks without prompting")
+	_ = installCmd.MarkFlagRequired("target")
+	hooksCmd.AddCommand(installCmd)
+
+	// hooks uninstall
+	var uninstallTarget string
+	var uninstallDryRun bool
+	uninstallCmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove Beekeeper hooks for the given agent CLI",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := hooks.Uninstall(uninstallTarget, uninstallDryRun); err != nil {
+				return fmt.Errorf("hooks uninstall: %w", err)
+			}
+			if !uninstallDryRun {
+				fmt.Fprintf(cmd.OutOrStdout(), "Beekeeper hooks uninstalled for target %q.\n", uninstallTarget)
+			}
+			return nil
+		},
+	}
+	uninstallCmd.Flags().StringVar(&uninstallTarget, "target", "", "Agent CLI target (claude-code, cursor, codex, continue, opencode, openclaw)")
+	uninstallCmd.Flags().BoolVar(&uninstallDryRun, "dry-run", false, "Print what would be removed without modifying files")
+	_ = uninstallCmd.MarkFlagRequired("target")
+	hooksCmd.AddCommand(uninstallCmd)
+
+	return hooksCmd
+}
+
+// newGatewayCmd manages the Beekeeper MCP gateway daemon (INTG-03, INTG-04).
+// The root `beekeeper gateway` subcommand is the foreground daemon.
+// Subcommands `token` and `status` read state.json without starting the daemon.
+func newGatewayCmd() *cobra.Command {
+	var port int
+	var upstream, bind string
+	gatewayCmd := &cobra.Command{
+		Use:   "gateway",
+		Short: "Manage the Beekeeper MCP gateway daemon",
+		Long: `Start the Beekeeper MCP gateway daemon (foreground, Ctrl+C to stop).
+
+The gateway is a stateless per-request HTTP proxy that intercepts MCP tools/call
+requests and evaluates them against the Beekeeper policy engine before forwarding
+to the upstream MCP server.
+
+Security: the gateway binds to 127.0.0.1 only by default. Exposing it on a
+public interface (--bind 0.0.0.0) requires allow_remote_gateway:true in config
+and is documented as reducing security.
+
+Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			catalogDir, err := platform.CatalogDir()
+			if err != nil {
+				return fmt.Errorf("resolve catalog directory: %w", err)
+			}
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			configPath, err := platform.ConfigPath()
+			if err != nil {
+				return fmt.Errorf("resolve config path: %w", err)
+			}
+
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
+			gatewayCfg := gateway.Config{
+				UpstreamURL: upstream,
+				BindAddr:    bind,
+				Port:        port,
+				StateFile:   filepath.Join(stateDir, "state.json"),
+				IndexPath:   filepath.Join(catalogDir, "bumblebee.idx"),
+				CacheDir:    catalogDir,
+				AuditPath:   filepath.Join(auditDir, "beekeeper.ndjson"),
+				SocketToken: cfg.SocketAPIToken(),
+				FailOpen:    !cfg.FailClosed(),
+			}
+
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			bindAddr := bind
+			if bindAddr == "" {
+				bindAddr = "127.0.0.1"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Starting Beekeeper gateway on %s:%d (Ctrl+C to stop)...\n", bindAddr, port)
+
+			return gateway.Start(ctx, gatewayCfg)
+		},
+	}
+	gatewayCmd.Flags().IntVar(&port, "port", 7837, "TCP port to bind (default 7837; 0 = random)")
+	gatewayCmd.Flags().StringVar(&upstream, "upstream", "", "Upstream MCP server URL (required at runtime)")
+	gatewayCmd.Flags().StringVar(&bind, "bind", "127.0.0.1", "Bind address (default 127.0.0.1 — localhost only)")
+
+	// gateway token — print the current session token from state.json
+	gatewayCmd.AddCommand(&cobra.Command{
+		Use:   "token",
+		Short: "Print the current gateway session token from state.json",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			st, err := gateway.LoadGatewayState(filepath.Join(stateDir, "state.json"))
+			if err != nil {
+				return fmt.Errorf("load gateway state: %w", err)
+			}
+			if st.GatewayToken == "" {
+				fmt.Fprintln(cmd.OutOrStdout(), "Gateway not running (or state.json not found).")
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), st.GatewayToken)
+			return nil
+		},
+	})
+
+	// gateway status — print running status, bound address, masked token, started time
+	gatewayCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Print the gateway daemon running status",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			st, err := gateway.LoadGatewayState(filepath.Join(stateDir, "state.json"))
+			if err != nil {
+				return fmt.Errorf("load gateway state: %w", err)
+			}
+
+			out := cmd.OutOrStdout()
+
+			// Check whether the PID in state.json is still a live process.
+			running := false
+			if st.PID > 0 {
+				proc, procErr := os.FindProcess(st.PID)
+				if procErr == nil {
+					// On Unix, FindProcess always succeeds; use Signal(0) to probe.
+					if signalErr := proc.Signal(syscall.Signal(0)); signalErr == nil {
+						running = true
+					}
+				}
+			}
+
+			status := "not running"
+			if running {
+				status = fmt.Sprintf("running (pid %d)", st.PID)
+			}
+			fmt.Fprintf(out, "Status:  %s\n", status)
+
+			if st.BoundAddr != "" && st.BoundPort > 0 {
+				fmt.Fprintf(out, "Address: %s:%d\n", st.BoundAddr, st.BoundPort)
+			} else {
+				fmt.Fprintf(out, "Address: (not bound)\n")
+			}
+
+			// Mask token: show first 8 chars + "..." for security (T-04-05-01).
+			token := st.GatewayToken
+			if len(token) >= 8 {
+				fmt.Fprintf(out, "Token:   %s...\n", token[:8])
+			} else if token != "" {
+				fmt.Fprintf(out, "Token:   %s...\n", token)
+			} else {
+				fmt.Fprintf(out, "Token:   (none)\n")
+			}
+
+			if st.StartedAt != "" {
+				fmt.Fprintf(out, "Started: %s\n", st.StartedAt)
+			}
+			return nil
+		},
+	})
+
+	return gatewayCmd
+}
+
+// newShimCmd groups shim layer subcommands for managing PATH-prepended wrapper
+// scripts for package managers and toolchains (INTG-06).
+func newShimCmd() *cobra.Command {
+	shimCmd := &cobra.Command{
+		Use:   "shim",
+		Short: "Manage PATH shims for package managers and toolchains",
+	}
+
+	// shim install
+	shimCmd.AddCommand(&cobra.Command{
+		Use:   "install",
+		Short: "Create shim scripts for package managers in ~/.beekeeper/shims/",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			shimDir := filepath.Join(stateDir, "shims")
+			return shim.Install(shimDir, shim.DefaultTools, cmd.OutOrStdout())
+		},
+	})
+
+	// shim uninstall
+	shimCmd.AddCommand(&cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove all Beekeeper shim scripts from ~/.beekeeper/shims/",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			shimDir := filepath.Join(stateDir, "shims")
+			return shim.Uninstall(shimDir)
+		},
+	})
+
+	// shim status
+	shimCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "List which tools are shimmed and their real binary paths",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			shimDir := filepath.Join(stateDir, "shims")
+			return shim.Status(shimDir, shim.DefaultTools, cmd.OutOrStdout())
+		},
+	})
+
+	return shimCmd
+}
+
+// newAuditRecordCmd is the PostToolUse hook handler. It reads PostToolUse JSON
+// from stdin, writes a tool_result audit record, and exits 0 always — PostToolUse
+// hook failures must not disrupt the running agent (INTG-07 / T-04-05-04).
+func newAuditRecordCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "audit-record",
+		Short: "Record a PostToolUse hook event to the audit log (exit 0 always)",
+		Long: `Read a PostToolUse hook event from stdin and write a tool_result audit record.
+
+This command is registered as the PostToolUse hook command:
+  {"type": "command", "command": "beekeeper audit-record"}
+
+It always exits 0 — PostToolUse hook failures must not disrupt the agent.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				// Cannot resolve audit directory — exit 0 anyway (T-04-05-04).
+				fmt.Fprintf(os.Stderr, "beekeeper audit-record: resolve audit directory: %v\n", err)
+				return nil
+			}
+			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
+			_ = check.RunAuditRecord(os.Stdin, auditPath)
+			// Always return nil (exit 0) regardless of RunAuditRecord result.
 			return nil
 		},
 	}
