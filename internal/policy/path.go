@@ -76,7 +76,7 @@ func DefaultSensitivePaths() SensitivePathConfig {
 func EvaluatePath(resolvedPath string, cfg SensitivePathConfig) Decision {
 	// 1. Allowlist check — overrides blocklist.
 	for _, allow := range cfg.AllowPatterns {
-		if allow == resolvedPath || strings.HasPrefix(resolvedPath, allow) {
+		if isAllowedPath(resolvedPath, allow) {
 			return Decision{
 				Allow:   true,
 				Level:   "allow",
@@ -131,6 +131,24 @@ func matchesBlockPattern(resolvedPath, pattern string) bool {
 
 	// Exact basename match.
 	return seg == pattern
+}
+
+// isAllowedPath reports whether resolvedPath matches an allow pattern exactly or
+// as a proper path-component prefix. A bare prefix like "/home/user/projects"
+// must be followed by a path separator before it matches — preventing
+// "/home/user/projects-secret" from being allowed by a "/home/user/projects"
+// entry (WR-04).
+func isAllowedPath(resolvedPath, allow string) bool {
+	if resolvedPath == allow {
+		return true
+	}
+	// If allow already ends with a separator, a simple HasPrefix is correct.
+	if strings.HasSuffix(allow, "/") || strings.HasSuffix(allow, "\\") {
+		return strings.HasPrefix(resolvedPath, allow)
+	}
+	// Require path boundary after the prefix.
+	return strings.HasPrefix(resolvedPath, allow+"/") ||
+		strings.HasPrefix(resolvedPath, allow+"\\")
 }
 
 // lastSegment returns the last path segment of p, splitting on both "/" and "\".
