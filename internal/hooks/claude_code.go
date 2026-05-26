@@ -65,19 +65,26 @@ func installClaudeCode(settingsPath string, dryRun bool, out io.Writer) error {
 
 // uninstallClaudeCode removes the "hooks" key from the Claude Code settings.json.
 // Other keys in the file are preserved. A backup is created before modification.
+//
+// WR-01: use editorinit.ReadSettings (JSONC-safe) instead of json.Unmarshal
+// directly so that settings.json files containing // or /* */ comments
+// (legal JSONC, accepted by Claude Code) are parsed correctly.
 func uninstallClaudeCode(settingsPath string, dryRun bool, out io.Writer) error {
-	data, err := os.ReadFile(settingsPath)
+	// WR-01: editorinit.ReadSettings strips JSONC comments before unmarshalling.
+	settings, err := editorinit.ReadSettings(settingsPath)
 	if err != nil {
+		// editorinit.ReadSettings returns (emptyMap, nil) for ErrNotExist, so a
+		// non-nil error here is a genuine read/parse failure.
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Fprintf(out, "No Claude Code settings.json found at %s — nothing to uninstall.\n", settingsPath)
 			return nil
 		}
-		return fmt.Errorf("uninstall claude-code: read %q: %w", settingsPath, err)
+		return fmt.Errorf("uninstall claude-code: parse %q: %w", settingsPath, err)
 	}
 
-	var settings map[string]any
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return fmt.Errorf("uninstall claude-code: parse %q: %w", settingsPath, err)
+	if len(settings) == 0 {
+		fmt.Fprintf(out, "No Claude Code settings.json found at %s — nothing to uninstall.\n", settingsPath)
+		return nil
 	}
 
 	if _, ok := settings["hooks"]; !ok {

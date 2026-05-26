@@ -65,6 +65,31 @@ func PatchSettings(path, key string, value any) error {
 	return os.Rename(tmpPath, path)
 }
 
+// ReadSettings reads the JSON or JSONC file at path and returns its content as
+// a map[string]any. JSONC comments are stripped before unmarshalling so that
+// files with comments (legal in Claude Code's settings.json format) are parsed
+// correctly. If the file does not exist, ReadSettings returns an empty map and
+// no error (consistent with PatchSettings behaviour on non-existent files).
+//
+// This is the JSONC-safe read helper that uninstall paths must use instead of
+// a bare json.Unmarshal (WR-01).
+func ReadSettings(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return make(map[string]any), nil
+		}
+		return nil, err
+	}
+
+	stripped := jsonc.ToJSON(data)
+	var settings map[string]any
+	if err := json.Unmarshal(stripped, &settings); err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
 // DisableExtensionAutoUpdate sets "extensions.autoUpdate" to false in the
 // editor settings file at settingsPath. It delegates to PatchSettings and
 // inherits the same JSONC-comment-stripping and atomic-write semantics.
