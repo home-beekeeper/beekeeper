@@ -1,0 +1,1 @@
+{"agent_name":"test-agent","tool_name":"Install","tool_input":{"ecosystem":"editor-extension","package":"nrwl.angular-console","version":"18.95.0"}}
