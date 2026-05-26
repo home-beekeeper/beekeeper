@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -117,29 +118,26 @@ func EvaluateEgress(input EgressInput, cfg EgressConfig) Decision {
 	}
 }
 
-// extractHost extracts the hostname from a URL using only strings operations.
-// No net/url import — uses pure string manipulation.
-// Strips scheme (http:// or https://) then takes the segment before the first "/".
+// extractHost extracts the hostname (without port) from a URL.
+// Uses url.Parse + u.Hostname() which correctly handles IPv6 bracket notation,
+// userinfo (@), and port stripping. Falls back to the raw URL on parse failure.
+// Pure function: net/url performs no I/O, no DNS, no network access.
 func extractHost(rawURL string) string {
-	s := rawURL
-	// Strip scheme.
-	for _, prefix := range []string{"https://", "http://"} {
-		if strings.HasPrefix(s, prefix) {
-			s = s[len(prefix):]
-			break
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		// Fallback: strip scheme manually for bare host strings without "//".
+		s := rawURL
+		for _, prefix := range []string{"https://", "http://"} {
+			if strings.HasPrefix(s, prefix) {
+				s = s[len(prefix):]
+				break
+			}
 		}
-	}
-	// Take the segment before the first "/".
-	if idx := strings.Index(s, "/"); idx >= 0 {
-		s = s[:idx]
-	}
-	// Strip port if present.
-	if idx := strings.LastIndex(s, ":"); idx >= 0 {
-		// Only strip port if what follows looks like a number (not IPv6 without brackets).
-		rest := s[idx+1:]
-		if rest != "" && !strings.Contains(rest, ":") {
+		if idx := strings.Index(s, "/"); idx >= 0 {
 			s = s[:idx]
 		}
+		return s
 	}
-	return s
+	// u.Hostname() strips port and brackets from IPv6 addresses.
+	return u.Hostname()
 }
