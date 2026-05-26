@@ -34,7 +34,7 @@ findings:
   warning: 8
   info: 4
   total: 18
-status: fixed
+status: clean
 fixed_at: 2026-05-26
 ---
 
