@@ -77,15 +77,12 @@ func Uninstall(shimDir string) error {
 		return fmt.Errorf("shim: read shim directory: %w", err)
 	}
 
-	removed := 0
 	for _, entry := range entries {
 		path := filepath.Join(shimDir, entry.Name())
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("shim: remove %s: %w", path, err)
 		}
-		removed++
 	}
-	_ = removed
 	return nil
 }
 
