@@ -74,7 +74,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. On a catalog hit for a new extension, Beekeeper emits a critical audit record, optionally sends a desktop notification, and moves the extension to `~/.beekeeper/quarantine/extensions/`
   4. Developer can run `beekeeper quarantine list`, `quarantine restore <id>`, and `quarantine purge` to manage quarantined items
   5. `beekeeper init` detects installed editors and offers (with consent) to disable extension auto-update and enable the file-watcher for detected extension directories
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 03-01-PLAN.md — Pin fsnotify/beeep/jsonc deps + EDXT-01 pure extension-install recognition in internal/policy (wave 1)
+- [ ] 03-02-PLAN.md — Marketplace timestamp adapter (Open VSX + VS Code Marketplace) + quarantine manager package (wave 1)
+- [ ] 03-03-PLAN.md — fsnotify watch daemon + manifest parser + best-effort notify + new-extension handler (wave 2)
+- [ ] 03-05-PLAN.md — Editor detection + JSONC-safe settings patch package + EDXT-01 selftest corpus fixture (wave 2)
+- [ ] 03-04-PLAN.md — Scan orchestrator (Bumblebee + Beekeeper-own merge) + watch/scan/quarantine CLI + init editor detection (wave 3)
+**Research note**: fsnotify v1.10.1 must be added to go.mod (not present from Phase 2); Bumblebee invoked as `bumblebee scan [--profile deep]` with no `--format ndjson` flag; Open VSX `timestamp` is last-sync not first-publish (Assumption A2); Cursor uses Open VSX; Cursor Windows extension-dir path is LOW confidence (Assumption A1, needs live validation)
 
 ### Phase 4: Integration Surfaces
 **Goal**: Every major agent surface (Claude Code hooks, Cursor, Codex CLI, MCP gateway, PATH shims) is wired to the Beekeeper policy engine with a single install command
@@ -161,7 +167,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundation + Hook Handler | 6/6 | Complete | 2026-05-26 |
 | 2. Policy Engine + Multi-Source Catalogs | 8/9 | In Progress | - |
-| 3. Editor Extension Defense | 0/TBD | Not started | - |
+| 3. Editor Extension Defense | 0/5 | Planned | - |
 | 4. Integration Surfaces | 0/TBD | Not started | - |
 | 5. Linux Sentry | 0/TBD | Not started | - |
 | 6. LlamaFirewall + Audit Sinks | 0/TBD | Not started | - |
