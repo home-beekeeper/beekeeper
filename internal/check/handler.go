@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mzansi-agentive/beekeeper/internal/audit"
@@ -75,6 +77,15 @@ func RunCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	return runCheck(ctx, stdin, cfg, indexPath, auditPath, cacheDir, defaultOpener)
 }
 
+// hookInput extends ToolCall with the Claude Code hook stdin fields that are
+// not part of the pure policy.ToolCall struct. The agent_id field is present
+// in Claude Code PreToolUse stdin and used to populate AgentContext.AgentID
+// when the BEEKEEPER_AGENT_ID env var is absent (INTG-07).
+type hookInput struct {
+	policy.ToolCall
+	AgentID string `json:"agent_id"` // Claude Code hook stdin only; absent in Cursor/Codex
+}
+
 // runCheck is the testable core; opener is injected so tests can force a panic
 // or error from index opening.
 func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string, open catalogOpener) (result Result) {
@@ -94,7 +105,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "beekeeper check: recovered panic: %v\n", r)
 			d := failDecision(cfg, "internal error (fail-closed)")
-			result = finalize(d, cfg, toolCall, auditPath)
+			result = finalizeWithAC(d, cfg, toolCall, auditPath, policy.AgentContext{})
 		}
 	}()
 
@@ -108,33 +119,37 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// evaluate a truncated tool call.
 	limited := &io.LimitedReader{R: stdin, N: maxStdin + 1}
 
+	// Decode into hookInput to also capture the Claude Code stdin agent_id field.
+	var hi hookInput
 	dec := json.NewDecoder(limited)
-	if err := dec.Decode(&toolCall); err != nil {
+	if err := dec.Decode(&hi); err != nil {
 		// Distinguish oversized input from genuinely malformed JSON: if the
 		// limited reader is exhausted we very likely truncated a large payload.
 		if limited.N <= 0 {
-			return finalize(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath)
+			return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
 		}
-		return finalize(failDecision(cfg, "invalid tool call JSON (fail-closed)"), cfg, toolCall, auditPath)
+		return finalizeWithAC(failDecision(cfg, "invalid tool call JSON (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
 	}
+	toolCall = hi.ToolCall
+	stdinAgentID := hi.AgentID
 
 	// Oversized detection for valid-but-too-large input: a successful decode
 	// that consumed everything up to (and including) the extra cap byte means
 	// the payload was at least maxStdin+1 bytes.
 	if limited.N <= 0 {
-		return finalize(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath)
+		return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
 	}
 
 	// Early timeout check after the (potentially slow) stdin read.
 	if ctx.Err() != nil {
-		return finalize(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath)
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
 	}
 
 	// HOOK-02: load the catalog via the mmap index, never a cold JSON parse.
 	bbIdx, err := open(indexPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: catalog index unavailable: %v\n", err)
-		return finalize(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath)
+		return finalizeWithAC(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
 	}
 	defer bbIdx.Close()
 
@@ -171,22 +186,64 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 
 	// Re-check the deadline before the pure evaluation.
 	if ctx.Err() != nil {
-		return finalize(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath)
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
 	}
+
+	// Build agent context from env vars + stdin agent_id (INTG-07).
+	ac := readAgentContext(stdinAgentID)
 
 	// Pure, synchronous policy evaluation (no I/O, no goroutines).
 	// multiIdx implements policy.MultiCatalogLookup aggregating Bumblebee+OSV+Socket.
-	decision := policy.Evaluate(toolCall, multiIdx, policy.DefaultCorroborationThresholds())
+	decision := policy.Evaluate(toolCall, multiIdx, policy.DefaultCorroborationThresholds(), ac)
 
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
 	if ctx.Err() != nil {
-		return finalize(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath)
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
 	}
 
 	// Successful evaluation results are NOT subject to fail-mode overrides —
 	// fail modes only govern the failure paths above.
-	return finalize(decision, cfg, toolCall, auditPath)
+	return finalizeWithAC(decision, cfg, toolCall, auditPath, ac)
+}
+
+// readAgentContext builds a policy.AgentContext from environment variables
+// and the agent_id field from Claude Code hook stdin. The env vars are the
+// authoritative source (BEEKEEPER_AGENT_ID overrides the stdin agent_id);
+// stdin agent_id is the fallback for Claude Code hooks where the env var may
+// not be set by the orchestration layer.
+//
+// Env vars (INTG-07):
+//   - BEEKEEPER_AGENT_ID: current agent session ID
+//   - BEEKEEPER_PARENT_AGENT_ID: parent agent session ID
+//   - BEEKEEPER_AGENT_DEPTH: nesting depth integer (negative → normalized to 0)
+//   - BEEKEEPER_AGENT_LINEAGE: comma-separated parent IDs from root to parent
+func readAgentContext(stdinAgentID string) policy.AgentContext {
+	depth := 0
+	if d := os.Getenv("BEEKEEPER_AGENT_DEPTH"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 {
+			depth = parsed
+		}
+		// Negative or invalid values remain 0 (normalize to root depth).
+	}
+
+	var lineage []string
+	if l := os.Getenv("BEEKEEPER_AGENT_LINEAGE"); l != "" {
+		lineage = strings.Split(l, ",")
+	}
+
+	// Env var takes precedence; fall back to stdin agent_id from Claude Code hook.
+	agentID := os.Getenv("BEEKEEPER_AGENT_ID")
+	if agentID == "" {
+		agentID = stdinAgentID
+	}
+
+	return policy.AgentContext{
+		AgentID:       agentID,
+		ParentAgentID: os.Getenv("BEEKEEPER_PARENT_AGENT_ID"),
+		Depth:         depth,
+		Lineage:       lineage,
+	}
 }
 
 // failDecision builds the decision for a failure path, honoring the configured
@@ -218,8 +275,17 @@ func failDecision(cfg config.Config, reason string) policy.Decision {
 // through so the audit-and-emit contract holds uniformly. Every path audits:
 // for pre-decode failures tc is the zero ToolCall, yielding a best-effort record
 // with empty agent/tool but a real decision and reason.
+//
+// Deprecated: prefer finalizeWithAC which carries AgentContext for lineage tracking.
 func finalize(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string) Result {
-	writeAudit(tc, d, auditPath)
+	return finalizeWithAC(d, cfg, tc, auditPath, policy.AgentContext{})
+}
+
+// finalizeWithAC maps a decision to an exit code, writes the audit record with
+// agent lineage fields, and prints the decision JSON to stdout. This is the
+// single chokepoint that all code paths (including the panic recover) run through.
+func finalizeWithAC(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string, ac policy.AgentContext) Result {
+	writeAuditWithAC(tc, d, auditPath, ac)
 
 	// Emit the structured decision to stdout.
 	if data, err := json.Marshal(d); err == nil {
@@ -239,10 +305,16 @@ func exitCodeFor(d policy.Decision) int {
 	return exitBlock
 }
 
-// writeAudit appends one NDJSON record for the decision. An audit-write failure
-// is logged to stderr but NEVER downgrades the decision — a block stays a block
-// even if it could not be recorded.
+// writeAudit appends one NDJSON record for the decision with a zero AgentContext.
+// Retained for compatibility; prefer writeAuditWithAC.
 func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
+	writeAuditWithAC(tc, d, auditPath, policy.AgentContext{})
+}
+
+// writeAuditWithAC appends one NDJSON record for the decision with the given
+// AgentContext lineage. An audit-write failure is logged to stderr but NEVER
+// downgrades the decision — a block stays a block even if it could not be recorded.
+func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, ac policy.AgentContext) {
 	w, err := audit.NewWriter(auditPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: audit writer unavailable: %v\n", err)
@@ -250,10 +322,54 @@ func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
 	}
 	defer w.Close()
 
-	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339))
+	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339), ac)
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: audit write failed: %v\n", err)
 	}
+}
+
+// postToolUseInput is the shape of Claude Code PostToolUse hook stdin JSON.
+// The hook writes tool result data that beekeeper records for observability.
+type postToolUseInput struct {
+	HookEventName string `json:"hook_event_name"`
+	ToolName      string `json:"tool_name"`
+	ToolUseID     string `json:"tool_use_id"`
+}
+
+// RunAuditRecord reads a PostToolUse JSON payload from stdin, writes a
+// tool_result audit record, and returns 0 always. PostToolUse hooks must not
+// disrupt the agent — any error (malformed JSON, audit write failure) is logged
+// to stderr and the function still returns 0.
+//
+// This function is the handler for the `beekeeper audit-record` subcommand,
+// registered in cmd/beekeeper/main.go (Plan 05).
+func RunAuditRecord(stdin io.Reader, auditPath string) int {
+	// Cap stdin at the same 1MB limit as RunCheck for consistency.
+	limited := io.LimitReader(stdin, maxStdin)
+	var input postToolUseInput
+	if err := json.NewDecoder(limited).Decode(&input); err != nil {
+		// Malformed JSON is tolerated — PostToolUse must not disrupt agent.
+		fmt.Fprintf(os.Stderr, "beekeeper audit-record: malformed stdin: %v\n", err)
+		return 0
+	}
+
+	// Write a tool_result audit record. RecordType is overridden from
+	// policy_decision to tool_result to reflect the PostToolUse semantics.
+	tc := policy.ToolCall{ToolName: input.ToolName}
+	d := policy.Decision{Allow: true, Level: "allow", Reason: "tool_result"}
+	w, err := audit.NewWriter(auditPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper audit-record: audit writer unavailable: %v\n", err)
+		return 0
+	}
+	defer w.Close()
+
+	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
+	rec.RecordType = "tool_result"
+	if err := w.Write(rec); err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper audit-record: audit write failed: %v\n", err)
+	}
+	return 0
 }
 
 // newRecordID returns a random 128-bit hex identifier for an audit record. On

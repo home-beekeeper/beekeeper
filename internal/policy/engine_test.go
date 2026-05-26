@@ -4,6 +4,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -56,7 +57,7 @@ func TestEvaluateSingleSignedSourceWarns(t *testing.T) {
 			"version":   "18.95.0",
 		},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q", d.Level, "warn")
@@ -88,7 +89,7 @@ func TestEvaluateTwoSignedSourcesBlock(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": "npm install lodash@4.17.20"},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "block" {
 		t.Errorf("Level = %q, want %q", d.Level, "block")
@@ -121,7 +122,7 @@ func TestEvaluateThreeSignedSourcesQuarantine(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": "npm install malicious-pkg@1.0.0"},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "block" {
 		t.Errorf("Level = %q, want %q", d.Level, "block")
@@ -144,7 +145,7 @@ func TestEvaluateNoMatchAllows(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": "npm install express@4.18.2"},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "allow" {
 		t.Errorf("Level = %q, want %q", d.Level, "allow")
@@ -169,7 +170,7 @@ func TestEvaluateUnsignedNeverBlocks(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": "npm install suspect-pkg@1.0.0"},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q (unsigned sources must never block)", d.Level, "warn")
@@ -197,7 +198,7 @@ func TestCatalogMatchProducesWarn(t *testing.T) {
 			"version":   "18.95.0",
 		},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q", d.Level, "warn")
@@ -234,7 +235,7 @@ func TestUnsignedCatalogIsWarnOnly(t *testing.T) {
 			"version":   "18.95.0",
 		},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q", d.Level, "warn")
@@ -264,7 +265,7 @@ func TestSignedCatalogStillWarnWithSingleSource(t *testing.T) {
 			"version":   "18.95.0",
 		},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q (single signed source → warn)", d.Level, "warn")
@@ -287,7 +288,7 @@ func TestNoMatchAllows(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": "npm install express@4.18.2"},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "allow" {
 		t.Errorf("Level = %q, want %q", d.Level, "allow")
@@ -320,7 +321,7 @@ func TestRemediatedVersionAllows(t *testing.T) {
 		},
 	}
 	// The fakeMultiCatalog key is "editor-extension::nrwl.angular-console" but matches are empty.
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "allow" {
 		t.Errorf("Level = %q, want %q", d.Level, "allow")
@@ -343,7 +344,7 @@ func TestNpmInstallCommandExtraction(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": "npm install some-pkg@1.0.0"},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q", d.Level, "warn")
@@ -368,7 +369,7 @@ func TestVersionlessCommandStillWarns(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": "npm install bad-pkg"},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q", d.Level, "warn")
@@ -385,7 +386,7 @@ func TestNoPackageIdentifiedAllows(t *testing.T) {
 		ToolName:  "Read",
 		ToolInput: map[string]any{},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "allow" {
 		t.Errorf("Level = %q, want %q", d.Level, "allow")
@@ -415,7 +416,7 @@ func TestPackageNameNormalizedBeforeLookup(t *testing.T) {
 			"version":   "2.0.0",
 		},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
 	if d.Level != "warn" {
 		t.Errorf("Level = %q, want %q (package name must be normalized before lookup)", d.Level, "warn")
@@ -557,7 +558,7 @@ func TestExtensionInstallBulk(t *testing.T) {
 		ToolName:  "Bash",
 		ToolInput: map[string]any{"command": cmd},
 	}
-	d := Evaluate(tc, idx, DefaultCorroborationThresholds())
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 	if d.Level != "block" {
 		t.Errorf("Level = %q, want %q — bulk command with one blocked extension must block", d.Level, "block")
 	}
@@ -595,6 +596,59 @@ func TestExtensionInstallVariants(t *testing.T) {
 				t.Errorf("ver = %q, want %q", ver, "2026.4.0")
 			}
 		})
+	}
+}
+
+// ─── Phase 4 AgentContext tests (INTG-07) ────────────────────────────────────
+
+// TestAgentContextDepthBlock: Evaluate with depth=11 (exceeds maxAgentDepth=10)
+// must return a block decision with INTG-07 in rule_ids.
+func TestAgentContextDepthBlock(t *testing.T) {
+	idx := newFakeMulti(map[string][]CatalogMatch{}) // empty catalog — depth block fires first
+	tc := ToolCall{
+		ToolName:  "Bash",
+		ToolInput: map[string]any{"command": "npm install express"},
+	}
+	ac := AgentContext{Depth: 11}
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), ac)
+
+	if d.Allow {
+		t.Error("Allow = true, want false — depth 11 exceeds maxAgentDepth (10)")
+	}
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want block", d.Level)
+	}
+	foundINTG07 := false
+	for _, id := range d.RuleIDs {
+		if id == "INTG-07" {
+			foundINTG07 = true
+		}
+	}
+	if !foundINTG07 {
+		t.Errorf("RuleIDs = %v, want INTG-07 present", d.RuleIDs)
+	}
+	if !strings.Contains(d.Reason, "11") {
+		t.Errorf("Reason = %q, want it to mention depth 11", d.Reason)
+	}
+}
+
+// TestAgentContextDepthNormalize: Evaluate with depth=-1 normalizes to 0
+// and must NOT produce a depth block (uses an empty catalog so result is allow).
+func TestAgentContextDepthNormalize(t *testing.T) {
+	idx := newFakeMulti(map[string][]CatalogMatch{}) // empty catalog
+	tc := ToolCall{
+		ToolName:  "Bash",
+		ToolInput: map[string]any{"command": "npm install safe-package@1.0.0"},
+	}
+	ac := AgentContext{Depth: -1}
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), ac)
+
+	// Negative depth normalized to 0 → no depth block; empty catalog → allow.
+	if !d.Allow {
+		t.Errorf("Allow = false, want true — depth=-1 normalized to 0 must not block")
+	}
+	if d.Level != "allow" {
+		t.Errorf("Level = %q, want allow", d.Level)
 	}
 }
 

@@ -105,7 +105,7 @@ func RunSelftest() (passed, failed int, err error) {
 
 	// Catalog-match (warn) and allow fixtures: evaluate via the pure engine.
 	for _, f := range fixtures {
-		d := policy.Evaluate(f.ToolCall, multi, policy.DefaultCorroborationThresholds())
+		d := policy.Evaluate(f.ToolCall, multi, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 		if fixtureMatches(f, d) {
 			passed++
 		} else {

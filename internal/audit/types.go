@@ -36,6 +36,11 @@ type AuditRecord struct {
 	SourcesAgreed      []string `json:"sources_agreed"`
 	SourcesDissented   []string `json:"sources_dissented"`
 	Quarantine         bool     `json:"quarantine,omitempty"`
+	// Phase 4 additions (INTG-07): multi-agent lineage for forensic audit trail.
+	AgentID       string   `json:"agent_id,omitempty"`
+	ParentAgentID string   `json:"parent_agent_id,omitempty"`
+	AgentDepth    int      `json:"agent_depth,omitempty"`
+	AgentLineage  []string `json:"agent_lineage,omitempty"`
 }
 
 // CatalogProvenance is the audit-record view of a single catalog hit. It mirrors
@@ -69,7 +74,10 @@ type CatalogProvenance struct {
 // when empty, so non-catalog decisions serialize as `"catalog_matches":[]` rather
 // than `"catalog_matches":null`. The new corroboration fields are mapped directly
 // from the Decision.
-func FromDecision(tc policy.ToolCall, d policy.Decision, recordID, timestamp string) AuditRecord {
+//
+// Phase 4 (INTG-07): ac carries agent lineage fields. Zero-value AgentContext{}
+// produces no agent fields in the JSON output (all fields are omitempty).
+func FromDecision(tc policy.ToolCall, d policy.Decision, recordID, timestamp string, ac policy.AgentContext) AuditRecord {
 	// Always allocate the slice (never nil) — CTLG-09 requires the field present
 	// even when no catalog matches occurred (non-catalog policy decisions).
 	matches := make([]CatalogProvenance, 0, len(d.CatalogMatches))
@@ -115,5 +123,10 @@ func FromDecision(tc policy.ToolCall, d policy.Decision, recordID, timestamp str
 		SourcesAgreed:      sourcesAgreed,
 		SourcesDissented:   sourcesDissented,
 		Quarantine:         d.Quarantine,
+		// Phase 4 (INTG-07): agent lineage — omitempty fields are omitted when zero-value.
+		AgentID:       ac.AgentID,
+		ParentAgentID: ac.ParentAgentID,
+		AgentDepth:    ac.Depth,
+		AgentLineage:  ac.Lineage,
 	}
 }

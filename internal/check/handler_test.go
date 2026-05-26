@@ -256,6 +256,108 @@ func TestNormalEvaluationWithinDeadline(t *testing.T) {
 	}
 }
 
+// ─── Phase 4 Task 2: AgentContext + RunAuditRecord tests (INTG-07) ──────────
+
+// TestReadAgentContext verifies that readAgentContext reads BEEKEEPER_AGENT_ID
+// and returns it as AgentContext.AgentID.
+func TestReadAgentContext(t *testing.T) {
+	t.Setenv("BEEKEEPER_AGENT_ID", "agent-test-1")
+	t.Setenv("BEEKEEPER_PARENT_AGENT_ID", "parent-1")
+	// Clear other env vars to avoid interference from test environment
+	t.Setenv("BEEKEEPER_AGENT_DEPTH", "")
+	t.Setenv("BEEKEEPER_AGENT_LINEAGE", "")
+
+	ac := readAgentContext("")
+	if ac.AgentID != "agent-test-1" {
+		t.Errorf("AgentID = %q, want agent-test-1", ac.AgentID)
+	}
+	if ac.ParentAgentID != "parent-1" {
+		t.Errorf("ParentAgentID = %q, want parent-1", ac.ParentAgentID)
+	}
+}
+
+// TestReadAgentContextNegativeDepth verifies that BEEKEEPER_AGENT_DEPTH="-3"
+// results in Depth==0 (normalized).
+func TestReadAgentContextNegativeDepth(t *testing.T) {
+	t.Setenv("BEEKEEPER_AGENT_DEPTH", "-3")
+	t.Setenv("BEEKEEPER_AGENT_ID", "")
+	t.Setenv("BEEKEEPER_PARENT_AGENT_ID", "")
+	t.Setenv("BEEKEEPER_AGENT_LINEAGE", "")
+
+	ac := readAgentContext("")
+	if ac.Depth != 0 {
+		t.Errorf("Depth = %d, want 0 (negative depth normalized)", ac.Depth)
+	}
+}
+
+// TestReadAgentContextLineage verifies that BEEKEEPER_AGENT_LINEAGE="root,mid,child"
+// produces Lineage with 3 items.
+func TestReadAgentContextLineage(t *testing.T) {
+	t.Setenv("BEEKEEPER_AGENT_LINEAGE", "root,mid,child")
+	t.Setenv("BEEKEEPER_AGENT_ID", "")
+	t.Setenv("BEEKEEPER_PARENT_AGENT_ID", "")
+	t.Setenv("BEEKEEPER_AGENT_DEPTH", "")
+
+	ac := readAgentContext("")
+	if len(ac.Lineage) != 3 {
+		t.Errorf("Lineage = %v, want 3 items", ac.Lineage)
+	}
+	if ac.Lineage[0] != "root" || ac.Lineage[1] != "mid" || ac.Lineage[2] != "child" {
+		t.Errorf("Lineage = %v, want [root mid child]", ac.Lineage)
+	}
+}
+
+// TestReadAgentContextEnvOverridesStdin verifies that env var BEEKEEPER_AGENT_ID
+// takes precedence over the stdin agent_id field.
+func TestReadAgentContextEnvOverridesStdin(t *testing.T) {
+	t.Setenv("BEEKEEPER_AGENT_ID", "env-id")
+	t.Setenv("BEEKEEPER_PARENT_AGENT_ID", "")
+	t.Setenv("BEEKEEPER_AGENT_DEPTH", "")
+	t.Setenv("BEEKEEPER_AGENT_LINEAGE", "")
+
+	ac := readAgentContext("stdin-id")
+	if ac.AgentID != "env-id" {
+		t.Errorf("AgentID = %q, want env-id (env var must override stdin)", ac.AgentID)
+	}
+}
+
+// TestRunAuditRecordMalformedStdin verifies that RunAuditRecord returns 0
+// even when stdin is malformed JSON (PostToolUse hooks must not disrupt agent).
+func TestRunAuditRecordMalformedStdin(t *testing.T) {
+	stdin := strings.NewReader("not json")
+	code := RunAuditRecord(stdin, auditPathIn(t))
+	if code != 0 {
+		t.Errorf("RunAuditRecord with malformed stdin = %d, want 0 (must always exit 0)", code)
+	}
+}
+
+// TestRunAuditRecordValid verifies that RunAuditRecord returns 0 and writes
+// a tool_result audit record for a valid PostToolUse JSON input.
+func TestRunAuditRecordValid(t *testing.T) {
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"npm test"},"tool_use_id":"uid-1"}`)
+	code := RunAuditRecord(stdin, auditPath)
+	if code != 0 {
+		t.Errorf("RunAuditRecord returned %d, want 0", code)
+	}
+
+	// Verify the audit record was written.
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("audit log not written: %v", err)
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		t.Fatal("audit log is empty, want one tool_result record")
+	}
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &rec); err != nil {
+		t.Fatalf("audit record not valid JSON: %v", err)
+	}
+	if rec["record_type"] != "tool_result" {
+		t.Errorf("record_type = %v, want tool_result", rec["record_type"])
+	}
+}
+
 // fakeMultiCatalog is a test double for policy.MultiCatalogLookup.
 type fakeMultiCatalog struct {
 	matches []policy.CatalogMatch

@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "hooks": {
+        "preToolUse": [
+            {
+                "command": "some-other-linter",
+                "type": "command",
+                "timeout": 5,
+                "matcher": ".*",
+                "failClosed": false
+            }
+        ]
+    }
+}

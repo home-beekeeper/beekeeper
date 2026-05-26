@@ -22,7 +22,7 @@ func TestFromDecisionAllow(t *testing.T) {
 		Reason: "no catalog match",
 	}
 
-	rec := FromDecision(tc, d, "rec-1", "2026-05-26T12:00:00Z")
+	rec := FromDecision(tc, d, "rec-1", "2026-05-26T12:00:00Z", policy.AgentContext{})
 
 	if rec.RecordType != "policy_decision" {
 		t.Errorf("RecordType = %q, want %q", rec.RecordType, "policy_decision")
@@ -73,7 +73,7 @@ func TestFromDecisionWarnWithMatch(t *testing.T) {
 		},
 	}
 
-	rec := FromDecision(tc, d, "rec-2", "2026-05-26T12:01:00Z")
+	rec := FromDecision(tc, d, "rec-2", "2026-05-26T12:01:00Z", policy.AgentContext{})
 
 	if rec.Decision != "warn" {
 		t.Errorf("Decision = %q, want %q", rec.Decision, "warn")
@@ -115,6 +115,7 @@ func TestAuditRecordJSONKeys(t *testing.T) {
 		policy.Decision{Level: "allow", Reason: "r"},
 		"id",
 		"2026-05-26T12:00:00Z",
+		policy.AgentContext{},
 	)
 
 	data, err := json.Marshal(rec)
@@ -165,11 +166,13 @@ func TestNDJSONWriteAppends(t *testing.T) {
 		policy.ToolCall{AgentName: "a1", ToolName: "t1"},
 		policy.Decision{Level: "allow", Reason: "r1"},
 		"id-1", "2026-05-26T12:00:00Z",
+		policy.AgentContext{},
 	)
 	rec2 := FromDecision(
 		policy.ToolCall{AgentName: "a2", ToolName: "t2"},
 		policy.Decision{Level: "warn", Reason: "r2"},
 		"id-2", "2026-05-26T12:01:00Z",
+		policy.AgentContext{},
 	)
 
 	if err := w.Write(rec1); err != nil {

@@ -97,8 +97,21 @@ type CorroborationThresholds struct {
 // warn at 1 signed source, block at 2, quarantine at 3. No I/O.
 func DefaultCorroborationThresholds() CorroborationThresholds {
 	return CorroborationThresholds{
-		WarnAt:      1,
-		BlockAt:     2,
+		WarnAt:       1,
+		BlockAt:      2,
 		QuarantineAt: 3,
 	}
+}
+
+// AgentContext carries the multi-agent lineage for a single tool-call evaluation.
+// It is a pure value struct with no methods, no I/O, and no side effects. The
+// I/O tier (internal/check/handler.go) constructs it from env vars and Claude Code
+// hook stdin; the policy engine (internal/policy/engine.go) receives it by value.
+//
+// Phase 4 additions (INTG-07): subagent depth enforcement and audit lineage.
+type AgentContext struct {
+	AgentID       string   // current agent session ID (empty if root or unknown)
+	ParentAgentID string   // parent agent session ID (empty if root)
+	Depth         int      // nesting depth: 0 = root agent, 1 = direct child, etc.
+	Lineage       []string // ordered parent IDs from root to immediate parent
 }

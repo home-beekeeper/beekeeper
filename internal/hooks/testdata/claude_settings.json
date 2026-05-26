@@ -1,0 +1,8 @@
+// This is a JSONC file — comments are preserved in source but stripped on write.
+// Beekeeper test fixture: existing Claude Code settings without a hooks key.
+{
+    // Editor theme preference
+    "theme": "dark",
+    "fontSize": 14,
+    "extensions.autoUpdate": false
+}

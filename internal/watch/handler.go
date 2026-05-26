@@ -129,7 +129,7 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 			"version":   version,
 		},
 	}
-	catalogDecision := policy.Evaluate(tc, multiIdx, policy.DefaultCorroborationThresholds())
+	catalogDecision := policy.Evaluate(tc, multiIdx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 
 	// 7. Release-age evaluation.
 	now := h.Now()
@@ -155,7 +155,7 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 		reason := effectiveDecision.Reason
 
 		// Build the audit record.
-		rec := audit.FromDecision(tc, effectiveDecision, generateRecordID(), time.Now().UTC().Format(time.RFC3339))
+		rec := audit.FromDecision(tc, effectiveDecision, generateRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 		rec.RecordType = "sentry_alert"
 		// Ensure EDXT-03 is in rule IDs.
 		if !containsRuleID(rec.RuleIDs, "EDXT-03") {
@@ -209,7 +209,7 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 		Reason:  "no catalog match",
 		RuleIDs: []string{"EDXT-02"},
 	}
-	rec := audit.FromDecision(tc, allowDecision, generateRecordID(), time.Now().UTC().Format(time.RFC3339))
+	rec := audit.FromDecision(tc, allowDecision, generateRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 	if w, err := audit.NewWriter(h.AuditPath); err != nil {
 		log.Printf("beekeeper watch: audit writer unavailable: %v", err)
 	} else {

@@ -1,6 +1,9 @@
 package policy
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Rule ID constants for catalog-match policy rules.
 const (
@@ -8,6 +11,12 @@ const (
 	ruleOSVCatalogMatch       = "osv-catalog-match"
 	ruleSocketCatalogMatch    = "socket-catalog-match"
 )
+
+// maxAgentDepth is the maximum allowed agent nesting depth. A subagent at
+// depth > maxAgentDepth is immediately blocked with rule INTG-07, before any
+// corroboration logic runs. This enforces that arbitrarily deep agent trees
+// cannot escape parent policy permissions (INTG-07).
+const maxAgentDepth = 10
 
 // editorInstallPatterns are the lowercase CLI substrings that indicate an
 // agent-initiated editor-extension install. Trailing space is intentional so
@@ -38,9 +47,9 @@ var installPrefixes = []struct {
 }
 
 // Evaluate is the pure policy entry point. Given a tool call, a MultiCatalogLookup
-// (which returns matches from all configured catalog sources), and corroboration
-// thresholds, it returns a Decision without any I/O, goroutines, globals mutation,
-// or wall-clock access.
+// (which returns matches from all configured catalog sources), corroboration
+// thresholds, and an AgentContext, it returns a Decision without any I/O,
+// goroutines, globals mutation, or wall-clock access.
 //
 // Phase 2 corroboration semantics (PLCY-01):
 //   - 1 signed source  → warn  (Allow true)
@@ -48,12 +57,27 @@ var installPrefixes = []struct {
 //   - 3 signed sources → block + Quarantine true
 //   - unsigned sources → warn-only (never block alone; require ≥1 signed)
 //
-// NOTE: the internal/check call site (plan 08) is the consumer of this new
-// signature. Until Plan 08 rewires handler.go, go build ./... will report a
-// type mismatch at the call site in internal/check/handler.go. This is an
-// expected transient break — go build ./internal/policy/... and
-// go test ./internal/policy/... both pass.
-func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds) Decision {
+// Phase 4 additions (INTG-07):
+//   - Negative ac.Depth is normalized to 0 (root) before any check.
+//   - ac.Depth > maxAgentDepth → immediate block with rule INTG-07, before
+//     any corroboration logic. This is the first check in Evaluate.
+func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds, ac AgentContext) Decision {
+	// INTG-07: normalize negative depth to 0 (root), then enforce max depth.
+	if ac.Depth < 0 {
+		ac.Depth = 0
+	}
+	if ac.Depth > maxAgentDepth {
+		return Decision{
+			Allow:              false,
+			Level:              "block",
+			Reason:             fmt.Sprintf("agent depth %d exceeds maximum %d", ac.Depth, maxAgentDepth),
+			RuleIDs:            []string{"INTG-07"},
+			CorroborationCount: 0,
+			SourcesAgreed:      []string{},
+			SourcesDissented:   []string{},
+		}
+	}
+
 	ecosystem, pkg, version, ok := extract(tc.ToolInput)
 	if !ok {
 		return Decision{
@@ -81,7 +105,7 @@ func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds) De
 							"package":   id,
 						},
 					}
-					d := Evaluate(sub, idx, t)
+					d := Evaluate(sub, idx, t, ac)
 					if levelRank[d.Level] > levelRank[worst.Level] {
 						worst = d
 					}
