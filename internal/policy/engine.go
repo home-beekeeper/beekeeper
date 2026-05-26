@@ -44,7 +44,7 @@ var installPrefixes = []struct {
 // expected transient break — go build ./internal/policy/... and
 // go test ./internal/policy/... both pass.
 func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds) Decision {
-	ecosystem, pkg, _, ok := extract(tc.ToolInput)
+	ecosystem, pkg, version, ok := extract(tc.ToolInput)
 	if !ok {
 		return Decision{
 			Allow:  true,
@@ -53,7 +53,17 @@ func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds) De
 		}
 	}
 
-	matches := idx.LookupAll(ecosystem, pkg)
+	allMatches := idx.LookupAll(ecosystem, pkg)
+	// Filter matches by version: if the extracted version is non-empty and the
+	// match carries version information, only include matches where the version
+	// is listed. Matches with no version constraint apply to all versions.
+	// This preserves Phase 1 version-matching semantics in the Phase 2 engine.
+	matches := make([]CatalogMatch, 0, len(allMatches))
+	for _, m := range allMatches {
+		if m.Version == "" || version == "" || m.Version == version {
+			matches = append(matches, m)
+		}
+	}
 	if len(matches) == 0 {
 		return Decision{
 			Allow:  true,

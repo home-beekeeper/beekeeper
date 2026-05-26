@@ -38,25 +38,27 @@ const (
 	exitBlock = 1
 )
 
-// catalogOpener opens a catalog index by path. The default wraps
-// catalog.OpenIndex; tests substitute a fake to exercise the fail-closed panic
-// path without depending on a real index file. The returned value satisfies
-// catalog.Indexer; if it also implements io.Closer the handler closes it.
-//
-// Note: this previously used policy.CatalogLookup, which was removed in Plan 05
-// to break the import cycle between internal/catalog (adapter → policy.CatalogMatch)
-// and internal/policy (CatalogLookup → catalog.Entry). catalog.Indexer is the
-// equivalent interface defined in the catalog package. Plan 08 will update this
-// to use policy.MultiCatalogLookup when the handler is rewired for corroboration.
-type catalogOpener func(path string) (catalog.Indexer, error)
+// catalogIndex combines io.Closer with policy.MultiCatalogLookup so that the
+// hook handler can both evaluate policy decisions and release the mmap resource.
+// Phase 2 (Plan 08) will replace this with the full multi-source aggregator.
+type catalogIndex interface {
+	io.Closer
+	policy.MultiCatalogLookup
+}
 
-func defaultOpener(path string) (catalog.Indexer, error) {
+// catalogOpener opens a catalog index by path. The default wraps
+// catalog.OpenIndex inside a bumblebeeAdapter; tests substitute a fake to
+// exercise the fail-closed panic path without depending on a real index file.
+type catalogOpener func(path string) (catalogIndex, error)
+
+func defaultOpener(path string) (catalogIndex, error) {
 	idx, err := catalog.OpenIndex(path)
 	if err != nil {
 		return nil, err
 	}
-	// *catalog.Index satisfies catalog.Indexer and io.Closer directly.
-	return idx, nil
+	// Wrap *catalog.Index in bumblebeeAdapter so it satisfies catalogIndex.
+	// Plan 08 will replace bumblebeeAdapter with the multi-source aggregator.
+	return &bumblebeeAdapter{idx: idx}, nil
 }
 
 // Result is the outcome of a single check: the policy Decision and the process
@@ -136,9 +138,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		fmt.Fprintf(os.Stderr, "beekeeper check: catalog index unavailable: %v\n", err)
 		return finalize(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath)
 	}
-	if c, ok := idx.(io.Closer); ok {
-		defer c.Close()
-	}
+	defer idx.Close()
 
 	// Re-check the deadline before the pure evaluation.
 	if ctx.Err() != nil {
@@ -146,7 +146,10 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	}
 
 	// Pure, synchronous policy evaluation (no I/O, no goroutines).
-	decision := policy.Evaluate(toolCall, idx)
+	// idx implements policy.MultiCatalogLookup via bumblebeeAdapter.
+	// Plan 08 (Wave 3) will replace bumblebeeAdapter with the full multi-source
+	// aggregator once OSV, Socket, and Bumblebee adapters are wired together.
+	decision := policy.Evaluate(toolCall, idx, policy.DefaultCorroborationThresholds())
 
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
