@@ -5,6 +5,10 @@
 // a decision (crash, timeout, oversized input, missing catalog index). The full
 // layered system→user→project→env→flag merge (CODE-05) lands in Phase 9 and is
 // out of scope here.
+//
+// Phase 2 addition: Socket API token (socket.api_token) for the Socket PURL
+// catalog source. All other Phase 2 catalog source config is wired in Plan 08.
+// Full layered config remains Phase 9.
 package config
 
 import (
@@ -23,6 +27,15 @@ const (
 	FailModeWarn   = "warn"
 )
 
+// SocketConfig holds optional Socket.dev API credentials.
+//
+// If APIToken is empty, the Socket PURL catalog source is disabled gracefully —
+// this is not an error. Users must register at socket.dev and configure the
+// token to enable the third corroboration source (CTLG-03).
+type SocketConfig struct {
+	APIToken string `json:"api_token"`
+}
+
 // Config is the user-level Beekeeper configuration.
 type Config struct {
 	// FailMode controls behavior when the hook handler cannot produce a real
@@ -33,6 +46,16 @@ type Config struct {
 	//   "warn"             — failures ALLOW but are surfaced as a warning.
 	// Empty is treated as "closed".
 	FailMode string `json:"fail_mode"`
+
+	// Socket holds optional Socket.dev API credentials (Phase 2).
+	// Absent or empty api_token disables the Socket catalog source gracefully.
+	Socket SocketConfig `json:"socket"`
+}
+
+// SocketAPIToken returns the Socket API token, or "" if not configured.
+// An empty token disables the Socket PURL source without error (CTLG-03).
+func (c Config) SocketAPIToken() string {
+	return c.Socket.APIToken
 }
 
 // Load reads the config at path.
