@@ -47,6 +47,9 @@ func newGatewayHandler(cfg Config, token string, idx policy.MultiCatalogLookup) 
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(upstream)
 			pr.SetXForwarded()
+			// Strip the Beekeeper gateway token — the upstream MCP server must
+			// never receive it (CR-02: applies to all paths including allow/passthrough).
+			pr.Out.Header.Del("Authorization")
 		},
 	}
 

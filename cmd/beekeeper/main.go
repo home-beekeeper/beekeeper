@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -212,8 +214,16 @@ func newInitCmd() *cobra.Command {
 // evaluates it against the mmap catalog index under hard caps, writes an audit
 // record, and exits 0 (allow) or non-zero (block) — failing CLOSED on any
 // crash, timeout, oversized input, malformed JSON, or missing index.
+//
+// When --tool is provided (shim invocation path), the tool call JSON is
+// constructed from the flag values using json.Marshal (injection-safe) and
+// passed as stdin to RunCheck. This avoids shell-level JSON construction and
+// the injection risks of embedding $* in heredoc strings (CR-03, CR-04).
 func newCheckCmd() *cobra.Command {
-	return &cobra.Command{
+	var toolName string
+	var toolArgs []string
+
+	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Evaluate a tool call read from stdin (allow=0, block!=0)",
 		Args:  cobra.NoArgs,
@@ -239,11 +249,34 @@ func newCheckCmd() *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			result := check.RunCheck(cmd.Context(), os.Stdin, cfg, indexPath, auditPath, catalogDir)
+			// Shim invocation: build ToolCall JSON from flags using json.Marshal.
+			// This is injection-safe — no shell string embedding of user arguments.
+			var stdin io.Reader = os.Stdin
+			if toolName != "" {
+				tc := map[string]any{
+					"tool_name":  "execute",
+					"agent_name": "shim",
+					"tool_input": map[string]any{
+						"command": toolName,
+						"args":    toolArgs,
+					},
+				}
+				data, merr := json.Marshal(tc)
+				if merr != nil {
+					os.Exit(1)
+					return nil
+				}
+				stdin = strings.NewReader(string(data))
+			}
+
+			result := check.RunCheck(cmd.Context(), stdin, cfg, indexPath, auditPath, catalogDir)
 			os.Exit(result.ExitCode)
 			return nil // unreachable; os.Exit above is the real return path
 		},
 	}
+	cmd.Flags().StringVar(&toolName, "tool", "", "Tool name for shim invocations (builds ToolCall JSON from flags)")
+	cmd.Flags().StringArrayVar(&toolArgs, "args", nil, "Arguments for shim invocations (used with --tool)")
+	return cmd
 }
 
 // newCatalogsCmd groups catalog-management subcommands.
