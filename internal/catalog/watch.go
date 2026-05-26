@@ -238,21 +238,26 @@ func Watch(ctx context.Context, cfg WatchConfig, onDelta func(CatalogDelta, Sani
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			delta, newState, sanityResult, err := computeDelta(ctx, cfg, st)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "beekeeper watch: poll error: %v\n", err)
-				continue // degraded mode — do not exit (T-02-07-02)
-			}
-			st = newState
+			delta, newState, sanityResult, saveErr := computeDelta(ctx, cfg, st)
 
-			// Fire the callback when there is a meaningful event: a content
-			// change OR a sanity threshold breach (even if no hash change, a
-			// sanity breach on the same hash means we just crossed the threshold
-			// this tick and the caller needs to know).
+			// Always update the in-memory state so degraded flags persist across
+			// ticks even when the disk write (SaveState) failed (CR-06).
+			// newState.Sources == nil only when computeDelta failed before building
+			// any state (snapshot error), in which case we keep the prior st.
+			if newState.Sources != nil {
+				st = newState
+			}
+
+			// Fire the callback for any meaningful event regardless of save error
+			// so a valid delta is never silently swallowed (WR-06).
 			if delta.HasChanges() || sanityResult.Alert || sanityResult.Block {
 				if onDelta != nil {
 					onDelta(delta, sanityResult)
 				}
+			}
+
+			if saveErr != nil {
+				fmt.Fprintf(os.Stderr, "beekeeper watch: state save error: %v\n", saveErr)
 			}
 		}
 	}
