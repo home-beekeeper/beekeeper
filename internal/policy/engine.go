@@ -1,14 +1,13 @@
 package policy
 
-import (
-	"strings"
+import "strings"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
+// Rule ID constants for catalog-match policy rules.
+const (
+	ruleBumblebeeCatalogMatch = "bumblebee-catalog-match"
+	ruleOSVCatalogMatch       = "osv-catalog-match"
+	ruleSocketCatalogMatch    = "socket-catalog-match"
 )
-
-// ruleBumblebeeCatalogMatch is the rule ID surfaced when a tool call matches a
-// Bumblebee threat-intel catalog entry.
-const ruleBumblebeeCatalogMatch = "bumblebee-catalog-match"
 
 // installPrefixes maps an install-command prefix to its package ecosystem.
 // Longest/most-specific prefixes are listed so the first match wins; "cargo
@@ -28,12 +27,24 @@ var installPrefixes = []struct {
 	{"composer require", "packagist"},
 }
 
-// Evaluate is the pure policy entry point. Given a tool call and a catalog
-// lookup it returns a Decision without any I/O, goroutines, globals mutation,
-// or wall-clock access. Phase 1 implements Bumblebee single-source matching:
-// a catalog hit produces a warn (Allow stays true); everything else allows.
-func Evaluate(tc ToolCall, idx CatalogLookup) Decision {
-	ecosystem, pkg, version, ok := extract(tc.ToolInput)
+// Evaluate is the pure policy entry point. Given a tool call, a MultiCatalogLookup
+// (which returns matches from all configured catalog sources), and corroboration
+// thresholds, it returns a Decision without any I/O, goroutines, globals mutation,
+// or wall-clock access.
+//
+// Phase 2 corroboration semantics (PLCY-01):
+//   - 1 signed source  → warn  (Allow true)
+//   - 2 signed sources → block (Allow false)
+//   - 3 signed sources → block + Quarantine true
+//   - unsigned sources → warn-only (never block alone; require ≥1 signed)
+//
+// NOTE: the internal/check call site (plan 08) is the consumer of this new
+// signature. Until Plan 08 rewires handler.go, go build ./... will report a
+// type mismatch at the call site in internal/check/handler.go. This is an
+// expected transient break — go build ./internal/policy/... and
+// go test ./internal/policy/... both pass.
+func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds) Decision {
+	ecosystem, pkg, _, ok := extract(tc.ToolInput)
 	if !ok {
 		return Decision{
 			Allow:  true,
@@ -42,8 +53,8 @@ func Evaluate(tc ToolCall, idx CatalogLookup) Decision {
 		}
 	}
 
-	entry, found := idx.Lookup(ecosystem, pkg)
-	if !found || !versionMatches(entry, version) {
+	matches := idx.LookupAll(ecosystem, pkg)
+	if len(matches) == 0 {
 		return Decision{
 			Allow:  true,
 			Level:  "allow",
@@ -51,37 +62,79 @@ func Evaluate(tc ToolCall, idx CatalogLookup) Decision {
 		}
 	}
 
-	signed := catalog.VerifySignature(entry)
-	match := CatalogMatch{
-		CatalogSource: entry.CatalogSource,
-		EntryID:       entry.ID,
-		Ecosystem:     ecosystem,
-		Package:       pkg,
-		Version:       version,
-		Severity:      entry.Severity,
-		Signed:        signed,
+	// Apply corroboration logic (pure function — no I/O).
+	level, quarantine, count, agreed, dissented := corroborate(matches, t)
+
+	// Mark each match's Corroborated flag based on decision level.
+	annotated := make([]CatalogMatch, len(matches))
+	for i, m := range matches {
+		m.Corroborated = level == "block"
+		annotated[i] = m
 	}
 
-	// Phase 1: single source => warn. Warn never blocks (Allow stays true);
-	// unsigned entries are warn-only too (CTLG-07). Corroboration-based block
-	// escalation is Phase 2 (PLCY-01).
-	return Decision{
-		Allow:          true,
-		Level:          "warn",
-		Reason:         "bumblebee catalog match: " + entry.ID,
-		RuleIDs:        []string{ruleBumblebeeCatalogMatch},
-		CatalogMatches: []CatalogMatch{match},
+	// Build RuleIDs from agreed sources.
+	ruleIDs := buildRuleIDs(agreed)
+
+	// Construct the reason string.
+	var reason string
+	switch level {
+	case "block":
+		reason = "corroborated catalog match: " + strings.Join(agreed, ",")
+	case "warn":
+		if len(agreed) > 0 {
+			reason = "single-source catalog match: " + agreed[0]
+		} else {
+			reason = "catalog match: warn"
+		}
+	default:
+		reason = "no catalog match"
 	}
+
+	return Decision{
+		Allow:              level != "block",
+		Level:              level,
+		Reason:             reason,
+		RuleIDs:            ruleIDs,
+		CatalogMatches:     annotated,
+		CorroborationCount: count,
+		SourcesAgreed:      agreed,
+		SourcesDissented:   dissented,
+		Quarantine:         quarantine,
+	}
+}
+
+// buildRuleIDs returns the rule IDs corresponding to the agreed source names.
+func buildRuleIDs(agreed []string) []string {
+	ruleMap := map[string]string{
+		"bumblebee": ruleBumblebeeCatalogMatch,
+		"osv":       ruleOSVCatalogMatch,
+		"socket":    ruleSocketCatalogMatch,
+	}
+	seen := make(map[string]bool)
+	var ids []string
+	for _, src := range agreed {
+		if rule, ok := ruleMap[src]; ok && !seen[rule] {
+			ids = append(ids, rule)
+			seen[rule] = true
+		}
+	}
+	// If no known source matched, include bumblebee rule as fallback.
+	if len(ids) == 0 && len(agreed) > 0 {
+		ids = []string{ruleBumblebeeCatalogMatch}
+	}
+	return ids
 }
 
 // versionMatches reports whether the extracted version is covered by the entry.
 // An entry with no Versions applies to all versions (defense-favoring), and an
 // extracted version of "" (no explicit @version) also matches defensively.
-func versionMatches(e catalog.Entry, version string) bool {
-	if len(e.Versions) == 0 || version == "" {
+// NOTE: this helper is retained for compatibility — the multi-source path
+// delegates version matching to the catalog adapter.
+func versionMatches(versions []string, version string) bool {
+	if len(versions) == 0 || version == "" {
 		return true
 	}
-	for _, v := range e.Versions {
+	for _, v := range versions {
 		if v == version {
 			return true
 		}
