@@ -158,6 +158,13 @@ func writeOSVCache(cacheDir, ecosystem, pkg, version string, entries []Entry) er
 	return writeFileAtomic(path, data)
 }
 
+// queryOSVWithURL is the testable core of QueryOSV. It accepts a custom URL
+// so tests can point at an httptest.Server instead of the real OSV endpoint.
+// Production code calls QueryOSV which hardcodes osvQueryURL.
+func queryOSVWithURL(ctx context.Context, client *http.Client, cacheDir, ecosystem, pkg, version, url string) ([]Entry, error) {
+	return queryOSV(ctx, client, cacheDir, ecosystem, pkg, version, url)
+}
+
 // QueryOSV queries the OSV REST API for vulnerabilities affecting (ecosystem,
 // pkg, version) and returns matching catalog entries. The flow is:
 //
@@ -171,6 +178,13 @@ func writeOSVCache(cacheDir, ecosystem, pkg, version string, entries []Entry) er
 // The caller-supplied ctx carries the hook handler's deadline (5s typical).
 // Cache-first avoids network on the common hot path (T-02-04-03).
 func QueryOSV(ctx context.Context, client *http.Client, cacheDir, ecosystem, pkg, version string) ([]Entry, error) {
+	return queryOSV(ctx, client, cacheDir, ecosystem, pkg, version, osvQueryURL)
+}
+
+// queryOSV is the internal implementation of QueryOSV with an injectable URL.
+// This separation allows tests to point at an httptest.Server without exporting
+// a URL parameter on the public API.
+func queryOSV(ctx context.Context, client *http.Client, cacheDir, ecosystem, pkg, version, queryURL string) ([]Entry, error) {
 	osvEco, ok := osvEcosystem(ecosystem)
 	if !ok {
 		// OSV does not cover this ecosystem — not an error.
@@ -194,7 +208,7 @@ func QueryOSV(ctx context.Context, client *http.Client, cacheDir, ecosystem, pkg
 		return nil, fmt.Errorf("osv query marshal: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, osvQueryURL, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, queryURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("osv new request: %w", err)
 	}
@@ -267,6 +281,9 @@ type OSVAdapter struct {
 	// Ctx is the context for HTTP requests. Callers should supply the hook
 	// handler's request context so the 5s deadline propagates to OSV queries.
 	Ctx context.Context
+	// baseURL overrides the OSV query URL. Zero value uses osvQueryURL.
+	// This field is exported only for tests; production code leaves it empty.
+	baseURL string
 }
 
 // LookupAll queries OSV for all known vulnerabilities affecting (ecosystem,
@@ -277,8 +294,12 @@ type OSVAdapter struct {
 //   - CatalogVersion: "osv-api"
 //
 // LookupAll satisfies the policy.MultiCatalogLookup interface.
-func (a OSVAdapter) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
-	entries, err := QueryOSV(a.Ctx, a.Client, a.CacheDir, ecosystem, pkg, "")
+func (a *OSVAdapter) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
+	url := osvQueryURL
+	if a.baseURL != "" {
+		url = a.baseURL
+	}
+	entries, err := queryOSV(a.Ctx, a.Client, a.CacheDir, ecosystem, pkg, "", url)
 	if err != nil {
 		// Degrade to no-match — caller (aggregator) logs the degradation.
 		return nil

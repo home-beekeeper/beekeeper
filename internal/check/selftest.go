@@ -137,15 +137,34 @@ func (a *bumblebeeAdapter) LookupAll(ecosystem, pkg string) []policy.CatalogMatc
 	if !ok {
 		return nil
 	}
-	return []policy.CatalogMatch{{
-		CatalogSource:  "bumblebee",
-		EntryID:        e.ID,
-		Ecosystem:      e.Ecosystem,
-		Package:        e.Package,
-		Severity:       e.Severity,
-		Signed:         e.CatalogSignature != "",
-		CatalogVersion: e.CatalogSource,
-	}}
+	// If the entry has a versions list, return one CatalogMatch per version so
+	// the engine can filter by the tool call version. If no versions are listed,
+	// return a single unversioned match that applies to all versions.
+	if len(e.Versions) == 0 {
+		return []policy.CatalogMatch{{
+			CatalogSource:  "bumblebee",
+			EntryID:        e.ID,
+			Ecosystem:      e.Ecosystem,
+			Package:        e.Package,
+			Severity:       e.Severity,
+			Signed:         e.CatalogSignature != "",
+			CatalogVersion: e.CatalogSource,
+		}}
+	}
+	matches := make([]policy.CatalogMatch, 0, len(e.Versions))
+	for _, v := range e.Versions {
+		matches = append(matches, policy.CatalogMatch{
+			CatalogSource:  "bumblebee",
+			EntryID:        e.ID,
+			Ecosystem:      e.Ecosystem,
+			Package:        e.Package,
+			Version:        v, // per-version match for engine-level filtering
+			Severity:       e.Severity,
+			Signed:         e.CatalogSignature != "",
+			CatalogVersion: e.CatalogSource,
+		})
+	}
+	return matches
 }
 
 // Close releases the underlying mmap index. Implements io.Closer for
