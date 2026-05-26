@@ -59,6 +59,12 @@ type fixture struct {
 	// this field are unaffected. When non-empty, at least one element of
 	// RuleIDs must equal ExpectRuleID.
 	ExpectRuleID string `json:"expect_rule_id,omitempty"`
+	// Phase 2 corroboration provenance assertions. CheckProvenance must be true
+	// to enable the count and sources checks; false (the default) skips them so
+	// existing fixtures without these fields are unaffected.
+	CheckProvenance          bool     `json:"check_provenance,omitempty"`
+	ExpectCorroborationCount int      `json:"expect_corroboration_count,omitempty"`
+	ExpectSourcesAgreed      []string `json:"expect_sources_agreed,omitempty"`
 }
 
 // RunSelftest evaluates the embedded adversarial corpus against an in-memory
@@ -104,8 +110,9 @@ func RunSelftest() (passed, failed int, err error) {
 			passed++
 		} else {
 			failed++
-			fmt.Printf("selftest FAIL [%s]: got level=%q allow=%v matches=%d rule_ids=%v, want level=%q allow=%v hit=%v rule_id=%q\n",
-				f.Name, d.Level, d.Allow, len(d.CatalogMatches), d.RuleIDs, f.ExpectLevel, f.ExpectAllow, f.ExpectCatalogHit, f.ExpectRuleID)
+			fmt.Printf("selftest FAIL [%s]: got level=%q allow=%v matches=%d rule_ids=%v corr=%d agreed=%v, want level=%q allow=%v hit=%v rule_id=%q corr=%d agreed=%v\n",
+				f.Name, d.Level, d.Allow, len(d.CatalogMatches), d.RuleIDs, d.CorroborationCount, d.SourcesAgreed,
+				f.ExpectLevel, f.ExpectAllow, f.ExpectCatalogHit, f.ExpectRuleID, f.ExpectCorroborationCount, f.ExpectSourcesAgreed)
 		}
 	}
 
@@ -211,6 +218,26 @@ func fixtureMatches(f fixture, d policy.Decision) bool {
 		}
 		if !found {
 			return false
+		}
+	}
+	// Phase 2 corroboration provenance: check count and agreed sources only when
+	// the fixture explicitly opts in via CheckProvenance. This keeps existing
+	// fixtures that don't set these fields unaffected.
+	if f.CheckProvenance {
+		if d.CorroborationCount != f.ExpectCorroborationCount {
+			return false
+		}
+		if len(d.SourcesAgreed) != len(f.ExpectSourcesAgreed) {
+			return false
+		}
+		want := make(map[string]bool, len(f.ExpectSourcesAgreed))
+		for _, s := range f.ExpectSourcesAgreed {
+			want[s] = true
+		}
+		for _, s := range d.SourcesAgreed {
+			if !want[s] {
+				return false
+			}
 		}
 	}
 	return true

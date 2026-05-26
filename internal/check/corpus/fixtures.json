@@ -82,5 +82,39 @@
     "expect_level": "allow",
     "expect_allow": true,
     "expect_catalog_match": false
+  },
+  {
+    "name": "corroboration provenance: single unsigned bumblebee source yields corr_count=0 and agreed=[bumblebee]",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Install",
+      "tool_input": {
+        "ecosystem": "editor-extension",
+        "package": "nrwl.angular-console",
+        "version": "18.95.0"
+      }
+    },
+    "expect_level": "warn",
+    "expect_allow": true,
+    "expect_catalog_match": true,
+    "check_provenance": true,
+    "expect_corroboration_count": 0,
+    "expect_sources_agreed": ["bumblebee"]
+  },
+  {
+    "name": "corroboration provenance: allow decision yields empty provenance",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "npm install clean-selftest-pkg-no-catalog-match@1.0.0"
+      }
+    },
+    "expect_level": "allow",
+    "expect_allow": true,
+    "expect_catalog_match": false,
+    "check_provenance": true,
+    "expect_corroboration_count": 0,
+    "expect_sources_agreed": []
   }
 ]

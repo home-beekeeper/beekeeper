@@ -40,3 +40,25 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code go.mod go.sum
+
+  fuzz:
+    # Phase 2 release gate (CLAUDE.md §Self-Defense Non-Negotiables): fuzz the
+    # policy engine (FuzzEvaluate) and catalog parser (FuzzParseCatalogFile)
+    # with bounded fuzztime. A discovered crash fails the pipeline before release.
+    # Phase 4 adds the MCP message parser fuzz gate.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Fuzz policy engine (FuzzEvaluate)
+        run: go test -tags fuzz -run FuzzEvaluate -fuzz FuzzEvaluate -fuzztime 30s ./internal/policy/
+
+      - name: Fuzz catalog parser (FuzzParseCatalogFile)
+        run: go test -tags fuzz -run FuzzParseCatalogFile -fuzz FuzzParseCatalogFile -fuzztime 30s ./internal/catalog/
