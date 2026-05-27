@@ -194,7 +194,9 @@ func parseEvent(raw []byte, kind sentry.EventKind) sentry.SentryEvent {
 
 // StartProcessTreeBuilder consumes SentryEvent values from the events channel
 // and maintains a live in-memory process tree. Every 5 seconds it publishes a
-// shallow snapshot onto the tree channel, replacing any unconsumed snapshot.
+// shallow snapshot onto the tree channel. The tree channel must be buffered
+// (capacity ≥ 1); if it is full the new snapshot is dropped rather than
+// blocking.
 // Entries older than 10 minutes are GC'd to bound memory usage.
 func StartProcessTreeBuilder(ctx context.Context, events <-chan sentry.SentryEvent, tree chan<- map[uint32]sentry.ProcessNode) {
 	local := make(map[uint32]sentry.ProcessNode)
@@ -234,15 +236,11 @@ func StartProcessTreeBuilder(ctx context.Context, events <-chan sentry.SentryEve
 			for k, v := range local {
 				snapshot[k] = v
 			}
-			// Non-blocking send; if channel is full, replace the stale snapshot.
+			// Non-blocking send; drop the snapshot if the consumer is slow.
 			select {
 			case tree <- snapshot:
 			default:
-				select {
-				case <-tree:
-				default:
-				}
-				tree <- snapshot
+				// Consumer has not drained the previous snapshot; discard this one.
 			}
 		}
 	}
