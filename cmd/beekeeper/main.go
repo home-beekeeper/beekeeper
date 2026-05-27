@@ -63,6 +63,8 @@ func newRootCmd() *cobra.Command {
 		newGatewayCmd(),
 		newShimCmd(),
 		newAuditRecordCmd(),
+		newProtectCmd(),
+		newSentryCmd(),
 	)
 
 	return root
@@ -1052,6 +1054,87 @@ func newShimCmd() *cobra.Command {
 	})
 
 	return shimCmd
+}
+
+// newProtectCmd groups the Sentry daemon lifecycle subcommands.
+// On non-Linux platforms each subcommand prints a not-supported message (see protect_other.go).
+func newProtectCmd() *cobra.Command {
+	protect := &cobra.Command{
+		Use:   "protect",
+		Short: "Manage the Beekeeper Sentry daemon (Linux only)",
+	}
+	protect.AddCommand(
+		newProtectInstallCmd(),
+		newProtectUninstallCmd(),
+		newProtectStatusCmd(),
+	)
+	return protect
+}
+
+func newProtectInstallCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "install",
+		Short: "Install and start the Sentry daemon via systemd",
+		Args:  cobra.NoArgs,
+		RunE:  runProtectInstall,
+	}
+}
+
+func newProtectUninstallCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "uninstall",
+		Short: "Stop and remove the Sentry daemon",
+		Args:  cobra.NoArgs,
+		RunE:  runProtectUninstall,
+	}
+}
+
+func newProtectStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show Sentry daemon status",
+		Args:  cobra.NoArgs,
+		RunE:  runProtectStatus,
+	}
+}
+
+// newSentryCmd is the Sentry daemon subcommand. When invoked directly it runs
+// the daemon (this is the ExecStart target in the systemd unit). The rules
+// subcommand group provides live rule management via IPC.
+func newSentryCmd() *cobra.Command {
+	daemon := &cobra.Command{
+		Use:   "sentry",
+		Short: "Sentry daemon (invoked by systemd; Linux only)",
+		Args:  cobra.NoArgs,
+		RunE:  runSentryDaemon,
+	}
+
+	rulesCmd := &cobra.Command{
+		Use:   "rules",
+		Short: "Manage Sentry correlation rules at runtime",
+	}
+	rulesCmd.AddCommand(
+		&cobra.Command{
+			Use:   "list",
+			Short: "List active rules and their enabled state",
+			Args:  cobra.NoArgs,
+			RunE:  runSentryRulesList,
+		},
+		&cobra.Command{
+			Use:   "enable <id>",
+			Short: "Enable a Sentry rule by ID",
+			Args:  cobra.ExactArgs(1),
+			RunE:  runSentryRulesEnable,
+		},
+		&cobra.Command{
+			Use:   "disable <id>",
+			Short: "Disable a Sentry rule by ID",
+			Args:  cobra.ExactArgs(1),
+			RunE:  runSentryRulesDisable,
+		},
+	)
+	daemon.AddCommand(rulesCmd)
+	return daemon
 }
 
 // newAuditRecordCmd is the PostToolUse hook handler. It reads PostToolUse JSON

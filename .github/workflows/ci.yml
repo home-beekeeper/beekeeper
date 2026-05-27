@@ -62,3 +62,54 @@ jobs:
 
       - name: Fuzz catalog parser (FuzzParseCatalogFile)
         run: go test -tags fuzz -run FuzzParseCatalogFile -fuzz FuzzParseCatalogFile -fuzztime 30s ./internal/catalog/
+
+  fuzz-ipc:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Fuzz IPC message parser (FuzzIPCMessage)
+        run: go test -tags fuzz -run FuzzIPCMessage -fuzz FuzzIPCMessage -fuzztime 30s ./internal/ipc/...
+
+  test-sentry-kernel-5-4:
+    runs-on: ubuntu-22.04
+    needs: []
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: cilium/little-vm-helper@v0.0.21
+        with:
+          image-version: "5.4-main"
+          test-name: "sentry-tier2-degradation"
+          cmd: |
+            go test -v -tags linux -count=1 ./internal/sentry/... ./internal/ipc/... -run TestDegradationTier
+            go test -v -tags linux -count=1 ./internal/sentry/linux/... -run TestProbeTier
+
+  test-sentry-kernel-5-15:
+    runs-on: ubuntu-22.04
+    needs: []
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: cilium/little-vm-helper@v0.0.21
+        with:
+          image-version: "5.15-main"
+          test-name: "sentry-tier0-full"
+          cmd: |
+            go test -v -tags linux -count=1 ./internal/sentry/... ./internal/ipc/... -run TestFullTier
+            go test -v -tags linux -count=1 ./internal/sentry/linux/... -run TestProbeTier
+
+  release-gate:
+    runs-on: ubuntu-22.04
+    needs: [test-sentry-kernel-5-4, test-sentry-kernel-5-15, fuzz-ipc]
+    steps:
+      - run: echo "All release gates passed"
