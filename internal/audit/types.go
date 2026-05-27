@@ -41,6 +41,18 @@ type AuditRecord struct {
 	ParentAgentID string   `json:"parent_agent_id,omitempty"`
 	AgentDepth    int      `json:"agent_depth,omitempty"`
 	AgentLineage  []string `json:"agent_lineage,omitempty"`
+	// Phase 5 additions: sentry_alert record type (SLNX-08)
+	SentryRuleID        string   `json:"sentry_rule_id,omitempty"`
+	SentryRuleName      string   `json:"sentry_rule_name,omitempty"`
+	SentrySeverity      string   `json:"sentry_severity,omitempty"`
+	SentryBaselineMode  bool     `json:"sentry_baseline_mode,omitempty"`
+	SentryProcessPID    uint32   `json:"sentry_process_pid,omitempty"`
+	SentryProcessExe    string   `json:"sentry_process_exe,omitempty"`
+	SentryParentChain   []string `json:"sentry_parent_chain,omitempty"`
+	SentryFilesAccessed []string `json:"sentry_files_accessed,omitempty"`
+	SentryNetworkDests  []string `json:"sentry_network_dests,omitempty"`
+	SentryCorrelatedExt string   `json:"sentry_correlated_ext,omitempty"`
+	SentryQuarantineRec bool     `json:"sentry_quarantine_recommended,omitempty"`
 }
 
 // CatalogProvenance is the audit-record view of a single catalog hit. It mirrors
