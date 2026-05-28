@@ -41,6 +41,50 @@ type WatchSettings struct {
 	Directories []string `json:"directories,omitempty"`
 }
 
+// AuditConfig holds Phase 6 audit log configuration (AUDT-03, AUDT-04).
+type AuditConfig struct {
+	// Sinks lists the active output sinks. Valid values: "file" (always active),
+	// "syslog", "otlp", "https". Unknown values are silently ignored.
+	Sinks []string `json:"sinks,omitempty"`
+	// SyslogAddress is the syslog destination in the form "proto:host:port" or
+	// "host:port" (UDP default). Required when "syslog" is in Sinks.
+	SyslogAddress string `json:"syslog_address,omitempty"`
+	// OTLPEndpoint is the OTLP collector HTTP endpoint, e.g.
+	// "https://collector:4318/v1/logs". Required when "otlp" is in Sinks.
+	OTLPEndpoint string `json:"otlp_endpoint,omitempty"`
+	// HTTPSEndpoint is an arbitrary HTTPS POST URL. Required when "https" is in
+	// Sinks.
+	HTTPSEndpoint string `json:"https_endpoint,omitempty"`
+	// RetentionDays is how many days archived log files are kept. Default 30.
+	RetentionDays int `json:"retention_days,omitempty"`
+	// MaxSizeBytes is the rotation threshold in bytes. Default 10 MB.
+	MaxSizeBytes int64 `json:"max_size_bytes,omitempty"`
+}
+
+// LlamaFirewallConfig holds Phase 6 LlamaFirewall sidecar configuration
+// (LLMF-01–06).
+type LlamaFirewallConfig struct {
+	// Enabled controls whether the LlamaFirewall sidecar is started.
+	Enabled bool `json:"enabled"`
+	// SampleRate is the fraction of tool calls forwarded to LlamaFirewall
+	// (0.0–1.0). Default 1.0 (scan all).
+	SampleRate float64 `json:"sample_rate,omitempty"`
+	// FailMode governs sidecar-crash behaviour: "closed" (block), "open"
+	// (allow), or "warn" (allow + surface warning). Default "closed".
+	FailMode string `json:"fail_mode,omitempty"`
+	// CodeShield enables the LlamaFirewall CodeShield scanner. Default true
+	// when LlamaFirewall is enabled.
+	CodeShield bool `json:"codeshield,omitempty"`
+	// AlignmentCheck enables the experimental alignment scanner.
+	AlignmentCheck bool `json:"alignment_check,omitempty"`
+	// CodeShieldAction controls what happens on a CodeShield hit: "warn" or
+	// "block". Default "warn".
+	CodeShieldAction string `json:"codeshield_action,omitempty"`
+	// PythonPath is the path to the Python interpreter used to launch the
+	// sidecar. Default "python3".
+	PythonPath string `json:"python_path,omitempty"`
+}
+
 // Config is the user-level Beekeeper configuration.
 type Config struct {
 	// FailMode controls behavior when the hook handler cannot produce a real
@@ -68,6 +112,12 @@ type Config struct {
 	// This field is forward compatibility for custom redaction rules; the Phase 4
 	// implementation always applies the default patterns.
 	RedactPatterns []string `json:"redact_patterns,omitempty"`
+
+	// Audit holds Phase 6 audit log configuration (rotation, sinks).
+	Audit AuditConfig `json:"audit,omitempty"`
+
+	// LlamaFirewall holds Phase 6 LlamaFirewall sidecar configuration.
+	LlamaFirewall LlamaFirewallConfig `json:"llamafirewall,omitempty"`
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.
@@ -164,4 +214,32 @@ func (c Config) FailClosed() bool {
 // is a Phase 6 audit enhancement.
 func (c Config) GetRedactPatterns() []string {
 	return c.RedactPatterns
+}
+
+// AuditRetentionDays returns the configured retention in days, defaulting to 30.
+func (c Config) AuditRetentionDays() int {
+	if c.Audit.RetentionDays > 0 {
+		return c.Audit.RetentionDays
+	}
+	return 30
+}
+
+// AuditMaxSizeBytes returns the configured max size, defaulting to 10 MB.
+func (c Config) AuditMaxSizeBytes() int64 {
+	if c.Audit.MaxSizeBytes > 0 {
+		return c.Audit.MaxSizeBytes
+	}
+	return 10 * 1024 * 1024
+}
+
+// LlamaFirewallEnabled returns whether the LlamaFirewall sidecar is enabled.
+func (c Config) LlamaFirewallEnabled() bool { return c.LlamaFirewall.Enabled }
+
+// LlamaFirewallSampleRate returns the configured sample rate, defaulting to 1.0
+// (scan all tool calls).
+func (c Config) LlamaFirewallSampleRate() float64 {
+	if c.LlamaFirewall.SampleRate > 0 {
+		return c.LlamaFirewall.SampleRate
+	}
+	return 1.0
 }
