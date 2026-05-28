@@ -186,6 +186,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Integration Surfaces | 0/5 | Not started | - |
 | 5. Linux Sentry | 0/TBD | Not started | - |
 | 6. LlamaFirewall + Audit Sinks | 5/5 | Complete | 2026-05-28 |
-| 7. Cross-Platform Sentry | 0/5 | Planned | - |
+| 7. Cross-Platform Sentry | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | 0/TBD | Not started | - |
 | 9. Policy as Code + Self-Defense Capstone | 0/TBD | Not started | - |

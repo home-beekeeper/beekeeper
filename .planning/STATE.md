@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
 status: planning
-stopped_at: context exhaustion at 77% (2026-05-28)
-last_updated: "2026-05-28T01:05:00.000Z"
-last_activity: "2026-05-28 — Phase 7 plan 04: Windows Sentry daemon + named pipe IPC (SWIN-01, SWIN-05, SWIN-06)"
+stopped_at: ""
+last_updated: "2026-05-28T12:00:00.000Z"
+last_activity: "2026-05-28 — Phase 7 verified: all 5/5 plans complete, 21 Go packages green, 3 platforms build clean"
 progress:
   total_phases: 9
-  completed_phases: 5
-  total_plans: 34
-  completed_plans: 35
-  percent: 56
+  completed_phases: 6
+  total_plans: 39
+  completed_plans: 40
+  percent: 67
 ---
 
 # Project State
@@ -21,13 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 7 — Cross-Platform Sentry (macOS eslogger + Windows ETW + SLSA Level 3)
+**Current focus:** Phase 8 — TUI Dashboard (Bubble Tea v2)
 
 ## Current Position
 
-Phase: 7 of 9 (Cross-Platform Sentry) — In progress
-Plan: 05 of 05 complete
-Status: Wave 4 complete — 07-05 done; Phase 7 all 5/5 plans complete
+Phase: 8 of 9 (TUI Dashboard) — Ready to plan
+Plan: Not started
+Status: Phase 7 verified complete — ready to plan Phase 8 (TUI Dashboard)
+Last activity: 2026-05-28 — Phase 7 verified: all 5/5 plans complete, 21 Go packages green, 3 platforms build clean
+
+Progress: [████████████░] 78%
 Last activity: 2026-05-28 — Phase 7 plan 05: SLSA Level 3 + CycloneDX SBOM + eslogger CI gate (SFDF-05, SMAC-02)
 
 Progress: [██████████░] 67%
@@ -111,25 +114,35 @@ Progress: [██████████░] 67%
 - `notify.Config{Enabled: true}` hardcoded in newWatchCmd (notification preferences deferred to a future phase)
 - `quarantine_restore`/`quarantine_purge` audit RecordTypes differ from standard `policy_decision` schema (acceptable for Phase 3 audit trail)
 
-## Phase 7 In-Progress Summary
+## Phase 7 Completion Summary
 
-### Plans completed (4/5)
+### Plans completed (all 5/5)
 
 | Wave | Plan | Title | Commit | Status |
 |------|------|-------|--------|--------|
-| 1 | 07-01 | macOS eslogger subprocess + event drain | — | ✅ Done |
-| 2 | 07-02 | Windows ETW ingestion layer | aff2833 | ✅ Done |
-| 3 | 07-03 | macOS Sentry daemon + launchd CLI | 61ae8e3 | ✅ Done |
+| 1 | 07-01 | macOS eslogger subprocess + event drain | 08552c4 | ✅ Done |
+| 1 | 07-02 | Windows ETW ingestion layer | 7030ce5 | ✅ Done |
+| 2 | 07-03 | macOS Sentry daemon + launchd CLI | 61ae8e3 | ✅ Done |
 | 3 | 07-04 | Windows Sentry daemon + named pipe IPC | e959585 | ✅ Done |
-| 4 | 07-05 | CI matrix + SLSA Level 3 | d99a31e | ✅ Done |
+| 4 | 07-05 | SLSA Level 3 + CycloneDX SBOM + eslogger CI gate | 1e4d1ec | ✅ Done |
 
-### Key deliverables (07-04)
+### Key deliverables
 
-- `internal/ipc/pipe_windows.go` — go-winio named pipe replaces ErrNotSupported stub
-- `internal/sentry/windows/service.go` — InstallService/UninstallService/QueryService/WaitForPipe under LocalService
-- `internal/sentry/windows/daemon.go` — RunDaemon via svc.Run; ETW correlation engine; ACCESS_DENIED fallback
-- `cmd/beekeeper/protect_windows.go` — Windows CLI with admin guard, SWIN-03, SWIN-04
-- `protect_other.go` — narrowed to `!linux && !darwin && !windows`
+- `internal/sentry/darwin/` — eslogger subprocess drain, parser, launchd plist, daemon (RunDaemon + correlationEngineLoop)
+- `internal/sentry/windows/` — tekert/golang-etw v0.6.2 ingestion, NT Kernel Logger conflict probe, Windows Service install/uninstall, RunDaemon via svc.Run
+- `internal/ipc/pipe_windows.go` — go-winio named pipe IPC replaces ErrNotSupported stub; SDDL DACL restricted to installing-user SID
+- `internal/ipc/peer_linux.go` + `peer_darwin.go` — SO_PEERCRED/LOCAL_PEERCRED platform split (fixed cross-compile bug)
+- `cmd/beekeeper/protect_darwin.go` + `protect_windows.go` — platform CLIs with admin guard; SWIN-03 conflict + SWIN-04 EventsLost surfacing
+- `.goreleaser.yaml` — CycloneDX SBOM via syft added; Phase 1 signs/builds/checksums preserved
+- `.github/workflows/release.yml` — SLSA Level 3 provenance via `slsa-github-generator@v2.1.0` (full semver, locked)
+- `.github/workflows/ci.yml` — `test-eslogger-fields` job on macos-latest; wired into release-gate
+- `internal/sentry/darwin/eslogger_fields_test.go` — live eslogger schema validation; skips locally, blocks release on schema drift
+
+### API deviations discovered
+
+- tekert/golang-etw: `c.EventCallback = func(*etw.Event) error` (not `ProcessEvents`); `c.Start()` non-blocking; `etw.ERROR_ALREADY_EXISTS` not `windows.ERROR_ALREADY_EXISTS`; `e.System.Provider.Guid` is `etw.GUID` type
+- go-winio: import path is `github.com/Microsoft/go-winio` (capital M); v0.6.2
+- Windows elevation: `GetCurrentProcessToken().IsElevated()` (no unsafe.Pointer dance needed)
 
 ## Phase 6 Completion Summary
 
@@ -224,7 +237,7 @@ Earlier decisions from Phase 1 (full log in PROJECT.md):
 - Phase 4: MCP client differences (Claude Code vs Cursor) expose different edge cases; July 2026 spec SDK lag
 - Phase 4: MCP message parser must be fuzz-tested before v0.6.0 as a release gate (not backlog item)
 - Phase 5: eBPF CI matrix needs Ubuntu 20.04 (kernel 5.4) and 22.04 (kernel 5.15) — ubuntu-latest alone is insufficient
-- Phase 7: eslogger field coverage incomplete from documentation — build parser against real eslogger output on macos-latest CI only
+- ~~Phase 7: eslogger field coverage incomplete from documentation~~ — RESOLVED: `test-eslogger-fields` CI gate on macos-latest validates field paths against live eslogger output; blocks release on schema drift
 
 ## Deferred Items
 
@@ -241,6 +254,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-05-28T12:00:00.000Z
-Stopped at: Completed 07-05-PLAN.md (Phase 7 complete, all 5/5 plans done)
+Last session: 2026-05-28T12:30:00.000Z
+Stopped at: Phase 7 execution complete — all 5/5 plans done, 21 packages green, ready to plan Phase 8
 Resume file: None
