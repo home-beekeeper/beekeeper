@@ -1,8 +1,10 @@
-# Release pipeline (SFDF-01 + SFDF-02)
+# Release pipeline (SFDF-01 + SFDF-02 + SFDF-05)
 #
 # Triggered by pushing a vX.Y.Z tag. GoReleaser builds reproducible
-# multi-platform binaries and cosign v3 keylessly signs checksums.txt using the
-# GitHub Actions OIDC identity. No long-lived signing keys are used or stored.
+# multi-platform binaries, cosign v3 keylessly signs checksums.txt, syft
+# produces CycloneDX SBOMs per archive, and slsa-github-generator@v2.1.0
+# produces an SLSA Level 3 provenance attestation tied to the GitHub Actions
+# OIDC identity. No long-lived signing keys are used.
 name: Release
 
 on:
@@ -11,12 +13,16 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
-  id-token: write # Required for cosign keyless OIDC signing.
+  contents: read
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    permissions:
+      contents: write    # upload release artifacts
+      id-token: write    # cosign keyless OIDC signing
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +37,11 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
       - name: Run GoReleaser
+        id: run-goreleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -39,3 +49,31 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate artifact hashes for SLSA provenance
+        id: hash
+        env:
+          ARTIFACTS: "${{ steps.run-goreleaser.outputs.artifacts }}"
+        run: |
+          set -euo pipefail
+          checksum_file=$(echo "$ARTIFACTS" | jq -r '.[] | select(.type=="Checksum") | .path')
+          if [ -z "$checksum_file" ] || [ ! -f "$checksum_file" ]; then
+            echo "::error::checksums.txt not found in GoReleaser artifacts"
+            exit 1
+          fi
+          hashes=$(cat "$checksum_file" | base64 -w0)
+          echo "hashes=$hashes" >> "$GITHUB_OUTPUT"
+
+  provenance:
+    # SFDF-05: SLSA Level 3 provenance attestation via the slsa-github-generator
+    # reusable workflow. The version MUST be pinned to a full semver per CLAUDE.md
+    # and the SLSA framework's trusted-builder verification rules — never @v2.
+    needs: [goreleaser]
+    permissions:
+      actions: read      # detect GitHub Actions environment for provenance
+      id-token: write    # Sigstore OIDC signing for the attestation
+      contents: write    # upload the .intoto.jsonl attestation to the release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.goreleaser.outputs.hashes }}"
+      upload-assets: true
