@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: verifying
-stopped_at: None
-last_updated: "2026-05-28T08:10:00Z"
-last_activity: "2026-05-28 — Phase 6 Plan 04 complete: LlamaFirewall supervisor + client + sidecar (LLMF-01, LLMF-05, LLMF-06)"
+status: Phase 6 executed — ready for Phase 7 (macOS Sentry + Windows ETW + SLSA)
+stopped_at: context exhaustion at 75% (2026-05-28)
+last_updated: "2026-05-28T08:18:57.109Z"
+last_activity: "2026-05-28 — Phase 6 executed: 5/5 plans complete, all tests green (audit+llamafirewall+check+config)"
 progress:
   total_phases: 9
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 29
-  completed_plans: 30
-  percent: 44
+  completed_plans: 35
+  percent: 56
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 5 — Linux Sentry — next up
+**Current focus:** Phase 6 — LlamaFirewall + Audit Sinks — COMPLETE
 
 ## Current Position
 
-Phase: 6 of 9 (LlamaFirewall + Audit Sinks) — IN PROGRESS
-Plan: 06-04 of 5 complete
-Status: 06-04 done (supervisor + client + sidecar); 06-05 next
-Last activity: 2026-05-28 — Phase 6 Plan 04 complete: LlamaFirewall supervisor + client + sidecar (LLMF-01, LLMF-05, LLMF-06)
+Phase: 6 of 9 (LlamaFirewall + Audit Sinks) — COMPLETE
+Plan: 5/5 complete
+Status: Phase 6 executed — ready for Phase 7 (macOS Sentry + Windows ETW + SLSA)
+Last activity: 2026-05-28 — Phase 6 executed: 5/5 plans complete, all tests green (audit+llamafirewall+check+config)
 
-Progress: [███░░░░░░░] 33%
+Progress: [████████░░] 56%
 
 ## Phase 1 Completion Summary
 
@@ -168,6 +168,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-05-28T07:35:56.492Z
-Stopped at: context exhaustion at 76% (2026-05-28)
+Last session: 2026-05-28T08:18:57.084Z
+Stopped at: context exhaustion at 75% (2026-05-28)
 Resume file: None
