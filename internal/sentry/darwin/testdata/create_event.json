@@ -1,0 +1,1 @@
+{"event_type":"create","time":"2026-05-28T12:00:02.000000000Z","process":{"audit_token":{"pid":999,"uid":501},"ppid":1,"executable":{"path":"/usr/bin/touch"}},"event":{"create":{"destination":{"existing_file":{"path":"/tmp/payload"}}}}}

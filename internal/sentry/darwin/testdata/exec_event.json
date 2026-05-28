@@ -1,0 +1,1 @@
+{"event_type":"exec","time":"2026-05-28T12:00:00.000000000Z","process":{"audit_token":{"pid":12345,"uid":501},"ppid":6789,"executable":{"path":"/bin/zsh"}},"event":{"exec":{"target":{"audit_token":{"pid":12345,"uid":501},"ppid":6789,"executable":{"path":"/usr/bin/git"},"args":["git","push"]}}}}

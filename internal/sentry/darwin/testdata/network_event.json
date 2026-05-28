@@ -1,0 +1,1 @@
+{"event_type":"network_flow","time":"2026-05-28T12:00:03.000000000Z","process":{"audit_token":{"pid":4242,"uid":501},"ppid":1,"executable":{"path":"/usr/bin/curl"}},"event":{"network_flow":{"remote":{"address":"52.14.222.1","port":443}}}}

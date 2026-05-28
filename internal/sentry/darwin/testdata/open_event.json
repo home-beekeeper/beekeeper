@@ -1,0 +1,1 @@
+{"event_type":"open","time":"2026-05-28T12:00:01.000000000Z","process":{"audit_token":{"pid":999,"uid":501},"ppid":1,"executable":{"path":"/bin/cat"}},"event":{"open":{"file":{"path":"/Users/me/.ssh/id_rsa"}}}}
