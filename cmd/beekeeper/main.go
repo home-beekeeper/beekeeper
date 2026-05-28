@@ -700,11 +700,14 @@ func newQuarantineCmd() *cobra.Command {
 
 // newAuditCmd groups audit-log subcommands.
 func newAuditCmd() *cobra.Command {
-	audit := &cobra.Command{
+	auditCmd := &cobra.Command{
 		Use:   "audit",
 		Short: "Inspect the Beekeeper audit log",
 	}
-	audit.AddCommand(&cobra.Command{
+
+	// --- tail subcommand ---
+	var noFollow bool
+	tailCmd := &cobra.Command{
 		Use:   "tail",
 		Short: "Stream the live audit log to the terminal",
 		Args:  cobra.NoArgs,
@@ -714,10 +717,145 @@ func newAuditCmd() *cobra.Command {
 				return fmt.Errorf("resolve audit directory: %w", err)
 			}
 			logPath := filepath.Join(auditDir, "beekeeper.ndjson")
+			if noFollow {
+				return tailAuditLogOnce(cmd.OutOrStdout(), logPath)
+			}
 			return tailAuditLog(cmd.Context(), cmd.OutOrStdout(), logPath)
 		},
-	})
-	return audit
+	}
+	tailCmd.Flags().BoolVar(&noFollow, "no-follow", false, "dump existing records and exit without following")
+	auditCmd.AddCommand(tailCmd)
+
+	// --- query subcommand ---
+	var (
+		qSince    string
+		qAgent    string
+		qTool     string
+		qDecision string
+		qLimit    int
+	)
+	queryCmd := &cobra.Command{
+		Use:   "query",
+		Short: "Filter audit log records by time, agent, tool, or decision",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			logPath := filepath.Join(auditDir, "beekeeper.ndjson")
+
+			f, err := os.Open(logPath)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("audit log %q does not exist yet (run a beekeeper check first)", logPath)
+				}
+				return fmt.Errorf("open audit log: %w", err)
+			}
+			defer f.Close()
+
+			opts := audit.QueryOpts{
+				Agent:    qAgent,
+				Tool:     qTool,
+				Decision: qDecision,
+				Limit:    qLimit,
+			}
+			if qSince != "" {
+				if dur, derr := time.ParseDuration(qSince); derr == nil {
+					opts.Since = time.Now().Add(-dur)
+				} else if ts, terr := time.Parse(time.RFC3339, qSince); terr == nil {
+					opts.Since = ts
+				} else {
+					return fmt.Errorf("--since %q: expected duration (e.g. 24h) or RFC3339 timestamp", qSince)
+				}
+			}
+
+			return audit.Query(cmd.Context(), f, opts, cmd.OutOrStdout())
+		},
+	}
+	queryCmd.Flags().StringVar(&qSince, "since", "", "Only show records after this duration (e.g. 24h) or RFC3339 timestamp")
+	queryCmd.Flags().StringVar(&qAgent, "agent", "", "Filter by agent name")
+	queryCmd.Flags().StringVar(&qTool, "tool", "", "Filter by tool name")
+	queryCmd.Flags().StringVar(&qDecision, "decision", "", "Filter by decision (allow|warn|block)")
+	queryCmd.Flags().IntVar(&qLimit, "limit", 0, "Maximum number of records to return (0 = no limit)")
+	auditCmd.AddCommand(queryCmd)
+
+	// --- export subcommand ---
+	var (
+		eFormat   string
+		eSince    string
+		eAgent    string
+		eTool     string
+		eDecision string
+	)
+	exportCmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export audit log records in the requested format (ndjson, csv, otlp)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
+			logPath := filepath.Join(auditDir, "beekeeper.ndjson")
+
+			f, err := os.Open(logPath)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("audit log %q does not exist yet (run a beekeeper check first)", logPath)
+				}
+				return fmt.Errorf("open audit log: %w", err)
+			}
+			defer f.Close()
+
+			opts := audit.ExportOpts{
+				Format: eFormat,
+				QueryOpts: audit.QueryOpts{
+					Agent:    eAgent,
+					Tool:     eTool,
+					Decision: eDecision,
+				},
+			}
+			if eSince != "" {
+				if dur, derr := time.ParseDuration(eSince); derr == nil {
+					opts.Since = time.Now().Add(-dur)
+				} else if ts, terr := time.Parse(time.RFC3339, eSince); terr == nil {
+					opts.Since = ts
+				} else {
+					return fmt.Errorf("--since %q: expected duration (e.g. 24h) or RFC3339 timestamp", eSince)
+				}
+			}
+
+			return audit.Export(cmd.Context(), f, opts, cmd.OutOrStdout())
+		},
+	}
+	exportCmd.Flags().StringVar(&eFormat, "format", "", "Output format: ndjson, csv, or otlp (required)")
+	exportCmd.Flags().StringVar(&eSince, "since", "", "Only export records after this duration (e.g. 24h) or RFC3339 timestamp")
+	exportCmd.Flags().StringVar(&eAgent, "agent", "", "Filter by agent name")
+	exportCmd.Flags().StringVar(&eTool, "tool", "", "Filter by tool name")
+	exportCmd.Flags().StringVar(&eDecision, "decision", "", "Filter by decision (allow|warn|block)")
+	_ = exportCmd.MarkFlagRequired("format")
+	auditCmd.AddCommand(exportCmd)
+
+	return auditCmd
+}
+
+// tailAuditLogOnce dumps all existing audit log content to out and returns.
+// It does not follow for new bytes. Used by `beekeeper audit tail --no-follow`.
+func tailAuditLogOnce(out io.Writer, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("audit log %q does not exist yet (run a beekeeper check first)", path)
+		}
+		return fmt.Errorf("open audit log %q: %w", path, err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(out, f); err != nil {
+		return fmt.Errorf("read audit log: %w", err)
+	}
+	return nil
 }
 
 // tailAuditLog streams the NDJSON audit log to out: it prints all existing
