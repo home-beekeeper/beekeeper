@@ -4,8 +4,8 @@ milestone: v1.0.0
 milestone_name: milestone
 status: planning
 stopped_at: context exhaustion at 77% (2026-05-28)
-last_updated: "2026-05-28T10:44:46.500Z"
-last_activity: "2026-05-28 — Phase 6 verified: 15/15 UAT tests passed (automated), all 17 Go packages green"
+last_updated: "2026-05-28T01:05:00.000Z"
+last_activity: "2026-05-28 — Phase 7 plan 04: Windows Sentry daemon + named pipe IPC (SWIN-01, SWIN-05, SWIN-06)"
 progress:
   total_phases: 9
   completed_phases: 5
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-28)
 
 ## Current Position
 
-Phase: 7 of 9 (Cross-Platform Sentry) — Ready to plan
-Plan: Not started
-Status: Phase 6 verified complete — ready to plan Phase 7 (Cross-Platform Sentry)
-Last activity: 2026-05-28 — Phase 6 verified: 15/15 UAT tests passed (automated), all 17 Go packages green
+Phase: 7 of 9 (Cross-Platform Sentry) — In progress
+Plan: 04 of 05 complete
+Status: Wave 3 complete — 07-04 done; 07-05 (CI matrix + SLSA) remaining
+Last activity: 2026-05-28 — Phase 7 plan 04: Windows Sentry daemon + named pipe IPC (SWIN-01, SWIN-05, SWIN-06)
 
 Progress: [██████████░] 67%
 
@@ -111,6 +111,26 @@ Progress: [██████████░] 67%
 - `notify.Config{Enabled: true}` hardcoded in newWatchCmd (notification preferences deferred to a future phase)
 - `quarantine_restore`/`quarantine_purge` audit RecordTypes differ from standard `policy_decision` schema (acceptable for Phase 3 audit trail)
 
+## Phase 7 In-Progress Summary
+
+### Plans completed (4/5)
+
+| Wave | Plan | Title | Commit | Status |
+|------|------|-------|--------|--------|
+| 1 | 07-01 | macOS eslogger subprocess + event drain | — | ✅ Done |
+| 2 | 07-02 | Windows ETW ingestion layer | aff2833 | ✅ Done |
+| 3 | 07-03 | macOS Sentry daemon + launchd CLI | 61ae8e3 | ✅ Done |
+| 3 | 07-04 | Windows Sentry daemon + named pipe IPC | e959585 | ✅ Done |
+| 4 | 07-05 | CI matrix + SLSA Level 3 | — | ⏳ Pending |
+
+### Key deliverables (07-04)
+
+- `internal/ipc/pipe_windows.go` — go-winio named pipe replaces ErrNotSupported stub
+- `internal/sentry/windows/service.go` — InstallService/UninstallService/QueryService/WaitForPipe under LocalService
+- `internal/sentry/windows/daemon.go` — RunDaemon via svc.Run; ETW correlation engine; ACCESS_DENIED fallback
+- `cmd/beekeeper/protect_windows.go` — Windows CLI with admin guard, SWIN-03, SWIN-04
+- `protect_other.go` — narrowed to `!linux && !darwin && !windows`
+
 ## Phase 6 Completion Summary
 
 ### Plans completed (5/5)
@@ -167,6 +187,14 @@ Progress: [██████████░] 67%
 
 ### Decisions
 
+Recent decisions from Phase 7:
+
+- go-winio import path is github.com/Microsoft/go-winio (capital M); lowercase fails at go get with module path mismatch
+- PipePath is var not const to enable test-time substitution; production value unchanged
+- GetCurrentProcessToken().IsElevated() replaces manual TOKEN_ELEVATION unsafe pointer dance
+- ETW EnableProvider is the actual API (not AddProvider); Provider struct needs GUID value type from *MustParseGUID dereference
+- TestQueryServiceWhenNotInstalled skips on non-admin (mgr.Connect returns Access Denied); covered by CI admin runners
+
 Recent decisions from Phase 6:
 
 - Remote sink errors are fire-and-forget (nil returned); local NDJSON write is never blocked by remote collector outage
@@ -213,6 +241,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-05-28T10:44:46.455Z
-Stopped at: context exhaustion at 77% (2026-05-28)
+Last session: 2026-05-28T01:05:00.000Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None
