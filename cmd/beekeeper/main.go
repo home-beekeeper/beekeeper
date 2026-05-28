@@ -65,6 +65,7 @@ func newRootCmd() *cobra.Command {
 		newAuditRecordCmd(),
 		newProtectCmd(),
 		newSentryCmd(),
+		newLlamaFirewallCmd(),
 	)
 
 	return root
@@ -1273,6 +1274,108 @@ func newSentryCmd() *cobra.Command {
 	)
 	daemon.AddCommand(rulesCmd)
 	return daemon
+}
+
+// newLlamaFirewallCmd groups the LlamaFirewall prompt-injection sidecar subcommands.
+// It provides enable/disable/status management (LLMF-01, LLMF-06).
+func newLlamaFirewallCmd() *cobra.Command {
+	lfCmd := &cobra.Command{
+		Use:   "llamafirewall",
+		Short: "Manage the LlamaFirewall prompt-injection sidecar",
+	}
+
+	lfCmd.AddCommand(&cobra.Command{
+		Use:   "enable",
+		Short: "Enable LlamaFirewall sidecar scanning",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfgPath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "config.json")
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			cfg.LlamaFirewall.Enabled = true
+			if err := config.Save(cfgPath, cfg); err != nil {
+				return fmt.Errorf("save config: %w", err)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall enabled. Run 'beekeeper llamafirewall status' to check sidecar state.")
+			return nil
+		},
+	})
+
+	lfCmd.AddCommand(&cobra.Command{
+		Use:   "disable",
+		Short: "Disable LlamaFirewall sidecar scanning",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfgPath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "config.json")
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			cfg.LlamaFirewall.Enabled = false
+			if err := config.Save(cfgPath, cfg); err != nil {
+				return fmt.Errorf("save config: %w", err)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall disabled.")
+			return nil
+		},
+	})
+
+	lfCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Show LlamaFirewall sidecar status",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Read state.json for PID + started_at written by the supervisor.
+			statePath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "state.json")
+			data, err := os.ReadFile(statePath)
+			if err != nil || data == nil {
+				fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall Sidecar — Not running")
+				return nil
+			}
+			var state map[string]any
+			if json.Unmarshal(data, &state) != nil {
+				fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall Sidecar — Not running")
+				return nil
+			}
+			lfState, ok := state["llamafirewall"].(map[string]any)
+			if !ok {
+				fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall Sidecar — Not running")
+				return nil
+			}
+			pid := int(lfState["pid"].(float64))
+			startedAt := lfState["started_at"].(string)
+
+			// Check if the process is still alive using Signal(0).
+			proc, _ := os.FindProcess(pid)
+			alive := proc != nil && proc.Signal(syscall.Signal(0)) == nil
+
+			cfgPath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "config.json")
+			cfg, _ := config.Load(cfgPath)
+			sampleRate := cfg.LlamaFirewallSampleRate()
+			failMode := cfg.LlamaFirewall.FailMode
+			if failMode == "" {
+				failMode = "closed"
+			}
+
+			out := cmd.OutOrStdout()
+			if alive {
+				t, _ := time.Parse(time.RFC3339, startedAt)
+				uptime := time.Since(t).Round(time.Second)
+				fmt.Fprintf(out, "LlamaFirewall Sidecar — Active (PID %d, uptime %s)\n", pid, uptime)
+			} else {
+				fmt.Fprintln(out, "LlamaFirewall Sidecar — Not running (stale PID in state.json)")
+			}
+			fmt.Fprintf(out, "Sample Rate: %.2f\n", sampleRate)
+			fmt.Fprintf(out, "Fail Mode:  %s\n", failMode)
+			fmt.Fprintf(out, "P95 Latency: N/A (use beekeeper diag when running)\n")
+			fmt.Fprintf(out, "Degraded:   %v\n", !alive)
+			return nil
+		},
+	})
+
+	return lfCmd
 }
 
 // newAuditRecordCmd is the PostToolUse hook handler. It reads PostToolUse JSON
