@@ -121,8 +121,45 @@ jobs:
             go test -v -tags linux -count=1 ./internal/sentry/... ./internal/ipc/... -run TestFullTier
             go test -v -tags linux -count=1 ./internal/sentry/linux/... -run TestProbeTier
 
+  test-eslogger-fields:
+    # Phase 7 release gate (SMAC-02 + CLAUDE.md research note): validate that
+    # the eslogger NDJSON parser's field paths match the actual schema emitted
+    # by eslogger on a current macOS. Without this gate, the parser could
+    # silently produce empty SentryEvents in production (Apple does not provide
+    # a stable schema guarantee — fields may change across OS minor versions).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Capture live eslogger output
+        shell: bash
+        run: |
+          set -euo pipefail
+          FIXTURE=$(mktemp -t eslogger.XXXXXX.ndjson)
+          # Background eslogger; CI runners support `sudo -n` (passwordless sudo).
+          sudo -n eslogger exec open create network_flow fork > "$FIXTURE" 2>/dev/null &
+          ESLPID=$!
+          # Generate predictable process activity so we capture at least one exec event.
+          sleep 1
+          for i in 1 2 3 4 5; do
+            /bin/echo "warmup $i" > /dev/null
+            /usr/bin/whoami > /dev/null
+            sleep 0.2
+          done
+          sleep 1
+          sudo -n kill "$ESLPID" 2>/dev/null || true
+          wait "$ESLPID" 2>/dev/null || true
+          echo "BEEKEEPER_ESLOGGER_FIXTURE=$FIXTURE" >> "$GITHUB_ENV"
+          echo "Captured $(wc -l < "$FIXTURE") lines to $FIXTURE"
+          head -1 "$FIXTURE" | head -c 200 || true
+      - name: Validate parser against live eslogger output
+        run: go test -tags darwin -count=1 -v -run TestEsloggerFieldValidation ./internal/sentry/darwin/
+
   release-gate:
     runs-on: ubuntu-22.04
-    needs: [test-sentry-kernel-5-4, test-sentry-kernel-5-15, fuzz-ipc, fuzz-llamafirewall]
+    needs: [test-sentry-kernel-5-4, test-sentry-kernel-5-15, fuzz-ipc, fuzz-llamafirewall, test-eslogger-fields]
     steps:
       - run: echo "All release gates passed"
