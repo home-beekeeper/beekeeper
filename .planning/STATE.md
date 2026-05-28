@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: Phase 5 complete — verified; ready for Phase 6 (macOS Sentry)
-last_updated: "2026-05-28T00:00:00.000Z"
-last_activity: "2026-05-28 — Phase 5 verified: 17/17 packages pass, 25/25 structural checks pass, linux/amd64 cross-compile clean; LVH CI matrix wired as release gate"
+status: verifying
+stopped_at: None
+last_updated: "2026-05-28T08:10:00Z"
+last_activity: "2026-05-28 — Phase 6 Plan 04 complete: LlamaFirewall supervisor + client + sidecar (LLMF-01, LLMF-05, LLMF-06)"
 progress:
   total_phases: 9
-  completed_phases: 5
-  total_plans: 30
+  completed_phases: 4
+  total_plans: 29
   completed_plans: 30
-  percent: 56
+  percent: 44
 ---
 
 # Project State
@@ -24,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-26)
 
 ## Current Position
 
-Phase: 5 of 9 (Linux Sentry) — COMPLETE
-Plan: Phase 5 verified (5/5)
-Status: Phase 5 verified — ready for Phase 6 (macOS Sentry)
-Last activity: 2026-05-28 — Phase 5 UAT passed: 13 pass, 0 fail, 2 skip (linux CI); 17/17 packages green
+Phase: 6 of 9 (LlamaFirewall + Audit Sinks) — IN PROGRESS
+Plan: 06-04 of 5 complete
+Status: 06-04 done (supervisor + client + sidecar); 06-05 next
+Last activity: 2026-05-28 — Phase 6 Plan 04 complete: LlamaFirewall supervisor + client + sidecar (LLMF-01, LLMF-05, LLMF-06)
 
 Progress: [███░░░░░░░] 33%
 
@@ -167,6 +168,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-05-26T22:47:15.140Z
-Stopped at: context exhaustion at 76% (2026-05-26)
+Last session: 2026-05-28T07:35:56.492Z
+Stopped at: context exhaustion at 76% (2026-05-28)
 Resume file: None

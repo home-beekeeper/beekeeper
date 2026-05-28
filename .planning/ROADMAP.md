@@ -123,7 +123,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Agent-generated file writes containing code are evaluated by CodeShield; insecure patterns are flagged or blocked per configured policy
   4. `beekeeper audit tail` streams live NDJSON records to the terminal; `beekeeper audit query --since|--agent|--tool|--decision` returns filtered results; `beekeeper audit export` produces ndjson, csv, or otlp output
   5. Syslog (RFC 5424), OTLP, and HTTPS POST sinks are off by default and each requires explicit opt-in config with a documented warning that audit data leaves the machine
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 06-01-PLAN.md -- Audit rotation + retention + query + export (AUDT-02, AUDT-05, AUDT-06, AUDT-07) (wave 1)
+- [ ] 06-02-PLAN.md -- LlamaFirewall IPC protocol + fuzz test (LLMF-05 partial) (wave 1)
+- [ ] 06-03-PLAN.md -- Remote audit sinks: Sink interface + syslog + OTLP + HTTPS POST + config (AUDT-03, AUDT-04) (wave 2)
+- [x] 06-04-PLAN.md -- LlamaFirewall supervisor + Python sidecar + sample rate + latency + CLI (LLMF-01, LLMF-05, LLMF-06) (wave 2)
+- [ ] 06-05-PLAN.md -- PromptGuard+CodeShield+AlignmentCheck integration + audit record additions (LLMF-02, LLMF-03, LLMF-04) (wave 3)
 
 ### Phase 7: Cross-Platform Sentry
 **Goal**: The full Sentry capability is available on macOS (via eslogger) and Windows (via ETW), and every Beekeeper release includes SLSA Level 3 provenance and a CycloneDX SBOM
