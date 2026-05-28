@@ -5,6 +5,7 @@ go 1.25
 toolchain go1.25.0
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/cilium/ebpf v0.21.0
 	github.com/edsrzf/mmap-go v1.2.0
 	github.com/elastic/go-seccomp-bpf v1.6.0
