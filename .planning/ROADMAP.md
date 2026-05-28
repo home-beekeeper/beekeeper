@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Editor Extension Defense** - Agent CLI intercept, fsnotify extension watcher, quarantine workflow, `beekeeper scan`
 - [x] **Phase 4: Integration Surfaces** - Hook installs for Claude Code/Cursor/Codex, MCP gateway daemon, shim layer, multi-agent observability
 - [ ] **Phase 5: Linux Sentry** - Privileged systemd daemon, fanotify + cilium/ebpf event ingestion, 5-rule correlation engine, 7-day baseline
-- [ ] **Phase 6: LlamaFirewall + Audit Sinks** - Optional Python sidecar with PromptGuard 2 / CodeShield / AlignmentCheck; full audit sinks (syslog, OTLP, HTTPS); audit query/export commands
+- [x] **Phase 6: LlamaFirewall + Audit Sinks** - Optional Python sidecar with PromptGuard 2 / CodeShield / AlignmentCheck; full audit sinks (syslog, OTLP, HTTPS); audit query/export commands
 - [ ] **Phase 7: Cross-Platform Sentry** - macOS eslogger Sentry, Windows ETW Sentry, SLSA Level 3 provenance + SBOM
 - [ ] **Phase 8: TUI Dashboard** - Bubble Tea v2 dashboard, all panels (activity, alerts, catalog, scan, policies, quarantine, health), admin mode
 - [ ] **Phase 9: Policy as Code + Self-Defense Capstone** - Declarative JSON policies, `policy test/validate/list`, layered config, `beekeeper-self` catalog live, v1.0.0
@@ -124,11 +124,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. `beekeeper audit tail` streams live NDJSON records to the terminal; `beekeeper audit query --since|--agent|--tool|--decision` returns filtered results; `beekeeper audit export` produces ndjson, csv, or otlp output
   5. Syslog (RFC 5424), OTLP, and HTTPS POST sinks are off by default and each requires explicit opt-in config with a documented warning that audit data leaves the machine
 **Plans**: 5 plans
-- [ ] 06-01-PLAN.md -- Audit rotation + retention + query + export (AUDT-02, AUDT-05, AUDT-06, AUDT-07) (wave 1)
-- [ ] 06-02-PLAN.md -- LlamaFirewall IPC protocol + fuzz test (LLMF-05 partial) (wave 1)
-- [ ] 06-03-PLAN.md -- Remote audit sinks: Sink interface + syslog + OTLP + HTTPS POST + config (AUDT-03, AUDT-04) (wave 2)
+- [x] 06-01-PLAN.md -- Audit rotation + retention + query + export (AUDT-02, AUDT-05, AUDT-06, AUDT-07) (wave 1)
+- [x] 06-02-PLAN.md -- LlamaFirewall IPC protocol + fuzz test (LLMF-05 partial) (wave 1)
+- [x] 06-03-PLAN.md -- Remote audit sinks: Sink interface + syslog + OTLP + HTTPS POST + config (AUDT-03, AUDT-04) (wave 2)
 - [x] 06-04-PLAN.md -- LlamaFirewall supervisor + Python sidecar + sample rate + latency + CLI (LLMF-01, LLMF-05, LLMF-06) (wave 2)
-- [ ] 06-05-PLAN.md -- PromptGuard+CodeShield+AlignmentCheck integration + audit record additions (LLMF-02, LLMF-03, LLMF-04) (wave 3)
+- [x] 06-05-PLAN.md -- PromptGuard+CodeShield+AlignmentCheck integration + audit record additions (LLMF-02, LLMF-03, LLMF-04) (wave 3)
 
 ### Phase 7: Cross-Platform Sentry
 **Goal**: The full Sentry capability is available on macOS (via eslogger) and Windows (via ETW), and every Beekeeper release includes SLSA Level 3 provenance and a CycloneDX SBOM
@@ -180,7 +180,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Editor Extension Defense | 5/5 | Complete | 2026-05-26 |
 | 4. Integration Surfaces | 0/5 | Not started | - |
 | 5. Linux Sentry | 0/TBD | Not started | - |
-| 6. LlamaFirewall + Audit Sinks | 0/TBD | Not started | - |
+| 6. LlamaFirewall + Audit Sinks | 5/5 | Complete | 2026-05-28 |
 | 7. Cross-Platform Sentry | 0/TBD | Not started | - |
 | 8. TUI Dashboard | 0/TBD | Not started | - |
 | 9. Policy as Code + Self-Defense Capstone | 0/TBD | Not started | - |

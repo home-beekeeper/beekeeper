@@ -2,35 +2,35 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: Phase 6 executed — ready for Phase 7 (macOS Sentry + Windows ETW + SLSA)
-stopped_at: context exhaustion at 75% (2026-05-28)
-last_updated: "2026-05-28T08:18:57.109Z"
-last_activity: "2026-05-28 — Phase 6 executed: 5/5 plans complete, all tests green (audit+llamafirewall+check+config)"
+status: Phase 6 verified complete — ready to plan Phase 7 (Cross-Platform Sentry)
+stopped_at: Phase 6 complete, ready to plan Phase 7 (2026-05-28)
+last_updated: "2026-05-28T00:00:00Z"
+last_activity: "2026-05-28 — Phase 6 verified: 15/15 UAT tests passed (automated), all 17 Go packages green"
 progress:
   total_phases: 9
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 29
   completed_plans: 35
-  percent: 56
+  percent: 67
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-26)
+See: .planning/PROJECT.md (updated 2026-05-28)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 6 — LlamaFirewall + Audit Sinks — COMPLETE
+**Current focus:** Phase 7 — Cross-Platform Sentry (macOS eslogger + Windows ETW + SLSA Level 3)
 
 ## Current Position
 
-Phase: 6 of 9 (LlamaFirewall + Audit Sinks) — COMPLETE
-Plan: 5/5 complete
-Status: Phase 6 executed — ready for Phase 7 (macOS Sentry + Windows ETW + SLSA)
-Last activity: 2026-05-28 — Phase 6 executed: 5/5 plans complete, all tests green (audit+llamafirewall+check+config)
+Phase: 7 of 9 (Cross-Platform Sentry) — Ready to plan
+Plan: Not started
+Status: Phase 6 verified complete — ready to plan Phase 7 (Cross-Platform Sentry)
+Last activity: 2026-05-28 — Phase 6 verified: 15/15 UAT tests passed (automated), all 17 Go packages green
 
-Progress: [████████░░] 56%
+Progress: [██████████░] 67%
 
 ## Phase 1 Completion Summary
 
@@ -111,6 +111,43 @@ Progress: [████████░░] 56%
 - `notify.Config{Enabled: true}` hardcoded in newWatchCmd (notification preferences deferred to a future phase)
 - `quarantine_restore`/`quarantine_purge` audit RecordTypes differ from standard `policy_decision` schema (acceptable for Phase 3 audit trail)
 
+## Phase 6 Completion Summary
+
+### Plans completed (5/5)
+
+| Wave | Plan | Title | Commit | Status |
+|------|------|-------|--------|--------|
+| 1 | 06-01 | Audit Rotation, Query, Export | 07b2c66 | ✅ Done |
+| 1 | 06-02 | LlamaFirewall IPC Protocol + Fuzz | — | ✅ Done |
+| 2 | 06-03 | Audit Sinks + Config Extensions | — | ✅ Done |
+| 2 | 06-04 | LlamaFirewall Supervisor + Client + Sidecar | 546d94c | ✅ Done |
+| 3 | 06-05 | LLMF Handler+Gateway Integration | 006edb7 | ✅ Done |
+
+### UAT results (06-UAT.md — all automated)
+
+- Cold start smoke test (version + audit query): pass
+- Audit log rotation (numbered archives, retention, no-op below threshold): pass
+- Audit query command (filter by since/agent/tool/decision, skip malformed): pass
+- Audit export CSV (fixed header + data rows): pass
+- Audit export OTLP (resourceLogs envelope): pass
+- Audit tail --no-follow (print once, exit): pass
+- LlamaFirewall IPC protocol (9 unit tests, 1MB cap, fuzz CI gate): pass
+- Audit multi-sink fan-out (10 tests, fire-and-forget remote errors): pass
+- AuditConfig + LlamaFirewallConfig in config (accessor methods): pass
+- LlamaFirewall CLI enable/disable/status: pass
+- Supervisor fail-closed/open after MaxRetries: pass
+- LatencyTracker P95 ring-buffer: pass
+- LLMF hook handler integration (injection alert exit 0, fail-closed exit 1): pass
+- LLMF gateway integration (CodeShield block/warn wired): pass
+- LLMF AuditRecord fields (LLMFScanned et al.): pass
+
+### Key decisions from Phase 6
+
+- Remote sink errors are fire-and-forget; local NDJSON write is never blocked
+- AuditConfig imported by audit package (no import cycle; config imports stdlib only)
+- Injection detection (LLMF-02) exits 0 — PostToolUse hooks must not block agent flow
+- scan_code / scan_alignment are stubs in Python sidecar (CodeShield model integration is a follow-on)
+
 ## Performance Metrics
 
 **Velocity:**
@@ -130,7 +167,15 @@ Progress: [████████░░] 56%
 
 ### Decisions
 
-Recent decisions from Phase 3:
+Recent decisions from Phase 6:
+
+- Remote sink errors are fire-and-forget (nil returned); local NDJSON write is never blocked by remote collector outage
+- AuditConfig imported by audit/sink.go from internal/config — no import cycle (config imports only stdlib)
+- LlamaFirewall injection detection (LLMF-02) exits 0 in hook handler — PostToolUse hooks must not block agent flow; llmf_alert is the forensic signal
+- scan_code / scan_alignment are Python sidecar stubs; CodeShield model integration deferred
+- Scannable interface in check package, GatewayScanner in gateway/policy.go — avoids circular imports; supervisor satisfies at runtime, mocks in tests
+
+Earlier decisions from Phase 3:
 
 - Injectable `runBumblebeeFn` package var for test isolation without real binary (Windows portability)
 - Pre-seeded marketplace cache pattern for tests (avoids live network; same as handler_test.go)
@@ -168,6 +213,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-05-28T08:18:57.084Z
-Stopped at: context exhaustion at 75% (2026-05-28)
+Last session: 2026-05-28T00:00:00Z
+Stopped at: Phase 6 complete, ready to plan Phase 7
 Resume file: None

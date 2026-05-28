@@ -19,6 +19,12 @@ A hijacked or off-task agent cannot successfully act on the developer's machine 
 - ✓ NDJSON audit log with owner-only permissions (0600) and `beekeeper audit tail` — Phase 1
 - ✓ `beekeeper catalogs sync` fetches and caches Bumblebee catalog (654 entries, mmap index) — Phase 1
 - ✓ Reproducible builds (`-trimpath -buildvcs=false`), Sigstore/cosign v3 keyless signing, Renovate dependency pinning, `SECURITY.md` — Phase 1
+- ✓ NDJSON audit log with rotation, query/export commands (`beekeeper audit query`, `beekeeper audit export --format ndjson/csv/otlp`), `--no-follow` tail — Phase 6 (AUDT-02, AUDT-05, AUDT-06, AUDT-07)
+- ✓ Audit fan-out sinks: local file (default, 0600), syslog RFC 5424, OTLP, HTTPS POST — opt-in with data-egress warning — Phase 6 (AUDT-03, AUDT-04)
+- ✓ LlamaFirewall IPC protocol: length-prefixed JSON, 1MB cap, 3 scan kinds (ScanPrompt/ScanCode/ScanAlignment), fuzz CI release gate — Phase 6 (LLMF-05)
+- ✓ LlamaFirewall supervisor with exponential-backoff restart, Unix/named-pipe IPC client, ring-buffer P95 latency, Python sidecar — Phase 6 (LLMF-01, LLMF-06)
+- ✓ PromptGuard 2 integration in hook handler (injection → llmf_alert; fail-closed on sidecar unavailable); CodeShield + AlignmentCheck wired in gateway — Phase 6 (LLMF-02, LLMF-03, LLMF-04)
+- ✓ LLMF provenance fields in AuditRecord (LLMFScanned, LLMFScanKind, LLMFResult, LLMFLatencyMS, LLMFAlertType) — Phase 6 (AUDT-01)
 
 ### Active
 
@@ -65,15 +71,14 @@ A hijacked or off-task agent cannot successfully act on the developer's machine 
 - [ ] Windows: ETW with relevant security providers
 
 #### LlamaFirewall Sidecar (optional)
-- [ ] PromptGuard 2 (86M BERT) scanning tool outputs flowing into agent context for prompt injection
-- [ ] CodeShield on agent-generated file writes containing code
-- [ ] AlignmentCheck (experimental, optional) for goal hijacking signals
-- [ ] Python sidecar supervised by Beekeeper; Unix socket / Windows named pipe IPC; fail-closed on sidecar crash
+- ✓ Python sidecar supervised by Beekeeper; Unix socket / Windows named pipe IPC; fail-closed on sidecar crash; exponential-backoff restart — Phase 6
+- ✓ PromptGuard 2 injection scan on tool outputs; llmf_alert audit record; fail-closed on sidecar unavailable — Phase 6
+- ✓ CodeShield on agent-generated file writes; AlignmentCheck wired in gateway (scan_code / scan_alignment stubs ready for model integration) — Phase 6
 
 #### Audit Log & Observability
-- [ ] NDJSON audit log — every policy decision, Bumblebee-schema-compatible, with catalog provenance
-- [ ] Sinks: local file (default, `0600` permissions), optional syslog (RFC 5424), optional OpenTelemetry OTLP, optional HTTPS POST
-- [ ] `beekeeper audit tail`, `beekeeper audit query`, `beekeeper audit export`
+- ✓ NDJSON audit log — every policy decision, Bumblebee-schema-compatible, with catalog provenance — Phase 1 / Phase 6
+- ✓ Sinks: local file (default, `0600`), opt-in syslog RFC 5424, OTLP, HTTPS POST — Phase 6
+- ✓ `beekeeper audit tail`, `beekeeper audit query`, `beekeeper audit export` — Phase 6
 
 #### TUI Dashboard
 - [ ] `beekeeper dashboard` — Bubble Tea TUI, single screen, event-driven refresh
@@ -135,6 +140,10 @@ A hijacked or off-task agent cannot successfully act on the developer's machine 
 | Fail-closed by default for hook handler | Crash or timeout → block; `fail_open` documented as reducing security | Shipped Phase 1 — top-level recover() → block; explicit fail_open is an opt-in, documented as reducing security; benchmarked at ~3.58ms/op on Celeron N4020 |
 | MCP gateway localhost-only by default | Security-sensitive proxy; remote exposure requires explicit flag + config acknowledgment | — Pending |
 | eslogger on macOS v1 (not EndpointSecurity entitlement) | Entitlement path is uncertain and slow for indie OSS; eslogger works with sudo, no entitlement | — Pending |
+| Remote audit sink errors are fire-and-forget (nil returned) | A syslog/OTLP/HTTPS outage must never block or fail the local NDJSON write; fail-closed principle preserved for local audit trail | Shipped Phase 6 |
+| AuditConfig imported by audit package from internal/config | Avoided struct duplication; no import cycle since config imports only stdlib | Shipped Phase 6 |
+| LlamaFirewall injection detection exits 0 (not 1) in hook handler | PostToolUse hooks must not block agent flow; llmf_alert audit record is the forensic signal | Shipped Phase 6 |
+| scan_code / scan_alignment are stubs in Python sidecar | CodeShield/AlignmentCheck require separate model integration; stubs unblock supervisor + IPC work | Shipped Phase 6 — follow-on item |
 
 ## Evolution
 
@@ -154,4 +163,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-26 after Phase 1*
+*Last updated: 2026-05-28 after Phase 6*
