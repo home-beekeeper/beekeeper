@@ -2,7 +2,7 @@
 plan: 06-02
 phase: 06
 status: complete
-commit: pending
+commit: f6ab3e9
 ---
 # Phase 06 Plan 02: LlamaFirewall IPC Protocol Summary
 
