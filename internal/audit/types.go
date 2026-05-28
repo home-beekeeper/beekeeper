@@ -53,6 +53,12 @@ type AuditRecord struct {
 	SentryNetworkDests  []string `json:"sentry_network_dests,omitempty"`
 	SentryCorrelatedExt string   `json:"sentry_correlated_ext,omitempty"`
 	SentryQuarantineRec bool     `json:"sentry_quarantine_recommended,omitempty"`
+	// Phase 6 additions (LLMF-02, LLMF-03, LLMF-04)
+	LLMFScanned    bool    `json:"llmf_scanned,omitempty"`
+	LLMFScanKind   string  `json:"llmf_scan_kind,omitempty"`   // prompt|code|alignment
+	LLMFResult     string  `json:"llmf_result,omitempty"`      // clean|injection|unsafe|hijacked
+	LLMFConfidence float64 `json:"llmf_confidence,omitempty"`
+	LLMFLatencyMS  int64   `json:"llmf_latency_ms,omitempty"`
 }
 
 // CatalogProvenance is the audit-record view of a single catalog hit. It mirrors

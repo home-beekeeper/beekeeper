@@ -26,6 +26,7 @@ import (
 	"github.com/mzansi-agentive/beekeeper/internal/audit"
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/config"
+	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
 )
 
@@ -344,12 +345,20 @@ func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, a
 	}
 }
 
+// Scannable is the injection interface for LLMF scanning in the hook handler.
+// *llamafirewall.Supervisor satisfies this interface at runtime; tests inject mocks.
+type Scannable interface {
+	Scan(ctx context.Context, req llamafirewall.ScanRequest) (llamafirewall.ScanResponse, error)
+	IsDegraded() bool
+}
+
 // postToolUseInput is the shape of Claude Code PostToolUse hook stdin JSON.
 // The hook writes tool result data that beekeeper records for observability.
 type postToolUseInput struct {
-	HookEventName string `json:"hook_event_name"`
-	ToolName      string `json:"tool_name"`
-	ToolUseID     string `json:"tool_use_id"`
+	HookEventName string          `json:"hook_event_name"`
+	ToolName      string          `json:"tool_name"`
+	ToolUseID     string          `json:"tool_use_id"`
+	ToolResult    json.RawMessage `json:"tool_result"` // Phase 6: LLMF scan target
 }
 
 // RunAuditRecord reads a PostToolUse JSON payload from stdin, writes a
@@ -386,6 +395,166 @@ func RunAuditRecord(stdin io.Reader, auditPath string) int {
 		fmt.Fprintf(os.Stderr, "beekeeper audit-record: audit write failed: %v\n", err)
 	}
 	return 0
+}
+
+// RunAuditRecordWithLLMF extends RunAuditRecord with optional LlamaFirewall scanning.
+// If scanner is nil, behavior is identical to RunAuditRecord.
+// This function handles the `beekeeper audit-record` command when LLMF is enabled.
+func RunAuditRecordWithLLMF(stdin io.Reader, auditPath string, cfg config.Config, scanner Scannable) int {
+	limited := io.LimitReader(stdin, maxStdin)
+	var input postToolUseInput
+	if err := json.NewDecoder(limited).Decode(&input); err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper audit-record: malformed stdin: %v\n", err)
+		return 0
+	}
+
+	// Extract tool result content for LLMF scanning.
+	var toolResultContent string
+	if len(input.ToolResult) > 0 {
+		// Try to unmarshal as string first, then as object.
+		_ = json.Unmarshal(input.ToolResult, &toolResultContent)
+		if toolResultContent == "" {
+			toolResultContent = string(input.ToolResult)
+		}
+	}
+
+	ctx := context.Background()
+	tc := policy.ToolCall{ToolName: input.ToolName}
+	d := policy.Decision{Allow: true, Level: "allow", Reason: "tool_result"}
+
+	// LLMF scanning fields for the audit record.
+	var llmfScanned bool
+	var llmfScanKind, llmfResult string
+	var llmfConfidence float64
+	var llmfLatencyMS int64
+
+	if scanner != nil && !scanner.IsDegraded() && toolResultContent != "" {
+		if ScanPromptEligible(input.ToolName) {
+			resp, err := scanner.Scan(ctx, llamafirewall.ScanRequest{
+				Kind:      llamafirewall.ScanPrompt,
+				Content:   toolResultContent,
+				Context:   input.ToolName,
+				RequestID: newRecordID(),
+			})
+			if err != nil {
+				// Sidecar unavailable + fail-closed = block the tool result.
+				if cfg.FailClosed() {
+					fmt.Fprintf(os.Stderr, "beekeeper audit-record: LLMF sidecar unavailable (fail-closed), blocking result\n")
+					writeLLMFAlertRecord(auditPath, input.ToolName, "scan_failed", 0, 0)
+					return 1 // block PostToolUse
+				}
+				// fail-open: log but continue
+				fmt.Fprintf(os.Stderr, "beekeeper audit-record: LLMF scan error (fail-open): %v\n", err)
+			} else {
+				llmfScanned = true
+				llmfScanKind = "prompt"
+				llmfResult = string(resp.Result)
+				llmfConfidence = resp.Confidence
+				llmfLatencyMS = resp.LatencyMS
+				if resp.Result == llamafirewall.ResultInjection {
+					// Write llmf_alert record for injection detection.
+					writeLLMFAlertRecord(auditPath, input.ToolName, string(resp.Result), resp.Confidence, resp.LatencyMS)
+				}
+			}
+		} else if ScanCodeEligible(input.ToolName) {
+			resp, err := scanner.Scan(ctx, llamafirewall.ScanRequest{
+				Kind:      llamafirewall.ScanCode,
+				Content:   toolResultContent,
+				Context:   input.ToolName,
+				RequestID: newRecordID(),
+			})
+			if err == nil {
+				llmfScanned = true
+				llmfScanKind = "code"
+				llmfResult = string(resp.Result)
+				llmfConfidence = resp.Confidence
+				llmfLatencyMS = resp.LatencyMS
+				if resp.Result == llamafirewall.ResultUnsafe {
+					writeLLMFAlertRecord(auditPath, input.ToolName, string(resp.Result), resp.Confidence, resp.LatencyMS)
+					action := cfg.LlamaFirewall.CodeShieldAction
+					if action == "" {
+						action = "warn"
+					}
+					if action == "block" {
+						return 1 // block
+					}
+					// warn: write warn audit record but continue (return 0)
+					d.Level = "warn"
+				}
+			}
+		}
+
+		if cfg.LlamaFirewall.AlignmentCheck {
+			resp, err := scanner.Scan(ctx, llamafirewall.ScanRequest{
+				Kind:      llamafirewall.ScanAlignment,
+				Content:   input.ToolName,
+				Context:   "alignment_check",
+				RequestID: newRecordID(),
+			})
+			if err == nil && resp.Result == llamafirewall.ResultHijacked {
+				writeLLMFAlertRecord(auditPath, input.ToolName, string(resp.Result), resp.Confidence, resp.LatencyMS)
+			}
+		}
+	}
+
+	w, err := audit.NewWriter(auditPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper audit-record: audit writer unavailable: %v\n", err)
+		return 0
+	}
+	defer w.Close()
+
+	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
+	rec.RecordType = "tool_result"
+	// Populate LLMF fields.
+	rec.LLMFScanned = llmfScanned
+	rec.LLMFScanKind = llmfScanKind
+	rec.LLMFResult = llmfResult
+	rec.LLMFConfidence = llmfConfidence
+	rec.LLMFLatencyMS = llmfLatencyMS
+
+	patterns := audit.DefaultRedactPatterns()
+	rec = audit.RedactRecord(rec, patterns)
+	if err := w.Write(rec); err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper audit-record: audit write failed: %v\n", err)
+	}
+	return 0
+}
+
+// ScanPromptEligible returns true when tool output should be PromptGuard-scanned.
+// Delegates to llamafirewall.ShouldScanPrompt for consistency.
+func ScanPromptEligible(toolName string) bool {
+	return llamafirewall.ShouldScanPrompt(toolName)
+}
+
+// ScanCodeEligible returns true when tool output should be CodeShield-scanned.
+func ScanCodeEligible(toolName string) bool {
+	return llamafirewall.ShouldScanCode(toolName)
+}
+
+// writeLLMFAlertRecord appends an llmf_alert audit record. Errors are logged to
+// stderr but never propagate — alerts are best-effort and must not disrupt writes.
+func writeLLMFAlertRecord(auditPath, toolName, scanResult string, confidence float64, latencyMS int64) {
+	w, err := audit.NewWriter(auditPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper: llmf alert audit write failed: %v\n", err)
+		return
+	}
+	defer w.Close()
+	rec := audit.AuditRecord{
+		RecordType:     "llmf_alert",
+		RecordID:       newRecordID(),
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+		ScannerName:    "beekeeper",
+		ToolName:       toolName,
+		LLMFScanned:    true,
+		LLMFResult:     scanResult,
+		LLMFConfidence: confidence,
+		LLMFLatencyMS:  latencyMS,
+	}
+	if err := w.Write(rec); err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper: llmf alert audit write error: %v\n", err)
+	}
 }
 
 // newRecordID returns a random 128-bit hex identifier for an audit record. On

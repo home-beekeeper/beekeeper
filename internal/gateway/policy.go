@@ -1,12 +1,15 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
 )
 
@@ -81,6 +84,34 @@ func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, ac policy.Ag
 	}
 
 	return policy.Evaluate(tc, idx, policy.DefaultCorroborationThresholds(), ac)
+}
+
+// GatewayScanner is satisfied by *llamafirewall.Supervisor.
+type GatewayScanner interface {
+	Scan(ctx context.Context, req llamafirewall.ScanRequest) (llamafirewall.ScanResponse, error)
+	IsDegraded() bool
+}
+
+// ScanProxiedResponse runs PromptGuard 2 on a proxied MCP tool response body.
+// Returns the (possibly replaced) body and whether injection was detected.
+// If scanner is nil, the tool is not prompt-scan-eligible, or the scanner is
+// degraded, returns body unchanged.
+func ScanProxiedResponse(ctx context.Context, toolName string, body []byte, scanner GatewayScanner) ([]byte, bool) {
+	if scanner == nil || scanner.IsDegraded() || !llamafirewall.ShouldScanPrompt(toolName) {
+		return body, false
+	}
+	resp, err := scanner.Scan(ctx, llamafirewall.ScanRequest{
+		Kind:      llamafirewall.ScanPrompt,
+		Content:   string(body),
+		Context:   toolName,
+		RequestID: fmt.Sprintf("gw-%d", time.Now().UnixNano()),
+	})
+	if err != nil || resp.Result == llamafirewall.ResultClean {
+		return body, false
+	}
+	// Replace body with structured warning payload.
+	warning := llamafirewall.BuildWarningPayload(resp)
+	return warning, true
 }
 
 // extractAgentContext reads optional multi-agent context from HTTP request

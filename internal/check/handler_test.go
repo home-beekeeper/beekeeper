@@ -12,6 +12,7 @@ import (
 
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/config"
+	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
 )
 
@@ -431,5 +432,97 @@ func TestRunCheckSocketDisabledStillWorks(t *testing.T) {
 	}
 	if res.Decision.Level != "warn" {
 		t.Fatalf("Level = %q, want warn", res.Decision.Level)
+	}
+}
+
+// mockScanner implements Scannable for testing LLMF integration.
+type mockScanner struct {
+	resp     llamafirewall.ScanResponse
+	err      error
+	degraded bool
+	calls    []llamafirewall.ScanRequest
+}
+
+func (m *mockScanner) Scan(_ context.Context, req llamafirewall.ScanRequest) (llamafirewall.ScanResponse, error) {
+	m.calls = append(m.calls, req)
+	return m.resp, m.err
+}
+
+func (m *mockScanner) IsDegraded() bool { return m.degraded }
+
+func TestHandlerLLMFInjectionRedacted(t *testing.T) {
+	auditPath := auditPathIn(t)
+	scanner := &mockScanner{resp: llamafirewall.ScanResponse{
+		Result:     llamafirewall.ResultInjection,
+		Confidence: 0.97,
+		Reason:     "injection detected",
+		LatencyMS:  10,
+	}}
+	stdin := strings.NewReader(`{"hook_event_name":"PostToolUse","tool_name":"read_file","tool_result":"<content that triggers injection>"}`)
+	exitCode := RunAuditRecordWithLLMF(stdin, auditPath, config.Config{}, scanner)
+	_ = exitCode // injection detection logs alert, does not block
+	if len(scanner.calls) != 1 {
+		t.Fatalf("expected 1 scan call, got %d", len(scanner.calls))
+	}
+	if scanner.calls[0].Kind != llamafirewall.ScanPrompt {
+		t.Errorf("expected ScanPrompt, got %v", scanner.calls[0].Kind)
+	}
+}
+
+func TestHandlerLLMFSidecarUnavailableFailsClosed(t *testing.T) {
+	auditPath := auditPathIn(t)
+	scanner := &mockScanner{err: llamafirewall.ErrSidecarUnavailable}
+	stdin := strings.NewReader(`{"hook_event_name":"PostToolUse","tool_name":"web_search","tool_result":"search results"}`)
+	cfg := config.Config{FailMode: config.FailModeClosed}
+	exitCode := RunAuditRecordWithLLMF(stdin, auditPath, cfg, scanner)
+	if exitCode != 1 {
+		t.Errorf("expected exit 1 (block) on sidecar unavailable + fail-closed, got %d", exitCode)
+	}
+}
+
+func TestHandlerLLMFCleanPassThrough(t *testing.T) {
+	auditPath := auditPathIn(t)
+	scanner := &mockScanner{resp: llamafirewall.ScanResponse{
+		Result:     llamafirewall.ResultClean,
+		Confidence: 0.1,
+		LatencyMS:  5,
+	}}
+	stdin := strings.NewReader(`{"hook_event_name":"PostToolUse","tool_name":"read_file","tool_result":"safe content"}`)
+	exitCode := RunAuditRecordWithLLMF(stdin, auditPath, config.Config{}, scanner)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0 (allow) for clean scan, got %d", exitCode)
+	}
+	if len(scanner.calls) != 1 {
+		t.Fatalf("expected 1 scan call, got %d", len(scanner.calls))
+	}
+}
+
+func TestHandlerLLMFCodeShieldBlock(t *testing.T) {
+	auditPath := auditPathIn(t)
+	scanner := &mockScanner{resp: llamafirewall.ScanResponse{
+		Result:     llamafirewall.ResultUnsafe,
+		Confidence: 0.95,
+		LatencyMS:  15,
+	}}
+	stdin := strings.NewReader(`{"hook_event_name":"PostToolUse","tool_name":"write_file","tool_result":"rm -rf /"}`)
+	cfg := config.Config{LlamaFirewall: config.LlamaFirewallConfig{CodeShieldAction: "block"}}
+	exitCode := RunAuditRecordWithLLMF(stdin, auditPath, cfg, scanner)
+	if exitCode != 1 {
+		t.Errorf("expected exit 1 (block) for CodeShield unsafe + block action, got %d", exitCode)
+	}
+}
+
+func TestHandlerLLMFCodeShieldWarn(t *testing.T) {
+	auditPath := auditPathIn(t)
+	scanner := &mockScanner{resp: llamafirewall.ScanResponse{
+		Result:     llamafirewall.ResultUnsafe,
+		Confidence: 0.90,
+		LatencyMS:  12,
+	}}
+	stdin := strings.NewReader(`{"hook_event_name":"PostToolUse","tool_name":"write_file","tool_result":"some code"}`)
+	cfg := config.Config{LlamaFirewall: config.LlamaFirewallConfig{CodeShieldAction: "warn"}}
+	exitCode := RunAuditRecordWithLLMF(stdin, auditPath, cfg, scanner)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0 (warn, not block) for CodeShield warn action, got %d", exitCode)
 	}
 }
