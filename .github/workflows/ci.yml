@@ -74,6 +74,19 @@ jobs:
       - name: Fuzz IPC message parser (FuzzIPCMessage)
         run: go test -tags fuzz -run FuzzIPCMessage -fuzz FuzzIPCMessage -fuzztime 30s ./internal/ipc/...
 
+  fuzz-llamafirewall:
+    # Phase 6 release gate (LLMF-05): fuzz the LlamaFirewall IPC protocol framing.
+    # FuzzLlamaFirewallProto must pass before any v0.6.0 release tag.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Smoke fuzz LlamaFirewall IPC
+        run: go test -run FuzzLlamaFirewallProto -fuzztime=5s ./internal/llamafirewall/...
+
   test-sentry-kernel-5-4:
     runs-on: ubuntu-22.04
     needs: []
@@ -110,6 +123,6 @@ jobs:
 
   release-gate:
     runs-on: ubuntu-22.04
-    needs: [test-sentry-kernel-5-4, test-sentry-kernel-5-15, fuzz-ipc]
+    needs: [test-sentry-kernel-5-4, test-sentry-kernel-5-15, fuzz-ipc, fuzz-llamafirewall]
     steps:
       - run: echo "All release gates passed"
