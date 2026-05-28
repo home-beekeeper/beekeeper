@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: Phase 5 executed — 5/5 plans done; ready for verify-work
-last_updated: "2026-05-27T00:00:00.000Z"
-last_activity: "2026-05-27 — Phase 5 executed: IPC (SO_PEERCRED), 5 correlation rules, eBPF C programs, fanotify, privilege separation, daemon wiring, CLI (protect/sentry), LVH CI matrix"
+status: Phase 5 complete — verified; ready for Phase 6 (macOS Sentry)
+last_updated: "2026-05-28T00:00:00.000Z"
+last_activity: "2026-05-28 — Phase 5 verified: 17/17 packages pass, 25/25 structural checks pass, linux/amd64 cross-compile clean; LVH CI matrix wired as release gate"
 progress:
   total_phases: 9
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 30
   completed_plans: 30
-  percent: 55
+  percent: 56
 ---
 
 # Project State
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-26)
 
 ## Current Position
 
-Phase: 5 of 9 (Linux Sentry) — executed, pending verify-work
-Plan: Phase 5 executed (5/5)
-Status: All 5 plans complete — IPC, correlation engine, eBPF, fanotify, daemon + CLI + CI wired
-Last activity: 2026-05-27 — Phase 5 executed: 5 plans, 4 commits; go build ./... clean; 25 tests pass
+Phase: 5 of 9 (Linux Sentry) — COMPLETE
+Plan: Phase 5 verified (5/5)
+Status: Phase 5 verified — ready for Phase 6 (macOS Sentry)
+Last activity: 2026-05-28 — Phase 5 UAT passed: 13 pass, 0 fail, 2 skip (linux CI); 17/17 packages green
 
 Progress: [███░░░░░░░] 33%
 
