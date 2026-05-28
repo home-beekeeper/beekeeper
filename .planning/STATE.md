@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-28)
 ## Current Position
 
 Phase: 7 of 9 (Cross-Platform Sentry) — In progress
-Plan: 04 of 05 complete
-Status: Wave 3 complete — 07-04 done; 07-05 (CI matrix + SLSA) remaining
-Last activity: 2026-05-28 — Phase 7 plan 04: Windows Sentry daemon + named pipe IPC (SWIN-01, SWIN-05, SWIN-06)
+Plan: 05 of 05 complete
+Status: Wave 4 complete — 07-05 done; Phase 7 all 5/5 plans complete
+Last activity: 2026-05-28 — Phase 7 plan 05: SLSA Level 3 + CycloneDX SBOM + eslogger CI gate (SFDF-05, SMAC-02)
 
 Progress: [██████████░] 67%
 
@@ -121,7 +121,7 @@ Progress: [██████████░] 67%
 | 2 | 07-02 | Windows ETW ingestion layer | aff2833 | ✅ Done |
 | 3 | 07-03 | macOS Sentry daemon + launchd CLI | 61ae8e3 | ✅ Done |
 | 3 | 07-04 | Windows Sentry daemon + named pipe IPC | e959585 | ✅ Done |
-| 4 | 07-05 | CI matrix + SLSA Level 3 | — | ⏳ Pending |
+| 4 | 07-05 | CI matrix + SLSA Level 3 | d99a31e | ✅ Done |
 
 ### Key deliverables (07-04)
 
@@ -241,6 +241,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-05-28T01:05:00.000Z
-Stopped at: Completed 07-04-PLAN.md
+Last session: 2026-05-28T12:00:00.000Z
+Stopped at: Completed 07-05-PLAN.md (Phase 7 complete, all 5/5 plans done)
 Resume file: None
