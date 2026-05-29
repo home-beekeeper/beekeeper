@@ -1380,8 +1380,13 @@ func newLlamaFirewallCmd() *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall Sidecar — Not running")
 				return nil
 			}
-			pid := int(lfState["pid"].(float64))
-			startedAt := lfState["started_at"].(string)
+			pidF, okPID := lfState["pid"].(float64)
+			startedAt, okStarted := lfState["started_at"].(string)
+			if !okPID || !okStarted {
+				fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall Sidecar — Not running")
+				return nil
+			}
+			pid := int(pidF)
 
 			// Check if the process is still alive using Signal(0).
 			proc, _ := os.FindProcess(pid)

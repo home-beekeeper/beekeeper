@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -41,12 +42,6 @@ Data sources:
 			if err != nil {
 				return fmt.Errorf("diag: resolve state directory: %w", err)
 			}
-			configPath, err := platform.ConfigPath()
-			if err != nil {
-				return fmt.Errorf("diag: resolve config path: %w", err)
-			}
-
-			_, _ = config.Load(configPath) // load config via layered resolver (CODE-05)
 
 			stateFile := filepath.Join(stateDir, "state.json")
 			hookLatencyRingPath := filepath.Join(stateDir, "hook-latency.json")
@@ -96,13 +91,21 @@ Data sources:
 // layered config resolution. Existing per-subcommand config.Load calls in earlier
 // commands are NOT modified here — they remain for backwards compatibility.
 func resolveConfig(cmd *cobra.Command) (config.Config, error) {
-	configPath, err := platform.ConfigPath()
+	userPath, err := platform.ConfigPath()
 	if err != nil {
 		return config.Config{}, fmt.Errorf("resolve config path: %w", err)
 	}
 
+	// Full CODE-05 layer set: system → user → project → BEEKEEPER_* env → flags.
+	// SystemPath and ProjectPath are skipped silently by LoadLayered when absent,
+	// so the project layer overrides the user layer WITHOUT requiring env vars
+	// (SC2). Environ MUST be os.Environ() in production or the BEEKEEPER_* layer
+	// is silently dead.
 	opts := config.LayerOpts{
-		UserPath: configPath,
+		SystemPath:  systemConfigPath(),
+		UserPath:    userPath,
+		ProjectPath: discoverProjectConfig(userPath),
+		Environ:     os.Environ(),
 	}
 
 	cfg, err := config.LoadLayered(opts)
@@ -110,4 +113,43 @@ func resolveConfig(cmd *cobra.Command) (config.Config, error) {
 		return config.Config{}, fmt.Errorf("load layered config: %w", err)
 	}
 	return cfg, nil
+}
+
+// systemConfigPath returns the system-wide config path per PRD §9
+// (/etc/beekeeper/config.json). On platforms without /etc the file simply does
+// not exist and LoadLayered skips the layer silently.
+func systemConfigPath() string {
+	return filepath.Join("/etc", "beekeeper", "config.json")
+}
+
+// discoverProjectConfig walks up from the current working directory (git-style)
+// looking for a .beekeeper/config.json, returning the first match. Returns ""
+// when none is found, which makes LoadLayered skip the project layer. This is
+// what lets a project-level config override user config without env vars (SC2).
+//
+// The user-level config (userPath, typically ~/.beekeeper/config.json) is never
+// returned as a project config, and the walk stops at the home directory so it
+// does not climb into other users' homes or the filesystem root.
+func discoverProjectConfig(userPath string) string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	for {
+		candidate := filepath.Join(dir, ".beekeeper", "config.json")
+		if candidate != userPath {
+			if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+		if home != "" && dir == home {
+			return "" // do not search at or above the user's home directory
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "" // reached filesystem root without a match
+		}
+		dir = parent
+	}
 }

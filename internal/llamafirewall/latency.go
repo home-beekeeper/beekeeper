@@ -14,7 +14,7 @@ type LatencyTracker struct {
 	count  int64
 	sumMS  int64
 	p95buf [100]int64 // ring buffer for last 100 latencies
-	head   int        // next write position (0..99)
+	head   int        // monotonic write counter; slot index is head%100
 	filled bool       // true once all 100 slots written at least once
 }
 
