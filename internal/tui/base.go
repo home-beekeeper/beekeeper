@@ -59,6 +59,7 @@ func renderBase(a App) string {
 		pip(a.health.GatewayOK, "gateway") + "  " +
 		sentryPip + "  " +
 		pip(a.health.CatalogsOK, "catalogs fresh") + "  " +
+		pip(a.health.LlamaFirewallOK, "llamafirewall") + "  " +
 		lastBlockStr + "\n"
 
 	// -- Incident slot --

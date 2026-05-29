@@ -169,6 +169,36 @@ func TestAppHealthState(t *testing.T) {
 	_ = m.(App).health
 }
 
+func TestAppHealthLlamaFirewallPip(t *testing.T) {
+	// Cold-start: NewApp seeds LlamaFirewallOK: true so the pip is green before the
+	// first healthTick fires.
+	a := NewApp(false)
+	if !a.health.LlamaFirewallOK {
+		t.Fatal("expected LlamaFirewallOK=true at cold start (NewApp default)")
+	}
+
+	// After a healthTick the field is refreshed. On a dev machine with no sidecar
+	// state.json the probe returns false — that is acceptable. The critical assertion
+	// is that Update does not panic and returns a non-nil model + re-arm cmd.
+	m, cmd := a.Update(healthTick(time.Now()))
+	if m == nil {
+		t.Fatal("expected non-nil model after healthTick with llamafirewall probe")
+	}
+	if cmd == nil {
+		t.Fatal("expected re-arm cmd after healthTick with llamafirewall probe")
+	}
+	// Verify LlamaFirewallOK is reachable (field exists in returned HealthState).
+	_ = m.(App).health.LlamaFirewallOK
+
+	// Verify renderBase includes "llamafirewall" label when width is set.
+	a2 := NewApp(false)
+	a2.width = 120
+	rendered := renderBase(a2)
+	if !strings.Contains(rendered, "llamafirewall") {
+		t.Error("expected renderBase output to contain 'llamafirewall' pip label")
+	}
+}
+
 func TestAppFullFlow(t *testing.T) {
 	a := NewApp(false)
 	// Initialize window size
