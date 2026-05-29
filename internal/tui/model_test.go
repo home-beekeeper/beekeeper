@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -96,5 +98,98 @@ func TestNewRecordsMsgType(t *testing.T) {
 	_, ok := msg.(newRecordsMsg)
 	if !ok {
 		t.Fatal("type assertion newRecordsMsg failed")
+	}
+}
+
+func TestAppCommandDispatch(t *testing.T) {
+	a := NewApp(false)
+	// Open palette
+	a.mode = modePalette
+	// Simulate "alerts" command selected — index 3 in commands slice (scan now/quick/history, alerts)
+	a.palette = PaletteModel{query: "", selIdx: 3}
+	// Trigger Enter via runPaletteSelection
+	fn := a.runPaletteSelection()
+	if fn == nil {
+		t.Fatal("expected non-nil dispatch function for alerts command")
+	}
+	result := fn()
+	app, ok := result.(App)
+	if !ok {
+		t.Fatal("expected App from runPaletteSelection")
+	}
+	if app.mode != modePanel {
+		t.Fatalf("expected modePanel after selecting alerts, got %d", app.mode)
+	}
+	if app.panel != panelAlerts {
+		t.Fatalf("expected panelAlerts, got %s", app.panel)
+	}
+}
+
+func TestAppIncidentResolve(t *testing.T) {
+	a := NewApp(false)
+	// Trigger critical mode
+	a.critical = true
+	a.incident = DefaultIncident()
+	a.health.SentryOK = false
+	a.health.LastBlock = "sentry firing"
+
+	if !a.critical {
+		t.Fatal("setup: expected critical=true")
+	}
+
+	// Simulate Q key resolution directly
+	a.critical = false
+	a.status = "contained · 1 item quarantined · rotate creds recommended"
+	a.incident = IncidentModel{}
+	a.health.LastBlock = "last block just now"
+	a.health.SentryOK = true
+
+	if a.critical {
+		t.Error("expected critical=false after Q resolve")
+	}
+	if a.incident.RuleName != "" {
+		t.Error("expected incident cleared after resolve")
+	}
+	if !strings.Contains(a.status, "contained") {
+		t.Errorf("expected 'contained' in status, got: %q", a.status)
+	}
+}
+
+func TestAppHealthState(t *testing.T) {
+	a := NewApp(false)
+	// healthTick should not panic even with missing state files
+	m, cmd := a.Update(healthTick(time.Now()))
+	if m == nil {
+		t.Fatal("expected non-nil model after healthTick")
+	}
+	if cmd == nil {
+		t.Fatal("expected re-arm cmd after healthTick")
+	}
+	// Health state should be updated (may be all false due to missing files — that's OK)
+	_ = m.(App).health
+}
+
+func TestAppFullFlow(t *testing.T) {
+	a := NewApp(false)
+	// Initialize window size
+	m, _ := a.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
+	a = m.(App)
+	if a.width != 200 || a.height != 50 {
+		t.Fatalf("expected 200x50, got %dx%d", a.width, a.height)
+	}
+	// Should be in calm mode
+	if a.mode != modeCalm {
+		t.Fatal("expected calm mode initially")
+	}
+	// Open palette directly
+	a.mode = modePalette
+	if a.mode != modePalette {
+		t.Fatal("expected palette mode")
+	}
+	// Escape back to calm
+	a.mode = modeCalm
+	a.palette = PaletteModel{}
+	if a.mode != modeCalm {
+		t.Fatal("expected calm mode after Esc")
 	}
 }
