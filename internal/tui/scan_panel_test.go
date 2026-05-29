@@ -50,7 +50,7 @@ func TestScanPanelComplete(t *testing.T) {
 
 // TestPolicyPanelContent: Body() contains all 5 prototype rows.
 func TestPolicyPanelContent(t *testing.T) {
-	p := NewPolicyPanel()
+	p := NewPolicyPanel(false)
 	body := p.Body(100, 40)
 	for _, expected := range []string{"corroboration", "release-age", "llamafirewall"} {
 		if !strings.Contains(body, expected) {
