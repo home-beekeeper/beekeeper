@@ -314,7 +314,7 @@ func (a App) runPaletteSelection() func() interface{} {
 		return func() interface{} { return m }
 
 	case "policy edit":
-		m, _ := a.openPanel(panelPolicy, NewPolicyPanel())
+		m, _ := a.openPanel(panelPolicy, NewPolicyPanel(a.adminMode))
 		return func() interface{} { return m }
 
 	case "catalogs":
