@@ -4,8 +4,8 @@ milestone: v1.0.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 7 execution complete — all 5/5 plans done, 21 packages green, ready to plan Phase 8
-last_updated: "2026-05-29T19:07:02.410Z"
-last_activity: 2026-05-29 -- Phase 9 planning complete
+last_updated: "2026-05-29T20:14:50.356Z"
+last_activity: 2026-05-29 -- Phase 09 execution started
 progress:
   total_phases: 9
   completed_phases: 7
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 08 — tui-dashboard
+**Current focus:** Phase 09 — Policy as Code + Self-Defense Capstone
 
 ## Current Position
 
-Phase: 9
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-29 -- Phase 9 planning complete
+Phase: 09 (Policy as Code + Self-Defense Capstone) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 09
+Last activity: 2026-05-29 -- Phase 09 execution started
 
 Progress: [████████████░] 78%
 Last activity: 2026-05-28 — Phase 7 plan 05: SLSA Level 3 + CycloneDX SBOM + eslogger CI gate (SFDF-05, SMAC-02)
