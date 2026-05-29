@@ -726,22 +726,21 @@ dropped := atomic.LoadUint64(&EventsLost)
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Project config discovery algorithm**
+All three open questions were resolved during planning; the decisions are implemented in the Phase 9 plans.
+
+1. **Project config discovery algorithm** — RESOLVED: git-style upward walk from `os.Getwd()` to the filesystem root, stopping at the first `.beekeeper/config.json` found. Implemented in Plan 09-02 Task 1; documented in config comments.
    - What we know: PRD §9 says `<project>/.beekeeper/config.json` overrides user-level without env vars
-   - What's unclear: Does "project" mean `$CWD/.beekeeper/config.json` exactly, or does it search parent directories (git-style)?
-   - Recommendation: Git-style upward walk from `os.Getwd()` — this is the most useful behavior for monorepos. Document it in config comments.
+   - What was unclear: Does "project" mean `$CWD/.beekeeper/config.json` exactly, or does it search parent directories (git-style)?
 
-2. **Hook latency persistence across restarts**
+2. **Hook latency persistence across restarts** — RESOLVED: option (a) — append each latency sample to a small ring file under `~/.beekeeper/` after every `beekeeper check`; `diag` reads the rolling window and computes p95/p99. Implemented in Plan 09-04 Task 1.
    - What we know: `LatencyTracker` is in-memory; resets on binary restart. Hook handler is a subprocess (one invocation per tool call), so the tracker would always show 0 samples on cold start.
-   - What's unclear: Should hook latency p95/p99 be persisted to `state.json` between `beekeeper check` invocations?
-   - Recommendation: Since `beekeeper check` is a one-shot process, the tracker cannot accumulate across calls in-process. Either (a) write latency samples to `state.json` after each check and `diag` reads the rolling window, OR (b) `diag` reports the benchmark result from the last `go test -bench BenchmarkCheck` run. Option (a) is more accurate at runtime; option (b) is simpler. **Recommend option (a)** — append latency sample to a small ring file in `~/.beekeeper/`.
+   - What was unclear: Should hook latency p95/p99 be persisted between `beekeeper check` invocations? (Considered: (a) persisted ring file vs (b) reporting the last `go test -bench BenchmarkCheck` result.)
 
-3. **`beekeeper-self` self-quarantine — does it lock out `policy test` / `diag`?**
+3. **`beekeeper-self` self-quarantine — does it lock out `policy test` / `diag`?** — RESOLVED: self-quarantine blocks the enforcement paths (`check`, `gateway`, `sentry`, `watch`, `catalogs sync`) and allows the diagnostic paths (`version`, `diag`, `selftest`, `policy validate`) so the developer can investigate. Implemented in Plan 09-05 Task 2; the exception set is documented.
    - What we know: PRD §12.6 says Beekeeper "refuses to run" on a version match
-   - What's unclear: Does this apply to ALL subcommands (including `beekeeper version`), or only enforcement-relevant ones (`beekeeper check`, `gateway`, `sentry`)?
-   - Recommendation: Self-quarantine should block `check`, `gateway`, `sentry`, `watch` (enforcement paths). Allow `version`, `diag`, `selftest`, `policy validate` to run so the developer can diagnose the situation. Document this exception clearly.
+   - What was unclear: Does this apply to ALL subcommands (including `beekeeper version`), or only enforcement-relevant ones?
 
 ---
 
