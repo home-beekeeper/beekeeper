@@ -120,7 +120,23 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.mode == modePanel {
 			a.panelM, _ = a.panelM.Update(msg)
 		}
+		stateDir, _ := platform.StateDir()
+		a.health = refreshHealthState(stateDir)
 		return a, healthTickCmd()
+
+	case quarantineAlertMsg:
+		// Close the alerts panel and show toast (prototype: q/Q in alerts panel).
+		a.mode = modeCalm
+		a.panelM = PanelModel{}
+		var qCmd tea.Cmd
+		a.toast, qCmd = a.toast.Show("item sent to quarantine", toastOK)
+		return a, qCmd
+
+	case syncCatalogsMsg:
+		// Show sync toast (prototype: s in catalogs panel shows "Syncing all sources…").
+		var sCmd tea.Cmd
+		a.toast, sCmd = a.toast.Show("Syncing all sources…", toastOK)
+		return a, sCmd
 
 	case tea.KeyPressMsg:
 		return a.handleKey(msg)
@@ -192,7 +208,8 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			a.toast, cmd = a.toast.Show("process isolated", toastOK)
 			return a, cmd
 		case "d", "D":
-			return a.openPanel(panelAlerts, nil)
+			// Opens full record panel WITHOUT resolving critical mode (prototype behaviour).
+			return a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
 		case "up", "left", "down", "right":
 			var cmd tea.Cmd
 			a.incident, cmd = a.incident.Update(msg)
@@ -208,9 +225,9 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.mode = modePalette
 		a.palette = PaletteModel{}
 	case "!":
-		return a.openPanel(panelAlerts, nil)
+		return a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
 	case "?":
-		return a.openPanel(panelHelp, nil)
+		return a.openPanel(panelHelp, NewHelpPanel())
 	case "g", "G":
 		a.mode = modePalette
 		a.palette = PaletteModel{query: "go"}
@@ -252,7 +269,7 @@ func (a App) doIncidentAction() (tea.Model, tea.Cmd) {
 		a.toast, cmd = a.toast.Show("process isolated", toastOK)
 		return a, cmd
 	case "d":
-		return a.openPanel(panelAlerts, nil)
+		return a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
 	}
 	return a, nil
 }
@@ -271,7 +288,8 @@ func (a App) openPanel(kind panelKind, content PanelContent) (tea.Model, tea.Cmd
 	return a, nil
 }
 
-// runPaletteSelection dispatches the selected palette command.
+// runPaletteSelection dispatches the selected palette command and returns the next model.
+// Returns nil if no command is selected or if the command is "quit".
 func (a App) runPaletteSelection() func() interface{} {
 	sel := a.palette.Selected()
 	if sel == nil {
@@ -282,30 +300,46 @@ func (a App) runPaletteSelection() func() interface{} {
 
 	switch sel.Name {
 	case "alerts":
-		m, _ := a.openPanel(panelAlerts, nil)
+		m, _ := a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
 		return func() interface{} { return m }
+
 	case "quarantine":
-		m, _ := a.openPanel(panelQuarantine, nil)
+		m, _ := a.openPanel(panelQuarantine, NewQuarantinePanel(a.adminMode))
 		return func() interface{} { return m }
+
 	case "audit tail":
-		m, _ := a.openPanel(panelAudit, nil)
+		m, _ := a.openPanel(panelAudit, NewAuditPanel())
 		return func() interface{} { return m }
+
 	case "policy edit":
-		m, _ := a.openPanel(panelPolicy, nil)
+		m, _ := a.openPanel(panelPolicy, NewPolicyPanel())
 		return func() interface{} { return m }
+
 	case "catalogs":
-		m, _ := a.openPanel(panelCatalogs, nil)
+		m, _ := a.openPanel(panelCatalogs, NewCatalogsPanel())
 		return func() interface{} { return m }
-	case "scan now", "scan --quick", "scan history":
-		m, _ := a.openPanel(panelScan, nil)
+
+	case "scan now":
+		m, _ := a.openPanel(panelScan, NewScanPanel("deep"))
 		return func() interface{} { return m }
+
+	case "scan --quick":
+		m, _ := a.openPanel(panelScan, NewScanPanel("quick"))
+		return func() interface{} { return m }
+
+	case "scan history":
+		m, _ := a.openPanel(panelScan, NewScanPanel("history"))
+		return func() interface{} { return m }
+
 	case "help":
-		m, _ := a.openPanel(panelHelp, nil)
+		m, _ := a.openPanel(panelHelp, NewHelpPanel())
 		return func() interface{} { return m }
+
 	case "protect install":
 		newToast, _ := a.toast.Show("protect mode already active", toastOK)
 		a.toast = newToast
 		return func() interface{} { return a }
+
 	case "quit":
 		return nil
 	}
