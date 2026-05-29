@@ -2,26 +2,102 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	platform "github.com/mzansi-agentive/beekeeper/internal/platform"
 )
 
 // PolicyPanel implements PanelContent for the policy & thresholds overlay.
-// Content is static for Phase 8 — Phase 9 will add live config reading.
-type PolicyPanel struct{}
+// It loads real policy rules from ~/.beekeeper/policies/tui_rules.json,
+// renders each rule as a drill-down row with its enabled/disabled state,
+// and — when adminMode is true — allows toggling individual rules via e/t.
+type PolicyPanel struct {
+	rules       []PolicyRule
+	selIdx      int
+	adminMode   bool
+	policiesDir string
+}
 
-// NewPolicyPanel creates a PolicyPanel.
-func NewPolicyPanel() *PolicyPanel { return &PolicyPanel{} }
+// NewPolicyPanel creates a PolicyPanel. When adminMode is true the panel
+// exposes the e/t toggle affordance; otherwise those keys are no-ops.
+func NewPolicyPanel(adminMode bool) *PolicyPanel {
+	stateDir, err := platform.StateDir()
+	if err != nil {
+		stateDir = "policies"
+	}
+	dir := filepath.Join(stateDir, "policies")
+	p := &PolicyPanel{
+		adminMode:   adminMode,
+		policiesDir: dir,
+	}
+	p.rules = LoadPolicyRules(dir)
+	return p
+}
 
-// Update implements PanelContent.
-func (p *PolicyPanel) Update(msg tea.Msg) (PanelContent, tea.Cmd) { return p, nil }
+// Update implements PanelContent. Navigation (j/k/up/down) always works.
+// The e/t toggle is gated on adminMode — mirroring QuarantinePanel's r/p gate.
+func (p *PolicyPanel) Update(msg tea.Msg) (PanelContent, tea.Cmd) {
+	switch msg := msg.(type) {
+	case stateTick:
+		// Reload rules so external edits surface.
+		p.rules = LoadPolicyRules(p.policiesDir)
+
+	case tea.KeyPressMsg:
+		k := msg.String()
+
+		if !p.adminMode {
+			// Non-admin: only j/k navigation; e/t are no-ops.
+			switch k {
+			case "j", "down":
+				if p.selIdx < len(p.rules)-1 {
+					p.selIdx++
+				}
+			case "k", "up":
+				if p.selIdx > 0 {
+					p.selIdx--
+				}
+			}
+			return p, nil
+		}
+
+		// Admin path: navigation + toggle.
+		switch k {
+		case "j", "down":
+			if p.selIdx < len(p.rules)-1 {
+				p.selIdx++
+			}
+		case "k", "up":
+			if p.selIdx > 0 {
+				p.selIdx--
+			}
+		case "e", "E", "t", "T":
+			if len(p.rules) > 0 {
+				p.rules[p.selIdx].Enabled = !p.rules[p.selIdx].Enabled
+				_ = ToggleRule(p.policiesDir, p.rules[p.selIdx].ID, p.rules[p.selIdx].Enabled)
+				// Reload to reflect persisted state.
+				p.rules = LoadPolicyRules(p.policiesDir)
+			}
+		}
+	}
+	return p, nil
+}
 
 // Title implements PanelContent.
 func (p *PolicyPanel) Title() string { return "Policy & thresholds" }
 
-// Count implements PanelContent.
-func (p *PolicyPanel) Count() string { return "editing default profile" }
+// Count implements PanelContent. Reports N rules · M enabled.
+func (p *PolicyPanel) Count() string {
+	total := len(p.rules)
+	enabled := 0
+	for _, r := range p.rules {
+		if r.Enabled {
+			enabled++
+		}
+	}
+	return fmt.Sprintf("%d rules · %d enabled", total, enabled)
+}
 
 // Padded implements PanelContent.
 func (p *PolicyPanel) Padded() bool { return true }
@@ -29,37 +105,49 @@ func (p *PolicyPanel) Padded() bool { return true }
 // Critical implements PanelContent.
 func (p *PolicyPanel) Critical() bool { return false }
 
-// Body implements PanelContent.
-// Lead labels in colorDim, values in colorWhite, secondary in colorDimmer.
-// Matches prototype EXACTLY (LOCKED).
+// Body implements PanelContent. Renders each rule as a drill-down row with
+// an explicit ON/OFF state indicator; the selected row is highlighted.
 func (p *PolicyPanel) Body(width, height int) string {
-	row := func(label, value, secondary string) string {
-		l := styleDim.Render(fmt.Sprintf("%-18s", label))
-		v := styleWhite.Render(value)
-		s := ""
-		if secondary != "" {
-			s = "  " + styleDimmer.Render(secondary)
-		}
-		return "  " + l + v + s
+	if len(p.rules) == 0 {
+		return "\n  " + styleDim.Render("(no policy rules)")
 	}
 
-	var sb strings.Builder
-	sb.WriteString("\n")
-	sb.WriteString(row("corroboration", "single → warn", "two → enforce  three → quarantine") + "\n")
-	sb.WriteString(row("release-age", "1440 min (24h)", "· npm pypi cargo gem composer") + "\n")
-	sb.WriteString(row("lifecycle", "deny by default", "· allowlist 3 pkgs") + "\n")
-	sb.WriteString(row("sentry baseline", "day 3 of 7", "· audit-only until day 7") + "\n")
-	sb.WriteString(row("llamafirewall", "enabled", "· sample 1.0") + "\n")
-	sb.WriteString("\n")
-	sb.WriteString(styleDimmer.Render("Declarative JSON, version-controlled, testable with") + "\n")
-	sb.WriteString(styleTeal.Render("beekeeper policy test <file>") + "\n")
-	return sb.String()
+	var lines []string
+	lines = append(lines, "")
+
+	for i, r := range p.rules {
+		var stateToken string
+		if r.Enabled {
+			stateToken = styleGreen.Render("ON ")
+		} else {
+			stateToken = styleDimmer.Render("OFF")
+		}
+
+		label := styleDim.Render(fmt.Sprintf("%-18s", r.Label))
+		detail := styleDimmer.Render(r.Detail)
+		line := "  " + stateToken + "  " + label + detail
+
+		if i == p.selIdx {
+			line = styleSelRow.Render(strings.TrimRight(line, " "))
+		}
+		lines = append(lines, line)
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, "  "+styleDimmer.Render("Declarative JSON, version-controlled, testable with"))
+	lines = append(lines, "  "+styleTeal.Render("beekeeper policy test <file>"))
+
+	return strings.Join(lines, "\n")
 }
 
-// Footer implements PanelContent.
-// e/t are visual-only in Phase 8 (wired to $EDITOR and policy test in Phase 9).
+// Footer implements PanelContent. Shows admin keys only when adminMode is true.
 func (p *PolicyPanel) Footer() string {
-	return styleTeal.Render("e") + styleDim.Render(" open in $EDITOR · ") +
-		styleTeal.Render("t") + styleDim.Render(" test · ") +
-		styleTeal.Render("esc") + styleDim.Render(" close")
+	if p.adminMode {
+		return styleTeal.Render("e/t") + styleDim.Render(" toggle · ") +
+			styleTeal.Render("↑↓") + styleDim.Render(" select · ") +
+			styleTeal.Render("esc") + styleDim.Render(" close")
+	}
+	return styleTeal.Render("↑↓") + styleDim.Render(" select · ") +
+		styleTeal.Render("esc") + styleDim.Render(" close · ") +
+		styleDimmer.Render("--admin to toggle")
 }
