@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -41,6 +42,13 @@ const (
 	exitAllow = 0
 	exitBlock = 1
 )
+
+// GlobalHookTracker accumulates per-invocation hook handler latency samples for
+// beekeeper diag. Initialized once at package level; Record() is called at the
+// end of runCheck. Because beekeeper check is a one-shot process (one invocation
+// per tool call), samples are also persisted to a ring file via appendHookLatency
+// so diag can compute p95/p99 across process restarts.
+var GlobalHookTracker = &llamafirewall.LatencyTracker{}
 
 // catalogIndex combines io.Closer with policy.MultiCatalogLookup so that the
 // hook handler can both evaluate policy decisions and release the mmap resource.
@@ -90,6 +98,11 @@ type hookInput struct {
 // runCheck is the testable core; opener is injected so tests can force a panic
 // or error from index opening.
 func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string, open catalogOpener) (result Result) {
+	// Record the start time for hook latency tracking (CODE-06). The elapsed
+	// duration is appended to the persisted ring file at the end of runCheck
+	// so beekeeper diag can report accumulated p95/p99 across one-shot invocations.
+	start := time.Now()
+
 	// HOOK-04: 256MB soft memory cap; combined with 1MB stdin LimitReader this
 	// bounds tool-call evaluation memory.
 	debug.SetMemoryLimit(memLimit)
@@ -107,6 +120,19 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 			fmt.Fprintf(os.Stderr, "beekeeper check: recovered panic: %v\n", r)
 			d := failDecision(cfg, "internal error (fail-closed)")
 			result = finalizeWithAC(d, cfg, toolCall, auditPath, policy.AgentContext{})
+		}
+	}()
+
+	// Best-effort hook latency recording (CODE-06, T-09-14): record elapsed time
+	// in the in-memory tracker and append to the persisted ring file. Errors are
+	// silently ignored — a ring-write failure MUST NOT alter result or fail-closed
+	// behavior. The defer runs after the recover guard so panics are captured first.
+	defer func() {
+		elapsedMS := time.Since(start).Milliseconds()
+		GlobalHookTracker.Record(elapsedMS)
+		if cacheDir != "" {
+			ringPath := filepath.Join(filepath.Dir(cacheDir), hookLatencyFile)
+			appendHookLatency(ringPath, elapsedMS)
 		}
 	}()
 

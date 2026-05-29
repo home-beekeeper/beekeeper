@@ -53,6 +53,29 @@ func (t *LatencyTracker) P95() int64 {
 	return buf[idx]
 }
 
+// P99 returns the 99th-percentile latency (in milliseconds) over the last 100
+// samples, or 0 if no samples have been recorded yet. It uses the same ring
+// buffer as P95 (p95buf holds the last 100 samples regardless of percentile).
+func (t *LatencyTracker) P99() int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.count == 0 {
+		return 0
+	}
+	n := 100
+	if !t.filled {
+		n = t.head
+	}
+	buf := make([]int64, n)
+	copy(buf, t.p95buf[:n])
+	sort.Slice(buf, func(i, j int) bool { return buf[i] < buf[j] })
+	idx := int(float64(n) * 0.99)
+	if idx >= n {
+		idx = n - 1
+	}
+	return buf[idx]
+}
+
 // Mean returns the arithmetic mean latency (in milliseconds) over all recorded
 // samples, or 0.0 if no samples have been recorded.
 func (t *LatencyTracker) Mean() float64 {
@@ -63,3 +86,8 @@ func (t *LatencyTracker) Mean() float64 {
 	}
 	return float64(t.sumMS) / float64(t.count)
 }
+
+// GlobalLatencyTracker accumulates per-invocation LlamaFirewall sidecar latency
+// samples for beekeeper diag. Initialized once at package level; Record() is
+// called from the supervisor's Scan method after each sidecar call completes.
+var GlobalLatencyTracker = &LatencyTracker{}
