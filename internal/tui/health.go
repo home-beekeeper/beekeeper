@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -19,11 +20,12 @@ const healthProbeTimeout = 200 * time.Millisecond
 // All probes degrade gracefully — errors return false/degraded state, never panic.
 func refreshHealthState(stateDir string) HealthState {
 	return HealthState{
-		HooksOK:    probeHooks(),
-		GatewayOK:  probeGateway(stateDir),
-		SentryOK:   probeSentry(stateDir),
-		CatalogsOK: probeCatalogs(),
-		LastBlock:  probeLastBlock(),
+		HooksOK:         probeHooks(),
+		GatewayOK:       probeGateway(stateDir),
+		SentryOK:        probeSentry(stateDir),
+		CatalogsOK:      probeCatalogs(),
+		LlamaFirewallOK: probeLlamaFirewall(stateDir),
+		LastBlock:       probeLastBlock(),
 	}
 }
 
@@ -86,6 +88,47 @@ func probeCatalogs() bool {
 		return false
 	}
 	return time.Since(info.ModTime()) < 25*time.Hour
+}
+
+// probeLlamaFirewall checks whether the LlamaFirewall sidecar is running by
+// reading state.json from stateDir and verifying that the recorded PID is alive.
+// The function degrades gracefully: any missing file, malformed JSON, missing
+// field, wrong type, or dead PID results in false — never a panic (T-08-08-01).
+// This is a local file + PID check only — no network call, no IPC (sub-ms).
+func probeLlamaFirewall(stateDir string) bool {
+	statePath := filepath.Join(stateDir, "state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return false
+	}
+
+	var state map[string]any
+	if err := json.Unmarshal(data, &state); err != nil {
+		return false
+	}
+
+	// Look up "llamafirewall" sub-object with comma-ok to avoid panic on wrong type.
+	lfRaw, ok := state["llamafirewall"]
+	if !ok {
+		return false
+	}
+	lfState, ok := lfRaw.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	// Extract "pid" with comma-ok float64 assertion (JSON numbers decode as float64).
+	pidRaw, ok := lfState["pid"]
+	if !ok {
+		return false
+	}
+	pidFloat, ok := pidRaw.(float64)
+	if !ok {
+		return false
+	}
+	pid := int(pidFloat)
+
+	return pidAlive(pid)
 }
 
 // probeLastBlock reads the most recent block decision from the audit log tail.
