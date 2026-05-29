@@ -184,7 +184,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 09-01-PLAN.md — internal/policyloader: declarative JSON policy load/validate/test, adversarial-field rejection, Wave 0 fixtures (CODE-01..04) (wave 1)
 - [x] 09-02-PLAN.md — Layered config merge: system→user→project→env→flag, zero-value-safe merge, SelfCatalogConfig (CODE-05) (wave 1)
 - [x] 09-03-PLAN.md — beekeeper-self self-quarantine catalog: separate ed25519 key, fail-closed vs network branching, state persistence (CTLG-04, SFDF-06) (wave 1)
-- [ ] 09-04-PLAN.md — beekeeper diag data layer: LatencyTracker.P99, persisted hook latency, ETW build-tag pair, CollectDiag (CODE-06) (wave 2)
+- [x] 09-04-PLAN.md — beekeeper diag data layer: LatencyTracker.P99, persisted hook latency, ETW build-tag pair, CollectDiag (CODE-06) (wave 2)
 - [ ] 09-05-PLAN.md — CLI wiring + startup self-quarantine guard + policies/ init + docs/THREAT-MODEL.md (CODE-02..06, CTLG-04, SFDF-06) (wave 3)
 
 ## Progress

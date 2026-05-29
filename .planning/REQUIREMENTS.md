@@ -81,7 +81,7 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 - [ ] **SWIN-01**: `beekeeper protect install` installs Sentry as Windows Service (LocalService privileges); `beekeeper protect uninstall`, `beekeeper protect status`
 - [ ] **SWIN-02**: Event ingestion via ETW using `tekert/golang-etw` (no CGO); providers: `Microsoft-Windows-Kernel-Process` (process events), `Microsoft-Windows-Security-Auditing` (file/network events)
 - [ ] **SWIN-03**: Probe for existing NT Kernel Logger session conflict at install time (only one session per machine); surface conflict in `beekeeper protect status` if EDR already owns the session
-- [ ] **SWIN-04**: Surface `EventsLost` count in `beekeeper diag` — ETW rate-limits under load; user knows when detection coverage is degraded
+- [x] **SWIN-04**: Surface `EventsLost` count in `beekeeper diag` — ETW rate-limits under load; user knows when detection coverage is degraded
 - [ ] **SWIN-05**: IPC between unprivileged CLI and Sentry service via Windows named pipe with DACL granting access only to installing user's SID
 - [ ] **SWIN-06**: Applies same default rule set and 7-day baseline on normalized ETW events
 
@@ -124,7 +124,7 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 - [ ] **CODE-03**: `beekeeper policy validate <file>` — validate policy file schema
 - [ ] **CODE-04**: `beekeeper policy list` — list loaded policy files with rule counts
 - [ ] **CODE-05**: Layered config merge — `/etc/beekeeper/config.json` → `~/.beekeeper/config.json` → `<project>/.beekeeper/config.json` → `BEEKEEPER_*` env vars → CLI flags
-- [ ] **CODE-06**: `beekeeper diag` — display hook latency p95/p99, sidecar inference latency, catalog freshness per source, ETW `EventsLost` count
+- [x] **CODE-06**: `beekeeper diag` — display hook latency p95/p99, sidecar inference latency, catalog freshness per source, ETW `EventsLost` count
 
 ### Self-Defense (SFDF)
 
@@ -240,7 +240,7 @@ Populated during roadmap creation.
 | SWIN-01 | Phase 7 | Pending |
 | SWIN-02 | Phase 7 | Pending |
 | SWIN-03 | Phase 7 | Pending |
-| SWIN-04 | Phase 7 | Pending |
+| SWIN-04 | Phase 7 | Complete |
 | SWIN-05 | Phase 7 | Pending |
 | SWIN-06 | Phase 7 | Pending |
 | SFDF-05 | Phase 7 | Pending |
@@ -259,7 +259,7 @@ Populated during roadmap creation.
 | CODE-03 | Phase 9 | Pending |
 | CODE-04 | Phase 9 | Pending |
 | CODE-05 | Phase 9 | Pending |
-| CODE-06 | Phase 9 | Pending |
+| CODE-06 | Phase 9 | Complete |
 | SFDF-06 | Phase 9 | Pending |
 | CTLG-04 | Phase 9 | Pending |
 
