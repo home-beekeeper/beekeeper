@@ -85,6 +85,22 @@ type LlamaFirewallConfig struct {
 	PythonPath string `json:"python_path,omitempty"`
 }
 
+// SelfCatalogConfig holds configuration for the beekeeper-self catalog source
+// (Phase 9, CTLG-04/SFDF-06). The self-catalog is a separately-hosted feed
+// verified against a distinct public key embedded in the binary. It is checked
+// on every startup and every catalogs sync to detect compromised Beekeeper releases.
+//
+// Both fields are optional overrides; sensible defaults are compiled in.
+type SelfCatalogConfig struct {
+	// URL is the HTTPS endpoint for the beekeeper-self catalog feed.
+	// Defaults to the official endpoint compiled into the binary.
+	URL string `json:"url,omitempty"`
+	// PubKey is a base64-encoded Ed25519 public key that overrides the
+	// compiled-in public key for signature verification. Leave empty to use
+	// the compiled-in key.
+	PubKey string `json:"pub_key,omitempty"`
+}
+
 // Config is the user-level Beekeeper configuration.
 type Config struct {
 	// FailMode controls behavior when the hook handler cannot produce a real
@@ -118,6 +134,11 @@ type Config struct {
 
 	// LlamaFirewall holds Phase 6 LlamaFirewall sidecar configuration.
 	LlamaFirewall LlamaFirewallConfig `json:"llamafirewall,omitempty"`
+
+	// SelfCatalog holds Phase 9 beekeeper-self catalog overrides (CTLG-04/SFDF-06).
+	// Consumers (Plans 03 and 05) read URL and PubKey to locate and verify the feed.
+	// Leave both fields empty to use the compiled-in defaults.
+	SelfCatalog SelfCatalogConfig `json:"self_catalog,omitempty"`
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.
