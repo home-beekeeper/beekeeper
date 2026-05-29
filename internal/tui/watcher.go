@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -40,12 +41,15 @@ func clockCmd() tea.Cmd {
 
 // tailFrom reads NDJSON lines from auditPath starting at offset.
 // Returns new records and the new offset. Non-existent files return nil, offset.
+//
+// Only complete, newline-terminated lines advance the offset. A partial trailing
+// line (record mid-write with no trailing newline yet) is NOT consumed — the
+// returned offset stays before it so the next call re-reads and emits it once its
+// newline has been written. Malformed-but-complete lines still advance the offset
+// (they are complete; do not re-read them forever) but are silently skipped.
 func tailFrom(auditPath string, offset int64) ([]audit.AuditRecord, int64) {
 	f, err := os.Open(auditPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, offset
-		}
 		return nil, offset
 	}
 	defer f.Close()
@@ -54,32 +58,24 @@ func tailFrom(auditPath string, offset int64) ([]audit.AuditRecord, int64) {
 		return nil, offset
 	}
 
-	scanner := bufio.NewScanner(f)
-	buf := make([]byte, 1024*1024) // 1MB buffer
-	scanner.Buffer(buf, len(buf))
-
+	r := bufio.NewReader(f)
 	var records []audit.AuditRecord
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			// Partial trailing line (no newline yet) or EOF with no data.
+			// Do NOT advance the offset — re-read this fragment next tick.
+			break
+		}
+		// Only complete (newline-terminated) lines advance the offset.
+		offset += int64(len(line))
 		var rec audit.AuditRecord
-		if err := json.Unmarshal(line, &rec); err != nil {
-			// Skip malformed lines silently.
-			continue
+		if json.Unmarshal([]byte(strings.TrimRight(line, "\n")), &rec) == nil {
+			records = append(records, rec)
 		}
-		records = append(records, rec)
+		// Malformed complete lines: offset already advanced; skip silently.
 	}
-
-	newOffset, _ := f.Seek(0, 1)
-	if newOffset == 0 {
-		// Seek to current position via whence=1 (current) with 0 offset
-		info, err := f.Stat()
-		if err == nil {
-			newOffset = info.Size()
-		} else {
-			newOffset = offset
-		}
-	}
-	return records, newOffset
+	return records, offset
 }
 
 // watchAuditLog watches auditPath for new records and sends newRecordsMsg to p.
