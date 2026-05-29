@@ -72,30 +72,21 @@ func renderBase(a App) string {
 	rule := "\n  " + lipgloss.NewStyle().Foreground(colorBorderDim).
 		Render(strings.Repeat("─", w-4)) + "\n"
 
-	// -- Hint row --
+	// -- Tagline + single-row hint --
+	// Tagline sits directly under the rule; the shortcut labels render as one
+	// compact `·`-separated row beneath it (no separate bottom keybar — that was
+	// a duplicate of these same labels).
 	key := func(k string) string { return styleTeal.Render(k) }
 	hint := "\n  " +
-		key(":") + "  command palette     " +
-		key("!") + "  jump to alerts     " +
-		key("g") + "  go to…\n  " +
-		key("?") + "  help     " +
-		key("q") + "  quit\n  " +
-		styleDimmer.Render("Beekeeper stays quiet until something needs you. Press : to do anything.") + "\n"
-
-	// -- Keybar --
-	keybits := " " + styleTeal.Render(":") + styleDim.Render(" palette") +
-		styleDimmer.Render(" · ") +
-		styleTeal.Render("!") + styleDim.Render(" alerts") +
-		styleDimmer.Render(" · ") +
-		styleTeal.Render("g") + styleDim.Render(" go to") +
-		styleDimmer.Render(" · ") +
-		styleTeal.Render("?") + styleDim.Render(" help") +
-		styleDimmer.Render(" · ") +
-		styleTeal.Render("q") + styleDim.Render(" quit") + " "
-	keybar := styleKeybar.Width(w).Render(keybits)
+		styleDimmer.Render("Beekeeper stays quiet until something needs you. Press : to do anything.") + "\n  " +
+		key(":") + styleDim.Render(" command palette") + styleDimmer.Render(" · ") +
+		key("!") + styleDim.Render(" jump to alerts") + styleDimmer.Render(" · ") +
+		key("g") + styleDim.Render(" go to…") + styleDimmer.Render(" · ") +
+		key("?") + styleDim.Render(" help") + styleDimmer.Render(" · ") +
+		key("q") + styleDim.Render(" quit") + "\n"
 
 	body := statusLine + healthRow + incidentSlot + rule + hint
-	full := titlebar + "\n" + body + "\n" + keybar
+	full := titlebar + "\n" + body
 
 	return full
 }
