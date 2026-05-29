@@ -237,6 +237,13 @@ func newCheckCmd() *cobra.Command {
 		Short: "Evaluate a tool call read from stdin (allow=0, block!=0)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard — runs before any
+			// enforcement logic. Refuses to continue if the running binary version
+			// appears in the beekeeper-self compromised-version list.
+			if err := enforceSelfQuarantine(cmd); err != nil {
+				return err
+			}
+
 			catalogDir, err := platform.CatalogDir()
 			if err != nil {
 				return fmt.Errorf("resolve catalog directory: %w", err)
@@ -316,6 +323,13 @@ func newCatalogsCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Synced %d catalog entries\n", n)
 			fmt.Fprintf(out, "Index: %s\n", filepath.Join(dir, "bumblebee.idx"))
+
+			// Phase 9 (CTLG-04): run the self-quarantine check AFTER every sync
+			// so a newly-published compromise entry is acted on immediately.
+			if sqErr := enforceSelfQuarantine(cmd); sqErr != nil {
+				return sqErr
+			}
+
 			return nil
 		},
 	})
@@ -427,6 +441,11 @@ func newWatchCmd() *cobra.Command {
 		Short: "Watch extension directories for new installations (Ctrl+C to stop)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard.
+			if err := enforceSelfQuarantine(cmd); err != nil {
+				return err
+			}
+
 			catalogDir, err := platform.CatalogDir()
 			if err != nil {
 				return fmt.Errorf("resolve catalog directory: %w", err)
@@ -1011,6 +1030,11 @@ and is documented as reducing security.
 Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard.
+			if err := enforceSelfQuarantine(cmd); err != nil {
+				return err
+			}
+
 			stateDir, err := platform.StateDir()
 			if err != nil {
 				return fmt.Errorf("resolve state directory: %w", err)
@@ -1251,7 +1275,13 @@ func newSentryCmd() *cobra.Command {
 		Use:   "sentry",
 		Short: "Sentry daemon (invoked by systemd; Linux only)",
 		Args:  cobra.NoArgs,
-		RunE:  runSentryDaemon,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard.
+			if err := enforceSelfQuarantine(cmd); err != nil {
+				return err
+			}
+			return runSentryDaemon(cmd, args)
+		},
 	}
 
 	rulesCmd := &cobra.Command{
