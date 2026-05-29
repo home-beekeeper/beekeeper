@@ -160,6 +160,102 @@ func TestLoadStateNilSourcesRepaired(t *testing.T) {
 	}
 }
 
+// TestSelfQuarantineState_Persistence verifies that a WatchState with an active
+// SelfQuarantineState round-trips through SaveState → LoadState without data loss.
+// It also verifies backward compatibility: a WatchState without SelfQuarantine
+// round-trips correctly (field remains nil after load).
+func TestSelfQuarantineState_Persistence(t *testing.T) {
+	t.Run("with self quarantine", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "state.json")
+
+		original := WatchState{
+			Sources: map[string]SourceState{
+				"bumblebee": {Hash: "abc123", Count: 100},
+			},
+			SelfQuarantine: &SelfQuarantineState{
+				Version: "v0.4.2",
+				EntryID: "beekeeper-self-2026-001",
+				Reason:  "Beekeeper v0.4.2 release pipeline compromise",
+				FiredAt: "2026-05-29T12:00:00Z",
+			},
+		}
+
+		if err := SaveState(path, original); err != nil {
+			t.Fatalf("SaveState: %v", err)
+		}
+
+		loaded, err := LoadState(path)
+		if err != nil {
+			t.Fatalf("LoadState: %v", err)
+		}
+
+		if loaded.SelfQuarantine == nil {
+			t.Fatal("SelfQuarantine must not be nil after round-trip")
+		}
+		if loaded.SelfQuarantine.Version != "v0.4.2" {
+			t.Errorf("Version: want %q, got %q", "v0.4.2", loaded.SelfQuarantine.Version)
+		}
+		if loaded.SelfQuarantine.EntryID != "beekeeper-self-2026-001" {
+			t.Errorf("EntryID: want %q, got %q", "beekeeper-self-2026-001", loaded.SelfQuarantine.EntryID)
+		}
+		if loaded.SelfQuarantine.Reason != "Beekeeper v0.4.2 release pipeline compromise" {
+			t.Errorf("Reason: want %q, got %q", "Beekeeper v0.4.2 release pipeline compromise", loaded.SelfQuarantine.Reason)
+		}
+		if loaded.SelfQuarantine.FiredAt != "2026-05-29T12:00:00Z" {
+			t.Errorf("FiredAt: want %q, got %q", "2026-05-29T12:00:00Z", loaded.SelfQuarantine.FiredAt)
+		}
+		// Ensure Sources also survived.
+		if len(loaded.Sources) != 1 {
+			t.Errorf("Sources len: want 1, got %d", len(loaded.Sources))
+		}
+	})
+
+	t.Run("backward compatible — no self quarantine field", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "state.json")
+
+		// Write state.json without a self_quarantine key — simulates an existing
+		// pre-Phase-9 state.json that was written before this field existed.
+		rawJSON := []byte(`{"sources":{"bumblebee":{"hash":"abc","count":10}}}`)
+		if err := writeFileAtomic(path, rawJSON); err != nil {
+			t.Fatalf("writeFileAtomic: %v", err)
+		}
+
+		loaded, err := LoadState(path)
+		if err != nil {
+			t.Fatalf("LoadState: %v", err)
+		}
+		if loaded.SelfQuarantine != nil {
+			t.Errorf("SelfQuarantine must be nil for pre-Phase-9 state.json, got %+v", loaded.SelfQuarantine)
+		}
+		if loaded.Sources["bumblebee"].Hash != "abc" {
+			t.Errorf("Sources[bumblebee].Hash: want %q, got %q", "abc", loaded.Sources["bumblebee"].Hash)
+		}
+	})
+
+	t.Run("no self quarantine field omitted on marshal", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "state.json")
+
+		st := WatchState{
+			Sources:        map[string]SourceState{},
+			SelfQuarantine: nil, // should be omitted
+		}
+		if err := SaveState(path, st); err != nil {
+			t.Fatalf("SaveState: %v", err)
+		}
+
+		loaded, err := LoadState(path)
+		if err != nil {
+			t.Fatalf("LoadState: %v", err)
+		}
+		if loaded.SelfQuarantine != nil {
+			t.Errorf("nil SelfQuarantine must round-trip as nil, got %+v", loaded.SelfQuarantine)
+		}
+	})
+}
+
 func TestCatalogDeltaHasChanges(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -38,6 +38,34 @@ type SourceState struct {
 type WatchState struct {
 	// Sources maps source name (e.g. "bumblebee") to its per-source state.
 	Sources map[string]SourceState `json:"sources"`
+
+	// SelfQuarantine is set when CheckSelfCatalog determines the running
+	// binary version is listed in the beekeeper-self compromise feed.
+	// The omitempty tag ensures backward compatibility: existing state.json
+	// files without this field parse cleanly (field reads as nil), and
+	// re-written state.json files without an active quarantine omit the key.
+	SelfQuarantine *SelfQuarantineState `json:"self_quarantine,omitempty"`
+}
+
+// SelfQuarantineState records the details of an active self-quarantine event
+// as persisted to state.json. It is read on every startup BEFORE any network
+// fetch so that a previous quarantine decision is honored offline.
+type SelfQuarantineState struct {
+	// Version is the beekeeper version string that triggered quarantine
+	// (e.g. "v0.4.2"). Stored for display purposes and to allow the startup
+	// check to match the currently running version.
+	Version string `json:"version"`
+
+	// EntryID is the beekeeper-self catalog entry ID that matched
+	// (e.g. "beekeeper-self-2026-001").
+	EntryID string `json:"entry_id"`
+
+	// Reason is the human-readable description from the catalog entry
+	// (e.g. "Beekeeper v0.4.2 release pipeline compromise").
+	Reason string `json:"reason"`
+
+	// FiredAt is the RFC3339 timestamp of when self-quarantine was triggered.
+	FiredAt string `json:"fired_at"`
 }
 
 // LoadState reads the watch state from path.
