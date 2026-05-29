@@ -18,16 +18,24 @@ files_reviewed_list:
   - internal/tui/base.go
 findings:
   critical: 0
-  warning: 2
+  warning: 0
   info: 4
-  total: 6
+  total: 4
 status: issues_found
+warnings_resolved: 2
 ---
 
 # Phase 8: Code Review Report
 
 **Reviewed:** 2026-05-29T14:14:51Z
 **Depth:** standard
+
+> ## Resolution (2026-05-29)
+> Both WARNING findings from this review were fixed in the gap-closure pass:
+> - **WR-01** (PolicyPanel selIdx out-of-range crash) — fixed in commit `4ee9657`: selIdx re-clamped after every reload + bounded toggle guard (`p.selIdx >= 0 && p.selIdx < len(p.rules)`). Regression test `TestPolicyPanelSelIdxClampedAfterReload`.
+> - **WR-02** (LoadPolicyRules clobber on transient error + non-atomic write) — fixed in commit `480eca3`: `errors.Is(err, os.ErrNotExist)`-only seeding; atomic temp-file + `os.Rename` write at 0600. Regression tests `TestLoadPolicyRulesAbsentFileSeeds`, `TestLoadPolicyRulesCorruptFilePreserved`.
+>
+> Remaining: 4 Info items (IN-01 Windows pidAlive access-denied parity, IN-02 rune-boundary truncation in expanded detail, IN-03 minInt/max vs Go 1.25 builtins, IN-04 non-admin gate tested structurally) — non-blocking, carried forward.
 **Files Reviewed:** 12
 **Status:** issues_found
 
