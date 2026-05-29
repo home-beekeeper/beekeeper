@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 5: Linux Sentry** - Privileged systemd daemon, fanotify + cilium/ebpf event ingestion, 5-rule correlation engine, 7-day baseline
 - [x] **Phase 6: LlamaFirewall + Audit Sinks** - Optional Python sidecar with PromptGuard 2 / CodeShield / AlignmentCheck; full audit sinks (syslog, OTLP, HTTPS); audit query/export commands
 - [x] **Phase 7: Cross-Platform Sentry** - macOS eslogger Sentry, Windows ETW Sentry, SLSA Level 3 provenance + SBOM
-- [ ] **Phase 8: TUI Dashboard** - Bubble Tea v2 dashboard, all panels (activity, alerts, catalog, scan, policies, quarantine, health), admin mode
+- [x] **Phase 8: TUI Dashboard** - Bubble Tea v2 dashboard, all panels (activity, alerts, catalog, scan, policies, quarantine, health), admin mode
 - [ ] **Phase 9: Policy as Code + Self-Defense Capstone** - Declarative JSON policies, `policy test/validate/list`, layered config, `beekeeper-self` catalog live, v1.0.0
 
 ## Phase Details
@@ -196,5 +196,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Linux Sentry | 0/TBD | Not started | - |
 | 6. LlamaFirewall + Audit Sinks | 5/5 | Complete | 2026-05-28 |
 | 7. Cross-Platform Sentry | 5/5 | Complete | 2026-05-28 |
-| 8. TUI Dashboard | 5/9 | In progress (gap closure) | - |
+| 8. TUI Dashboard | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | 0/TBD | Not started | - |
