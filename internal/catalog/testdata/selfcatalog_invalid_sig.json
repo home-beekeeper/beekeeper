@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "entries": [
+    {
+      "id": "beekeeper-self-2026-001",
+      "name": "Beekeeper test version compromise",
+      "ecosystem": "beekeeper",
+      "package": "beekeeper",
+      "versions": [
+        "test-v0.0.1"
+      ],
+      "severity": "critical",
+      "catalog_source": "beekeeper-self"
+    }
+  ],
+  "catalog_signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+}

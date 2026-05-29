@@ -1,0 +1,321 @@
+package catalog
+
+import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// testSelfCatalogPrivKeyHex is the Ed25519 private key used to sign test fixtures.
+// The corresponding public key is the SelfCatalogPublicKey embedded in selfkey.go.
+// THIS KEY IS TEST-ONLY — it is never shipped in production binaries.
+const testSelfCatalogPrivKeyHex = "5d5ae492cb93049032ec1eca0fd2b2cfa52084c58b0bdd9adb7a4f302b713db2e09f12f0cb1e09cfcf238ccffaeafb301fabd187756ee140ef56f6d62dbae23e"
+
+// testSelfPrivKey decodes the test private key for fixture signing helpers.
+func testSelfPrivKey(t *testing.T) ed25519.PrivateKey {
+	t.Helper()
+	b, err := hex.DecodeString(testSelfCatalogPrivKeyHex)
+	if err != nil {
+		t.Fatalf("decode test private key: %v", err)
+	}
+	return ed25519.PrivateKey(b)
+}
+
+// signFeedEntries returns a base64-encoded Ed25519 signature over the canonical
+// JSON of the given entries slice using the test private key.
+func signFeedEntries(t *testing.T, entries []selfCatalogEntry) string {
+	t.Helper()
+	data, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatalf("marshal entries for signing: %v", err)
+	}
+	sig := ed25519.Sign(testSelfPrivKey(t), data)
+	return base64.StdEncoding.EncodeToString(sig)
+}
+
+// readFixtureSelfCatalog reads a testdata fixture file relative to this package.
+func readFixtureSelfCatalog(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("read fixture %q: %v", name, err)
+	}
+	return data
+}
+
+// serveFeed starts an httptest.Server that serves the given response body on GET.
+// The server is closed automatically via t.Cleanup.
+func serveFeed(t *testing.T, body []byte, statusCode int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestSelfCatalog_VersionMatch verifies that when the feed lists the running
+// version, CheckSelfCatalog returns a quarantine result with the matched entry.
+func TestSelfCatalog_VersionMatch(t *testing.T) {
+	feedData := readFixtureSelfCatalog(t, "selfcatalog_match.json")
+	srv := serveFeed(t, feedData, http.StatusOK)
+
+	opts := SelfCatalogOpts{
+		FeedURL:    srv.URL,
+		CacheDir:   t.TempDir(),
+		Client:     srv.Client(),
+		Version:    "test-v0.0.1", // matches the fixture
+		StatePath:  filepath.Join(t.TempDir(), "state.json"),
+		pubKeyOverride: SelfCatalogPublicKey,
+	}
+
+	result := CheckSelfCatalog(opts)
+
+	if result.Outcome != SelfCatalogQuarantine {
+		t.Errorf("Outcome: want SelfCatalogQuarantine, got %v", result.Outcome)
+	}
+	if result.MatchedEntry == nil {
+		t.Fatal("MatchedEntry must not be nil on quarantine")
+	}
+	if result.MatchedEntry.ID != "beekeeper-self-2026-001" {
+		t.Errorf("MatchedEntry.ID: want %q, got %q", "beekeeper-self-2026-001", result.MatchedEntry.ID)
+	}
+	if result.Err != nil {
+		t.Errorf("Err must be nil on quarantine, got %v", result.Err)
+	}
+}
+
+// TestSelfCatalog_InvalidSignature verifies that a tampered signature returns
+// errIntegrity (fail-closed), distinct from a network error (warn-continue).
+func TestSelfCatalog_InvalidSignature(t *testing.T) {
+	feedData := readFixtureSelfCatalog(t, "selfcatalog_invalid_sig.json")
+	srv := serveFeed(t, feedData, http.StatusOK)
+
+	opts := SelfCatalogOpts{
+		FeedURL:    srv.URL,
+		CacheDir:   t.TempDir(),
+		Client:     srv.Client(),
+		Version:    "test-v0.0.1",
+		StatePath:  filepath.Join(t.TempDir(), "state.json"),
+		pubKeyOverride: SelfCatalogPublicKey,
+	}
+
+	result := CheckSelfCatalog(opts)
+
+	if result.Outcome != SelfCatalogFailClosed {
+		t.Errorf("Outcome: want SelfCatalogFailClosed for invalid signature, got %v", result.Outcome)
+	}
+	if !errors.Is(result.Err, errIntegrity) {
+		t.Errorf("Err: want errors.Is(err, errIntegrity), got %v", result.Err)
+	}
+	// Must NOT be a network error — the failure is an integrity failure.
+	if errors.Is(result.Err, errNetwork) {
+		t.Error("Err must not wrap errNetwork for an integrity failure")
+	}
+}
+
+// TestSelfCatalog_NetworkError_NoCache verifies that when the fetch fails AND
+// there is no cached copy, the result is WARN+CONTINUE (not quarantine, not fail-closed).
+// This ensures that a transient network failure does not brick the tool (Pitfall 2).
+func TestSelfCatalog_NetworkError_NoCache(t *testing.T) {
+	// Use an address that will fail immediately — not listening.
+	opts := SelfCatalogOpts{
+		FeedURL:    "http://127.0.0.1:1", // nothing listening here
+		CacheDir:   t.TempDir(),           // empty cache dir
+		Client:     &http.Client{Timeout: 100 * time.Millisecond},
+		Version:    "test-v0.0.1",
+		StatePath:  filepath.Join(t.TempDir(), "state.json"),
+		pubKeyOverride: SelfCatalogPublicKey,
+	}
+
+	result := CheckSelfCatalog(opts)
+
+	if result.Outcome != SelfCatalogWarnContinue {
+		t.Errorf("Outcome: want SelfCatalogWarnContinue for network error + no cache, got %v", result.Outcome)
+	}
+	// Network errors must wrap errNetwork, not errIntegrity.
+	if !errors.Is(result.Err, errNetwork) {
+		t.Errorf("Err: want errors.Is(err, errNetwork), got %v", result.Err)
+	}
+	if errors.Is(result.Err, errIntegrity) {
+		t.Error("Err must not wrap errIntegrity for a network failure")
+	}
+}
+
+// TestSelfCatalog_NetworkError_FreshCache verifies that when the fetch fails BUT
+// a fresh (<24h) cache exists, the cached feed is used and processing continues.
+// If the cached feed matches the running version, the result is still quarantine.
+func TestSelfCatalog_NetworkError_FreshCache(t *testing.T) {
+	cacheDir := t.TempDir()
+
+	// Write a fresh cache entry that does NOT match the running version.
+	noMatchData := readFixtureSelfCatalog(t, "selfcatalog_no_match.json")
+	cacheEntry := selfCatalogCacheEntry{
+		CachedAt: time.Now().UTC(),
+		FeedData: noMatchData,
+	}
+	cacheData, err := json.Marshal(cacheEntry)
+	if err != nil {
+		t.Fatalf("marshal cache entry: %v", err)
+	}
+	cachePath := selfCatalogCachePath(cacheDir)
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err != nil {
+		t.Fatalf("mkdir cache dir: %v", err)
+	}
+	if err := writeFileAtomic(cachePath, cacheData); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+
+	// Network will fail — nothing is listening on port 1.
+	opts := SelfCatalogOpts{
+		FeedURL:    "http://127.0.0.1:1",
+		CacheDir:   cacheDir,
+		Client:     &http.Client{Timeout: 100 * time.Millisecond},
+		Version:    "different-version", // does not match v99.99.99 in the no_match fixture
+		StatePath:  filepath.Join(t.TempDir(), "state.json"),
+		pubKeyOverride: SelfCatalogPublicKey,
+	}
+
+	result := CheckSelfCatalog(opts)
+
+	// With a fresh cache and no version match, the outcome must be Continue.
+	if result.Outcome != SelfCatalogContinue {
+		t.Errorf("Outcome: want SelfCatalogContinue (cache hit, no match), got %v", result.Outcome)
+	}
+	if result.Err != nil {
+		t.Errorf("Err must be nil on continue, got %v", result.Err)
+	}
+}
+
+// TestSelfCatalog_NoMatch verifies that a valid, signed feed with no matching
+// version produces a Continue outcome with no error.
+func TestSelfCatalog_NoMatch(t *testing.T) {
+	feedData := readFixtureSelfCatalog(t, "selfcatalog_no_match.json")
+	srv := serveFeed(t, feedData, http.StatusOK)
+
+	opts := SelfCatalogOpts{
+		FeedURL:    srv.URL,
+		CacheDir:   t.TempDir(),
+		Client:     srv.Client(),
+		Version:    "v1.0.0-unaffected", // not in any entry
+		StatePath:  filepath.Join(t.TempDir(), "state.json"),
+		pubKeyOverride: SelfCatalogPublicKey,
+	}
+
+	result := CheckSelfCatalog(opts)
+
+	if result.Outcome != SelfCatalogContinue {
+		t.Errorf("Outcome: want SelfCatalogContinue for no match, got %v", result.Outcome)
+	}
+	if result.MatchedEntry != nil {
+		t.Errorf("MatchedEntry must be nil on no match, got %+v", result.MatchedEntry)
+	}
+	if result.Err != nil {
+		t.Errorf("Err must be nil on continue, got %v", result.Err)
+	}
+}
+
+// TestSelfCatalog_OfflinePersistence verifies that when state.json already has
+// a SelfQuarantine for the running version, CheckSelfCatalog returns quarantine
+// immediately without performing any network fetch.
+func TestSelfCatalog_OfflinePersistence(t *testing.T) {
+	stateDir := t.TempDir()
+	statePath := filepath.Join(stateDir, "state.json")
+
+	// Pre-populate state.json with a quarantine for the running version.
+	st := WatchState{
+		Sources: make(map[string]SourceState),
+		SelfQuarantine: &SelfQuarantineState{
+			Version: "v0.4.2",
+			EntryID: "beekeeper-self-2026-001",
+			Reason:  "Beekeeper v0.4.2 release pipeline compromise",
+			FiredAt: time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+	if err := SaveState(statePath, st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	// Server should never be called — quarantine comes from state.json.
+	serverCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serverCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	opts := SelfCatalogOpts{
+		FeedURL:    srv.URL,
+		CacheDir:   t.TempDir(),
+		Client:     srv.Client(),
+		Version:    "v0.4.2", // matches the persisted quarantine
+		StatePath:  statePath,
+		pubKeyOverride: SelfCatalogPublicKey,
+	}
+
+	result := CheckSelfCatalog(opts)
+
+	if serverCalled {
+		t.Error("server must NOT be called when state.json has a quarantine for the running version")
+	}
+	if result.Outcome != SelfCatalogQuarantine {
+		t.Errorf("Outcome: want SelfCatalogQuarantine from offline state, got %v", result.Outcome)
+	}
+}
+
+// TestSelfCatalogAdapter_LookupAll verifies that the selfCatalogAdapter satisfies
+// policy.MultiCatalogLookup and returns CatalogMatch records for the "beekeeper"
+// ecosystem when entries exist.
+func TestSelfCatalogAdapter_LookupAll(t *testing.T) {
+	entries := []selfCatalogEntry{
+		{
+			ID:            "beekeeper-self-2026-001",
+			Name:          "Test entry",
+			Ecosystem:     "beekeeper",
+			Package:       "beekeeper",
+			Versions:      []string{"v0.4.2"},
+			Severity:      "critical",
+			CatalogSource: "beekeeper-self",
+		},
+	}
+
+	adapter := &selfCatalogAdapter{entries: entries}
+
+	// Should return matches for the "beekeeper" ecosystem.
+	matches := adapter.LookupAll("beekeeper", "beekeeper")
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(matches))
+	}
+	m := matches[0]
+	if m.CatalogSource != "beekeeper-self" {
+		t.Errorf("CatalogSource: want %q, got %q", "beekeeper-self", m.CatalogSource)
+	}
+	if m.EntryID != "beekeeper-self-2026-001" {
+		t.Errorf("EntryID: want %q, got %q", "beekeeper-self-2026-001", m.EntryID)
+	}
+	if !m.Signed {
+		t.Error("Signed must be true — beekeeper-self feed is always signature-verified")
+	}
+	if m.Severity != "critical" {
+		t.Errorf("Severity: want %q, got %q", "critical", m.Severity)
+	}
+
+	// Should return nil for a different ecosystem.
+	noMatches := adapter.LookupAll("npm", "beekeeper")
+	if noMatches != nil {
+		t.Errorf("LookupAll non-beekeeper ecosystem: expected nil, got %v", noMatches)
+	}
+}

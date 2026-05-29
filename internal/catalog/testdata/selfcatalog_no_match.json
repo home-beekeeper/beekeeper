@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "entries": [
+    {
+      "id": "beekeeper-self-2026-002",
+      "name": "Beekeeper old version compromise",
+      "ecosystem": "beekeeper",
+      "package": "beekeeper",
+      "versions": [
+        "v99.99.99"
+      ],
+      "severity": "high",
+      "catalog_source": "beekeeper-self"
+    }
+  ],
+  "catalog_signature": "BiJzYKVa1tTkISy7DHRD1RnTgZeW93fq0yEpY4+4CoSCfOJT12aRcw2O2SHCXiqRQAXgGEUZzw5Vn20zividAA=="
+}
