@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 )
@@ -57,6 +58,8 @@ func rulesFilePath(policiesDir string) string {
 }
 
 // writeRules marshals rules to the policy file with owner-only permissions.
+// The write is atomic: data is written to a temp file then renamed into place,
+// so a crash mid-write cannot leave a truncated/partial rules file.
 func writeRules(policiesDir string, rules []PolicyRule) error {
 	if err := os.MkdirAll(policiesDir, 0700); err != nil {
 		return err
@@ -66,22 +69,32 @@ func writeRules(policiesDir string, rules []PolicyRule) error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(rulesFilePath(policiesDir), data, 0600)
+	tmp := rulesFilePath(policiesDir) + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, rulesFilePath(policiesDir))
 }
 
 // LoadPolicyRules reads the TUI policy rules from <policiesDir>/tui_rules.json.
 //
-// On first run (file or directory absent) the function seeds the file with the
-// 5 locked prototype rules, all enabled, and returns them. Any read or unmarshal
-// error also returns the seeded defaults — the dashboard never panics on bad
-// policy data (fail-soft, consistent with config.Load tolerance).
+// On first run (file genuinely absent) the function seeds the file with the
+// 5 locked prototype rules, all enabled, and returns them. On any other read
+// error (e.g. a transient sharing violation on Windows) the function returns
+// defaults WITHOUT writing to disk — preserving any real user toggles that may
+// exist in the file. Any unmarshal error likewise returns defaults without
+// overwriting (fail-soft, consistent with config.Load tolerance).
 func LoadPolicyRules(policiesDir string) []PolicyRule {
 	data, err := os.ReadFile(rulesFilePath(policiesDir))
-	if err != nil {
-		// File absent or unreadable — seed defaults and return them.
+	if errors.Is(err, os.ErrNotExist) {
+		// Genuine first run: seed defaults and persist them.
 		defaults := defaultPolicyRules()
 		_ = writeRules(policiesDir, defaults) // best-effort seed; ignore error
 		return defaults
+	}
+	if err != nil {
+		// Transient or permission error on an existing file — do NOT overwrite.
+		return defaultPolicyRules()
 	}
 
 	var rules []PolicyRule

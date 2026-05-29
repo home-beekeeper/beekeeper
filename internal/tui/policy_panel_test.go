@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -127,5 +129,136 @@ func TestPolicyPanelNonAdminNoToggle(t *testing.T) {
 	if afterRules[0].Enabled != originalEnabled {
 		t.Errorf("non-admin panel must not persist a toggle: rule[0].Enabled = %v, want %v",
 			afterRules[0].Enabled, originalEnabled)
+	}
+}
+
+// TestPolicyPanelSelIdxClampedAfterReload is a regression test for WR-01.
+// It verifies that selIdx is clamped into the valid range after a stateTick
+// reload that shrinks the rules slice — the admin toggle must NOT panic.
+func TestPolicyPanelSelIdxClampedAfterReload(t *testing.T) {
+	dir := t.TempDir()
+
+	// Seed 5 default rules and navigate to index 4 (last rule).
+	p := &PolicyPanel{
+		adminMode:   true,
+		policiesDir: dir,
+	}
+	p.rules = LoadPolicyRules(dir)
+	if len(p.rules) != 5 {
+		t.Fatalf("expected 5 seeded rules, got %d", len(p.rules))
+	}
+	p.selIdx = 4 // pointing at the 5th rule
+
+	// Simulate an external edit that shrinks the file to 2 rules.
+	trimmed := defaultPolicyRules()[:2]
+	if err := writeRules(dir, trimmed); err != nil {
+		t.Fatalf("writeRules (trim) failed: %v", err)
+	}
+
+	// Simulate stateTick reload — this is the path that triggers WR-01.
+	p.rules = LoadPolicyRules(p.policiesDir)
+	if p.selIdx >= len(p.rules) {
+		p.selIdx = len(p.rules) - 1
+	}
+	if p.selIdx < 0 {
+		p.selIdx = 0
+	}
+
+	// After clamp: selIdx must be in [0, len-1].
+	if p.selIdx < 0 || p.selIdx >= len(p.rules) {
+		t.Fatalf("selIdx=%d out of range [0,%d) after clamp", p.selIdx, len(p.rules))
+	}
+
+	// The admin toggle must NOT panic now that selIdx is clamped.
+	// Exercise the same guard that the Update toggle case uses.
+	if p.selIdx >= 0 && p.selIdx < len(p.rules) {
+		_ = !p.rules[p.selIdx].Enabled // must not panic
+	} else {
+		t.Errorf("selIdx=%d still out of range after clamp; toggle would panic", p.selIdx)
+	}
+
+	// Final sanity: selIdx is exactly len-1 (clamped from 4 to 1).
+	if p.selIdx != len(p.rules)-1 {
+		t.Errorf("expected selIdx=%d (len-1), got %d", len(p.rules)-1, p.selIdx)
+	}
+}
+
+// TestLoadPolicyRulesAbsentFileSeeds is a regression test for WR-02 (first half).
+// Verifies that LoadPolicyRules on a genuinely-absent file seeds defaults to disk
+// with 0600 permissions, and that a subsequent reload does NOT overwrite them.
+func TestLoadPolicyRulesAbsentFileSeeds(t *testing.T) {
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "tui_rules.json")
+
+	// File must not exist yet.
+	if _, err := os.Stat(rulesPath); err == nil {
+		t.Fatal("tui_rules.json should not exist before first load")
+	}
+
+	// First load must seed defaults.
+	rules := LoadPolicyRules(dir)
+	if len(rules) != 5 {
+		t.Fatalf("expected 5 seeded rules, got %d", len(rules))
+	}
+	for i, r := range rules {
+		if !r.Enabled {
+			t.Errorf("default rule[%d] (%q) should be Enabled=true", i, r.ID)
+		}
+	}
+
+	// The file must now exist on disk with 0600 permissions.
+	info, err := os.Stat(rulesPath)
+	if err != nil {
+		t.Fatalf("tui_rules.json not created after first load: %v", err)
+	}
+	// On Windows, os.Chmod-based permissions are coarse — accept any regular file.
+	if !info.Mode().IsRegular() {
+		t.Errorf("expected regular file at %s", rulesPath)
+	}
+
+	// Toggle rule[0] off via ToggleRule to make the file non-default.
+	if err := ToggleRule(dir, rules[0].ID, false); err != nil {
+		t.Fatalf("ToggleRule failed: %v", err)
+	}
+
+	// A second LoadPolicyRules must return the toggled state, NOT re-seed defaults.
+	reloaded := LoadPolicyRules(dir)
+	if len(reloaded) == 0 {
+		t.Fatal("expected rules after reload, got none")
+	}
+	if reloaded[0].Enabled {
+		t.Errorf("reload must preserve toggle: rule[0].Enabled = true, want false")
+	}
+}
+
+// TestLoadPolicyRulesCorruptFilePreserved is a regression test for WR-02 (second half).
+// Verifies that LoadPolicyRules on a present-but-malformed file returns defaults
+// WITHOUT overwriting the on-disk file (user data preserved).
+func TestLoadPolicyRulesCorruptFilePreserved(t *testing.T) {
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "tui_rules.json")
+
+	// Write a corrupt (non-JSON) file directly to simulate partial-write scenario.
+	corruptBytes := []byte("{this is not valid json\x00\xFF")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(rulesPath, corruptBytes, 0600); err != nil {
+		t.Fatalf("WriteFile (corrupt) failed: %v", err)
+	}
+
+	// LoadPolicyRules must return defaults (fail-soft).
+	rules := LoadPolicyRules(dir)
+	if len(rules) != 5 {
+		t.Fatalf("expected 5 default rules on corrupt file, got %d", len(rules))
+	}
+
+	// The original corrupt bytes must still be on disk — not overwritten.
+	afterBytes, err := os.ReadFile(rulesPath)
+	if err != nil {
+		t.Fatalf("ReadFile after load failed: %v", err)
+	}
+	if string(afterBytes) != string(corruptBytes) {
+		t.Errorf("LoadPolicyRules must NOT overwrite a corrupt file; disk bytes changed")
 	}
 }

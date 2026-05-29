@@ -43,6 +43,13 @@ func (p *PolicyPanel) Update(msg tea.Msg) (PanelContent, tea.Cmd) {
 	case stateTick:
 		// Reload rules so external edits surface.
 		p.rules = LoadPolicyRules(p.policiesDir)
+		// Clamp selIdx against the (possibly shorter) new slice.
+		if p.selIdx >= len(p.rules) {
+			p.selIdx = len(p.rules) - 1
+		}
+		if p.selIdx < 0 {
+			p.selIdx = 0
+		}
 
 	case tea.KeyPressMsg:
 		k := msg.String()
@@ -73,11 +80,14 @@ func (p *PolicyPanel) Update(msg tea.Msg) (PanelContent, tea.Cmd) {
 				p.selIdx--
 			}
 		case "e", "E", "t", "T":
-			if len(p.rules) > 0 {
+			if p.selIdx >= 0 && p.selIdx < len(p.rules) {
 				p.rules[p.selIdx].Enabled = !p.rules[p.selIdx].Enabled
 				_ = ToggleRule(p.policiesDir, p.rules[p.selIdx].ID, p.rules[p.selIdx].Enabled)
-				// Reload to reflect persisted state.
+				// Reload to reflect persisted state, then re-clamp.
 				p.rules = LoadPolicyRules(p.policiesDir)
+				if p.selIdx >= len(p.rules) {
+					p.selIdx = len(p.rules) - 1
+				}
 			}
 		}
 	}
