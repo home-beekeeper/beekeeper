@@ -158,12 +158,16 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The Sentry alerts panel shows process correlation events with severity color coding and expandable process tree, file access, and network destination detail
   4. Catalog freshness, scan status, active policy rules, quarantine items, and system daemon health (Sentry, gateway, LlamaFirewall) are each visible in dedicated panels without requiring a separate CLI command
   5. With `--admin` flag, developer can toggle individual policy rules and restore or purge quarantine items directly from the TUI without a separate terminal
-**Plans**: 5 plans
+**Plans**: 9 plans (5 original + 4 gap-closure after verification)
 - [x] 08-01-PLAN.md — TUI foundation: App state machine, Bubble Tea v2 scaffold, CLI command (TUI-01, TUI-10) (wave 1)
 - [x] 08-02-PLAN.md — AlertsPanel: CRIT/WARN/BLOCK badges, 200-row cap, filter mode (TUI-02, TUI-03) (wave 1)
 - [x] 08-03-PLAN.md — CatalogsPanel + QuarantinePanel: freshness pips, HELD rows, admin r/p actions (TUI-04, TUI-07) (wave 2)
 - [x] 08-04-PLAN.md — ScanPanel + PolicyPanel + AuditPanel + HelpPanel: animated steps, static policy, NDJSON tail (TUI-05, TUI-06) (wave 2)
 - [x] 08-05-PLAN.md — Integration: health.go, full model.go dispatch, integration tests (TUI-01, TUI-08, TUI-09) (wave 3)
+- [ ] 08-06-PLAN.md — GAP: AlertsPanel allow rows + agent identity + enter-key expandable detail (TUI-02, TUI-03) (wave 1)
+- [ ] 08-07-PLAN.md — GAP: PolicyPanel live rules from disk + admin-gated toggle/persist (TUI-06, TUI-09) (wave 2)
+- [ ] 08-08-PLAN.md — GAP: LlamaFirewall health probe + 5th health pip (TUI-08) (wave 1)
+- [ ] 08-09-PLAN.md — GAP/CR-01: tailFrom offset fix — stop dropping partial trailing NDJSON records (TUI-01, TUI-02) (wave 1)
 **UI hint**: yes
 
 ### Phase 9: Policy as Code + Self-Defense Capstone
@@ -192,5 +196,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Linux Sentry | 0/TBD | Not started | - |
 | 6. LlamaFirewall + Audit Sinks | 5/5 | Complete | 2026-05-28 |
 | 7. Cross-Platform Sentry | 5/5 | Complete | 2026-05-28 |
-| 8. TUI Dashboard | 4/5 | In progress | - |
+| 8. TUI Dashboard | 5/9 | In progress (gap closure) | - |
 | 9. Policy as Code + Self-Defense Capstone | 0/TBD | Not started | - |
