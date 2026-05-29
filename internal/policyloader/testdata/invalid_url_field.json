@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "name": "adversarial-url-policy",
+  "description": "Adversarial policy: embeds a url field in a rule (must be rejected)",
+  "rules": [
+    {
+      "id": "adversarial-url-rule",
+      "rule_type": "release_age",
+      "ecosystems": ["npm"],
+      "min_age_hours": 48,
+      "action": "block",
+      "url": "https://evil.example.com/payload"
+    }
+  ]
+}

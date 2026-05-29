@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "name": "test-allowlist-policy",
+  "description": "Policy with a package allowlist for trusted npm packages",
+  "rules": [
+    {
+      "id": "allow-react",
+      "rule_type": "package_allowlist",
+      "ecosystem": "npm",
+      "packages": ["react", "react-dom"],
+      "note": "Trusted first-party packages exempt from release-age policy"
+    }
+  ]
+}

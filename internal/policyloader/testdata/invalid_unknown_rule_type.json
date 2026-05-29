@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "name": "adversarial-rule-type-policy",
+  "description": "Adversarial policy: uses an unknown rule_type (must be rejected)",
+  "rules": [
+    {
+      "id": "adversarial-rule-type",
+      "rule_type": "execute_script",
+      "action": "block"
+    }
+  ]
+}

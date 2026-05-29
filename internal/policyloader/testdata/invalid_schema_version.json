@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.2.0",
+  "name": "adversarial-schema-version-policy",
+  "description": "Adversarial policy: uses unsupported schema_version (must be rejected)",
+  "rules": [
+    {
+      "id": "some-rule",
+      "rule_type": "release_age",
+      "ecosystems": ["npm"],
+      "min_age_hours": 48,
+      "action": "block"
+    }
+  ]
+}

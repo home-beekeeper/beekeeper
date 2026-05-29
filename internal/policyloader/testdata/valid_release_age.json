@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "name": "test-release-age-policy",
+  "description": "Policy that blocks recently-released npm packages",
+  "rules": [
+    {
+      "id": "block-fresh-npm",
+      "rule_type": "release_age",
+      "ecosystems": ["npm"],
+      "min_age_hours": 48,
+      "action": "block"
+    }
+  ]
+}
