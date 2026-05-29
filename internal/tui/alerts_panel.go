@@ -20,15 +20,22 @@ type quarantineAlertMsg struct{ RecordID string }
 type AlertRow struct {
 	Time     string // HH:MM:SS
 	Badge    string // rendered badge string (BadgeCrit, BadgeBlock, etc.)
+	Agent    string // agent identity sourced from rec.AgentName (TUI-02)
 	Label    string // event name or rule name
 	Meta     string // right-aligned detail
 	RecordID string
+	// Sentry detail slices stored for the expanded view (TUI-03).
+	// Nil for policy_decision rows — expanded view guards nil/empty slices.
+	ParentChain   []string // SentryParentChain: process tree, top-down
+	FilesAccessed []string // SentryFilesAccessed: full list
+	NetworkDests  []string // SentryNetworkDests: full list
 }
 
 // AlertsPanel implements PanelContent for the sentry alert log panel.
 type AlertsPanel struct {
 	rows        []AlertRow
 	selIdx      int
+	expanded    bool   // when true, Body renders detail for the selected row (TUI-03)
 	critical    bool   // when true, panel uses red border (passed from App.critical)
 	filterMode  bool   // true when typing a filter query
 	filterQuery string // case-insensitive substring match on label+meta
@@ -80,21 +87,28 @@ func (p *AlertsPanel) Update(msg tea.Msg) (PanelContent, tea.Cmd) {
 			return p, nil
 		}
 
-		// Normal navigation.
+		// Normal navigation. Navigation collapses the detail view for clarity.
 		visible := p.filteredRows()
 		switch k {
 		case "j", "down":
 			if p.selIdx < len(visible)-1 {
 				p.selIdx++
+				p.expanded = false // navigating away collapses detail
 			}
 		case "k", "up":
 			if p.selIdx > 0 {
 				p.selIdx--
+				p.expanded = false // navigating away collapses detail
 			}
 		case "/":
 			p.filterMode = true
 			p.filterQuery = ""
 			p.selIdx = 0
+		case "enter":
+			// Toggle expanded detail for the selected row (TUI-03).
+			if len(visible) > 0 {
+				p.expanded = !p.expanded
+			}
 		case "q", "Q":
 			if len(visible) > 0 {
 				id := visible[p.selIdx].RecordID
@@ -155,33 +169,47 @@ func (p *AlertsPanel) recordToRow(rec audit.AuditRecord) (AlertRow, bool) {
 			meta = strings.Join(rec.SentryFilesAccessed[:minInt(3, len(rec.SentryFilesAccessed))], " ")
 		}
 		return AlertRow{
-			Time:     timeStr,
-			Badge:    badge,
-			Label:    label,
-			Meta:     meta,
-			RecordID: rec.RecordID,
+			Time:          timeStr,
+			Badge:         badge,
+			Agent:         rec.AgentName,
+			Label:         label,
+			Meta:          meta,
+			RecordID:      rec.RecordID,
+			ParentChain:   rec.SentryParentChain,
+			FilesAccessed: rec.SentryFilesAccessed,
+			NetworkDests:  rec.SentryNetworkDests,
 		}, true
 
 	case "policy_decision":
 		switch rec.Decision {
 		case "block":
-			label := rec.ToolName
-			meta := rec.Reason
 			return AlertRow{
 				Time:     timeStr,
 				Badge:    BadgeBlock(),
-				Label:    label,
-				Meta:     meta,
+				Agent:    rec.AgentName,
+				Label:    rec.ToolName,
+				Meta:     rec.Reason,
 				RecordID: rec.RecordID,
 			}, true
 		case "warn":
-			label := rec.ToolName
-			meta := rec.Reason
 			return AlertRow{
 				Time:     timeStr,
 				Badge:    BadgeWarn(),
-				Label:    label,
-				Meta:     meta,
+				Agent:    rec.AgentName,
+				Label:    rec.ToolName,
+				Meta:     rec.Reason,
+				RecordID: rec.RecordID,
+			}, true
+		case "allow":
+			// Allow decisions now appear with BadgeOK so the feed shows the full
+			// allow/warn/block/crit spectrum (TUI-02). Reason is typically empty for
+			// allow decisions; that is fine — Meta will be blank.
+			return AlertRow{
+				Time:     timeStr,
+				Badge:    BadgeOK(),
+				Agent:    rec.AgentName,
+				Label:    rec.ToolName,
+				Meta:     rec.Reason,
 				RecordID: rec.RecordID,
 			}, true
 		}
@@ -238,6 +266,14 @@ func (p *AlertsPanel) Body(width, height int) string {
 		return strings.Join(lines, "\n")
 	}
 
+	// Expanded detail view: render a process-tree / files / network detail block
+	// for the selected row instead of the normal row list (TUI-03).
+	if p.expanded && p.selIdx < len(visible) {
+		row := visible[p.selIdx]
+		lines = append(lines, renderExpandedDetail(row, width))
+		return strings.Join(lines, "\n")
+	}
+
 	start := 0
 	panelHeight := height - len(lines)
 	if len(visible) > panelHeight && panelHeight > 0 {
@@ -246,10 +282,11 @@ func (p *AlertsPanel) Body(width, height int) string {
 	for i := start; i < len(visible); i++ {
 		row := visible[i]
 		timeStr := styleDim.Render(fmt.Sprintf("%-8s", row.Time))
+		agentStr := styleDimmer.Render(fmt.Sprintf("%-14s", row.Agent))
 		labelStr := lipgloss.NewStyle().Foreground(colorFg).Render(fmt.Sprintf("%-30s", row.Label))
 		metaStr := styleDim.Render(row.Meta)
 
-		line := "  " + timeStr + "  " + row.Badge + "  " + labelStr + "  " + metaStr
+		line := "  " + timeStr + "  " + row.Badge + "  " + agentStr + "  " + labelStr + "  " + metaStr
 		if i == p.selIdx {
 			line = styleSelRow.Render(line)
 		}
@@ -258,10 +295,81 @@ func (p *AlertsPanel) Body(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
+// renderExpandedDetail renders the full detail view for a selected row (TUI-03).
+// It shows the process tree, full file access list, and full network destinations.
+// Nil/empty slices render a "(none)" placeholder rather than crashing.
+// Attacker-influenceable strings are rendered as plain styled text only —
+// never exec'd, eval'd, or interpreted (T-08-06-01).
+func renderExpandedDetail(row AlertRow, width int) string {
+	var sb strings.Builder
+
+	// Row summary header
+	sb.WriteString("\n")
+	sb.WriteString("  " + row.Badge + "  ")
+	sb.WriteString(lipgloss.NewStyle().Foreground(colorFg).Bold(true).Render(row.Label))
+	if row.Agent != "" {
+		sb.WriteString("  " + styleDimmer.Render(row.Agent))
+	}
+	sb.WriteString("\n  " + styleDim.Render(strings.Repeat("─", max(0, width-6))))
+	sb.WriteString("\n")
+
+	// PROCESS TREE section
+	sb.WriteString("\n  " + styleDim.Render("PROCESS TREE"))
+	sb.WriteString("\n")
+	if len(row.ParentChain) == 0 {
+		sb.WriteString("  " + styleDimmer.Render("(none)") + "\n")
+	} else {
+		for _, entry := range row.ParentChain {
+			// Truncate to column width to prevent layout overflow (T-08-06-02)
+			truncated := entry
+			if len(truncated) > width-6 && width > 6 {
+				truncated = truncated[:width-6]
+			}
+			sb.WriteString("  " + styleDim.Render("  "+truncated) + "\n")
+		}
+	}
+
+	// FILES ACCESSED section
+	sb.WriteString("\n  " + styleDim.Render("FILES ACCESSED"))
+	sb.WriteString("\n")
+	if len(row.FilesAccessed) == 0 {
+		sb.WriteString("  " + styleDimmer.Render("(none)") + "\n")
+	} else {
+		for _, f := range row.FilesAccessed {
+			truncated := f
+			if len(truncated) > width-6 && width > 6 {
+				truncated = truncated[:width-6]
+			}
+			sb.WriteString("  " + styleCoral.Render("  "+truncated) + "\n")
+		}
+	}
+
+	// NETWORK section
+	sb.WriteString("\n  " + styleDim.Render("NETWORK"))
+	sb.WriteString("\n")
+	if len(row.NetworkDests) == 0 {
+		sb.WriteString("  " + styleDimmer.Render("(none)") + "\n")
+	} else {
+		for _, dest := range row.NetworkDests {
+			truncated := dest
+			if len(truncated) > width-6 && width > 6 {
+				truncated = truncated[:width-6]
+			}
+			sb.WriteString("  " + styleRed.Render("  "+truncated) + "\n")
+		}
+	}
+
+	return sb.String()
+}
+
 func (p *AlertsPanel) Footer() string {
 	if p.filterMode {
 		return styleTeal.Render("type") + styleDim.Render(" to filter · ") +
 			styleTeal.Render("esc") + styleDim.Render(" clear filter")
+	}
+	if p.expanded {
+		return styleTeal.Render("enter") + styleDim.Render(" collapse · ") +
+			styleTeal.Render("esc") + styleDim.Render(" close")
 	}
 	return styleTeal.Render("↑↓") + styleDim.Render(" select · ") +
 		styleTeal.Render("enter") + styleDim.Render(" inspect · ") +

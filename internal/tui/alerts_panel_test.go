@@ -68,7 +68,7 @@ func TestAlertsPanelPolicyWarn(t *testing.T) {
 	}
 }
 
-func TestAlertsPanelRecordFilter(t *testing.T) {
+func TestAlertsPanelAllowDecision(t *testing.T) {
 	p := NewAlertsPanel(false)
 	msg := newRecordsMsg{
 		{
@@ -80,8 +80,59 @@ func TestAlertsPanelRecordFilter(t *testing.T) {
 	}
 	pc, _ := p.Update(msg)
 	ap := pc.(*AlertsPanel)
-	if len(ap.rows) != 0 {
-		t.Errorf("expected 0 rows for allow decision, got %d", len(ap.rows))
+	if len(ap.rows) != 1 {
+		t.Fatalf("expected 1 row for allow decision, got %d", len(ap.rows))
+	}
+	body := ap.Body(100, 40)
+	if !strings.Contains(body, "OK") {
+		t.Errorf("expected OK badge text in body for allow decision, got: %q", body)
+	}
+}
+
+func TestAlertsPanelAgentColumn(t *testing.T) {
+	p := NewAlertsPanel(false)
+	msg := newRecordsMsg{
+		{
+			RecordType: "policy_decision",
+			Decision:   "block",
+			ToolName:   "Bash",
+			AgentName:  "claude-code",
+			Reason:     "blocked by policy",
+			Timestamp:  makeTS(0),
+		},
+	}
+	pc, _ := p.Update(msg)
+	ap := pc.(*AlertsPanel)
+	body := ap.Body(100, 40)
+	if !strings.Contains(body, "claude-code") {
+		t.Errorf("expected agent name 'claude-code' in body, got: %q", body)
+	}
+}
+
+func TestAlertsPanelExpandDetail(t *testing.T) {
+	p := NewAlertsPanel(false)
+	msg := newRecordsMsg{
+		{
+			RecordType:          "sentry_alert",
+			SentrySeverity:      "critical",
+			SentryRuleName:      "credential-exfil",
+			SentryParentChain:   []string{"launchd", "bash", "curl"},
+			SentryFilesAccessed: []string{"~/.aws/credentials", "~/.ssh/id_ed25519"},
+			SentryNetworkDests:  []string{"185.2.0.1:443"},
+			Timestamp:           makeTS(0),
+		},
+	}
+	pc, _ := p.Update(msg)
+	ap := pc.(*AlertsPanel)
+	// Set expanded state directly — consistent with test style, avoids KeyPressMsg construction
+	ap.selIdx = 0
+	ap.expanded = true
+	body := ap.Body(100, 40)
+	if !strings.Contains(body, "~/.aws/credentials") {
+		t.Errorf("expected file path in expanded detail, got: %q", body)
+	}
+	if !strings.Contains(body, "185.2.0.1:443") {
+		t.Errorf("expected network dest in expanded detail, got: %q", body)
 	}
 }
 
