@@ -68,6 +68,9 @@ func newRootCmd() *cobra.Command {
 		newSentryCmd(),
 		newLlamaFirewallCmd(),
 		newDashboardCmd(),
+		// Phase 9: policy-as-code (CODE-02/03/04) and diagnostics (CODE-06).
+		newPolicyCmd(),
+		newDiagCmd(),
 	)
 
 	return root
@@ -119,7 +122,8 @@ func newInitCmd() *cobra.Command {
 			}
 
 			// Phase 1: create state, catalogs, audit directories.
-			for _, dir := range []string{stateDir, catalogDir, auditDir} {
+			// Phase 9 (CODE-04): also create policies/ so `policy list` works on a fresh install.
+			for _, dir := range []string{stateDir, catalogDir, auditDir, filepath.Join(stateDir, "policies")} {
 				if err := os.MkdirAll(dir, 0700); err != nil {
 					return fmt.Errorf("create directory %q: %w", dir, err)
 				}
