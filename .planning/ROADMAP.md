@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: LlamaFirewall + Audit Sinks** - Optional Python sidecar with PromptGuard 2 / CodeShield / AlignmentCheck; full audit sinks (syslog, OTLP, HTTPS); audit query/export commands
 - [x] **Phase 7: Cross-Platform Sentry** - macOS eslogger Sentry, Windows ETW Sentry, SLSA Level 3 provenance + SBOM
 - [x] **Phase 8: TUI Dashboard** - Bubble Tea v2 dashboard, all panels (activity, alerts, catalog, scan, policies, quarantine, health), admin mode
-- [ ] **Phase 9: Policy as Code + Self-Defense Capstone** - Declarative JSON policies, `policy test/validate/list`, layered config, `beekeeper-self` catalog live, v1.0.0
+- [x] **Phase 9: Policy as Code + Self-Defense Capstone** - Declarative JSON policies, `policy test/validate/list`, layered config, `beekeeper-self` catalog live, v1.0.0 (completed 2026-05-29)
 
 ## Phase Details
 
@@ -185,7 +185,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 09-02-PLAN.md — Layered config merge: system→user→project→env→flag, zero-value-safe merge, SelfCatalogConfig (CODE-05) (wave 1)
 - [x] 09-03-PLAN.md — beekeeper-self self-quarantine catalog: separate ed25519 key, fail-closed vs network branching, state persistence (CTLG-04, SFDF-06) (wave 1)
 - [x] 09-04-PLAN.md — beekeeper diag data layer: LatencyTracker.P99, persisted hook latency, ETW build-tag pair, CollectDiag (CODE-06) (wave 2)
-- [ ] 09-05-PLAN.md — CLI wiring + startup self-quarantine guard + policies/ init + docs/THREAT-MODEL.md (CODE-02..06, CTLG-04, SFDF-06) (wave 3)
+- [x] 09-05-PLAN.md — CLI wiring + startup self-quarantine guard + policies/ init + docs/THREAT-MODEL.md (CODE-02..06, CTLG-04, SFDF-06) (wave 3)
 
 ## Progress
 
@@ -202,4 +202,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. LlamaFirewall + Audit Sinks | 5/5 | Complete | 2026-05-28 |
 | 7. Cross-Platform Sentry | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | 9/9 | Complete | 2026-05-29 |
-| 9. Policy as Code + Self-Defense Capstone | 0/5 | Not started | - |
+| 9. Policy as Code + Self-Defense Capstone | 5/5 | Complete   | 2026-05-29 |

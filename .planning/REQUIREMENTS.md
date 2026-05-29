@@ -30,7 +30,7 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 - [ ] **CTLG-01**: Bumblebee `threat_intel/` catalog sync — primary source, extended with `source_url`, `catalog_signature`, `catalog_source` fields; Beekeeper records set `scanner_name: "beekeeper"`
 - [ ] **CTLG-02**: OSV catalog source — queried via public REST API (`POST https://api.osv.dev/v1/query`, no auth required); results cached by package+version with 24h TTL in `~/.beekeeper/catalogs/osv-cache/`; the `osv-scanner/v2` library's `localmatcher` is internal and not usable for single-package queries
 - [ ] **CTLG-03**: Socket public API — PURL endpoint (`POST /v0/purl`), results cached by package+version with 24h TTL; exponential backoff on 429
-- [ ] **CTLG-04**: `beekeeper-self` catalog — self-quarantine feed listing known-compromised Beekeeper releases by version + signature hash; checked on every startup and catalog sync
+- [x] **CTLG-04**: `beekeeper-self` catalog — self-quarantine feed listing known-compromised Beekeeper releases by version + signature hash; checked on every startup and catalog sync
 - [ ] **CTLG-05**: `beekeeper catalogs sync` — fetch and cache all enabled catalog sources
 - [ ] **CTLG-06**: `beekeeper catalogs watch` daemon — configurable poll interval (default 1h), triggers immediate Bumblebee scan on any new `threat_intel/` catalog entries
 - [ ] **CTLG-07**: Catalog signature verification — unsigned sources treated as warning-only regardless of corroboration count
@@ -120,10 +120,10 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 ### Policy as Code (CODE)
 
 - [ ] **CODE-01**: Declarative JSON policy files in `policies/` — loaded by policy engine; separate from config; version-controllable
-- [ ] **CODE-02**: `beekeeper policy test <file>` — dry-run policy against sample tool call JSON
-- [ ] **CODE-03**: `beekeeper policy validate <file>` — validate policy file schema
-- [ ] **CODE-04**: `beekeeper policy list` — list loaded policy files with rule counts
-- [ ] **CODE-05**: Layered config merge — `/etc/beekeeper/config.json` → `~/.beekeeper/config.json` → `<project>/.beekeeper/config.json` → `BEEKEEPER_*` env vars → CLI flags
+- [x] **CODE-02**: `beekeeper policy test <file>` — dry-run policy against sample tool call JSON
+- [x] **CODE-03**: `beekeeper policy validate <file>` — validate policy file schema
+- [x] **CODE-04**: `beekeeper policy list` — list loaded policy files with rule counts
+- [x] **CODE-05**: Layered config merge — `/etc/beekeeper/config.json` → `~/.beekeeper/config.json` → `<project>/.beekeeper/config.json` → `BEEKEEPER_*` env vars → CLI flags
 - [x] **CODE-06**: `beekeeper diag` — display hook latency p95/p99, sidecar inference latency, catalog freshness per source, ETW `EventsLost` count
 
 ### Self-Defense (SFDF)
@@ -133,7 +133,7 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 - [ ] **SFDF-03**: Pinned dependencies from v0.1.0 — `go.mod` and `go.sum` with CI `go mod verify`; Renovate-bot with human review for updates
 - [ ] **SFDF-04**: `SECURITY.md` published from v0.1.0 — responsible disclosure process, 48h acknowledgment SLA, 90-day coordinated disclosure default
 - [ ] **SFDF-05**: SLSA Level 3 provenance by v0.9.0 — `slsa-github-generator@v2.1.0` (full semver pinned, NOT `@v2`); SBOM (CycloneDX) published with each release
-- [ ] **SFDF-06**: `beekeeper-self` catalog live at v1.0.0 — separate hosting from main repo, separate signing key, separate access control; self-quarantine fires on startup and every catalog sync
+- [x] **SFDF-06**: `beekeeper-self` catalog live at v1.0.0 — separate hosting from main repo, separate signing key, separate access control; self-quarantine fires on startup and every catalog sync
 
 ## v2 Requirements
 
@@ -255,13 +255,13 @@ Populated during roadmap creation.
 | TUI-09 | Phase 8 | Pending |
 | TUI-10 | Phase 8 | Pending |
 | CODE-01 | Phase 9 | Pending |
-| CODE-02 | Phase 9 | Pending |
-| CODE-03 | Phase 9 | Pending |
-| CODE-04 | Phase 9 | Pending |
-| CODE-05 | Phase 9 | Pending |
+| CODE-02 | Phase 9 | Complete |
+| CODE-03 | Phase 9 | Complete |
+| CODE-04 | Phase 9 | Complete |
+| CODE-05 | Phase 9 | Complete |
 | CODE-06 | Phase 9 | Complete |
-| SFDF-06 | Phase 9 | Pending |
-| CTLG-04 | Phase 9 | Pending |
+| SFDF-06 | Phase 9 | Complete |
+| CTLG-04 | Phase 9 | Complete |
 
 **Coverage:**
 - v1 requirements: 89 total
