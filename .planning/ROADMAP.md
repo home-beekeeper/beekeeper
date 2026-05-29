@@ -164,10 +164,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 08-03-PLAN.md — CatalogsPanel + QuarantinePanel: freshness pips, HELD rows, admin r/p actions (TUI-04, TUI-07) (wave 2)
 - [x] 08-04-PLAN.md — ScanPanel + PolicyPanel + AuditPanel + HelpPanel: animated steps, static policy, NDJSON tail (TUI-05, TUI-06) (wave 2)
 - [x] 08-05-PLAN.md — Integration: health.go, full model.go dispatch, integration tests (TUI-01, TUI-08, TUI-09) (wave 3)
-- [ ] 08-06-PLAN.md — GAP: AlertsPanel allow rows + agent identity + enter-key expandable detail (TUI-02, TUI-03) (wave 1)
+- [x] 08-06-PLAN.md — GAP: AlertsPanel allow rows + agent identity + enter-key expandable detail (TUI-02, TUI-03) (wave 1)
 - [ ] 08-07-PLAN.md — GAP: PolicyPanel live rules from disk + admin-gated toggle/persist (TUI-06, TUI-09) (wave 2)
-- [ ] 08-08-PLAN.md — GAP: LlamaFirewall health probe + 5th health pip (TUI-08) (wave 1)
-- [ ] 08-09-PLAN.md — GAP/CR-01: tailFrom offset fix — stop dropping partial trailing NDJSON records (TUI-01, TUI-02) (wave 1)
+- [x] 08-08-PLAN.md — GAP: LlamaFirewall health probe + 5th health pip (TUI-08) (wave 1)
+- [x] 08-09-PLAN.md — GAP/CR-01: tailFrom offset fix — stop dropping partial trailing NDJSON records (TUI-01, TUI-02) (wave 1)
 **UI hint**: yes
 
 ### Phase 9: Policy as Code + Self-Defense Capstone
