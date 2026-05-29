@@ -163,7 +163,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 08-02-PLAN.md — AlertsPanel: CRIT/WARN/BLOCK badges, 200-row cap, filter mode (TUI-02, TUI-03) (wave 1)
 - [x] 08-03-PLAN.md — CatalogsPanel + QuarantinePanel: freshness pips, HELD rows, admin r/p actions (TUI-04, TUI-07) (wave 2)
 - [x] 08-04-PLAN.md — ScanPanel + PolicyPanel + AuditPanel + HelpPanel: animated steps, static policy, NDJSON tail (TUI-05, TUI-06) (wave 2)
-- [ ] 08-05-PLAN.md — Integration: health.go, full model.go dispatch, integration tests (TUI-01, TUI-08, TUI-09) (wave 3)
+- [x] 08-05-PLAN.md — Integration: health.go, full model.go dispatch, integration tests (TUI-01, TUI-08, TUI-09) (wave 3)
 **UI hint**: yes
 
 ### Phase 9: Policy as Code + Self-Defense Capstone
