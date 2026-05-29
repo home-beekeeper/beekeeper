@@ -1,400 +1,258 @@
 ---
 phase: 08-tui-dashboard
-reviewed: 2026-05-29T00:00:00Z
+reviewed: 2026-05-29T14:14:51Z
 depth: standard
-files_reviewed: 23
+files_reviewed: 12
 files_reviewed_list:
-  - cmd/beekeeper/main.go
+  - internal/tui/watcher.go
+  - internal/tui/watcher_test.go
+  - internal/tui/policy_rules.go
+  - internal/tui/policy_panel.go
+  - internal/tui/policy_panel_test.go
   - internal/tui/alerts_panel.go
   - internal/tui/alerts_panel_test.go
-  - internal/tui/audit_panel.go
-  - internal/tui/base.go
-  - internal/tui/catalogs_panel.go
-  - internal/tui/catalogs_panel_test.go
   - internal/tui/health.go
-  - internal/tui/help_panel.go
-  - internal/tui/incidents.go
+  - internal/tui/pid_alive_unix.go
+  - internal/tui/pid_alive_windows.go
   - internal/tui/model.go
-  - internal/tui/model_test.go
-  - internal/tui/palette.go
-  - internal/tui/panel.go
-  - internal/tui/policy_panel.go
-  - internal/tui/quarantine_panel.go
-  - internal/tui/quarantine_panel_test.go
-  - internal/tui/resize_other.go
-  - internal/tui/resize_windows.go
-  - internal/tui/scan_panel.go
-  - internal/tui/scan_panel_test.go
-  - internal/tui/styles.go
-  - internal/tui/toast.go
-  - internal/tui/watcher.go
+  - internal/tui/base.go
 findings:
-  critical: 1
-  warning: 8
-  info: 6
-  total: 15
+  critical: 0
+  warning: 2
+  info: 4
+  total: 6
 status: issues_found
 ---
 
 # Phase 8: Code Review Report
 
-**Reviewed:** 2026-05-29T00:00:00Z
+**Reviewed:** 2026-05-29T14:14:51Z
 **Depth:** standard
-**Files Reviewed:** 23
+**Files Reviewed:** 12
 **Status:** issues_found
 
 ## Summary
 
-Phase 8 implements the Bubble Tea v2 TUI dashboard: a calm-mode base screen,
-command palette, seven panel overlays, an incident card, a toast system, health
-probes, and an fsnotify-backed audit-log watcher goroutine. The code is generally
-well structured, the `charm.land/bubbletea/v2` import path is honored, the
-Windows resize poller is present, and health probes degrade gracefully per the
-documented read-only philosophy.
+This is a gap-closure review for Phase 8 (TUI Dashboard). Scope is the diff from
+base `63c6a5f`: the CR-01 BLOCKER fix (`watcher.go` `tailFrom` rewrite), the new
+TUI-owned policy rules persistence (`policy_rules.go`), cross-platform PID
+liveness (`pid_alive_*.go`), and the alerts/policy panel feature additions
+(agent column, expanded Sentry detail, admin-gated policy toggle).
 
-The review found one BLOCKER (a data-loss bug in the audit tail watcher that can
-silently drop audit records — the dashboard's core live data feed) plus a cluster
-of WARNINGs around selection-index handling, an animation command that is dropped
-when launched from the palette, an unbounded full-file read in a hot probe path,
-and several correctness/robustness gaps. The test suite is shallow: many tests
-bypass the real `Update` message path by mutating struct fields directly, so they
-do not exercise the dispatch logic where most of the defects live.
+**CR-01 is genuinely fixed.** The `tailFrom` rewrite replaces the
+`bufio.Scanner` + `Seek(0,1)` offset arithmetic with a `bufio.Reader` /
+`ReadString('\n')` loop that advances the offset by `len(line)` ONLY for
+complete, newline-terminated lines. Tracing every path:
 
-Note on scope: per the supplied config, the TUI is read-only and health probes
-intentionally return `false` on error — those are not flagged. Performance is out
-of scope for v1 except where it causes a correctness problem.
+- **Partial trailing line** (mid-write record, no `\n`): `ReadString` returns
+  `err != nil` with the partial data and the loop `break`s *before* advancing
+  the offset — the fragment is held and re-read on the next tick. Verified by
+  `TestTailFromPartialLine`, which asserts `offset1 == len(line1)` (not past the
+  fragment) and that the second call emits the now-completed record exactly once.
+- **Malformed-but-complete line**: offset advances past it (it ends in `\n`),
+  `json.Unmarshal` fails, the record is skipped — no infinite re-read.
+  Verified by `TestTailFromMalformedSkipped`.
+- **Multiple complete lines / no double-emit**: verified by
+  `TestTailFromCompleteLines` (second call returns 0 records, offset unchanged).
+- **Missing file**: returns `(nil, offset)` with no panic. Verified by
+  `TestTailFromMissingFile`.
 
-## Critical Issues
+The `(records, offset)` return contract is preserved for both callers
+(`watchAuditLog` advances its persistent `offset` from the return; `probeLastBlock`
+ignores the offset and only reads `recs`). The fix is not papered over.
 
-### CR-01: `tailFrom` advances the offset past unparsed bytes, silently dropping audit records
+Project conventions hold: `charm.land/bubbletea/v2` import path is used
+throughout, health probes fail-soft (return `false`/degraded on any error), and
+`pid_alive_*.go` uses pure-Go syscalls (`golang.org/x/sys/windows`, `syscall`) —
+no CGO. `go vet ./internal/tui/` is clean and the package test suite passes.
 
-**File:** `internal/tui/watcher.go:43-83`
-**Issue:**
-`tailFrom` computes the new offset from the underlying file position
-(`f.Seek(0, 1)`) *after* draining a `bufio.Scanner`, then has a fallback that, when
-that position reads as `0`, resets the offset to the full file size:
-
-```go
-scanner := bufio.NewScanner(f)
-...
-newOffset, _ := f.Seek(0, 1)
-if newOffset == 0 {
-    info, err := f.Stat()
-    if err == nil {
-        newOffset = info.Size()
-    } ...
-}
-return records, newOffset
-```
-
-Two distinct data-loss problems:
-
-1. **Partial final line is skipped on the next read.** `bufio.Scanner` reads the
-   file in large chunks into its 1 MB buffer (via the underlying `Read`), so
-   `f.Seek(0,1)` returns the position of the *last byte the reader buffered*, which
-   is typically the current end-of-file — not the end of the last *complete* line
-   the scanner returned. When an audit record is mid-write (no trailing `\n` yet,
-   which is the common case for an append-in-progress NDJSON log), the scanner
-   discards that trailing partial line but the returned offset still jumps past it.
-   On the next tick the offset starts beyond the now-completed record, so that
-   record is **never emitted to the panel**. Because audit writes are concurrent
-   with the 1 s ticker/fsnotify reads, this is a routine occurrence, not an edge
-   case — the dashboard's primary live feed loses events.
-
-2. **The `newOffset == 0` fallback is both wrong and unreachable-as-intended.**
-   After `Seek(offset, 0)` plus scanning, `Seek(0,1)` cannot legitimately return 0
-   unless the file is empty *and* `offset` was 0. If it ever did (e.g., the
-   seek/read produced a position of 0 on a non-empty file), resetting the offset to
-   `info.Size()` would skip the entire remaining tail in one jump. The fallback
-   masks the real position and can lose every pending record at once.
-
-The correct approach is to track the offset by the bytes of the lines actually
-consumed (sum `len(scanner.Bytes()) + 1` per scanned line starting from `offset`),
-or read with a `bufio.Reader` using `ReadString('\n')` and only advance the offset
-past complete, newline-terminated lines — leaving partial trailing lines for the
-next tick.
-
-**Fix:**
-```go
-func tailFrom(auditPath string, offset int64) ([]audit.AuditRecord, int64) {
-    f, err := os.Open(auditPath)
-    if err != nil {
-        return nil, offset // includes os.IsNotExist
-    }
-    defer f.Close()
-
-    if _, err := f.Seek(offset, 0); err != nil {
-        return nil, offset
-    }
-
-    r := bufio.NewReader(f)
-    var records []audit.AuditRecord
-    for {
-        line, err := r.ReadString('\n')
-        if err != nil {
-            // No trailing newline yet: do NOT advance past this partial line.
-            break
-        }
-        offset += int64(len(line)) // only complete lines advance the offset
-        var rec audit.AuditRecord
-        if json.Unmarshal([]byte(strings.TrimRight(line, "\n")), &rec) == nil {
-            records = append(records, rec)
-        }
-    }
-    return records, offset
-}
-```
-This guarantees a partial trailing record is re-read (and emitted) once its
-newline lands, and removes the incorrect `newOffset == 0` size-jump.
+Two WARNINGs remain in the gap code: a stale-selection-index crash in the policy
+panel toggle path (reintroduced by the new `stateTick` reload), and a fail-soft
+data-clobber window in `policy_rules.go`. Neither is a BLOCKER. Deferred prior
+warnings (WR-03 full-file read in `probeLastBlock`, WR-05/WR-08 goroutine
+lifecycle, WR-06 incident latch) are NOT re-flagged — the gap code did not
+reintroduce them.
 
 ## Warnings
 
-### WR-01: Scan animation never starts when launched from the command palette
+### WR-01: PolicyPanel toggle can panic on a stale selection index after a `stateTick` reload
 
-**File:** `internal/tui/model.go:322-332` (and `293-347`, `277-289`)
+**File:** `internal/tui/policy_panel.go:43-45, 76-81`
 **Issue:**
-`openPanel` returns a `stepTickCmd()` for the scan panel to drive the step
-animation. But `runPaletteSelection` discards that command:
+`PolicyPanel.Update` reloads the rule slice on every `stateTick`
+("Reload rules so external edits surface", line 45):
 
 ```go
-case "scan now":
-    m, _ := a.openPanel(panelScan, NewScanPanel("deep")) // cmd dropped
-    return func() interface{} { return m }
+case stateTick:
+    p.rules = LoadPolicyRules(p.policiesDir)
 ```
 
-The caller in `handleKey` (palette `enter` branch) returns a `nil` cmd:
-`m := fn(); if app, ok := m.(App); ok { return app, nil }`. So when the user opens
-"scan now" / "scan --quick" via the palette (the documented primary entry point),
-no `stepTickMsg` is ever scheduled and the progress view stays frozen at step 0
-forever. The animation only works via the direct keybind path that preserves the
-cmd. This is a user-visible functional regression on the main launch path.
+`p.selIdx` is never re-clamped against the new `len(p.rules)`. `LoadPolicyRules`
+returns whatever is on disk — `tui_rules.json` is operator/external-writable and
+may legitimately contain fewer rules than before (or be edited down to 2 while a
+5-rule panel is open). The admin toggle handler then indexes with the stale
+index:
 
-**Fix:** Plumb the command through the palette dispatch. For example, have
-`runPaletteSelection` return both the model and the command (change the closure
-type to `func() (tea.Model, tea.Cmd)`), and in the `enter` handler return that
-cmd instead of `nil`:
 ```go
-if fn := a.runPaletteSelection(); fn != nil {
-    m, cmd := fn()
-    if app, ok := m.(App); ok {
-        return app, cmd
+case "e", "E", "t", "T":
+    if len(p.rules) > 0 {                  // guards empty, NOT in-range
+        p.rules[p.selIdx].Enabled = !p.rules[p.selIdx].Enabled  // panic if selIdx >= len
+```
+
+Repro: admin opens the panel, navigates to `selIdx = 4` (5 rules), an external
+process trims the file to 2 rules, the 5 s `stateTick` reloads (`len == 2`,
+`selIdx == 4`), the operator presses `e` → `p.rules[4]` is out of range and the
+entire TUI crashes. The `len(p.rules) > 0` guard only rules out the empty case,
+not the out-of-range case. The `Body` render at line 130 (`if i == p.selIdx`) is
+harmless because it iterates, but the toggle write path is a hard crash.
+
+**Fix:** Clamp `selIdx` into range immediately after every reload, and harden the
+toggle guard:
+```go
+case stateTick:
+    p.rules = LoadPolicyRules(p.policiesDir)
+    if p.selIdx >= len(p.rules) {
+        p.selIdx = len(p.rules) - 1
     }
+    if p.selIdx < 0 {
+        p.selIdx = 0
+    }
+...
+case "e", "E", "t", "T":
+    if p.selIdx >= 0 && p.selIdx < len(p.rules) {
+        p.rules[p.selIdx].Enabled = !p.rules[p.selIdx].Enabled
+        _ = ToggleRule(p.policiesDir, p.rules[p.selIdx].ID, p.rules[p.selIdx].Enabled)
+        p.rules = LoadPolicyRules(p.policiesDir)
+        if p.selIdx >= len(p.rules) { p.selIdx = len(p.rules) - 1 }
+    }
+```
+
+### WR-02: `LoadPolicyRules` clobbers valid on-disk rules with defaults on a transient read error, and `writeRules` is non-atomic
+
+**File:** `internal/tui/policy_rules.go:60-93`
+**Issue:**
+`writeRules` writes the rules file with a single non-atomic `os.WriteFile`
+(truncate + write in place), and `LoadPolicyRules` treats *any* `os.ReadFile`
+error as "first run" and re-seeds defaults, overwriting the file:
+
+```go
+data, err := os.ReadFile(rulesFilePath(policiesDir))
+if err != nil {
+    defaults := defaultPolicyRules()
+    _ = writeRules(policiesDir, defaults) // overwrites whatever was there
+    return defaults
 }
 ```
 
-### WR-02: LlamaFirewall `status` panics on a malformed/partial state.json
+These two facts combine into a small data-loss window. On Windows in particular,
+a concurrent reader (e.g., a `stateTick` reload landing while another panel
+instance is mid-`writeRules`) can hit a sharing-violation `ReadFile` error on an
+*existing* file with real user toggles; `LoadPolicyRules` then interprets the
+transient error as "absent" and overwrites the operator's customized rules with
+all-enabled defaults. The malformed-JSON branch (line 88) correctly preserves
+user data by returning defaults *without* writing — but the read-error branch
+does not make that distinction. The non-atomic write also means a crash mid-write
+can leave a truncated/partial file (which the malformed branch then masks with
+defaults on the next load).
 
-**File:** `cmd/beekeeper/main.go:1349-1350`
-**Issue:**
-`status` reads `state.json` into `map[string]any` and then performs unchecked type
-assertions:
+**Fix:** Distinguish "absent" from "exists but unreadable", and write atomically:
 ```go
-pid := int(lfState["pid"].(float64))
-startedAt := lfState["started_at"].(string)
-```
-If `llamafirewall` exists in state.json but `pid` is absent (nil), is a JSON string,
-or `started_at` is missing/non-string, the unchecked `.(float64)` / `.(string)`
-panics, crashing the CLI with a stack trace instead of reporting "Not running".
-A daemon that wrote a partial/older-schema state file (or any corruption) turns a
-status query into a crash. This is the same fail-soft expectation the rest of the
-status path already honors (it returns "Not running" on read/parse failure).
-
-**Fix:** Use comma-ok assertions and bail to the "Not running" message on any
-missing/wrong-typed field:
-```go
-pidF, ok1 := lfState["pid"].(float64)
-startedAt, ok2 := lfState["started_at"].(string)
-if !ok1 || !ok2 {
-    fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall Sidecar — Not running")
-    return nil
+data, err := os.ReadFile(rulesFilePath(policiesDir))
+if errors.Is(err, os.ErrNotExist) {
+    defaults := defaultPolicyRules()
+    _ = writeRules(policiesDir, defaults) // genuine first run: seed
+    return defaults
 }
-pid := int(pidF)
+if err != nil {
+    return defaultPolicyRules() // transient/permission error: do NOT overwrite
+}
 ```
-
-### WR-03: `probeLastBlock` reads and JSON-parses the entire audit log on every 10 s health tick
-
-**File:** `internal/tui/health.go:93-122` (via `tailFrom(auditPath, 0)`)
-**Issue:**
-`probeLastBlock` calls `tailFrom(auditPath, 0)`, which scans the whole NDJSON file
-from byte 0, unmarshalling every record, just to find the most recent `block`. This
-runs inside `refreshHealthState`, which is invoked synchronously in `App.Update`
-on every `healthTick` (every 10 s). On a long-lived, rotated-but-large audit log
-this re-parses the full file on the UI thread repeatedly. Beyond the latency, it is
-a correctness concern under the rotation model: `tailFrom`'s 1 MB scanner buffer
-will silently `continue`-skip any line longer than 1 MB and, combined with reading
-from offset 0 each time, there is no bound on the work performed in the render loop.
-This is the one place where the otherwise out-of-scope performance issue crosses
-into UI responsiveness/blocking behavior.
-
-**Fix:** Read the tail only. Stat the file size and seek to e.g. `max(0, size-64KB)`,
-scan forward discarding the first (possibly partial) line, and scan from there; or
-maintain a persistent offset like the watcher does and only look at the new records.
-At minimum, cap the scan to the last N KB rather than the entire file.
-
-### WR-04: fsnotify `event.Name == auditPath` comparison is fragile across path normalization
-
-**File:** `internal/tui/watcher.go:121-126`
-**Issue:**
-The watcher watches the parent directory and filters events with
-`event.Name == auditPath`. fsnotify emits `event.Name` using the path form it
-observed (which may differ from `auditPath` in separators, symlink resolution, or
-case on Windows/macOS). `auditPath` comes from `platform.AuditDir()` joined with the
-filename and is never normalized against `event.Name`. A mismatch means write
-events are ignored and the panel falls back to the 1 s ticker only — degraded but
-also racy with WR-01. On case-insensitive filesystems an exact string compare is
-especially brittle.
-
-**Fix:** Compare the cleaned base names and directories, e.g.
-`filepath.Clean(event.Name) == filepath.Clean(auditPath)`, or compare
-`filepath.Base(event.Name) == filepath.Base(auditPath)` since the watch is already
-scoped to the parent directory.
-
-### WR-05: Watcher goroutine leaks and never stops; `Run` ignores its context
-
-**File:** `internal/tui/model.go:391-399`, `internal/tui/watcher.go:87-141`
-**Issue:**
-`Run` takes a `ctx` but immediately discards it (`_ = ctx`) and launches
-`go watchAuditLog(p, m.auditPath)` with no shutdown signal. `watchAuditLog` loops
-forever on `watcher.Events` / `fallback.C` with no `ctx.Done()` or quit channel; it
-only returns if the fsnotify channels close. When the Bubble Tea program exits
-(user quits), the goroutine keeps running, holding the fsnotify watcher and ticker
-open until process exit. While process exit reclaims it here, the leaked goroutine
-plus the ignored context means the dashboard cannot be cancelled by its caller
-(e.g., a parent context timeout) and the watcher cannot be cleanly torn down — a
-robustness/leak defect for a command intended to be embeddable.
-
-**Fix:** Thread the context into the watcher and select on `ctx.Done()` in both the
-fsnotify and ticker-only loops; return when it fires. Use
-`tea.NewProgram(m, tea.WithContext(ctx))` (or equivalent) so program shutdown and
-the watcher share a lifecycle.
-
-### WR-06: Audit-record critical-detection only fires for the first record in a batch and never re-arms
-
-**File:** `internal/tui/model.go:96-111`
-**Issue:**
-On `newRecordsMsg` the model scans the batch and escalates to critical on a
-`sentry_alert`/`critical` record, but guarded by `&& !a.critical`. Once critical,
-the dashboard latches and a *second, distinct* critical alert arriving later (after
-the operator resolved the first, or a different rule firing) updates nothing —
-`a.status`/`a.incident` are only set on the `!a.critical` transition. Combined with
-`DefaultIncident()` being a hard-coded prototype incident (R5 exfil-signature-fusion)
-regardless of the actual record's `SentryRuleID/Name/FilesAccessed`, the incident
-card never reflects the real triggering alert. For a security dashboard this means
-the displayed incident can be entirely unrelated to the alert that fired.
-
-**Fix:** Build the `IncidentModel` from the triggering `audit.AuditRecord`
-(rule id/name, files accessed, network dests, severity) instead of the static
-`DefaultIncident()`, and define behavior for subsequent criticals (e.g., a queue or
-count) rather than silently ignoring them. At minimum, document the latch as
-intentional and surface a "+N more" indicator.
-
-### WR-07: `pipColor` / `probeCatalogs` freshness thresholds are inconsistent and partly unreachable
-
-**File:** `internal/tui/catalogs_panel.go:40-55`, `internal/tui/health.go:78-89`
-**Issue:**
-The catalogs panel treats a source as red at `age > 24h`, amber at `age > 2h`, green
-otherwise; the health pip (`probeCatalogs`) treats catalogs as OK while
-`age < 25h`. The two surfaces therefore disagree at the boundary (e.g., a 24.5 h-old
-index shows a red pip in the panel but a green "catalogs fresh" health pip).
-Additionally, for the `socket` and `self` sources `buildBody` hard-codes the
-sync-info string and never consults mtime or `ss.Count`, while `Count()` still uses
-`p.indexMtimes[src.Name].IsZero()` to decide whether those sources are "enforcing" —
-so a `socket`/`self` source with no on-disk index is reported as not enforcing even
-though the panel always renders it as live/clean. The enforce count and the per-row
-display can contradict each other.
-
-**Fix:** Centralize the freshness threshold in one constant shared by both surfaces,
-and make `Count()` consistent with how each source's status is actually derived in
-`buildBody` (don't gate `socket`/`self` on a nonexistent index file).
-
-### WR-08: `Run` swallows AltScreen/teardown by ignoring `p.Run()` cleanup ordering on error
-
-**File:** `internal/tui/model.go:391-399`
-**Issue:**
-`Run` calls `StartResizePoller(p)` and `go watchAuditLog(...)` *before* `p.Run()`,
-and returns `p.Run()`'s error directly. The resize poller goroutine
-(`resize_windows.go`) loops forever sending `tea.WindowSizeMsg` with no stop signal
-and no check that the program is still alive; after `p.Run()` returns it continues
-calling `p.Send` on a finished program. `tea.Program.Send` after shutdown is a
-no-op in practice, but the goroutine spins a 500 ms ticker for the life of the
-process. Same leak class as WR-05. Because both background goroutines outlive the
-program and there is no `defer`/cancellation, an error return from `p.Run()` leaves
-two orphaned goroutines.
-
-**Fix:** Give both pollers a stop channel/context tied to program shutdown and
-ensure they exit when `p.Run()` returns.
+And in `writeRules`, write to a temp file + `os.Rename` for atomic replacement:
+```go
+tmp := rulesFilePath(policiesDir) + ".tmp"
+if err := os.WriteFile(tmp, data, 0600); err != nil { return err }
+return os.Rename(tmp, rulesFilePath(policiesDir))
+```
 
 ## Info
 
-### IN-01: Duplicated `minInt`/`max` helpers and `Padding` is the only divergence
+### IN-01: `pidAlive` liveness is inconsistent between Windows and Unix for access-denied processes
 
-**File:** `internal/tui/alerts_panel.go:192-197`, `272-277`
-**Issue:** `minInt` and `max` are defined locally in `alerts_panel.go`. Go 1.25
-provides builtin `min`/`max`; the package-local `max` shadows nothing but is
-redundant, and `minInt` duplicates the builtin `min`. Prefer the builtins for
-clarity and to avoid confusion with the shadowed name.
-**Fix:** Delete `minInt`/`max` and use builtin `min`/`max`.
+**File:** `internal/tui/pid_alive_windows.go:14-24`, `internal/tui/pid_alive_unix.go:16-33`
+**Issue:** On Unix, a live process the caller lacks permission to signal returns
+`EPERM`, which is explicitly treated as **alive** (`true`). On Windows,
+`OpenProcess(SYNCHRONIZE, ...)` against a live process owned by another user or
+an elevated process can fail with `ERROR_ACCESS_DENIED`, and the code treats any
+`OpenProcess` error as **not alive** (`false`). So the same situation — a running
+LlamaFirewall sidecar the dashboard cannot open — reports `LlamaFirewallOK=false`
+on Windows but `true` on Unix. The Windows direction is fail-soft toward
+"degraded" (acceptable per the fail-closed posture), but the cross-platform
+divergence can produce a false-red health pip on Windows when the sidecar is
+actually up under a different security context.
+**Fix:** Treat `ERROR_ACCESS_DENIED` as alive on Windows to match the Unix EPERM
+semantics:
+```go
+handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
+if err != nil {
+    if err == windows.ERROR_ACCESS_DENIED {
+        return true // exists but we lack access — treat as alive (matches Unix EPERM)
+    }
+    return false
+}
+defer windows.CloseHandle(handle)
+return true
+```
 
-### IN-02: `renderBaseDimmed` computes a dimmed string that is then discarded
+### IN-02: `renderExpandedDetail` truncates attacker-influenced strings on byte boundaries, not rune boundaries
 
-**File:** `internal/tui/model.go:357-359`, `368-370`
-**Issue:** In `View`, both palette and panel branches do
-`dimmed := renderBaseDimmed(a); _ = dimmed`. The dimmed background is computed and
-immediately thrown away — dead work and dead code that signals an unfinished
-overlay-compositing intent. The background is never actually rendered behind the
-overlay.
-**Fix:** Either composite `dimmed` behind the overlay (the apparent intent) or
-remove the `renderBaseDimmed` calls and the function if unused.
+**File:** `internal/tui/alerts_panel.go:324-327, 339-342, 354-357`
+**Issue:** Each detail section truncates with `truncated[:width-6]` on the raw
+byte slice. `ParentChain`/`FilesAccessed`/`NetworkDests` are Sentry-sourced,
+attacker-influenceable strings (file paths, process args, network hosts). A
+multi-byte UTF-8 rune straddling the `width-6` cut point yields invalid UTF-8 in
+the rendered cell. This does not panic (byte slicing within range is always
+safe, and the bounds `width > 6 && len > width-6` keep the index valid), and the
+comment correctly notes these strings are never exec'd/eval'd (T-08-06-01), so
+this is purely a display-fidelity nit, not a security or crash issue.
+**Fix:** Truncate on runes, e.g.:
+```go
+r := []rune(entry)
+if len(r) > width-6 && width > 6 {
+    truncated = string(r[:width-6])
+}
+```
 
-### IN-03: `viewString` test helper is unused by any test
+### IN-03: `minInt` / `max` package-local helpers duplicate Go 1.25 builtins (carried from prior IN-01)
 
-**File:** `internal/tui/model.go:401-405`
-**Issue:** `viewString` is documented as a test helper but no test references it
-(model_test.go inspects fields directly). Dead code.
-**Fix:** Remove it, or use it in tests that assert rendered state.
+**File:** `internal/tui/alerts_panel.go:220-225, 380-385`
+**Issue:** `minInt` and `max` are defined locally. Go 1.25 (project minimum per
+CLAUDE.md) provides builtin `min`/`max`. The local `max` shadows the builtin and
+`minInt` duplicates `min`. This was flagged in the prior review (IN-01) and the
+gap code continues to rely on these helpers (e.g., the new
+`renderExpandedDetail` uses `max(0, width-6)`). Not a defect; noted for cleanup.
+**Fix:** Delete `minInt`/`max` and use the builtins `min`/`max`.
 
-### IN-04: Hard-coded prototype/demo strings shipped in production paths
+### IN-04: Non-admin gate for PolicyPanel is verified only structurally, not through the real `Update` dispatch
 
-**File:** `internal/tui/model.go:58,105,236`; `internal/tui/incidents.go:37-63`;
-`internal/tui/policy_panel.go:48-55`; `internal/tui/scan_panel.go:27-30`
-**Issue:** The default status ("protecting 4 agents · 0 open criticals today"),
-the static `DefaultIncident()` (fixed IPs, PIDs, file paths), the policy panel
-values, and the scan completion line ("312 packages, 47 extensions") are
-hard-coded prototype fixtures presented as live data. These are marked LOCKED from
-the prototype, but as shipped they display fabricated security state to the
-operator. Acceptable for Phase 8 if clearly scoped, but it is a correctness/trust
-risk if the phase is considered "done" without wiring real data (tracked for
-Phase 9 per comments). Flagging so it is not lost.
-**Fix:** Confirm Phase 9 tickets exist to replace each with live data; consider a
-visible "demo data" affordance until then.
-
-### IN-05: Tests bypass the real `Update`/key-dispatch path
-
-**File:** `internal/tui/model_test.go:20-40,104-126,128-156,184-195`
-**Issue:** Many tests mutate `a.mode`, `a.palette`, `a.critical` directly with a
-comment that "tea.KeyPressMsg construction is version-dependent," and
-`TestAppCommandDispatch` hard-codes `selIdx: 3` to mean "alerts," coupling the test
-to the literal command-slice order. These tests assert reachable end-states but do
-not exercise `handleKey`/`Update`, which is exactly where CR-01-adjacent and
-WR-01/WR-06 defects live. They will not catch dispatch regressions.
-**Fix:** Drive tests through `App.Update(tea.KeyPressMsg{...})` so the real key
-routing, palette filtering, and command dispatch are covered; assert on
-`filtered()[selIdx]` rather than a magic index.
-
-### IN-06: `probeHooks` substring match is overly broad
-
-**File:** `internal/tui/health.go:31-43`
-**Issue:** `probeHooks` reports the hook as installed if the raw bytes of
-`~/.claude/settings.json` contain the substring "beekeeper" anywhere — including in
-an unrelated comment, a disabled/commented config, or a different setting that
-merely mentions the word. This can show a green "hooks" pip when no functional hook
-is registered. Low severity given the read-only/degrade-gracefully posture, but it
-is a false-positive health signal.
-**Fix:** Parse the JSON and check for a beekeeper command under the actual
-`hooks.PreToolUse`/`PostToolUse` structure rather than a raw substring scan.
+**File:** `internal/tui/policy_panel_test.go:85-131`
+**Issue:** `TestPolicyPanelNonAdminNoToggle` documents that it verifies the
+admin gate "structurally" and then manually replicates the non-admin navigation
+branch (`if p.selIdx < len(p.rules)-1 { p.selIdx++ }`) rather than driving
+`p.Update(tea.KeyPressMsg{...})`. The actual gate — the `if !p.adminMode { ...
+return }` short-circuit at `policy_panel.go:50-63` that prevents reaching the
+`e/t` toggle — is never exercised by the test. The admin-gate correctness is
+sound on inspection (the non-admin branch has no toggle case and returns early),
+but the test would not catch a regression that, say, moved the toggle case above
+the gate. The test file itself acknowledges this is "consistent with the test
+style ... which avoid version-dependent KeyPressMsg construction." Low priority
+given the gate is simple and correct as written.
+**Fix:** If `tea.KeyPressMsg` construction is now feasible under
+`charm.land/bubbletea/v2`, drive at least one test through
+`p.Update(keyPress("e"))` with `adminMode=false` and assert disk state is
+unchanged, so the real dispatch gate is covered.
 
 ---
 
-_Reviewed: 2026-05-29T00:00:00Z_
+_Reviewed: 2026-05-29T14:14:51Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
