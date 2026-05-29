@@ -23,11 +23,12 @@ const (
 
 // HealthState holds health pip states read from IPC + audit.
 type HealthState struct {
-	HooksOK    bool
-	GatewayOK  bool
-	SentryOK   bool
-	CatalogsOK bool
-	LastBlock  string // e.g. "6m ago", "just now", "sentry firing"
+	HooksOK         bool
+	GatewayOK       bool
+	SentryOK        bool
+	CatalogsOK      bool
+	LlamaFirewallOK bool
+	LastBlock       string // e.g. "6m ago", "just now", "sentry firing"
 }
 
 // App is the top-level Bubble Tea model.
@@ -58,11 +59,12 @@ func NewApp(adminMode bool) App {
 		status:    "all systems nominal · protecting 4 agents · 0 open criticals today",
 		clock:     time.Now(),
 		health: HealthState{
-			HooksOK:    true,
-			GatewayOK:  true,
-			SentryOK:   true,
-			CatalogsOK: true,
-			LastBlock:  "last block 6m ago",
+			HooksOK:         true,
+			GatewayOK:       true,
+			SentryOK:        true,
+			CatalogsOK:      true,
+			LlamaFirewallOK: true,
+			LastBlock:       "last block 6m ago",
 		},
 	}
 }
