@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mzansi-agentive/beekeeper/internal/audit"
+	tui "github.com/mzansi-agentive/beekeeper/internal/tui"
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/check"
 	"github.com/mzansi-agentive/beekeeper/internal/config"
@@ -66,6 +67,7 @@ func newRootCmd() *cobra.Command {
 		newProtectCmd(),
 		newSentryCmd(),
 		newLlamaFirewallCmd(),
+		newDashboardCmd(),
 	)
 
 	return root
@@ -1405,4 +1407,23 @@ It always exits 0 — PostToolUse hook failures must not disrupt the agent.`,
 			return nil
 		},
 	}
+}
+
+// newDashboardCmd opens the real-time Bubble Tea TUI dashboard.
+func newDashboardCmd() *cobra.Command {
+	var adminMode bool
+	cmd := &cobra.Command{
+		Use:   "dashboard",
+		Short: "Open the real-time TUI dashboard",
+		Long: `Open a single-screen terminal dashboard showing live tool call decisions,
+Sentry alerts, catalog freshness, scan status, active policies, quarantine,
+and system health. Use --admin to enable policy toggle and quarantine actions.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return tui.Run(cmd.Context(), adminMode)
+		},
+	}
+	cmd.Flags().BoolVar(&adminMode, "admin", false,
+		"Enable admin mode (policy toggle, quarantine restore/purge, scan trigger)")
+	return cmd
 }
