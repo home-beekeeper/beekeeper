@@ -23,6 +23,7 @@ CI pipeline or developer workstation.
 6. [The beekeeper-self Catalog](#6-the-beekeeper-self-catalog)
 7. [Verification Path](#7-verification-path)
 8. [Known Gaps and Explicit Non-Defenses](#8-known-gaps-and-explicit-non-defenses)
+9. [Declarative Policy Overlay: Escape Hatch and Known Limitations](#9-declarative-policy-overlay-escape-hatch-and-known-limitations)
 
 ---
 
@@ -71,6 +72,7 @@ build + Sigstore pipeline (see Section 2).
 | Beekeeper binary supply chain | Critical | Reproducible builds, Sigstore, SLSA Level 3, `beekeeper-self` feed |
 | Catalog feeds (bumblebee, OSV, Socket) | High | Corroboration semantics (see Section 3), sanity bounds, signatures |
 | Policy file injection | Medium | `policyloader.ValidateSchema` rejects unknown fields and `exec` actions |
+| Policy allowlist override (escape hatch) | Medium | `package_allowlist` allow rules can override catalog blocks — see Section 9 |
 | Config injection via env/project | Low | Documented, operator controls trusted project directories |
 | Audit log tampering | Low | Owner-only permissions (0600), append-only writes, OTLP/syslog fan-out |
 | IPC named pipe / Unix socket | Low | OS-level owner-only permissions, no auth bypass path |
@@ -539,6 +541,75 @@ prominent warnings). A sustained multi-source outage does not cause Beekeeper
 to block all agent actions, but it reduces the quality of threat intelligence.
 This is an explicit availability vs. security tradeoff: bricking all agents
 for a multi-day outage was not acceptable for v1.0.0.
+
+---
+
+---
+
+## 9. Declarative Policy Overlay: Escape Hatch and Known Limitations
+
+### Package Allowlist Override Escape Hatch (T-09-31)
+
+Beekeeper supports version-controlled policy files (`~/.beekeeper/policies/*.json`)
+with `package_allowlist` rules. A `package_allowlist` rule whose `action` is `"allow"`
+can **override a catalog-corroborated block or warn decision** for the exact listed
+package.
+
+**This is intentional behavior.** The purpose is to let operators make explicit,
+version-controlled trust decisions — for example, to allowlist an internal package
+that a fresh catalog source incorrectly flags, or to express that a particular
+"flagged" package is a known false-positive in the operator's environment.
+
+**Why this is a documented escape hatch:**
+
+- A `package_allowlist` allow rule for a package silences all enforcement against
+  that package, including catalog-corroborated blocks (2+ signed sources agreeing).
+- A malicious or misconfigured policy file placed in `~/.beekeeper/policies/` can
+  selectively disable enforcement for targeted packages.
+- The override is recorded in the decision `Reason` field in every audit record, so
+  it is forensically visible: any allow decision that cites a policy allowlist rule
+  is immediately distinguishable from a genuine catalog-clear decision.
+
+**Mitigations:**
+
+- Policy files are validated by `policyloader.ValidateSchema` which rejects unknown
+  fields, `exec` action values, and unknown rule types (T-09-30).
+- The `~/.beekeeper/policies/` directory is governed by the same owner-only (0600)
+  permission convention as the config file. An attacker who can write to this
+  directory already has the developer's full filesystem access.
+- Every allowlist-override allow decision includes `"policy overlay: rule ... allowlists
+  this package (user-trust override — recorded for audit)"` in the `Reason` field.
+  Operators monitoring audit logs can detect unexpected allowlist overrides.
+
+**Recommendation:** Treat `~/.beekeeper/policies/` as part of your security-relevant
+configuration. Place policy files in version-controlled directories and review
+`allow`-action rules carefully before deploying.
+
+### Overlay Limitations: `release_age` and `lifecycle_script_allowlist` Not Enforced
+
+The declarative policy overlay (`ApplyPolicyOverlay` in `internal/policyloader/enforce.go`)
+enforces `package_allowlist` and `sensitive_path` rules from policy files against live
+tool calls. However, **two rule types are NOT enforced by the overlay in v1:**
+
+- `release_age` rules (minimum package age before install is permitted)
+- `lifecycle_script_allowlist` rules (allowlist of lifecycle scripts permitted to run)
+
+**Why:** These rule types require package publication age and lifecycle-script metadata
+that is NOT present in a pure `policy.ToolCall`. The overlay evaluates only data
+available in the tool call itself (package name/ecosystem, target path). Release age
+requires a catalog or registry API lookup; lifecycle-script data is extracted during
+catalog sync.
+
+**Enforcement path in v1:** The engine's built-in release-age and lifecycle-script
+policies (configured via catalog entries and `internal/config`) remain the enforcement
+path for these rule types. Declarative policy files can declare `release_age` rules
+for documentation and `policy test` dry-run context, but they do not affect live
+`beekeeper check` decisions in v1.
+
+**Future work:** A v2 overlay enhancement could pass catalog-side metadata (package
+publish timestamp, lifecycle-script hash) into the overlay for these rule types.
+Until then, `release_age` and `lifecycle_script_allowlist` in policy files are
+informational only and must not be relied upon for enforcement.
 
 ---
 
