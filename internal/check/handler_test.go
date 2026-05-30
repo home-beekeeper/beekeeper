@@ -512,6 +512,58 @@ func TestHandlerLLMFCodeShieldBlock(t *testing.T) {
 	}
 }
 
+// TestPolicyOverlayBlocksViaDir verifies that beekeeper check applies a
+// policies-dir block rule: a tool call that the bare engine would allow is
+// blocked when a matching package_allowlist block policy file is present in the
+// policies directory (CODE-01 live enforcement).
+func TestPolicyOverlayBlocksViaDir(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+
+	// Create a cacheDir that has a sibling "policies/" directory containing a
+	// block rule for "innocent-pkg-xyz-overlaytest".
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	policiesDir := filepath.Join(dir, "policies")
+	if err := os.MkdirAll(policiesDir, 0700); err != nil {
+		t.Fatalf("MkdirAll policiesDir: %v", err)
+	}
+
+	policyJSON := `{
+		"schema_version": "1",
+		"name": "test-block-policy",
+		"rules": [
+			{
+				"id": "block-overlay-test-pkg",
+				"rule_type": "package_allowlist",
+				"ecosystem": "npm",
+				"packages": ["innocent-pkg-xyz-overlaytest"],
+				"action": "block"
+			}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(policiesDir, "block.json"), []byte(policyJSON), 0600); err != nil {
+		t.Fatalf("WriteFile block.json: %v", err)
+	}
+
+	// The engine alone would allow this fictional package (not in any catalog).
+	// The overlay block rule must force a block.
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"ecosystem":"npm","package":"innocent-pkg-xyz-overlaytest"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	if res.Decision.Allow {
+		t.Errorf("Allow = true, want false (policy overlay block rule must override engine allow)")
+	}
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block", res.Decision.Level)
+	}
+	if res.ExitCode == exitAllow {
+		t.Errorf("ExitCode = %d, want non-zero (policy overlay block must exit non-zero)", res.ExitCode)
+	}
+}
+
 func TestHandlerLLMFCodeShieldWarn(t *testing.T) {
 	auditPath := auditPathIn(t)
 	scanner := &mockScanner{resp: llamafirewall.ScanResponse{

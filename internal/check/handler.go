@@ -29,6 +29,7 @@ import (
 	"github.com/mzansi-agentive/beekeeper/internal/config"
 	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/mzansi-agentive/beekeeper/internal/policyloader"
 )
 
 const (
@@ -227,6 +228,29 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// rather than emit a possibly-stale allow.
 	if ctx.Err() != nil {
 		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+	}
+
+	// Apply the declarative policy overlay (CODE-01): load package_allowlist and
+	// sensitive_path rules from ~/.beekeeper/policies/*.json and combine with the
+	// engine decision by most-restrictive-wins (with the allowlist allow escape hatch).
+	// corroboration_threshold rules in policy files already flowed through
+	// thresholdsFromPolicyFile into Evaluate above and are NOT re-applied here.
+	//
+	// A wholesale unreadable policies directory honors fail_mode (T-09-33):
+	//   fail-closed (default): directory read error → block decision.
+	//   fail-open/warn: directory read error → allow + continue.
+	// An individually malformed policy file is silently skipped (T-09-33).
+	if cacheDir != "" {
+		policiesDir := filepath.Join(filepath.Dir(cacheDir), "policies")
+		policyFiles, policyErr := policyloader.LoadPolicyDir(policiesDir)
+		if policyErr != nil {
+			// Cannot read the policies directory. Honor fail_mode (T-09-33).
+			fmt.Fprintf(os.Stderr, "beekeeper check: policies directory unreadable: %v\n", policyErr)
+			return finalizeWithAC(failDecision(cfg, "policies directory unreadable (fail-closed)"), cfg, toolCall, auditPath, ac)
+		}
+		if len(policyFiles) > 0 {
+			decision = policyloader.ApplyPolicyOverlay(policyFiles, toolCall, decision)
+		}
 	}
 
 	// Successful evaluation results are NOT subject to fail-mode overrides —

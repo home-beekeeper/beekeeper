@@ -49,14 +49,15 @@ func thresholdsFromPolicyFile(pf PolicyFile) policy.CorroborationThresholds {
 }
 
 // RunPolicyTest dry-runs the policy file's rules against tc and returns the
-// Decision from policy.Evaluate. It uses an empty MultiCatalogLookup (no live
-// catalog) so results reflect only the policy file's threshold overrides — not
-// live catalog state. This makes test output deterministic and prevents false
-// "allow" results caused by catalog absence rather than the policy file.
+// Decision that reflects the full overlay enforcement (corroboration thresholds
+// + package_allowlist + sensitive_path rules). It uses an empty
+// MultiCatalogLookup (no live catalog) so results reflect only the policy
+// file's own rules — not live catalog state. This makes test output
+// deterministic and prevents false "allow" results caused by catalog absence.
 //
-// Built-in additive policies remain active: corroboration thresholds derived
-// from any corroboration_threshold rule in pf override the PLCY-01 defaults,
-// but the underlying engine's lifecycle/path/egress checks are always active.
+// The overlay (ApplyPolicyOverlay) is applied on top of the engine result so
+// that `beekeeper policy test` reflects the same enforcement that live
+// `beekeeper check` applies (CODE-01 requirement).
 //
 // Use --with-catalogs (CLI flag, wired in cmd/beekeeper) to test against live
 // catalogs when you want to verify real-world catalog interaction.
@@ -68,7 +69,14 @@ func RunPolicyTest(pf PolicyFile, tc policy.ToolCall, ac policy.AgentContext) po
 // accepts an injectable MultiCatalogLookup. It is unexported so that tests can
 // inject a fake catalog (to verify threshold overrides produce block decisions)
 // while the public API always uses emptyLookup (Pitfall 4).
+//
+// The overlay is applied after the engine result so that package_allowlist and
+// sensitive_path rules in the policy file are reflected in the dry-run output
+// (CODE-01: policy test must mirror live check enforcement).
 func runPolicyTestWithCatalog(pf PolicyFile, tc policy.ToolCall, idx policy.MultiCatalogLookup, ac policy.AgentContext) policy.Decision {
 	thresholds := thresholdsFromPolicyFile(pf)
-	return policy.Evaluate(tc, idx, thresholds, ac)
+	base := policy.Evaluate(tc, idx, thresholds, ac)
+	// Apply the overlay for package_allowlist and sensitive_path rules so that
+	// `policy test` output matches what live `beekeeper check` would produce.
+	return ApplyPolicyOverlay([]PolicyFile{pf}, tc, base)
 }
