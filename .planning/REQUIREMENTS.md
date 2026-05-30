@@ -119,7 +119,7 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 
 ### Policy as Code (CODE)
 
-- [ ] **CODE-01**: Declarative JSON policy files in `policies/` — loaded by policy engine; separate from config; version-controllable
+- [x] **CODE-01**: Declarative JSON policy files in `policies/` — loaded by policy engine; separate from config; version-controllable
 - [x] **CODE-02**: `beekeeper policy test <file>` — dry-run policy against sample tool call JSON
 - [x] **CODE-03**: `beekeeper policy validate <file>` — validate policy file schema
 - [x] **CODE-04**: `beekeeper policy list` — list loaded policy files with rule counts
@@ -254,7 +254,7 @@ Populated during roadmap creation.
 | TUI-08 | Phase 8 | Pending |
 | TUI-09 | Phase 8 | Pending |
 | TUI-10 | Phase 8 | Pending |
-| CODE-01 | Phase 9 | Pending |
+| CODE-01 | Phase 9 | Complete |
 | CODE-02 | Phase 9 | Complete |
 | CODE-03 | Phase 9 | Complete |
 | CODE-04 | Phase 9 | Complete |
