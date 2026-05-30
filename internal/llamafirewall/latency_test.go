@@ -84,16 +84,51 @@ func TestP99GreaterOrEqualP95(t *testing.T) {
 }
 
 // TestP99NinetyNinthPercentile records 100 values (1..100) and verifies that
-// P99() returns a value that is at or near the 99th index of the sorted buffer.
-// With n=100 samples, idx = int(100 * 0.99) = 99, so the sorted buffer at
-// index 99 is 100 (the maximum). P99() must equal 100.
+// P99() returns the 99th value (99) using nearest-rank (WR-03 correction).
+//
+// WR-03 correction: the old formula (int(n * 0.99) = 99 → index 99 → value 100)
+// was off by one. Nearest-rank: ceil(0.99 * 100) - 1 = 99 - 1 = 98 → value 99.
 func TestP99NinetyNinthPercentile(t *testing.T) {
 	var lt LatencyTracker
 	for i := int64(1); i <= 100; i++ {
 		lt.Record(i)
 	}
 	got := lt.P99()
-	if got != 100 {
-		t.Fatalf("P99() with 1..100 distribution = %d, want 100", got)
+	// WR-03: nearest-rank gives the 99th element (99), not the maximum (100).
+	if got != 99 {
+		t.Fatalf("P99() with 1..100 distribution = %d, want 99 (nearest-rank WR-03)", got)
+	}
+}
+
+// TestP95NinetyFifthPercentile records 100 values (1..100) and verifies that
+// P95() returns the 95th value (95) using nearest-rank (WR-03).
+//
+// WR-03: ceil(0.95 * 100) - 1 = 95 - 1 = 94 → buf[94] = 95 in sorted [1..100].
+func TestP95NinetyFifthPercentile(t *testing.T) {
+	var lt LatencyTracker
+	for i := int64(1); i <= 100; i++ {
+		lt.Record(i)
+	}
+	got := lt.P95()
+	if got != 95 {
+		t.Fatalf("P95() with 1..100 distribution = %d, want 95 (nearest-rank WR-03)", got)
+	}
+}
+
+// TestP95SmallNDoesNotCollapseToMax verifies that P95 of a small sample set
+// does not return the maximum unless the percentile genuinely lands there.
+// With n=20 samples (1..20), ceil(0.95 * 20) - 1 = ceil(19.0) - 1 = 18 → buf[18] = 19.
+// The maximum is 20, so the result must not be 20.
+func TestP95SmallNDoesNotCollapseToMax(t *testing.T) {
+	var lt LatencyTracker
+	for i := int64(1); i <= 20; i++ {
+		lt.Record(i)
+	}
+	got := lt.P95()
+	if got == 20 {
+		t.Errorf("P95() with n=20 = 20 (maximum), want 19 (nearest-rank must not collapse to max)")
+	}
+	if got != 19 {
+		t.Errorf("P95() with n=20 = %d, want 19", got)
 	}
 }

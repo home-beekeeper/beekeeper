@@ -3,6 +3,7 @@
 package llamafirewall
 
 import (
+	"math"
 	"sort"
 	"sync"
 )
@@ -33,6 +34,9 @@ func (t *LatencyTracker) Record(ms int64) {
 
 // P95 returns the 95th-percentile latency (in milliseconds) over the last 100
 // samples, or 0 if no samples have been recorded yet.
+//
+// WR-03: uses nearest-rank (ceil(p*n)-1, clamped to [0,n-1]) so that
+// P95 of 100 ascending samples returns the 95th value (95), not 96.
 func (t *LatencyTracker) P95() int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -46,16 +50,14 @@ func (t *LatencyTracker) P95() int64 {
 	buf := make([]int64, n)
 	copy(buf, t.p95buf[:n])
 	sort.Slice(buf, func(i, j int) bool { return buf[i] < buf[j] })
-	idx := int(float64(n) * 0.95)
-	if idx >= n {
-		idx = n - 1
-	}
-	return buf[idx]
+	return percentile(buf, 0.95)
 }
 
 // P99 returns the 99th-percentile latency (in milliseconds) over the last 100
 // samples, or 0 if no samples have been recorded yet. It uses the same ring
 // buffer as P95 (p95buf holds the last 100 samples regardless of percentile).
+//
+// WR-03: uses nearest-rank (ceil(p*n)-1, clamped to [0,n-1]).
 func (t *LatencyTracker) P99() int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -69,7 +71,26 @@ func (t *LatencyTracker) P99() int64 {
 	buf := make([]int64, n)
 	copy(buf, t.p95buf[:n])
 	sort.Slice(buf, func(i, j int) bool { return buf[i] < buf[j] })
-	idx := int(float64(n) * 0.99)
+	return percentile(buf, 0.99)
+}
+
+// percentile returns the value at the given fraction p (0.0–1.0) in the
+// already-sorted slice buf using the nearest-rank formula (WR-03):
+//
+//	idx = ceil(p * n) - 1, clamped to [0, n-1]
+//
+// This ensures P95 of 100 ascending samples returns the 95th value (95),
+// not 96 (the old off-by-one), and small-n does not collapse to the maximum
+// unless the percentile genuinely falls there.
+func percentile(buf []int64, p float64) int64 {
+	n := len(buf)
+	if n == 0 {
+		return 0
+	}
+	idx := int(math.Ceil(p*float64(n))) - 1
+	if idx < 0 {
+		idx = 0
+	}
 	if idx >= n {
 		idx = n - 1
 	}
