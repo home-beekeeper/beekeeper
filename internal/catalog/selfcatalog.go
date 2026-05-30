@@ -155,9 +155,17 @@ type SelfCatalogOpts struct {
 	// write the SelfQuarantineState for offline persistence.
 	StatePath string
 
-	// pubKeyOverride allows tests to substitute a different public key.
-	// Production code leaves this nil; CheckSelfCatalog then uses SelfCatalogPublicKey.
-	pubKeyOverride ed25519.PublicKey
+	// PubKeyOverride allows callers to substitute a different Ed25519 public key
+	// for feed signature verification. When non-nil, it takes precedence over
+	// the embedded SelfCatalogPublicKey. This is used by enforceSelfQuarantine
+	// when the operator has configured a self-hosted feed key in config.json
+	// (SelfCatalogConfig.PubKey), and by tests that need to sign feeds with
+	// an independent key.
+	//
+	// SECURITY: a misconfigured key (present but wrong length / undecodable)
+	// must fail closed — see enforceSelfQuarantine in cmd/beekeeper/selfquarantine.go.
+	// An empty/nil value falls back to the embedded SelfCatalogPublicKey.
+	PubKeyOverride ed25519.PublicKey
 }
 
 // selfCatalogDefaultFeedURL is the official beekeeper-self feed endpoint.
@@ -194,7 +202,7 @@ func CheckSelfCatalog(opts SelfCatalogOpts) SelfCatalogResult {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
 
-	pubKey := opts.pubKeyOverride
+	pubKey := opts.PubKeyOverride
 	if pubKey == nil {
 		pubKey = SelfCatalogPublicKey
 	}

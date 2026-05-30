@@ -79,7 +79,7 @@ func TestSelfCatalog_VersionMatch(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "test-v0.0.1", // matches the fixture
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		pubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: SelfCatalogPublicKey,
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -110,7 +110,7 @@ func TestSelfCatalog_InvalidSignature(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "test-v0.0.1",
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		pubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: SelfCatalogPublicKey,
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -138,7 +138,7 @@ func TestSelfCatalog_NetworkError_NoCache(t *testing.T) {
 		Client:     &http.Client{Timeout: 100 * time.Millisecond},
 		Version:    "test-v0.0.1",
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		pubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: SelfCatalogPublicKey,
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -186,7 +186,7 @@ func TestSelfCatalog_NetworkError_FreshCache(t *testing.T) {
 		Client:     &http.Client{Timeout: 100 * time.Millisecond},
 		Version:    "different-version", // does not match v99.99.99 in the no_match fixture
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		pubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: SelfCatalogPublicKey,
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -212,7 +212,7 @@ func TestSelfCatalog_NoMatch(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "v1.0.0-unaffected", // not in any entry
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		pubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: SelfCatalogPublicKey,
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -263,7 +263,7 @@ func TestSelfCatalog_OfflinePersistence(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "v0.4.2", // matches the persisted quarantine
 		StatePath:  statePath,
-		pubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: SelfCatalogPublicKey,
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -273,6 +273,82 @@ func TestSelfCatalog_OfflinePersistence(t *testing.T) {
 	}
 	if result.Outcome != SelfCatalogQuarantine {
 		t.Errorf("Outcome: want SelfCatalogQuarantine from offline state, got %v", result.Outcome)
+	}
+}
+
+// TestSelfCatalog_CustomKeyVerifiesAndEmbeddedFails verifies CR-01:
+// a feed signed with a CUSTOM key verifies when PubKeyOverride is set to that
+// custom key, but fails when verified against the embedded key. This proves
+// that PubKeyOverride is plumbed correctly into parseAndVerifySelfFeed.
+func TestSelfCatalog_CustomKeyVerifiesAndEmbeddedFails(t *testing.T) {
+	// Generate a fresh custom key pair — completely independent from the
+	// embedded SelfCatalogPublicKey.
+	customPub, customPriv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate custom key: %v", err)
+	}
+
+	// Build a minimal self-feed signed with the custom key.
+	entries := []selfCatalogEntry{
+		{
+			ID:            "custom-key-test-001",
+			Name:          "Custom key test entry",
+			Ecosystem:     "beekeeper",
+			Package:       "beekeeper",
+			Versions:      []string{"v0.99.0"},
+			Severity:      "critical",
+			CatalogSource: "beekeeper-self",
+		},
+	}
+	entriesJSON, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatalf("marshal entries: %v", err)
+	}
+	sig := ed25519.Sign(customPriv, entriesJSON)
+	feed := selfFeed{
+		SchemaVersion:    "1",
+		Entries:          entries,
+		CatalogSignature: base64.StdEncoding.EncodeToString(sig),
+	}
+	feedData, err := json.Marshal(feed)
+	if err != nil {
+		t.Fatalf("marshal feed: %v", err)
+	}
+
+	// --- Part A: verify WITH the custom key → should continue or quarantine ---
+	srvA := serveFeed(t, feedData, http.StatusOK)
+	optsA := SelfCatalogOpts{
+		FeedURL:        srvA.URL,
+		CacheDir:       t.TempDir(),
+		Client:         srvA.Client(),
+		Version:        "v1.0.0-unaffected", // not in the feed
+		StatePath:      filepath.Join(t.TempDir(), "state.json"),
+		PubKeyOverride: customPub, // use the custom key
+	}
+	resultA := CheckSelfCatalog(optsA)
+	if resultA.Outcome == SelfCatalogFailClosed {
+		t.Errorf("Part A (custom key): Outcome = SelfCatalogFailClosed, want Continue or Quarantine; err: %v", resultA.Err)
+	}
+	if resultA.Outcome != SelfCatalogContinue {
+		t.Errorf("Part A (custom key): Outcome = %v, want SelfCatalogContinue (version not in feed)", resultA.Outcome)
+	}
+
+	// --- Part B: verify AGAINST the embedded key → must fail closed (integrity) ---
+	srvB := serveFeed(t, feedData, http.StatusOK)
+	optsB := SelfCatalogOpts{
+		FeedURL:        srvB.URL,
+		CacheDir:       t.TempDir(),
+		Client:         srvB.Client(),
+		Version:        "v1.0.0-unaffected",
+		StatePath:      filepath.Join(t.TempDir(), "state.json"),
+		PubKeyOverride: SelfCatalogPublicKey, // wrong key for this feed
+	}
+	resultB := CheckSelfCatalog(optsB)
+	if resultB.Outcome != SelfCatalogFailClosed {
+		t.Errorf("Part B (embedded key vs custom-signed feed): Outcome = %v, want SelfCatalogFailClosed", resultB.Outcome)
+	}
+	if !errors.Is(resultB.Err, errIntegrity) {
+		t.Errorf("Part B: Err: want errors.Is(err, errIntegrity), got %v", resultB.Err)
 	}
 }
 

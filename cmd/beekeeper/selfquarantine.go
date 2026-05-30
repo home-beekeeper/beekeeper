@@ -26,6 +26,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -89,16 +91,34 @@ func enforceSelfQuarantine(cmd *cobra.Command) error {
 
 	cfg, cfgErr := resolveConfig(cmd)
 	feedURL := ""
+	var pubKeyOverride ed25519.PublicKey
 	if cfgErr == nil {
 		feedURL = cfg.SelfCatalog.URL
+
+		// CR-01: If the operator has configured a self-hosted public key, decode
+		// it and use it as the PubKeyOverride. A key that is present but cannot
+		// be decoded into a valid Ed25519 public key MUST fail closed — it cannot
+		// silently fall back to the embedded key (T-09-32 / CR-01).
+		if cfg.SelfCatalog.PubKey != "" {
+			keyBytes, decErr := hex.DecodeString(cfg.SelfCatalog.PubKey)
+			if decErr != nil {
+				return fmt.Errorf("enforce self-quarantine: configured self_catalog.pub_key is not valid hex: %w", decErr)
+			}
+			if len(keyBytes) != ed25519.PublicKeySize {
+				return fmt.Errorf("enforce self-quarantine: configured self_catalog.pub_key has wrong length %d (want %d bytes for Ed25519 public key) — fail closed rather than silently use embedded key",
+					len(keyBytes), ed25519.PublicKeySize)
+			}
+			pubKeyOverride = ed25519.PublicKey(keyBytes)
+		}
 	}
 
 	opts := catalog.SelfCatalogOpts{
-		FeedURL:   feedURL,
-		CacheDir:  catalogDir,
-		StatePath: filepath.Join(stateDir, "state.json"),
-		Version:   version.Version,
-		Client:    &http.Client{Timeout: 10 * time.Second},
+		FeedURL:        feedURL,
+		CacheDir:       catalogDir,
+		StatePath:      filepath.Join(stateDir, "state.json"),
+		Version:        version.Version,
+		Client:         &http.Client{Timeout: 10 * time.Second},
+		PubKeyOverride: pubKeyOverride, // nil when not configured (uses embedded key)
 	}
 
 	result := checkSelfCatalogFn(opts)
