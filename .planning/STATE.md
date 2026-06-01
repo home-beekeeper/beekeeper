@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0.0
-milestone_name: milestone
-status: completed
-stopped_at: Phase 10 plan 10-01 complete — all 5/5 tasks done, 23 packages green
-last_updated: "2026-06-01T12:56:58.213Z"
-last_activity: 2026-06-01 -- Phase 11 marked complete
+milestone: v1.1.0
+milestone_name: Pollen
+status: planning
+last_updated: "2026-06-01T16:53:10.276Z"
+last_activity: 2026-06-01
 progress:
-  total_phases: 11
-  completed_phases: 10
-  total_plans: 51
-  completed_plans: 57
-  percent: 91
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-28)
 
 ## Current Position
 
-Phase: 11 — COMPLETE
-Plan: 11-01 complete
-Status: Phase 11 complete
-Last activity: 2026-06-01 -- Phase 11 marked complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-01 — Milestone v1.1.0 started
 
 ## Phase 1 Completion Summary
 
@@ -265,10 +264,11 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-01T11:14:05.986Z
-Stopped at: Phase 10 plan 10-01 complete — all 5/5 tasks done, 23 packages green
+Last session: 2026-06-01
+Stopped at: v1.0.0 complete. Resumed, read beekeeper-m2-prd.md. Locked: GitHub identity = bantuson (mzansi-agentive was local-only naming) -> module path renamed across 89 files, build/vet/full test suite green (commit cef0c41), v1.0.0 re-tagged. Next milestone = M2 "Pollen" (bounded Bumblebee Windows fork). HANDOFF.json retired (its CI-push items captured in Operator Next Steps below).
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- **Start Milestone 2 "Pollen"** with `/gsd-new-milestone` (input: `beekeeper-m2-prd.md`). Bounded Apache-2.0 fork of Bumblebee adding Windows inventory support; separate module `github.com/bantuson/pollen`; consumed via subprocess boundary in `internal/scan`; 5 sub-phases M2.1–M2.5, each tagged `v0.1.1-pollen.N`.
+- **Still pending (gated to bantuson identity, from retired HANDOFF.json):** create `github.com/bantuson/beekeeper` repo → `git remote add origin <url>` → `git push -u origin main`. This fires `ci.yml` for the FIRST time ever — no remote has existed, so all Linux/macOS/eBPF/`-race`/integration testing is latent and unproven (local "green" = Windows-only `go test` without `-race`). Expect first-run failures; triage before pushing the `v1.0.0` tag (which fires `release.yml` = SLSA L3 + cosign + SBOM).

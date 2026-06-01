@@ -18,6 +18,20 @@ Shipped: single static Go binary; pure corroboration policy engine; editor-exten
 
 **Carried to v1.x:** live external `beekeeper-self` hosting (separate host + signing key) + end-to-end refuse-to-run; independent external security review + VDP publication; distributed mode / team-shared catalogs; weighted corroboration. Tech stack: Go 1.25, no CGO in core; Python 3.11+ optional sidecar; Bubble Tea v2.
 
+## Current Milestone: v1.1.0 Pollen
+
+**Goal:** Own Windows inventory compatibility by forking Bumblebee into a bounded Apache-2.0 derivative ("Pollen"), so the Windows CI matrix goes fully green and cross-platform test discipline holds instead of rotting behind `t.Skip`.
+
+**Target features:**
+- Pollen fork hygiene — separate module `github.com/bantuson/pollen`, Apache-2.0 LICENSE/NOTICE/CHANGES/UPSTREAM, renamed `cmd/pollen`, reproducible builds + Sigstore
+- Windows root resolver for 8 ecosystems (npm/pnpm/Yarn/Bun/PyPI/Go modules/RubyGems/Composer)
+- Windows NDJSON path representation (native backslash paths, drive letters, `endpoint.os="windows"`, empty UID)
+- Windows editor/browser/MCP config path coverage (VS Code family, Chromium + Firefox, Claude Desktop/Cursor/Windsurf/Cline/Gemini)
+- Parity + differential tests; the Pollen compatibility test in beekeeper CI drives the Windows skip baseline to zero
+- Upstream sync discipline + contribution-back PRs to `perplexityai/bumblebee`
+
+**Scope source:** `beekeeper-m2-prd.md` (repo root). Detailed REQ-IDs in `.planning/REQUIREMENTS.md`. Spans two repos: the new `bantuson/pollen` module **+** beekeeper `internal/inventory/` integration across a subprocess boundary (`internal/scan` swaps the `bumblebee` binary call for `pollen`). Pollen versions separately as `v0.1.1-pollen.1…5`, one per sub-phase. `threat_intel/` catalogs keep flowing through beekeeper's own `catalogs sync` (not duplicated in Pollen).
+
 ## Requirements
 
 ### Validated
@@ -171,4 +185,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-28 after Phase 6*
+*Last updated: 2026-06-01 — milestone v1.1.0 Pollen started*
