@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
-stopped_at: v1.0.0 complete. v1.1.0 roadmap defined (5 phases, 22 requirements mapped, 100% coverage). Phase numbering reset to 1 for this milestone.
-last_updated: "2026-06-01T20:02:41.181Z"
-last_activity: 2026-06-01 -- Phase 1 planning complete
+stopped_at: "01-01-PLAN.md complete. Pollen fork repo exists at ../pollen, cmd/pollen builds, selftest=3 findings, tests green."
+last_updated: "2026-06-01T20:34:01.802Z"
+last_activity: 2026-06-01
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** v1.1.0 "Pollen" — Phase 1 (Fork Setup & Discipline) — not yet started
+**Current focus:** Phase 01 — fork-setup-discipline
 
 ## Current Position
 
-Phase: Not started (roadmap defined, awaiting plan-phase)
-Plan: —
+Phase: 01 (fork-setup-discipline) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-06-01 -- Phase 1 planning complete
+Last activity: 2026-06-01
 
-Progress: `░░░░░░░░░░░░░░░░░░░░` 0% (0/5 phases)
+Progress: `[██░░░░░░░░] 20%` (1/5 plans in phase 01)
 
-Next action: `/gsd-plan-phase 1`
+Next action: Execute plan 01-02
 
 ## Phase Summary (v1.1.0)
 
@@ -208,10 +208,19 @@ Next action: `/gsd-plan-phase 1`
 | Phase 09 P05 | 45min | 3 tasks | 8 files |
 | Phase 10 P10-01 | 45 | 5 tasks | 13 files |
 | Phase 11 P11-01 | 27min | 6 tasks | 15 files |
+| Phase 01 P01 | 19min | 3 tasks | 42 files |
 
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 01 (v1.1.0 Pollen - plan 01-01):
+
+- GOOS=windows go build ./... passes clean — no non-test files needed Windows fixes (Open Question 1 resolved)
+- 6 Unix-root-resolver tests in cmd/pollen/main_test.go get t.Skip with "Phase 2 (v0.1.1-pollen.2)" structured reasons (not build tags — allows other tests in the file to run)
+- scanner_test.go TestEndToEndScan: path separator bug fixed via filepath.Separator (not a skip; test passes on all OSes)
+- BUMBLEBEE_ env var names renamed to POLLEN_ in roots.go + main_test.go (FORK-04 trademark)
+- upstream remote configured at pollen repo clone; origin binding to github.com/bantuson/pollen deferred to plan 05
 
 Recent decisions from Phase 11:
 
@@ -288,7 +297,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-01
+Last session: 2026-06-01T20:34:01.777Z
 Stopped at: v1.0.0 complete. v1.1.0 roadmap defined (5 phases, 22 requirements mapped, 100% coverage). Phase numbering reset to 1 for this milestone.
 Resume file: None
 

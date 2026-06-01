@@ -11,10 +11,10 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 ### Fork Setup & Hygiene (FORK)
 
-- [ ] **FORK-01**: Pollen exists as a separate Go module `github.com/bantuson/pollen`, forked from `perplexityai/bumblebee` at a pinned commit (v0.1.1 tag), with `cmd/bumblebee/` renamed to `cmd/pollen/`; the `pollen` CLI binary builds on ubuntu/macos/windows
+- [x] **FORK-01**: Pollen exists as a separate Go module `github.com/bantuson/pollen`, forked from `perplexityai/bumblebee` at a pinned commit (v0.1.1 tag), with `cmd/bumblebee/` renamed to `cmd/pollen/`; the `pollen` CLI binary builds on ubuntu/macos/windows
 - [ ] **FORK-02**: Apache-2.0 LICENSE preserved verbatim; NOTICE attributes upstream Perplexity/Bumblebee and states non-affiliation; CHANGES.md documents every delta from the pinned commit; UPSTREAM.md records the pinned commit (40-char SHA + tag + date + verifier) and the sync workflow
 - [ ] **FORK-03**: Reproducible builds (`-trimpath -buildvcs=false`) + Sigstore keyless signing via GitHub Actions OIDC wired into Pollen's release workflow; first tag `v0.1.1-pollen.1` proves fork hygiene before any Windows code lands
-- [ ] **FORK-04**: Trademark discipline — "Bumblebee" appears only in attribution contexts (NOTICE, README "derived from" paragraph, UPSTREAM.md), never in command names, package names, README headlines, or `cmd/`
+- [x] **FORK-04**: Trademark discipline — "Bumblebee" appears only in attribution contexts (NOTICE, README "derived from" paragraph, UPSTREAM.md), never in command names, package names, README headlines, or `cmd/`
 
 ### Windows Root Resolver (WRES)
 
@@ -87,10 +87,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FORK-01 | Phase 1 | Pending |
+| FORK-01 | Phase 1 | Complete |
 | FORK-02 | Phase 1 | Pending |
 | FORK-03 | Phase 1 | Pending |
-| FORK-04 | Phase 1 | Pending |
+| FORK-04 | Phase 1 | Complete |
 | PTEST-02 | Phase 1 | Pending |
 | PTEST-03 | Phase 1 | Pending |
 | SDEF-02 | Phase 1 | Pending |
