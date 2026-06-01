@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 7 execution complete — all 5/5 plans done, 21 packages green, ready to plan Phase 8
-last_updated: "2026-06-01T10:46:43.032Z"
-last_activity: 2026-06-01 -- Phase 10 planning complete
+status: verifying
+stopped_at: Phase 10 plan 10-01 complete — all 5/5 tasks done, 23 packages green
+last_updated: "2026-06-01T11:14:06.023Z"
+last_activity: 2026-06-01
 progress:
   total_phases: 10
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 50
-  completed_plans: 55
-  percent: 80
+  completed_plans: 56
+  percent: 90
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 09 — Policy as Code + Self-Defense Capstone
+**Current focus:** Phase 10 — Cross-Phase Integration Closure
 
 ## Current Position
 
-Phase: 09 — COMPLETE
-Plan: 4 of 5
-Status: Ready to execute
-Last activity: 2026-06-01 -- Phase 10 planning complete
+Phase: 10 (Cross-Phase Integration Closure) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-06-01
 
 Progress: [████████████░] 78%
 Last activity: 2026-05-28 — Phase 7 plan 05: SLSA Level 3 + CycloneDX SBOM + eslogger CI gate (SFDF-05, SMAC-02)
@@ -197,6 +197,7 @@ Progress: [██████████░] 67%
 | 3 (Editor Extension Defense) | 5/5 | ~10 min |
 | Phase 09 P04 | 20min | 2 tasks | 9 files |
 | Phase 09 P05 | 45min | 3 tasks | 8 files |
+| Phase 10 P10-01 | 45 | 5 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -233,6 +234,10 @@ Earlier decisions from Phase 1 (full log in PROJECT.md):
 - Selftest uses `//go:embed corpus/fixtures.json` — no runtime file dependency
 - `npm install` command shape maps to `npm` ecosystem; editor extensions tested via direct `editor-extension` shape
 - BEEI v1 mmap index format (magic 0x42454549, sorted 48-byte records, sha256 key, LE offsets)
+- [Phase ?]: ThresholdsFromPolicyFiles exported from policyloader for shared use by check, gateway, watch, scan
+- [Phase ?]: gateway.Config.Scanner GatewayScanner field (nil=disabled) for LLMF; lifecycle owned by main.go
+- [Phase ?]: llmfClientScanner adapter bridges *llamafirewall.Client to check.Scannable for one-shot audit-record
+- [Phase ?]: watch/scan policy overlay errors are non-fatal; handler.go is fail-closed as primary enforcement point
 
 ### Blockers/Concerns
 
@@ -256,6 +261,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-05-30T09:13:24.644Z
-Stopped at: Phase 7 execution complete — all 5/5 plans done, 21 packages green, ready to plan Phase 8
+Last session: 2026-06-01T11:14:05.986Z
+Stopped at: Phase 10 plan 10-01 complete — all 5/5 tasks done, 23 packages green
 Resume file: None

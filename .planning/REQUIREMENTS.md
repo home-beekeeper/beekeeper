@@ -16,13 +16,13 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 
 ### Policy Engine (PLCY)
 
-- [ ] **PLCY-01**: Catalog matching with corroboration semantics — 1 independent source → warn; 2 sources → enforce (block); 3 sources → enforce + quarantine recommendation
+- [x] **PLCY-01**: Catalog matching with corroboration semantics — 1 independent source → warn; 2 sources → enforce (block); 3 sources → enforce + quarantine recommendation
 - [ ] **PLCY-02**: Release-age policy for npm, PyPI, Cargo, RubyGems, Composer, Go modules — default 24h minimum age, configurable per-ecosystem and per-package via allowlist
 - [ ] **PLCY-03**: Lifecycle script policy — allowlist-only deny for `preinstall`, `postinstall`, `install` scripts across all ecosystems; structured block with reason returned to agent
 - [ ] **PLCY-04**: Sensitive path policy — default blocklist: `~/.ssh/`, `~/.aws/`, `~/.gnupg/`, `~/.config/Claude/`, all MCP config files, `~/.config/op/`, `~/.config/gh/`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`, `~/.cargo/credentials.toml`, `.env`/`.env.local`/`.env.*` files
 - [ ] **PLCY-05**: Network egress policy — per-tool egress allowlists, outbound size limits per tool call
 - [ ] **PLCY-06**: Multi-turn exfiltration detection — rolling entropy of recent outputs, base64 detection across turns
-- [ ] **PLCY-07**: Behavioral baseline engine — per-project frequency counters keyed by (tool, target_pattern), deviation triggers warn-level decisions; counter-based, no ML
+- [x] **PLCY-07**: Behavioral baseline engine — per-project frequency counters keyed by (tool, target_pattern), deviation triggers warn-level decisions; counter-based, no ML
 - [ ] **PLCY-08**: Output credential filtering — redact API key prefixes, JWT tokens, `Bearer` headers from tool outputs before returning to agent
 
 ### Catalog Management (CTLG)
@@ -35,14 +35,14 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 - [ ] **CTLG-06**: `beekeeper catalogs watch` daemon — configurable poll interval (default 1h), triggers immediate Bumblebee scan on any new `threat_intel/` catalog entries
 - [ ] **CTLG-07**: Catalog signature verification — unsigned sources treated as warning-only regardless of corroboration count
 - [ ] **CTLG-08**: Sanity bounds on catalog deltas — per-sync delta size limits, per-catalog rule count limits; exceeding limits triggers degraded-mode (new entries warning-only until user review)
-- [ ] **CTLG-09**: Catalog provenance in every NDJSON audit record — which catalog, which catalog version, which corroborated, which dissented
+- [x] **CTLG-09**: Catalog provenance in every NDJSON audit record — which catalog, which catalog version, which corroborated, which dissented
 
 ### Integration Surfaces (INTG)
 
 - [ ] **INTG-01**: `beekeeper hooks install --target claude-code` — writes PreToolUse and PostToolUse hooks to `~/.claude/settings.json`
 - [ ] **INTG-02**: `beekeeper hooks install --target cursor` and `--target codex` — hook installation for Cursor and Codex CLI
-- [ ] **INTG-03**: MCP gateway daemon — `beekeeper gateway`, stateless per-request HTTP proxy (MCP July 2026 spec: no session state, no initialize/initialized handshake); binds `127.0.0.1` by default; per-session token auth required even on localhost
-- [ ] **INTG-04**: MCP gateway applies policy engine inline to every proxied tool call; JSON-RPC response correlation by `id` field (not position) for correct batch handling
+- [x] **INTG-03**: MCP gateway daemon — `beekeeper gateway`, stateless per-request HTTP proxy (MCP July 2026 spec: no session state, no initialize/initialized handshake); binds `127.0.0.1` by default; per-session token auth required even on localhost
+- [x] **INTG-04**: MCP gateway applies policy engine inline to every proxied tool call; JSON-RPC response correlation by `id` field (not position) for correct batch handling
 - [ ] **INTG-05**: MCP gateway integrations for Continue, OpenCode, and OpenClaw via gateway mode
 - [ ] **INTG-06**: Shim layer — `beekeeper shim install` symlinks wrapper binaries earlier in PATH for npm, pnpm, pip, cargo, go, gem, composer, npx, pipx; each shim invokes `beekeeper check` then proxies to real binary if allowed
 - [ ] **INTG-07**: Multi-agent observability — parent-child policy inheritance; subagent context propagation in policy decisions
@@ -87,12 +87,12 @@ Requirements for v1.0.0 release. Each maps to roadmap phases.
 
 ### LlamaFirewall Sidecar (LLMF)
 
-- [ ] **LLMF-01**: Optional Python 3.11+ sidecar, disabled by default; Beekeeper supervises process lifecycle (restarts up to 3× with exponential backoff on crash)
-- [ ] **LLMF-02**: PromptGuard 2 (86M BERT) scans tool outputs flowing into agent context — WebFetch results, file reads, MCP tool responses; detected injection → redacted payload + structured warning returned to agent
-- [ ] **LLMF-03**: CodeShield runs on agent-generated file writes containing code — insecure patterns flagged or blocked per policy
-- [ ] **LLMF-04**: AlignmentCheck (experimental, opt-in separately) inspects chain-of-thought for goal hijacking signals
-- [ ] **LLMF-05**: IPC via Unix domain socket (Linux/macOS) or Windows named pipe using length-prefixed JSON; Beekeeper applies configurable fail mode on sidecar unavailability (fail_closed by default)
-- [ ] **LLMF-06**: Configurable sample rate (1.0 = scan every tool output); latency budget surfaced in `beekeeper diag` (target sub-100ms p95 per PromptGuard 2 benchmarks)
+- [x] **LLMF-01**: Optional Python 3.11+ sidecar, disabled by default; Beekeeper supervises process lifecycle (restarts up to 3× with exponential backoff on crash)
+- [x] **LLMF-02**: PromptGuard 2 (86M BERT) scans tool outputs flowing into agent context — WebFetch results, file reads, MCP tool responses; detected injection → redacted payload + structured warning returned to agent
+- [x] **LLMF-03**: CodeShield runs on agent-generated file writes containing code — insecure patterns flagged or blocked per policy
+- [x] **LLMF-04**: AlignmentCheck (experimental, opt-in separately) inspects chain-of-thought for goal hijacking signals
+- [x] **LLMF-05**: IPC via Unix domain socket (Linux/macOS) or Windows named pipe using length-prefixed JSON; Beekeeper applies configurable fail mode on sidecar unavailability (fail_closed by default)
+- [x] **LLMF-06**: Configurable sample rate (1.0 = scan every tool output); latency budget surfaced in `beekeeper diag` (target sub-100ms p95 per PromptGuard 2 benchmarks)
 
 ### Audit & Observability (AUDT)
 
@@ -184,19 +184,19 @@ Populated during roadmap creation.
 | SFDF-02 | Phase 1 | Pending |
 | SFDF-03 | Phase 1 | Pending |
 | SFDF-04 | Phase 1 | Pending |
-| PLCY-01 | Phase 2 | Pending |
+| PLCY-01 | Phase 2 | Complete |
 | PLCY-02 | Phase 2 | Pending |
 | PLCY-03 | Phase 2 | Pending |
 | PLCY-04 | Phase 2 | Pending |
 | PLCY-05 | Phase 2 | Pending |
 | PLCY-06 | Phase 2 | Pending |
-| PLCY-07 | Phase 2 | Pending |
+| PLCY-07 | Phase 2 | Complete |
 | PLCY-08 | Phase 2 | Pending |
 | CTLG-02 | Phase 2 | Pending |
 | CTLG-03 | Phase 2 | Pending |
 | CTLG-06 | Phase 2 | Pending |
 | CTLG-08 | Phase 2 | Pending |
-| CTLG-09 | Phase 2 | Pending |
+| CTLG-09 | Phase 2 | Complete |
 | EDXT-01 | Phase 3 | Pending |
 | EDXT-02 | Phase 3 | Pending |
 | EDXT-03 | Phase 3 | Pending |
@@ -205,8 +205,8 @@ Populated during roadmap creation.
 | EDXT-06 | Phase 3 | Pending |
 | INTG-01 | Phase 4 | Pending |
 | INTG-02 | Phase 4 | Pending |
-| INTG-03 | Phase 4 | Pending |
-| INTG-04 | Phase 4 | Pending |
+| INTG-03 | Phase 4 | Complete |
+| INTG-04 | Phase 4 | Complete |
 | INTG-05 | Phase 4 | Pending |
 | INTG-06 | Phase 4 | Pending |
 | INTG-07 | Phase 4 | Pending |
@@ -220,12 +220,12 @@ Populated during roadmap creation.
 | SLNX-08 | Phase 5 | Pending |
 | SLNX-09 | Phase 5 | Pending |
 | SLNX-10 | Phase 5 | Pending |
-| LLMF-01 | Phase 6 | Pending |
-| LLMF-02 | Phase 6 | Pending |
-| LLMF-03 | Phase 6 | Pending |
-| LLMF-04 | Phase 6 | Pending |
-| LLMF-05 | Phase 6 | Pending |
-| LLMF-06 | Phase 6 | Pending |
+| LLMF-01 | Phase 6 | Complete |
+| LLMF-02 | Phase 6 | Complete |
+| LLMF-03 | Phase 6 | Complete |
+| LLMF-04 | Phase 6 | Complete |
+| LLMF-05 | Phase 6 | Complete |
+| LLMF-06 | Phase 6 | Complete |
 | AUDT-01 | Phase 6 | Pending |
 | AUDT-02 | Phase 6 | Pending |
 | AUDT-03 | Phase 6 | Pending |
