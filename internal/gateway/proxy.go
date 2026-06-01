@@ -197,8 +197,11 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Write audit record regardless of decision level (never errors the request).
+	// Also extract the tool name here for use in scanner call sites below.
 	tc := policy.ToolCall{}
+	var toolName string
 	if err := extractToolCallFromMsg(msg, &tc); err == nil {
+		toolName = tc.ToolName
 		h.writeAudit(tc, decision)
 	}
 
@@ -214,7 +217,7 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 	case "warn":
 		// Forward to upstream and inject _beekeeper_warning into the response.
 		// forwardWithWarningInjection also calls ScanProxiedResponse when scanner present.
-		h.forwardWithWarningInjection(w, r, msg, bodyBytes, decision)
+		h.forwardWithWarningInjection(w, r, msg, bodyBytes, decision, toolName)
 		return
 
 	default: // "allow"
@@ -222,7 +225,7 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 		// can intercept the response and scan for prompt injection. Without a scanner
 		// the transparent ReverseProxy path is used (no response capture overhead).
 		if h.scanner != nil {
-			h.forwardAllowWithScan(w, r, msg, bodyBytes)
+			h.forwardAllowWithScan(w, r, msg, bodyBytes, toolName)
 			return
 		}
 		// Restore body for transparent forward.
@@ -235,7 +238,7 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 // MCP server and injects a _beekeeper_warning field into the JSON-RPC result.
 // The warning is a vendor extension field (underscore prefix per MCP convention;
 // Assumption A3 in RESEARCH.md: MCP clients ignore unknown fields).
-func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *http.Request, msg JSONRPCMessage, bodyBytes []byte, decision policy.Decision) {
+func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *http.Request, msg JSONRPCMessage, bodyBytes []byte, decision policy.Decision, toolName string) {
 	// Make a direct HTTP request to the upstream rather than using ReverseProxy,
 	// so we can capture and modify the response before writing it to the client.
 	//
@@ -285,7 +288,7 @@ func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *h
 	// the body is replaced with a structured warning payload. Fail-closed on
 	// sidecar unavailability when FailOpen is false.
 	if h.scanner != nil {
-		scanned, injectionDetected := ScanProxiedResponse(r.Context(), "", respBytes, h.scanner)
+		scanned, injectionDetected := ScanProxiedResponse(r.Context(), toolName, respBytes, h.scanner)
 		if injectionDetected {
 			// Injection detected: replace body with warning payload.
 			respBytes = scanned
@@ -306,7 +309,7 @@ func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *h
 // used when a LLMF scanner is configured. It makes a direct HTTP request to the
 // upstream, scans the response body for prompt injection, and writes the
 // (possibly replaced) response to the client.
-func (h *gatewayHandler) forwardAllowWithScan(w http.ResponseWriter, r *http.Request, msg JSONRPCMessage, bodyBytes []byte) {
+func (h *gatewayHandler) forwardAllowWithScan(w http.ResponseWriter, r *http.Request, msg JSONRPCMessage, bodyBytes []byte, toolName string) {
 	base, err := url.Parse(strings.TrimRight(h.cfg.UpstreamURL, "/"))
 	if err != nil {
 		writeJSONRPCError(w, msg.ID, -32002, "upstream URL invalid (fail-closed)", nil)
@@ -343,7 +346,7 @@ func (h *gatewayHandler) forwardAllowWithScan(w http.ResponseWriter, r *http.Req
 
 	// LLMF scan for prompt injection on the allow path.
 	if h.scanner != nil {
-		scanned, _ := ScanProxiedResponse(r.Context(), "", respBytes, h.scanner)
+		scanned, _ := ScanProxiedResponse(r.Context(), toolName, respBytes, h.scanner)
 		if scanned != nil {
 			respBytes = scanned
 		}

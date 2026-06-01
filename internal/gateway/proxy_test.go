@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
 )
 
@@ -293,4 +295,155 @@ func TestGatewayProxyForwards(t *testing.T) {
 		t.Errorf("upstream call count = %d, want 1", cc.count())
 	}
 	_ = rr
+}
+
+// newTestHandlerWithScanner creates a gatewayHandler with a scanner configured.
+func newTestHandlerWithScanner(token string, idx policy.MultiCatalogLookup, upstream string, scanner GatewayScanner) *gatewayHandler {
+	cfg := Config{
+		UpstreamURL: upstream,
+		BindAddr:    defaultBindAddr,
+		Port:        defaultPort,
+		Scanner:     scanner,
+	}
+	return newGatewayHandler(cfg, token, idx)
+}
+
+// TestGatewayScannerInvokedForEligibleToolOnWarnPath verifies that when a scanner
+// is present and the proxied tool is eligible (read_file), ScanProxiedResponse
+// is actually invoked on the warn path (LLMF-02 gap closure).
+// Previously, ScanProxiedResponse was called with "" so ShouldScanPrompt returned
+// false and PromptGuard was a silent no-op.
+func TestGatewayScannerInvokedForEligibleToolOnWarnPath(t *testing.T) {
+	upstreamResp := `{"jsonrpc":"2.0","id":1,"result":{"content":"some file content"}}`
+	upstream, _ := mockUpstream(t, upstreamResp)
+
+	scanner := &mockGatewayScanner{
+		resp: llamafirewall.ScanResponse{
+			Result:     llamafirewall.ResultInjection,
+			Confidence: 0.97,
+			Reason:     "prompt injection marker detected",
+		},
+	}
+	// warnIdx returns a single signed match → warn decision.
+	h := newTestHandlerWithScanner("tok", warnIdx(), upstream.URL, scanner)
+
+	// Send a tools/call for "read_file" (a ShouldScanPrompt-eligible tool).
+	body, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "read_file",
+			"arguments": map[string]any{"path": "/etc/passwd"},
+		},
+	})
+	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer tok")
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	// The scanner MUST have been invoked (real tool name was passed, not "").
+	if scanner.calls == 0 {
+		t.Error("scanner.calls = 0: scanner was not invoked; ScanProxiedResponse received empty toolName (LLMF-02 regression)")
+	}
+}
+
+// TestGatewayScannerInvokedForEligibleToolOnAllowPath verifies that when a
+// scanner is present and the tool is eligible (web_search), ScanProxiedResponse
+// is invoked on the allow path (LLMF-02 gap closure).
+func TestGatewayScannerInvokedForEligibleToolOnAllowPath(t *testing.T) {
+	upstreamResp := `{"jsonrpc":"2.0","id":1,"result":{"content":"search results with injection"}}`
+	upstream, _ := mockUpstream(t, upstreamResp)
+
+	scanner := &mockGatewayScanner{
+		resp: llamafirewall.ScanResponse{
+			Result:     llamafirewall.ResultInjection,
+			Confidence: 0.95,
+			Reason:     "indirect prompt injection detected",
+		},
+	}
+	// allowIdx returns no matches → allow decision.
+	h := newTestHandlerWithScanner("tok", allowIdx(), upstream.URL, scanner)
+
+	// Send a tools/call for "web_search" (ShouldScanPrompt-eligible).
+	body, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "web_search",
+			"arguments": map[string]any{"query": "beekeeper docs"},
+		},
+	})
+	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer tok")
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	// The scanner MUST have been invoked.
+	if scanner.calls == 0 {
+		t.Error("scanner.calls = 0: scanner was not invoked on allow path; ScanProxiedResponse received empty toolName (LLMF-02 regression)")
+	}
+}
+
+// TestGatewayScannerSkippedForNonEligibleTool verifies that for a tool that is
+// NOT in the ShouldScanPrompt list (e.g. "Bash"), the scanner is NOT invoked.
+// This preserves the existing behavior for non-eligible tools.
+func TestGatewayScannerSkippedForNonEligibleTool(t *testing.T) {
+	upstreamResp := `{"jsonrpc":"2.0","id":1,"result":{"output":"bash output"}}`
+	upstream, _ := mockUpstream(t, upstreamResp)
+
+	scanner := &mockGatewayScanner{
+		resp: llamafirewall.ScanResponse{Result: llamafirewall.ResultClean},
+	}
+	// allowIdx → allow decision.
+	h := newTestHandlerWithScanner("tok", allowIdx(), upstream.URL, scanner)
+
+	// "Bash" is NOT in ShouldScanPrompt → scanner must not be invoked.
+	body, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "Bash",
+			"arguments": map[string]any{"command": "ls -la"},
+		},
+	})
+	req := httptest.NewRequest("POST", "/mcp", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer tok")
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	// Scanner must NOT be called for non-eligible tools.
+	if scanner.calls != 0 {
+		t.Errorf("scanner.calls = %d, want 0 (Bash is not prompt-scan-eligible)", scanner.calls)
+	}
+	_ = rr
+}
+
+// TestScanProxiedResponseRealToolNamePassedNotEmpty is a unit-level regression
+// guard: ScanProxiedResponse("", ...) must be a no-op; passing the real tool
+// name for an eligible tool must invoke the scanner.
+func TestScanProxiedResponseRealToolNamePassedNotEmpty(t *testing.T) {
+	scanner := &mockGatewayScanner{
+		resp: llamafirewall.ScanResponse{Result: llamafirewall.ResultClean},
+	}
+
+	body := []byte(`{"content":"clean content"}`)
+
+	// Empty tool name → no-op.
+	_, _ = ScanProxiedResponse(context.Background(), "", body, scanner)
+	if scanner.calls != 0 {
+		t.Errorf("scanner invoked with empty toolName (%d calls), want 0", scanner.calls)
+	}
+
+	// Real eligible tool name → scanner must be invoked.
+	scanner.calls = 0
+	_, _ = ScanProxiedResponse(context.Background(), "read_file", body, scanner)
+	if scanner.calls == 0 {
+		t.Error("scanner not invoked with toolName=read_file, want >= 1")
+	}
 }
