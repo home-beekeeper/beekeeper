@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Pollen
 status: planning
-last_updated: "2026-06-01T16:53:10.276Z"
+last_updated: "2026-06-01T00:00:00.000Z"
 last_activity: 2026-06-01
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,19 +17,33 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-28)
+See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 11 — v1.0.0 PRD-gap closure
+**Current focus:** v1.1.0 "Pollen" — Phase 1 (Fork Setup & Discipline) — not yet started
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap defined, awaiting plan-phase)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-01 — Milestone v1.1.0 started
+Status: Planning
+Last activity: 2026-06-01 — v1.1.0 roadmap created (5 phases, 22 requirements mapped)
 
-## Phase 1 Completion Summary
+Progress: `░░░░░░░░░░░░░░░░░░░░` 0% (0/5 phases)
+
+Next action: `/gsd-plan-phase 1`
+
+## Phase Summary (v1.1.0)
+
+| Phase | Name | Tag | Requirements | Status |
+|-------|------|-----|--------------|--------|
+| 1 | Fork Setup & Discipline | v0.1.1-pollen.1 | FORK-01–04, PTEST-02–03, SDEF-02 | Not started |
+| 2 | Windows Root Resolver | v0.1.1-pollen.2 | WRES-01–02, PTEST-01 | Not started |
+| 3 | Windows Path Representation | v0.1.1-pollen.3 | WPATH-01–02 | Not started |
+| 4 | Windows Extension & MCP Coverage | v0.1.1-pollen.4 | WEXT-01–03, BKINT-01, PTEST-04 | Not started |
+| 5 | Contribution-Back & Milestone Close | v0.1.1-pollen.5 | SYNC-01–02, BKINT-02, PTEST-05, SDEF-01 | Not started |
+
+## Phase 1 Completion Summary (v1.0.0 reference)
 
 ### Plans completed (all 6/6)
 
@@ -63,7 +77,7 @@ Last activity: 2026-06-01 — Milestone v1.1.0 started
 - `make verify-release` requires `make` (not installed on Windows); reproducibility logic validated manually; CI covers it
 - Phase 1 is single-source warn semantics only; corroboration-based block enforcement is Phase 2
 
-## Phase 2 Completion Summary
+## Phase 2 Completion Summary (v1.0.0 reference)
 
 ### Plans completed (all 9/9)
 
@@ -79,7 +93,7 @@ Last activity: 2026-06-01 — Milestone v1.1.0 started
 | 4 | 02-08 | Multi-source aggregator + baseline + audit + CLI | — | ✅ Done |
 | 5 | 02-09 | Fuzz CI release gates + corroboration integration tests | 6bf6f05 | ✅ Done |
 
-## Phase 3 Completion Summary
+## Phase 3 Completion Summary (v1.0.0 reference)
 
 ### Plans completed (all 5/5)
 
@@ -108,7 +122,7 @@ Last activity: 2026-06-01 — Milestone v1.1.0 started
 - `notify.Config{Enabled: true}` hardcoded in newWatchCmd (notification preferences deferred to a future phase)
 - `quarantine_restore`/`quarantine_purge` audit RecordTypes differ from standard `policy_decision` schema (acceptable for Phase 3 audit trail)
 
-## Phase 7 Completion Summary
+## Phase 7 Completion Summary (v1.0.0 reference)
 
 ### Plans completed (all 5/5)
 
@@ -135,10 +149,10 @@ Last activity: 2026-06-01 — Milestone v1.1.0 started
 ### API deviations discovered
 
 - tekert/golang-etw: `c.EventCallback = func(*etw.Event) error` (not `ProcessEvents`); `c.Start()` non-blocking; `etw.ERROR_ALREADY_EXISTS` not `windows.ERROR_ALREADY_EXISTS`; `e.System.Provider.Guid` is `etw.GUID` type
-- go-winio: import path is `github.com/Microsoft/go-winio` (capital M); v0.6.2
+- go-winio: import path is `github.com/Microsoft/go-winio` (capital M); lowercase fails at go get with module path mismatch
 - Windows elevation: `GetCurrentProcessToken().IsElevated()` (no unsafe.Pointer dance needed)
 
-## Phase 6 Completion Summary
+## Phase 6 Completion Summary (v1.0.0 reference)
 
 ### Plans completed (5/5)
 
@@ -177,12 +191,12 @@ Last activity: 2026-06-01 — Milestone v1.1.0 started
 
 ## Performance Metrics
 
-**Velocity:**
+**Velocity (v1.0.0):**
 
-- Total plans completed: 29
+- Total plans completed: 51
 - Average duration: ~10 min/plan
 
-**By Phase:**
+**By Phase (v1.0.0):**
 
 | Phase | Plans | Avg/Plan |
 |-------|-------|----------|
@@ -242,6 +256,13 @@ Earlier decisions from Phase 1 (full log in PROJECT.md):
 - [Phase ?]: llmfClientScanner adapter bridges *llamafirewall.Client to check.Scannable for one-shot audit-record
 - [Phase ?]: watch/scan policy overlay errors are non-fatal; handler.go is fail-closed as primary enforcement point
 
+### Open Research Flags (v1.1.0)
+
+- **Phase 2**: fsnotify Windows junction point behavior with package roots under `%LOCALAPPDATA%` / `%APPDATA%` — needs live testing on Windows CI runner
+- **Phase 2**: `%ProgramFiles%` Ruby enumeration — glob pattern for versioned directories (`Ruby*`) requires validation against an actual Windows Ruby installation
+- **Phase 4**: Cursor extension directory on Windows confirmed `%USERPROFILE%\.cursor\extensions\` (from Deviations: "Cursor Windows extension-dir path (Assumption A1) — Needs live validation" carried from Phase 3)
+- **Phase 5**: Upstream PR submission timing — coordinated (all 4 PRs together at M2.5) vs incremental per sub-phase; coordinated is cleaner; confirm before Phase 5 plan
+
 ### Blockers/Concerns
 
 - Phase 4: MCP client differences (Claude Code vs Cursor) expose different edge cases; July 2026 spec SDK lag
@@ -255,20 +276,23 @@ Items acknowledged and carried forward:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Testing | `go test -race` requires CGO/C compiler | CI-only | Phase 1 |
-| Build | `make verify-release` requires make on Windows | CI-only | Phase 1 |
-| Audit | Log rotation, sinks (syslog/OTLP/HTTPS) | Phase 6 | Phase 1 |
-| Hooks | `beekeeper hooks install` (INTG-01) | Phase 4 | Phase 1 |
-| Watch | `notify.Config` wired to config preferences | Future phase | Phase 3 |
-| Cursor | Windows extension-dir path (Assumption A1) | Needs live validation | Phase 3 |
+| Testing | `go test -race` requires CGO/C compiler | CI-only | Phase 1 (v1.0.0) |
+| Build | `make verify-release` requires make on Windows | CI-only | Phase 1 (v1.0.0) |
+| Audit | Log rotation, sinks (syslog/OTLP/HTTPS) | Shipped Phase 6 | Phase 1 (v1.0.0) |
+| Hooks | `beekeeper hooks install` (INTG-01) | Shipped Phase 4 | Phase 1 (v1.0.0) |
+| Watch | `notify.Config` wired to config preferences | Future phase | Phase 3 (v1.0.0) |
+| Cursor | Windows extension-dir path (Assumption A1) | Live validation in v1.1.0 Phase 4 | Phase 3 (v1.0.0) |
+| Distribution | Pollen binary releases (DIST-01) | v2 requirement | v1.1.0 scoping |
+| Self-catalog | Separate `pollen-self` catalog (SELF-02) | v2 requirement | v1.1.0 scoping |
 
 ## Session Continuity
 
 Last session: 2026-06-01
-Stopped at: v1.0.0 complete. Resumed, read beekeeper-m2-prd.md. Locked: GitHub identity = bantuson (mzansi-agentive was local-only naming) -> module path renamed across 89 files, build/vet/full test suite green (commit cef0c41), v1.0.0 re-tagged. Next milestone = M2 "Pollen" (bounded Bumblebee Windows fork). HANDOFF.json retired (its CI-push items captured in Operator Next Steps below).
+Stopped at: v1.0.0 complete. v1.1.0 roadmap defined (5 phases, 22 requirements mapped, 100% coverage). Phase numbering reset to 1 for this milestone.
 Resume file: None
 
 ## Operator Next Steps
 
-- **Start Milestone 2 "Pollen"** with `/gsd-new-milestone` (input: `beekeeper-m2-prd.md`). Bounded Apache-2.0 fork of Bumblebee adding Windows inventory support; separate module `github.com/bantuson/pollen`; consumed via subprocess boundary in `internal/scan`; 5 sub-phases M2.1–M2.5, each tagged `v0.1.1-pollen.N`.
-- **Still pending (gated to bantuson identity, from retired HANDOFF.json):** create `github.com/bantuson/beekeeper` repo → `git remote add origin <url>` → `git push -u origin main`. This fires `ci.yml` for the FIRST time ever — no remote has existed, so all Linux/macOS/eBPF/`-race`/integration testing is latent and unproven (local "green" = Windows-only `go test` without `-race`). Expect first-run failures; triage before pushing the `v1.0.0` tag (which fires `release.yml` = SLSA L3 + cosign + SBOM).
+- **Plan Phase 1** with `/gsd-plan-phase 1` — Fork Setup & Discipline (FORK-01–04, PTEST-02–03, SDEF-02). Work happens in the NEW `bantuson/pollen` repo (create it first).
+- **Create the pollen repo** at `github.com/bantuson/pollen` before or during Phase 1 plan execution — the fork target must exist.
+- **Still pending (from v1.0.0 close):** push `bantuson/beekeeper` to GitHub remote if not done; verify CI fires correctly.

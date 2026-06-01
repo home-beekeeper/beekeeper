@@ -87,34 +87,41 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FORK-01 | TBD | Pending |
-| FORK-02 | TBD | Pending |
-| FORK-03 | TBD | Pending |
-| FORK-04 | TBD | Pending |
-| WRES-01 | TBD | Pending |
-| WRES-02 | TBD | Pending |
-| WPATH-01 | TBD | Pending |
-| WPATH-02 | TBD | Pending |
-| WEXT-01 | TBD | Pending |
-| WEXT-02 | TBD | Pending |
-| WEXT-03 | TBD | Pending |
-| PTEST-01 | TBD | Pending |
-| PTEST-02 | TBD | Pending |
-| PTEST-03 | TBD | Pending |
-| PTEST-04 | TBD | Pending |
-| PTEST-05 | TBD | Pending |
-| BKINT-01 | TBD | Pending |
-| BKINT-02 | TBD | Pending |
-| SYNC-01 | TBD | Pending |
-| SYNC-02 | TBD | Pending |
-| SDEF-01 | TBD | Pending |
-| SDEF-02 | TBD | Pending |
+| FORK-01 | Phase 1 | Pending |
+| FORK-02 | Phase 1 | Pending |
+| FORK-03 | Phase 1 | Pending |
+| FORK-04 | Phase 1 | Pending |
+| PTEST-02 | Phase 1 | Pending |
+| PTEST-03 | Phase 1 | Pending |
+| SDEF-02 | Phase 1 | Pending |
+| WRES-01 | Phase 2 | Pending |
+| WRES-02 | Phase 2 | Pending |
+| PTEST-01 | Phase 2 | Pending |
+| WPATH-01 | Phase 3 | Pending |
+| WPATH-02 | Phase 3 | Pending |
+| WEXT-01 | Phase 4 | Pending |
+| WEXT-02 | Phase 4 | Pending |
+| WEXT-03 | Phase 4 | Pending |
+| BKINT-01 | Phase 4 | Pending |
+| PTEST-04 | Phase 4 | Pending |
+| SYNC-01 | Phase 5 | Pending |
+| SYNC-02 | Phase 5 | Pending |
+| BKINT-02 | Phase 5 | Pending |
+| PTEST-05 | Phase 5 | Pending |
+| SDEF-01 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 22 ⚠️ (resolved when roadmap is created)
+- Mapped to phases: 22
+- Unmapped: 0 ✓
+
+**Phase breakdown:**
+- Phase 1 (Fork Setup & Discipline): FORK-01, FORK-02, FORK-03, FORK-04, PTEST-02, PTEST-03, SDEF-02 (7 requirements)
+- Phase 2 (Windows Root Resolver): WRES-01, WRES-02, PTEST-01 (3 requirements)
+- Phase 3 (Windows Path Representation): WPATH-01, WPATH-02 (2 requirements)
+- Phase 4 (Windows Extension & MCP Coverage): WEXT-01, WEXT-02, WEXT-03, BKINT-01, PTEST-04 (5 requirements)
+- Phase 5 (Contribution-Back & Milestone Close): SYNC-01, SYNC-02, BKINT-02, PTEST-05, SDEF-01 (5 requirements)
 
 ---
 *Requirements defined: 2026-06-01*
-*Last updated: 2026-06-01 after initial definition*
+*Last updated: 2026-06-01 — traceability filled, 22/22 mapped*
