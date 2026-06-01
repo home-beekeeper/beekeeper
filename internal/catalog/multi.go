@@ -44,20 +44,52 @@ func NewMultiIndex(bumblebee *Index, osv, socket policy.MultiCatalogLookup) *Mul
 //
 // Nil sub-adapters are skipped without error — degraded sources simply contribute
 // zero matches rather than blocking the entire check.
+//
+// CTLG-09 dissent tracking: when a configured (non-nil) source finds no match
+// for the queried package, a dissent sentinel (CatalogMatch{Dissented: true}) is
+// appended. The policy engine's corroborate() filters these into SourcesDissented
+// so forensic provenance can trace which sources explicitly did NOT flag a package.
 func (m *MultiIndex) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
 	var matches []policy.CatalogMatch
 
 	if m.Bumblebee != nil {
 		adapter := &bumblebeeMultiAdapter{idx: m.Bumblebee}
-		matches = append(matches, adapter.LookupAll(ecosystem, pkg)...)
+		got := adapter.LookupAll(ecosystem, pkg)
+		if len(got) > 0 {
+			matches = append(matches, got...)
+		} else {
+			// Bumblebee was queried but found no match — record as dissenting.
+			matches = append(matches, policy.CatalogMatch{
+				CatalogSource: "bumblebee",
+				Dissented:     true,
+			})
+		}
 	}
 
 	if m.OSV != nil {
-		matches = append(matches, m.OSV.LookupAll(ecosystem, pkg)...)
+		got := m.OSV.LookupAll(ecosystem, pkg)
+		if len(got) > 0 {
+			matches = append(matches, got...)
+		} else {
+			// OSV was queried but found no match — record as dissenting.
+			matches = append(matches, policy.CatalogMatch{
+				CatalogSource: "osv",
+				Dissented:     true,
+			})
+		}
 	}
 
 	if m.Socket != nil {
-		matches = append(matches, m.Socket.LookupAll(ecosystem, pkg)...)
+		got := m.Socket.LookupAll(ecosystem, pkg)
+		if len(got) > 0 {
+			matches = append(matches, got...)
+		} else {
+			// Socket was queried but found no match — record as dissenting.
+			matches = append(matches, policy.CatalogMatch{
+				CatalogSource: "socket",
+				Dissented:     true,
+			})
+		}
 	}
 
 	return matches

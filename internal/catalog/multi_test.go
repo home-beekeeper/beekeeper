@@ -142,8 +142,10 @@ func TestMultiIndexSkipsNilSources(t *testing.T) {
 	}
 }
 
-func TestMultiIndexMissReturnsNil(t *testing.T) {
-	// Index with a different package — lookup should return nothing.
+func TestMultiIndexMissReturnsDiffentSentinel(t *testing.T) {
+	// Index with a different package — lookup should return no real matches,
+	// but CTLG-09: a configured source that found nothing returns a dissent
+	// sentinel (CatalogMatch{CatalogSource: "bumblebee", Dissented: true}).
 	bbEntry := Entry{
 		ID:        "bb-003",
 		Ecosystem: "npm",
@@ -155,8 +157,16 @@ func TestMultiIndexMissReturnsNil(t *testing.T) {
 	mi := NewMultiIndex(bbIdx, nil, nil)
 
 	got := mi.LookupAll("npm", "evil-pkg")
-	if len(got) != 0 {
-		t.Errorf("LookupAll returned %d matches for non-existent package, want 0", len(got))
+
+	// Expect exactly one dissent sentinel for bumblebee (no real matches).
+	if len(got) != 1 {
+		t.Fatalf("LookupAll returned %d matches, want 1 (dissent sentinel)", len(got))
+	}
+	if !got[0].Dissented {
+		t.Error("Dissented = false, want true (no match from bumblebee → dissent)")
+	}
+	if got[0].CatalogSource != "bumblebee" {
+		t.Errorf("CatalogSource = %q, want bumblebee", got[0].CatalogSource)
 	}
 }
 

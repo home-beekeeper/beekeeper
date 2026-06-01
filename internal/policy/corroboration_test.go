@@ -160,6 +160,63 @@ func TestCorroborationOneSignedOneUnsigned(t *testing.T) {
 	}
 }
 
+// TestCorroborationSourcesDissented verifies CTLG-09 gap closure: when a multi-
+// source lookup provides dissent sentinels (Dissented=true), corroborate populates
+// SourcesDissented with the sources that did NOT flag the package.
+func TestCorroborationSourcesDissented(t *testing.T) {
+	// Bumblebee agreed (signed match), OSV dissented (no match → sentinel).
+	matches := []CatalogMatch{
+		{CatalogSource: "bumblebee", Signed: true},
+		{CatalogSource: "osv", Dissented: true},
+	}
+	level, _, count, agreed, dissented := corroborate(matches, DefaultCorroborationThresholds())
+
+	// One signed source → warn.
+	if level != "warn" {
+		t.Errorf("level = %q, want warn (one signed source)", level)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1", count)
+	}
+	if len(agreed) != 1 || agreed[0] != "bumblebee" {
+		t.Errorf("agreed = %v, want [bumblebee]", agreed)
+	}
+	// OSV must be in SourcesDissented (was queried, found nothing).
+	if len(dissented) != 1 || dissented[0] != "osv" {
+		t.Errorf("dissented = %v, want [osv] (CTLG-09 not populated)", dissented)
+	}
+}
+
+// TestCorroborationDissentDoesNotAffectDecision verifies that a dissenting source
+// sentinel does not change the corroboration level — it is forensic provenance only.
+func TestCorroborationDissentDoesNotAffectDecision(t *testing.T) {
+	// Two signed sources agree, socket dissented.
+	matches := []CatalogMatch{
+		{CatalogSource: "bumblebee", Signed: true},
+		{CatalogSource: "osv", Signed: true},
+		{CatalogSource: "socket", Dissented: true},
+	}
+	level, quarantine, count, agreed, dissented := corroborate(matches, DefaultCorroborationThresholds())
+
+	// Two signed sources → block.
+	if level != "block" {
+		t.Errorf("level = %q, want block (2 signed sources)", level)
+	}
+	if quarantine {
+		t.Error("quarantine = true, want false (only 2 signed)")
+	}
+	if count != 2 {
+		t.Errorf("count = %d, want 2", count)
+	}
+	if len(agreed) != 2 {
+		t.Errorf("len(agreed) = %d, want 2 (bumblebee+osv); got %v", len(agreed), agreed)
+	}
+	// Socket is in dissented.
+	if len(dissented) != 1 || dissented[0] != "socket" {
+		t.Errorf("dissented = %v, want [socket]", dissented)
+	}
+}
+
 // TestCorroborationImportsArePure enforces the purity contract: corroboration.go
 // must not import any package that performs I/O, concurrency, or wall-clock
 // access. Replicates the pattern from TestEngineImportsArePure.

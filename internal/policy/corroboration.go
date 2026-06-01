@@ -51,14 +51,29 @@ func corroborate(matches []CatalogMatch, t CorroborationThresholds) (level strin
 	signedSet := make(map[string]bool)
 	unsignedSet := make(map[string]bool)
 	allSources := make(map[string]bool)
+	// CTLG-09: collect sources that were queried but found no match (dissent).
+	dissentSet := make(map[string]bool)
 
 	for _, m := range matches {
+		if m.Dissented {
+			// Dissent sentinel: source was queried but found no match.
+			// Only record as dissenting if the source has NOT also agreed
+			// (a source returning both match and no-match is a degenerate case
+			// that should not happen in practice; we prioritize agreement).
+			dissentSet[m.CatalogSource] = true
+			continue
+		}
 		allSources[m.CatalogSource] = true
 		if m.Signed {
 			signedSet[m.CatalogSource] = true
 		} else {
 			unsignedSet[m.CatalogSource] = true
 		}
+	}
+
+	// A source that also agreed (has real matches) is NOT dissenting.
+	for src := range allSources {
+		delete(dissentSet, src)
 	}
 
 	signedCount := len(signedSet)
@@ -72,15 +87,22 @@ func corroborate(matches []CatalogMatch, t CorroborationThresholds) (level strin
 	}
 	sort.Strings(agreedList)
 
+	// Build sorted dissent list (CTLG-09 forensic provenance).
+	dissentList := make([]string, 0, len(dissentSet))
+	for src := range dissentSet {
+		dissentList = append(dissentList, src)
+	}
+	sort.Strings(dissentList)
+
 	// Escalation decision table (PLCY-01).
 	switch {
 	case signedCount >= t.QuarantineAt && hasSignedSource:
-		return "block", true, signedCount, agreedList, nil
+		return "block", true, signedCount, agreedList, dissentList
 	case signedCount >= t.BlockAt && hasSignedSource:
-		return "block", false, signedCount, agreedList, nil
+		return "block", false, signedCount, agreedList, dissentList
 	case signedCount >= t.WarnAt || hasUnsigned:
-		return "warn", false, signedCount, agreedList, nil
+		return "warn", false, signedCount, agreedList, dissentList
 	default:
-		return "allow", false, signedCount, agreedList, nil
+		return "allow", false, signedCount, agreedList, dissentList
 	}
 }
