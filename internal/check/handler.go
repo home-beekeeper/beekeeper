@@ -220,9 +220,35 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// Build agent context from env vars + stdin agent_id (INTG-07).
 	ac := readAgentContext(stdinAgentID)
 
+	// Load policies dir now (before Evaluate) so we can derive corroboration
+	// thresholds from policy files and pass them into policy.Evaluate. This
+	// closes INT-BLOCK-2: corroboration_threshold rules in policy files must
+	// affect the live check decision identically to how they affect policy test.
+	//
+	// A wholesale unreadable policies directory honors fail_mode (T-09-33):
+	//   fail-closed (default): directory read error → block decision.
+	//   fail-open/warn: directory read error → allow + continue.
+	// An individually malformed policy file is silently skipped (T-09-33).
+	var policyFiles []policyloader.PolicyFile
+	if cacheDir != "" {
+		policiesDir := filepath.Join(filepath.Dir(cacheDir), "policies")
+		var policyErr error
+		policyFiles, policyErr = policyloader.LoadPolicyDir(policiesDir)
+		if policyErr != nil {
+			// Cannot read the policies directory. Honor fail_mode (T-09-33).
+			fmt.Fprintf(os.Stderr, "beekeeper check: policies directory unreadable: %v\n", policyErr)
+			return finalizeWithAC(failDecision(cfg, "policies directory unreadable (fail-closed)"), cfg, toolCall, auditPath, ac)
+		}
+	}
+
+	// Derive corroboration thresholds from loaded policy files. Falls back to
+	// PLCY-01 defaults when no policy file sets a threshold field.
+	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
+
 	// Pure, synchronous policy evaluation (no I/O, no goroutines).
 	// multiIdx implements policy.MultiCatalogLookup aggregating Bumblebee+OSV+Socket.
-	decision := policy.Evaluate(toolCall, multiIdx, policy.DefaultCorroborationThresholds(), ac)
+	// Policy-file-derived thresholds are passed here so live check matches policy test.
+	decision := policy.Evaluate(toolCall, multiIdx, thresholds, ac)
 
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
@@ -233,24 +259,12 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// Apply the declarative policy overlay (CODE-01): load package_allowlist and
 	// sensitive_path rules from ~/.beekeeper/policies/*.json and combine with the
 	// engine decision by most-restrictive-wins (with the allowlist allow escape hatch).
-	// corroboration_threshold rules in policy files already flowed through
-	// thresholdsFromPolicyFile into Evaluate above and are NOT re-applied here.
+	// corroboration_threshold rules in policy files are NOT re-applied here —
+	// they were already passed to policy.Evaluate as thresholds above.
 	//
-	// A wholesale unreadable policies directory honors fail_mode (T-09-33):
-	//   fail-closed (default): directory read error → block decision.
-	//   fail-open/warn: directory read error → allow + continue.
-	// An individually malformed policy file is silently skipped (T-09-33).
-	if cacheDir != "" {
-		policiesDir := filepath.Join(filepath.Dir(cacheDir), "policies")
-		policyFiles, policyErr := policyloader.LoadPolicyDir(policiesDir)
-		if policyErr != nil {
-			// Cannot read the policies directory. Honor fail_mode (T-09-33).
-			fmt.Fprintf(os.Stderr, "beekeeper check: policies directory unreadable: %v\n", policyErr)
-			return finalizeWithAC(failDecision(cfg, "policies directory unreadable (fail-closed)"), cfg, toolCall, auditPath, ac)
-		}
-		if len(policyFiles) > 0 {
-			decision = policyloader.ApplyPolicyOverlay(policyFiles, toolCall, decision)
-		}
+	// policyFiles was already loaded above before Evaluate; re-use it here.
+	if len(policyFiles) > 0 {
+		decision = policyloader.ApplyPolicyOverlay(policyFiles, toolCall, decision)
 	}
 
 	// Successful evaluation results are NOT subject to fail-mode overrides —

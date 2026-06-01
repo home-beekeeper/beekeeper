@@ -48,6 +48,37 @@ func thresholdsFromPolicyFile(pf PolicyFile) policy.CorroborationThresholds {
 	return t
 }
 
+// ThresholdsFromPolicyFiles merges corroboration_threshold rules from all
+// loaded policy files into a single policy.CorroborationThresholds value,
+// starting from the defaults. Later files (and rules within files) override
+// earlier ones for each field (last-writer-wins per field).
+//
+// This exported helper bridges the declarative policy files and the pure
+// policy.CorroborationThresholds accepted by policy.Evaluate, for use by
+// all callers that need live-threshold behavior (check/handler, gateway,
+// watch, scan). When no files set a threshold field, the PLCY-01 default
+// for that field is preserved.
+func ThresholdsFromPolicyFiles(files []PolicyFile) policy.CorroborationThresholds {
+	t := policy.DefaultCorroborationThresholds()
+	for _, pf := range files {
+		for _, r := range pf.Rules {
+			if r.RuleType != "corroboration_threshold" {
+				continue
+			}
+			if r.WarnAt > 0 {
+				t.WarnAt = r.WarnAt
+			}
+			if r.BlockAt > 0 {
+				t.BlockAt = r.BlockAt
+			}
+			if r.QuarantineAt > 0 {
+				t.QuarantineAt = r.QuarantineAt
+			}
+		}
+	}
+	return t
+}
+
 // RunPolicyTest dry-runs the policy file's rules against tc and returns the
 // Decision that reflects the full overlay enforcement (corroboration thresholds
 // + package_allowlist + sensitive_path rules). It uses an empty
@@ -74,7 +105,10 @@ func RunPolicyTest(pf PolicyFile, tc policy.ToolCall, ac policy.AgentContext) po
 // sensitive_path rules in the policy file are reflected in the dry-run output
 // (CODE-01: policy test must mirror live check enforcement).
 func runPolicyTestWithCatalog(pf PolicyFile, tc policy.ToolCall, idx policy.MultiCatalogLookup, ac policy.AgentContext) policy.Decision {
-	thresholds := thresholdsFromPolicyFile(pf)
+	// Use ThresholdsFromPolicyFiles (the exported helper) to derive thresholds
+	// from the single policy file so that dry-run and live-check are consistent
+	// (both call the same logic path). This closes INT-BLOCK-2 live/dry parity.
+	thresholds := ThresholdsFromPolicyFiles([]PolicyFile{pf})
 	base := policy.Evaluate(tc, idx, thresholds, ac)
 	// Apply the overlay for package_allowlist and sensitive_path rules so that
 	// `policy test` output matches what live `beekeeper check` would produce.

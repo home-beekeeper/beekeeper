@@ -564,6 +564,81 @@ func TestPolicyOverlayBlocksViaDir(t *testing.T) {
 	}
 }
 
+// buildSignedTestIndex creates a small mmap index with a SIGNED Bumblebee entry
+// so that corroboration threshold tests can verify signed-source escalation.
+// Signed = CatalogSignature != "" (per bumblebeeMultiAdapter.LookupAll logic).
+func buildSignedTestIndex(t *testing.T, dir string) string {
+	t.Helper()
+	entries := []catalog.Entry{
+		{
+			ID:               "test-signed-bumblebee-entry",
+			Name:             "signed-test-pkg compromise",
+			Ecosystem:        "npm",
+			Package:          "signed-test-pkg-threshold",
+			Versions:         []string{},
+			Severity:         "critical",
+			CatalogSource:    "bumblebee",
+			CatalogSignature: "sha256:fakesig", // non-empty → Signed=true in LookupAll
+		},
+	}
+	idxPath := filepath.Join(dir, "bumblebee-signed.idx")
+	if err := catalog.BuildIndex(idxPath, entries); err != nil {
+		t.Fatalf("BuildIndex (signed): %v", err)
+	}
+	return idxPath
+}
+
+// TestCorroborationThresholdPolicyBlocksAtOne verifies INT-BLOCK-2 closure:
+// a policy file with corroboration_threshold block_at:1 causes a single signed-
+// source catalog match (normally warn under defaults) to become a block in live
+// check. This also verifies live/dry-run parity — policy test must produce the
+// same decision as live check for the same policy file + catalog.
+func TestCorroborationThresholdPolicyBlocksAtOne(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildSignedTestIndex(t, dir)
+
+	// cacheDir → sibling policies/ dir with block_at:1 threshold rule.
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	policiesDir := filepath.Join(dir, "policies")
+	if err := os.MkdirAll(policiesDir, 0700); err != nil {
+		t.Fatalf("MkdirAll policiesDir: %v", err)
+	}
+
+	// block_at:1 means: one signed source is enough to block (default is 2).
+	policyJSON := `{
+		"schema_version": "1",
+		"name": "strict-threshold",
+		"rules": [
+			{
+				"id": "block-at-one",
+				"rule_type": "corroboration_threshold",
+				"block_at": 1
+			}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(policiesDir, "strict.json"), []byte(policyJSON), 0600); err != nil {
+		t.Fatalf("WriteFile strict.json: %v", err)
+	}
+
+	// signed-test-pkg-threshold has a single signed Bumblebee match → normally
+	// warn under defaults (block_at:2). With block_at:1 it must become a block.
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Install","tool_input":{"ecosystem":"npm","package":"signed-test-pkg-threshold"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	if res.Decision.Allow {
+		t.Errorf("Allow = true, want false (block_at:1 should block on single signed-source match)")
+	}
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (corroboration_threshold block_at:1)", res.Decision.Level)
+	}
+	if res.ExitCode == exitAllow {
+		t.Errorf("ExitCode = 0, want non-zero when threshold block_at:1 fires")
+	}
+}
+
 func TestHandlerLLMFCodeShieldWarn(t *testing.T) {
 	auditPath := auditPathIn(t)
 	scanner := &mockScanner{resp: llamafirewall.ScanResponse{
