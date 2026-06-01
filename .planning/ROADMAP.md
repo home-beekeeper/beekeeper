@@ -22,6 +22,7 @@
 - [x] Phase 8: TUI Dashboard (9/9) — Bubble Tea v2, all panels, admin mode, Windows resize workaround
 - [x] Phase 9: Policy as Code + Self-Defense Capstone (5/5) — declarative JSON policies, layered config, `beekeeper-self` catalog, `beekeeper diag`
 - [x] Phase 10: Cross-Phase Integration Closure (1/1) — live corroboration_threshold, gateway corroboration, LlamaFirewall supervisor + scan wiring, diag sidecar latency, overlay coverage
+- [ ] Phase 11: v1.0.0 PRD-Gap Closure (pre-push) — gateway PromptGuard real tool name, layered config in enforcement, eBPF build-pipeline generation, delta-triggered scan, `catalogs diff`, real Ed25519 catalog signatures
 
 </details>
 
@@ -39,5 +40,6 @@
 | 8. TUI Dashboard | v1.0.0 | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | v1.0.0 | 5/5 | Complete | 2026-05-29 |
 | 10. Cross-Phase Integration Closure | v1.0.0 | 1/1 | Complete | 2026-06-01 |
+| 11. v1.0.0 PRD-Gap Closure (pre-push) | v1.0.0 | 0/1 | In progress | - |
 
 *Next milestone: run `/gsd-new-milestone` to start v1.x (questioning → research → requirements → roadmap).*
