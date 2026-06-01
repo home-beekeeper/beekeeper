@@ -1,9 +1,9 @@
 ---
 phase: 1
 slug: fork-setup-discipline
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-01
 ---
 
@@ -86,11 +86,11 @@ The Pollen repo itself is Wave 0 — all of the following are created during Pha
 
 ## Validation Sign-Off
 
-- [ ] All tasks have an automated verify or a Wave 0 dependency
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (the whole repo is Wave 0)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have an automated verify or a Wave 0 dependency (plan-checker confirmed Dimension 8a PASS at task level)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify (8c PASS)
+- [x] Wave 0 covers all MISSING references — the entire repo is Wave 0; every gap is a creation task in Plans 01-01…01-04
+- [x] No watch-mode flags (8b PASS)
+- [x] Feedback latency < 60s (local `go build ./cmd/pollen && ./pollen selftest`)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-06-01 (validation strategy finalized; per-task green is verified during `/gsd-execute-phase`)
