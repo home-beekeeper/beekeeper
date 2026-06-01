@@ -2,9 +2,10 @@
 
 ## v1.0.0 — Comprehensive Standalone Release (Shipped: 2026-06-01)
 
-**Phases:** 10 (Phases 1–9 planned + Phase 10 integration closure) · **Plans:** 50 · **Tasks:** 53
-**Timeline:** 2026-05-26 → 2026-06-01 (7 days) · **Commits:** 270
-**Audit:** PASSED (re-verified after Phase 10 closed 4 cross-phase integration blockers) — see `milestones/v1.0.0-MILESTONE-AUDIT.md`
+**Phases:** 11 (Phases 1–9 planned + Phase 10 integration closure + Phase 11 PRD-gap closure) · **Plans:** 51 · **Tasks:** 59
+**Timeline:** 2026-05-26 → 2026-06-01 (7 days)
+**Audit:** PASSED (re-verified after Phase 10 closed 4 cross-phase integration blockers)
+**Pre-push PRD audit:** a direct `beekeeper-prd.md`-vs-code audit then found 6 more gaps the milestone audit missed (gateway PromptGuard scanned with an empty tool name → no-op; layered config not used by enforcement commands; Linux eBPF bytecode uncommitted/ungenerated; catalog-delta scan not triggered; `catalogs diff` missing; presence-only catalog signatures). **All 6 closed by Phase 11** (commits 3b79c90, 1f3682b, 86686d5, c42c681, 0b7f64f, deb8783) — re-verified green before the tag was moved to the fixed commit. Lesson: prior verification confirmed wiring *existed*, not that it was *effective* end-to-end (empty-arg no-op; helper present but never called by enforcement commands).
 
 **Delivered:** A single static Go binary (`beekeeper`) that intercepts autonomous-agent tool calls before they execute and evaluates them against unified, corroboration-based threat intelligence — fail-closed by default, with a published self-defense threat model and a recursive self-quarantine feed.
 
