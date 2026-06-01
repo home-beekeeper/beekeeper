@@ -13,7 +13,7 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 - [x] **FORK-01**: Pollen exists as a separate Go module `github.com/bantuson/pollen`, forked from `perplexityai/bumblebee` at a pinned commit (v0.1.1 tag), with `cmd/bumblebee/` renamed to `cmd/pollen/`; the `pollen` CLI binary builds on ubuntu/macos/windows
 - [x] **FORK-02**: Apache-2.0 LICENSE preserved verbatim; NOTICE attributes upstream Perplexity/Bumblebee and states non-affiliation; CHANGES.md documents every delta from the pinned commit; UPSTREAM.md records the pinned commit (40-char SHA + tag + date + verifier) and the sync workflow
-- [ ] **FORK-03**: Reproducible builds (`-trimpath -buildvcs=false`) + Sigstore keyless signing via GitHub Actions OIDC wired into Pollen's release workflow; first tag `v0.1.1-pollen.1` proves fork hygiene before any Windows code lands
+- [x] **FORK-03**: Reproducible builds (`-trimpath -buildvcs=false`) + Sigstore keyless signing via GitHub Actions OIDC wired into Pollen's release workflow; first tag `v0.1.1-pollen.1` proves fork hygiene before any Windows code lands
 - [x] **FORK-04**: Trademark discipline — "Bumblebee" appears only in attribution contexts (NOTICE, README "derived from" paragraph, UPSTREAM.md), never in command names, package names, README headlines, or `cmd/`
 
 ### Windows Root Resolver (WRES)
@@ -53,7 +53,7 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 ### Self-Defense (SDEF)
 
 - [ ] **SDEF-01**: `pollen-self` entries added to the `beekeeper-self` catalog so a compromised Pollen release is detectable by beekeeper itself (recursive self-quarantine across the dependency boundary)
-- [ ] **SDEF-02**: CycloneDX SBOM published per Pollen release, recording the source upstream commit and the Windows additions
+- [x] **SDEF-02**: CycloneDX SBOM published per Pollen release, recording the source upstream commit and the Windows additions
 
 ## v2 Requirements
 
@@ -89,11 +89,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | FORK-01 | Phase 1 | Complete |
 | FORK-02 | Phase 1 | Complete |
-| FORK-03 | Phase 1 | Pending |
+| FORK-03 | Phase 1 | Complete |
 | FORK-04 | Phase 1 | Complete |
 | PTEST-02 | Phase 1 | Complete |
 | PTEST-03 | Phase 1 | Complete |
-| SDEF-02 | Phase 1 | Pending |
+| SDEF-02 | Phase 1 | Complete |
 | WRES-01 | Phase 2 | Pending |
 | WRES-02 | Phase 2 | Pending |
 | PTEST-01 | Phase 2 | Pending |
