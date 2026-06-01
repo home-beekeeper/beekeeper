@@ -492,7 +492,79 @@ func newCatalogsCmd() *cobra.Command {
 	verifyCmd.Flags().StringVar(&verifySource, "source", "", "catalog source name to clear (e.g. bumblebee)")
 	catalogs.AddCommand(verifyCmd)
 
+	// catalogs diff — show per-source delta between cached state and current on-disk snapshot (PRD §10).
+	catalogs.AddCommand(&cobra.Command{
+		Use:   "diff",
+		Short: "Show per-source delta between last-synced state and current on-disk catalog snapshot",
+		Long: `Compare the cached (last-synced) catalog state against the current on-disk snapshot.
+
+For each source, prints:
+  - entry count delta (added/removed)
+  - whether the content hash changed
+  - degraded status
+
+This command is read-only — no catalog mutation, no enforcement side effects.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			catalogDir, err := platform.CatalogDir()
+			if err != nil {
+				return fmt.Errorf("resolve catalog directory: %w", err)
+			}
+			stateFile := filepath.Join(stateDir, "state.json")
+
+			results, err := catalog.Diff(cmd.Context(), stateFile, catalogDir, &http.Client{Timeout: 10 * time.Second})
+			if err != nil {
+				return fmt.Errorf("catalog diff: %w", err)
+			}
+
+			out := cmd.OutOrStdout()
+			if len(results) == 0 {
+				fmt.Fprintln(out, "No catalog state found — run 'beekeeper catalogs sync' first.")
+				return nil
+			}
+
+			anyChange := false
+			for _, r := range results {
+				if r.HasChanges() {
+					anyChange = true
+				}
+			}
+			if !anyChange {
+				fmt.Fprintln(out, "Catalogs are up-to-date (no delta detected).")
+			}
+
+			for _, r := range results {
+				status := "up-to-date"
+				if r.HasChanges() {
+					status = "CHANGED"
+				}
+				fmt.Fprintf(out, "%-16s  %s  prev=%d current=%d  added=+%d removed=-%d  degraded=%v\n",
+					r.Source, status, r.PrevCount, r.CurrentCount, r.Added, r.Removed, r.Degraded)
+				if r.Changed {
+					fmt.Fprintf(out, "  hash changed: %s → %s\n", truncHash(r.PrevHash), truncHash(r.CurrentHash))
+				}
+			}
+			return nil
+		},
+	})
+
 	return catalogs
+}
+
+// truncHash returns the first 12 chars of a hash string for display (or the full
+// string if shorter). Empty strings become "(none)".
+func truncHash(h string) string {
+	if h == "" {
+		return "(none)"
+	}
+	if len(h) > 12 {
+		return h[:12] + "..."
+	}
+	return h
 }
 
 // newWatchCmd starts the foreground extension file-watcher daemon.
