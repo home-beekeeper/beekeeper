@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,8 +13,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
 )
+
+// mockGatewayScanner implements GatewayScanner for testing.
+type mockGatewayScanner struct {
+	resp     llamafirewall.ScanResponse
+	err      error
+	degraded bool
+	calls    int
+}
+
+func (m *mockGatewayScanner) Scan(_ context.Context, _ llamafirewall.ScanRequest) (llamafirewall.ScanResponse, error) {
+	m.calls++
+	return m.resp, m.err
+}
+
+func (m *mockGatewayScanner) IsDegraded() bool { return m.degraded }
 
 // fakeIdx is a test double for policy.MultiCatalogLookup that returns no
 // matches (allow-all) unless overridden per test.
@@ -543,5 +560,67 @@ func TestReadBody1MB(t *testing.T) {
 		if errField["code"].(float64) == -32700 {
 			t.Errorf("body within 1MB limit rejected with -32700: %s", rr.Body.String())
 		}
+	}
+}
+
+// TestScanProxiedResponseInjectionDetected verifies INT-BLOCK-1 + INT-WARN-2 closure:
+// ScanProxiedResponse invokes the scanner for a prompt-eligible tool and returns a
+// replaced (warning) payload when injection is detected.
+func TestScanProxiedResponseInjectionDetected(t *testing.T) {
+	scanner := &mockGatewayScanner{
+		resp: llamafirewall.ScanResponse{
+			Result:     llamafirewall.ResultInjection,
+			Confidence: 0.99,
+			Reason:     "injection detected",
+			LatencyMS:  5,
+		},
+	}
+
+	body := []byte(`{"content":"malicious content with injection"}`)
+	// "read_file" is a prompt-eligible tool (returns file content — injection surface).
+	out, injected := ScanProxiedResponse(context.Background(), "read_file", body, scanner)
+
+	if !injected {
+		t.Error("injected = false, want true (injection detected)")
+	}
+	if scanner.calls == 0 {
+		t.Error("scanner.calls = 0, want >= 1 (scanner must be invoked)")
+	}
+	// Output should be the warning payload (different from original body).
+	if bytes.Equal(out, body) {
+		t.Error("output body unchanged despite injection, want replaced warning payload")
+	}
+}
+
+// TestScanProxiedResponseNilScannerIsNoOp verifies that ScanProxiedResponse
+// with a nil scanner returns the original body unchanged (LLMF disabled = no-op).
+func TestScanProxiedResponseNilScannerIsNoOp(t *testing.T) {
+	body := []byte(`{"content":"safe content"}`)
+	out, injected := ScanProxiedResponse(context.Background(), "read_file", body, nil)
+
+	if injected {
+		t.Error("injected = true with nil scanner, want false")
+	}
+	if !bytes.Equal(out, body) {
+		t.Error("output body changed with nil scanner, want original unchanged")
+	}
+}
+
+// TestScanProxiedResponseDegradedScannerIsNoOp verifies that a degraded scanner
+// (sidecar exhausted retries) returns the original body unchanged — fail-open
+// behavior for the scan path (degraded != unreachable; supervisor already decided).
+func TestScanProxiedResponseDegradedScannerIsNoOp(t *testing.T) {
+	scanner := &mockGatewayScanner{degraded: true}
+	body := []byte(`{"content":"some content"}`)
+	out, injected := ScanProxiedResponse(context.Background(), "read_file", body, scanner)
+
+	if injected {
+		t.Error("injected = true with degraded scanner, want false")
+	}
+	if !bytes.Equal(out, body) {
+		t.Error("output body changed with degraded scanner, want original unchanged")
+	}
+	if scanner.calls != 0 {
+		t.Errorf("scanner called %d times, want 0 for degraded scanner", scanner.calls)
 	}
 }

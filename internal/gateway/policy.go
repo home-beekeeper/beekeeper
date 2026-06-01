@@ -50,6 +50,12 @@ type Config struct {
 	// FailOpen, when true, allows tool calls on policy engine failure.
 	// Default (false) is fail-closed — the secure setting.
 	FailOpen bool
+
+	// Scanner is an optional LlamaFirewall scanner for post-response scanning
+	// (INT-BLOCK-1 / LLMF-02). Nil when LlamaFirewall is disabled (default).
+	// When non-nil, the gateway proxy calls ScanProxiedResponse on each upstream
+	// response for warn and allow decisions.
+	Scanner GatewayScanner
 }
 
 // toolCallParams is the JSON-RPC 2.0 params shape for a tools/call request.

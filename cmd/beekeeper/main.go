@@ -27,6 +27,7 @@ import (
 	"github.com/mzansi-agentive/beekeeper/internal/editorinit"
 	"github.com/mzansi-agentive/beekeeper/internal/gateway"
 	"github.com/mzansi-agentive/beekeeper/internal/hooks"
+	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/notify"
 	"github.com/mzansi-agentive/beekeeper/internal/platform"
 	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
@@ -1057,6 +1058,40 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 				return fmt.Errorf("load config: %w", err)
 			}
 
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			// Start LlamaFirewall supervisor when enabled (INT-BLOCK-1 / LLMF-01).
+			// The gateway daemon is the lifecycle host for the long-lived sidecar.
+			// With LLMF disabled (default) no supervisor is created and the gateway
+			// runs without scanning — all existing behavior is unchanged.
+			var llmfScanner gateway.GatewayScanner
+			if cfg.LlamaFirewallEnabled() {
+				llmfCfg := llamafirewall.LlamaFirewallConfig{
+					Enabled:          true,
+					SampleRate:       cfg.LlamaFirewallSampleRate(),
+					FailMode:         cfg.LlamaFirewall.FailMode,
+					CodeShield:       cfg.LlamaFirewall.CodeShield,
+					AlignmentCheck:   cfg.LlamaFirewall.AlignmentCheck,
+					CodeShieldAction: cfg.LlamaFirewall.CodeShieldAction,
+					PythonPath:       cfg.LlamaFirewall.PythonPath,
+				}
+				sockPath := filepath.Join(stateDir, "llamafirewall.sock")
+				sidecarPath := filepath.Join(stateDir, "llamafirewall", "llamafirewall_sidecar.py")
+				sup := llamafirewall.NewSupervisor(llmfCfg, sockPath, sidecarPath)
+				if err := sup.Start(ctx); err != nil {
+					// Fail-closed: if sidecar fails to start and FailMode is closed, abort.
+					if cfg.LlamaFirewall.FailMode == "" || cfg.LlamaFirewall.FailMode == "closed" {
+						return fmt.Errorf("llamafirewall sidecar failed to start (fail-closed): %w", err)
+					}
+					// fail-open: log and continue without scanning.
+					fmt.Fprintf(os.Stderr, "beekeeper gateway: llamafirewall sidecar unavailable (fail-open): %v\n", err)
+				} else {
+					llmfScanner = sup
+					defer sup.Stop() //nolint:errcheck
+				}
+			}
+
 			gatewayCfg := gateway.Config{
 				UpstreamURL: upstream,
 				BindAddr:    bind,
@@ -1067,10 +1102,8 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 				AuditPath:   filepath.Join(auditDir, "beekeeper.ndjson"),
 				SocketToken: cfg.SocketAPIToken(),
 				FailOpen:    !cfg.FailClosed(),
+				Scanner:     llmfScanner,
 			}
-
-			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
-			defer stop()
 
 			bindAddr := bind
 			if bindAddr == "" {
@@ -1420,8 +1453,13 @@ func newLlamaFirewallCmd() *cobra.Command {
 }
 
 // newAuditRecordCmd is the PostToolUse hook handler. It reads PostToolUse JSON
-// from stdin, writes a tool_result audit record, and exits 0 always — PostToolUse
-// hook failures must not disrupt the running agent (INTG-07 / T-04-05-04).
+// from stdin, writes a tool_result audit record, and exits 0 always unless LLMF
+// is enabled and a sidecar scan returns a fail-closed block decision.
+//
+// With LLMF enabled, the command connects to an already-running sidecar socket
+// (started by the gateway daemon or a standalone llamafirewall serve command)
+// and routes to RunAuditRecordWithLLMF. If the sidecar is unreachable, the
+// fail_mode governs: fail-closed = block (return 1); fail-open = allow (return 0).
 func newAuditRecordCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "audit-record",
@@ -1431,22 +1469,77 @@ func newAuditRecordCmd() *cobra.Command {
 This command is registered as the PostToolUse hook command:
   {"type": "command", "command": "beekeeper audit-record"}
 
-It always exits 0 — PostToolUse hook failures must not disrupt the agent.`,
+Without LlamaFirewall enabled it always exits 0 — PostToolUse hook failures
+must not disrupt the agent. With LlamaFirewall enabled, a fail-closed sidecar
+unreachability can exit 1 (block).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			auditDir, err := platform.AuditDir()
 			if err != nil {
-				// Cannot resolve audit directory — exit 0 anyway (T-04-05-04).
 				fmt.Fprintf(os.Stderr, "beekeeper audit-record: resolve audit directory: %v\n", err)
 				return nil
 			}
 			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
-			_ = check.RunAuditRecord(os.Stdin, auditPath)
-			// Always return nil (exit 0) regardless of RunAuditRecord result.
+
+			// Load config to check if LLMF is enabled.
+			cfgPath, cfgErr := platform.ConfigPath()
+			if cfgErr != nil {
+				_ = check.RunAuditRecord(os.Stdin, auditPath)
+				return nil
+			}
+			cfg, cfgErr := config.Load(cfgPath)
+			if cfgErr != nil || !cfg.LlamaFirewallEnabled() {
+				// LLMF disabled or config unreadable → plain audit-record (exit 0).
+				_ = check.RunAuditRecord(os.Stdin, auditPath)
+				return nil
+			}
+
+			// LLMF enabled: connect to a running sidecar socket (fail-closed on
+			// unreachability per fail_mode — INT-BLOCK-1 / LLMF-05).
+			stateDir, sdErr := platform.StateDir()
+			if sdErr != nil {
+				_ = check.RunAuditRecord(os.Stdin, auditPath)
+				return nil
+			}
+			sockPath := filepath.Join(stateDir, "llamafirewall.sock")
+			client, dialErr := llamafirewall.Dial(sockPath, 2*time.Second)
+			if dialErr != nil {
+				// Sidecar unreachable.
+				if cfg.LlamaFirewall.FailMode == "" || cfg.LlamaFirewall.FailMode == "closed" {
+					fmt.Fprintf(os.Stderr, "beekeeper audit-record: LLMF sidecar unreachable (fail-closed): %v\n", dialErr)
+					os.Exit(1) // block PostToolUse
+				}
+				// fail-open: continue without scanning.
+				_ = check.RunAuditRecord(os.Stdin, auditPath)
+				return nil
+			}
+			defer client.Close() //nolint:errcheck
+
+			// clientScanner adapts *llamafirewall.Client to check.Scannable so
+			// RunAuditRecordWithLLMF can use the connected client.
+			scanner := &llmfClientScanner{client: client}
+			exitCode := check.RunAuditRecordWithLLMF(os.Stdin, auditPath, cfg, scanner)
+			if exitCode != 0 {
+				os.Exit(exitCode)
+			}
 			return nil
 		},
 	}
 }
+
+// llmfClientScanner adapts *llamafirewall.Client to the check.Scannable interface.
+// It wraps the raw client for use by RunAuditRecordWithLLMF in one-shot commands.
+// The sidecar is long-lived (started by the gateway daemon); one-shot commands
+// connect to the running socket rather than spawning their own.
+type llmfClientScanner struct {
+	client *llamafirewall.Client
+}
+
+func (s *llmfClientScanner) Scan(ctx context.Context, req llamafirewall.ScanRequest) (llamafirewall.ScanResponse, error) {
+	return s.client.Scan(req)
+}
+
+func (s *llmfClientScanner) IsDegraded() bool { return false }
 
 // newDashboardCmd opens the real-time Bubble Tea TUI dashboard.
 func newDashboardCmd() *cobra.Command {

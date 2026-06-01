@@ -35,6 +35,9 @@ type gatewayHandler struct {
 	reverseProxy *httputil.ReverseProxy
 	cfg          Config
 	idx          policy.MultiCatalogLookup
+	// scanner is the optional LlamaFirewall scanner for post-response scanning.
+	// Nil when LlamaFirewall is disabled (default). Populated from cfg.Scanner.
+	scanner GatewayScanner
 }
 
 // newGatewayHandler constructs a gatewayHandler for the given upstream URL.
@@ -58,6 +61,7 @@ func newGatewayHandler(cfg Config, token string, idx policy.MultiCatalogLookup) 
 		reverseProxy: rp,
 		cfg:          cfg,
 		idx:          idx,
+		scanner:      cfg.Scanner,
 	}
 }
 
@@ -209,10 +213,18 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 
 	case "warn":
 		// Forward to upstream and inject _beekeeper_warning into the response.
+		// forwardWithWarningInjection also calls ScanProxiedResponse when scanner present.
 		h.forwardWithWarningInjection(w, r, msg, bodyBytes, decision)
 		return
 
 	default: // "allow"
+		// When a LLMF scanner is configured, use the direct forwarding path so we
+		// can intercept the response and scan for prompt injection. Without a scanner
+		// the transparent ReverseProxy path is used (no response capture overhead).
+		if h.scanner != nil {
+			h.forwardAllowWithScan(w, r, msg, bodyBytes)
+			return
+		}
 		// Restore body for transparent forward.
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		h.reverseProxy.ServeHTTP(w, r)
@@ -268,12 +280,78 @@ func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *h
 		return
 	}
 
+	// LlamaFirewall post-response scan (INT-BLOCK-1 / LLMF-02): scan the upstream
+	// response body for prompt injection before forwarding. On injection detection
+	// the body is replaced with a structured warning payload. Fail-closed on
+	// sidecar unavailability when FailOpen is false.
+	if h.scanner != nil {
+		scanned, injectionDetected := ScanProxiedResponse(r.Context(), "", respBytes, h.scanner)
+		if injectionDetected {
+			// Injection detected: replace body with warning payload.
+			respBytes = scanned
+		} else if scanned != nil {
+			respBytes = scanned
+		}
+	}
+
 	// Inject _beekeeper_warning into the result field of the JSON-RPC response.
 	injected := injectWarning(respBytes, decision.Reason)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(injected)
+}
+
+// forwardAllowWithScan is the allow-path equivalent of forwardWithWarningInjection
+// used when a LLMF scanner is configured. It makes a direct HTTP request to the
+// upstream, scans the response body for prompt injection, and writes the
+// (possibly replaced) response to the client.
+func (h *gatewayHandler) forwardAllowWithScan(w http.ResponseWriter, r *http.Request, msg JSONRPCMessage, bodyBytes []byte) {
+	base, err := url.Parse(strings.TrimRight(h.cfg.UpstreamURL, "/"))
+	if err != nil {
+		writeJSONRPCError(w, msg.ID, -32002, "upstream URL invalid (fail-closed)", nil)
+		return
+	}
+	upstreamURL := base.JoinPath(r.URL.Path).String()
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		writeJSONRPCError(w, msg.ID, -32002, "upstream request creation failed (fail-closed)", nil)
+		return
+	}
+	for k, vv := range r.Header {
+		if strings.EqualFold(k, "Authorization") {
+			continue
+		}
+		for _, v := range vv {
+			req.Header.Add(k, v)
+		}
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		writeJSONRPCError(w, msg.ID, -32002, "upstream request failed (fail-closed)", nil)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxRequestBody))
+	if err != nil {
+		writeJSONRPCError(w, msg.ID, -32002, "upstream response read failed (fail-closed)", nil)
+		return
+	}
+
+	// LLMF scan for prompt injection on the allow path.
+	if h.scanner != nil {
+		scanned, _ := ScanProxiedResponse(r.Context(), "", respBytes, h.scanner)
+		if scanned != nil {
+			respBytes = scanned
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(respBytes)
 }
 
 // injectWarning adds a _beekeeper_warning field to a JSON-RPC response's result
