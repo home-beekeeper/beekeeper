@@ -23,6 +23,7 @@ import (
 	"github.com/mzansi-agentive/beekeeper/internal/audit"
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/mzansi-agentive/beekeeper/internal/policyloader"
 	"github.com/mzansi-agentive/beekeeper/internal/watch"
 )
 
@@ -228,6 +229,15 @@ func evaluateExtension(
 	}
 	multiIdx := catalog.NewMultiIndex(bbIdx, osvAdapter, socketAdapter)
 
+	// Load policy overlay files and derive corroboration thresholds (INT-WARN-1).
+	// Missing/unreadable policies dir = no overlay (non-fatal for scan).
+	var policyFiles []policyloader.PolicyFile
+	if cfg.CacheDir != "" {
+		policiesDir := filepath.Join(filepath.Dir(cfg.CacheDir), "policies")
+		policyFiles, _ = policyloader.LoadPolicyDir(policiesDir)
+	}
+	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
+
 	tc := policy.ToolCall{
 		ToolName: "scan",
 		ToolInput: map[string]any{
@@ -236,7 +246,12 @@ func evaluateExtension(
 			"version":   version,
 		},
 	}
-	catalogDecision := policy.Evaluate(tc, multiIdx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
+	catalogDecision := policy.Evaluate(tc, multiIdx, thresholds, policy.AgentContext{})
+
+	// Apply policy overlay (package_allowlist / sensitive_path rules).
+	if len(policyFiles) > 0 {
+		catalogDecision = policyloader.ApplyPolicyOverlay(policyFiles, tc, catalogDecision)
+	}
 
 	now := cfg.Now()
 	ageMinutes, missing, _ := catalog.FetchMarketplaceAge(netCtx, cfg.HTTPClient, cfg.CacheDir, publisher, name, version, now)

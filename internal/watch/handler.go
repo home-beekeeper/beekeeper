@@ -15,6 +15,7 @@ import (
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
 	"github.com/mzansi-agentive/beekeeper/internal/notify"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/mzansi-agentive/beekeeper/internal/policyloader"
 	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
 )
 
@@ -120,7 +121,17 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 	}
 	multiIdx := catalog.NewMultiIndex(bbIdx, osvAdapter, socketAdapter)
 
-	// 6. Catalog evaluation.
+	// 6. Load policy overlay files and derive corroboration thresholds (INT-WARN-1).
+	// Mirrors handler.go pattern: missing dir = no-op; malformed file = skip.
+	var policyFiles []policyloader.PolicyFile
+	if h.CacheDir != "" {
+		policiesDir := filepath.Join(filepath.Dir(h.CacheDir), "policies")
+		policyFiles, _ = policyloader.LoadPolicyDir(policiesDir)
+		// Errors are ignored (non-fatal for watch): missing/unreadable dir = no overlay.
+	}
+	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
+
+	// 7. Catalog evaluation using policy-file-derived thresholds.
 	tc := policy.ToolCall{
 		ToolName: "watch",
 		ToolInput: map[string]any{
@@ -129,9 +140,14 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 			"version":   version,
 		},
 	}
-	catalogDecision := policy.Evaluate(tc, multiIdx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
+	catalogDecision := policy.Evaluate(tc, multiIdx, thresholds, policy.AgentContext{})
 
-	// 7. Release-age evaluation.
+	// Apply policy overlay (package_allowlist / sensitive_path rules).
+	if len(policyFiles) > 0 {
+		catalogDecision = policyloader.ApplyPolicyOverlay(policyFiles, tc, catalogDecision)
+	}
+
+	// 8. Release-age evaluation.
 	now := h.Now()
 	ageMinutes, missing, _ := catalog.FetchMarketplaceAge(netCtx, httpClient, h.CacheDir, publisher, name, version, now)
 	ageDecision := policy.EvaluateReleaseAge(policy.ReleaseAgeInput{
@@ -141,7 +157,7 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 		TimestampMissing: missing,
 	}, policy.DefaultReleaseAgeConfig())
 
-	// 8. Decision merge: hit if either evaluation blocks.
+	// 9. Decision merge: hit if either evaluation blocks.
 	hit := !catalogDecision.Allow || !ageDecision.Allow
 
 	// Determine the effective reason and decision for the audit record.
@@ -202,7 +218,7 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 		return
 	}
 
-	// 9. Clean — write an allow audit record.
+	// 10. Clean — write an allow audit record.
 	allowDecision := policy.Decision{
 		Allow:   true,
 		Level:   "allow",

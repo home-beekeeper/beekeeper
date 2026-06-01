@@ -15,6 +15,21 @@ import (
 	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
 )
 
+// newSignedTestEntry builds a catalog.Entry with a non-empty CatalogSignature so
+// it produces Signed=true in LookupAll (required for corroboration block escalation).
+func newSignedTestEntry(ecosystem, pkg string) catalog.Entry {
+	return catalog.Entry{
+		ID:               "test-signed-watch-" + pkg,
+		Name:             "Watch test entry " + pkg,
+		Ecosystem:        ecosystem,
+		Package:          pkg,
+		Versions:         []string{},
+		Severity:         "critical",
+		CatalogSource:    "bumblebee",
+		CatalogSignature: "sha256:fakesig",
+	}
+}
+
 func TestHandleNewExtensionCatalogHit(t *testing.T) {
 	ctx := context.Background()
 
@@ -127,5 +142,105 @@ func TestHandleNewExtensionCatalogHit(t *testing.T) {
 	}
 	if !foundSentryAlert {
 		t.Error("audit log does not contain a sentry_alert record")
+	}
+}
+
+// TestHandleNewExtensionPolicyOverlayBlock verifies INT-WARN-1 closure for watch:
+// a package_allowlist block rule in a policy file must block (quarantine) an
+// extension that the bare catalog engine would allow (not in catalog).
+func TestHandleNewExtensionPolicyOverlayBlock(t *testing.T) {
+	ctx := context.Background()
+
+	// Build a catalog index that does NOT contain "innocuous.extension-xyz" —
+	// the engine alone would allow it.
+	indexDir := t.TempDir()
+	indexPath := filepath.Join(indexDir, "beekeeper.idx")
+	entries := []catalog.Entry{
+		newSignedTestEntry("editor-extension", "unrelated.pkg"),
+	}
+	if err := catalog.BuildIndex(indexPath, entries); err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+
+	// testDir/ layout:
+	//   catalogs/ → h.CacheDir
+	//   policies/ → sibling (filepath.Dir("catalogs/") + "/policies")
+	testDir := t.TempDir()
+	cacheDir := filepath.Join(testDir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	policiesDir := filepath.Join(testDir, "policies")
+	if err := os.MkdirAll(policiesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	policyJSON := `{
+		"schema_version": "1",
+		"name": "watch-test-block",
+		"rules": [
+			{
+				"id": "watch-block-overlay",
+				"rule_type": "package_allowlist",
+				"ecosystem": "editor-extension",
+				"packages": ["innocuous.extension-xyz"],
+				"action": "block"
+			}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(policiesDir, "block.json"), []byte(policyJSON), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	quarantineDir := t.TempDir()
+	auditDir := t.TempDir()
+	auditPath := filepath.Join(auditDir, "audit.ndjson")
+	watchRoot := t.TempDir()
+
+	// Create a fake extension directory for "innocuous.extension-xyz".
+	extDir := filepath.Join(watchRoot, "innocuous.extension-xyz-1.0.0")
+	if err := os.MkdirAll(extDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	pkgJSON := []byte(`{"publisher":"innocuous","name":"extension-xyz","version":"1.0.0","displayName":"Innocuous Ext"}`)
+	if err := os.WriteFile(filepath.Join(extDir, "package.json"), pkgJSON, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-seed marketplace cache with a non-recent timestamp (not release-age blocked).
+	testNow := time.Date(2026, 5, 26, 12, 0, 0, 0, time.UTC)
+	publishedAt := testNow.Add(-48 * time.Hour) // 2 days old — old enough
+
+	mktCacheDir := filepath.Join(cacheDir, "marketplace-cache", "innocuous", "extension-xyz")
+	if err := os.MkdirAll(mktCacheDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cacheEntry := map[string]interface{}{
+		"published_at": publishedAt.UTC().Format(time.RFC3339),
+		"cached_at":    testNow.UTC().Format(time.RFC3339),
+		"missing":      false,
+	}
+	cacheBytes, _ := json.Marshal(cacheEntry)
+	if err := os.WriteFile(filepath.Join(mktCacheDir, "1.0.0.json"), cacheBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := NewHandler(
+		indexPath, cacheDir, quarantineDir, auditPath,
+		notify.Config{Enabled: false},
+		"",
+		&http.Client{Timeout: 4 * time.Second},
+		func() time.Time { return testNow },
+		[]string{watchRoot},
+	)
+
+	handler.HandleNewExtension(ctx, extDir)
+
+	// The policy overlay block rule should have triggered quarantine.
+	manifests, err := quarantine.List(quarantineDir)
+	if err != nil {
+		t.Fatalf("quarantine.List: %v", err)
+	}
+	if len(manifests) != 1 {
+		t.Fatalf("want 1 quarantine entry (policy overlay block), got %d", len(manifests))
 	}
 }
