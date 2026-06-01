@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: Awaiting next milestone
-stopped_at: Phase 10 plan 10-01 complete — all 5/5 tasks done, 23 packages green
-last_updated: "2026-06-01T11:22:28.348Z"
-last_activity: 2026-06-01 — Milestone v1.0.0 completed and archived
+status: Phase 11 plan 11-01 complete
+stopped_at: Phase 11 plan 11-01 complete — all 6/6 tasks done, 22 packages green
+last_updated: "2026-06-01T12:52:00Z"
+last_activity: 2026-06-01 — Phase 11 plan 11-01 PRD-gap closure complete
 progress:
-  total_phases: 10
-  completed_phases: 9
-  total_plans: 50
-  completed_plans: 56
-  percent: 90
+  total_phases: 11
+  completed_phases: 10
+  total_plans: 51
+  completed_plans: 57
+  percent: 95
 ---
 
 # Project State
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 10 — Cross-Phase Integration Closure
+**Current focus:** Phase 11 — v1.0.0 PRD-gap closure
 
 ## Current Position
 
-Phase: Milestone v1.0.0 complete
-Plan: —
-Status: Awaiting next milestone
+Phase: 11 (v1-prd-gap-closure)
+Plan: 11-01 complete
+Status: Phase 11 plan 11-01 complete — PRD gaps closed, ready for v1.0.0 tag push
 Last activity: 2026-06-01 — Milestone v1.0.0 completed and archived
 
 ## Phase 1 Completion Summary
@@ -193,10 +193,19 @@ Last activity: 2026-06-01 — Milestone v1.0.0 completed and archived
 | Phase 09 P04 | 20min | 2 tasks | 9 files |
 | Phase 09 P05 | 45min | 3 tasks | 8 files |
 | Phase 10 P10-01 | 45 | 5 tasks | 13 files |
+| Phase 11 P11-01 | 27min | 6 tasks | 15 files |
 
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 11:
+
+- VerifySignatureWithKey(entry, pubKey) added alongside VerifySignature — presence-only path unchanged for backward compat
+- Dissent sentinels (CatalogMatch{Dissented:true}) emitted by MultiIndex.LookupAll for configured-but-no-match sources; corroborate() filters them into SourcesDissented — import cycle avoided
+- scanOnDeltaFn injectable var follows runBumblebeeFn pattern for test-time mock without real scan binary
+- GoReleaser before.hooks uses sh -c guard so non-Linux environments skip eBPF generate gracefully
+- -buildvcs=false added to goreleaser build flags (reproducibility gap closure)
 
 Recent decisions from Phase 7:
 
