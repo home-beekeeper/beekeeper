@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0.0
 milestone_name: milestone
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 10 plan 10-01 complete — all 5/5 tasks done, 23 packages green
-last_updated: "2026-06-01T11:20:37.256Z"
-last_activity: 2026-06-01 -- Phase 10 marked complete
+last_updated: "2026-06-01T11:22:28.348Z"
+last_activity: 2026-06-01 — Milestone v1.0.0 completed and archived
 progress:
   total_phases: 10
   completed_phases: 9
@@ -25,15 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-28)
 
 ## Current Position
 
-Phase: 10 — COMPLETE
-Plan: 1 of 1
-Status: Phase 10 complete
-Last activity: 2026-06-01 -- Phase 10 marked complete
-
-Progress: [████████████░] 78%
-Last activity: 2026-05-28 — Phase 7 plan 05: SLSA Level 3 + CycloneDX SBOM + eslogger CI gate (SFDF-05, SMAC-02)
-
-Progress: [██████████░] 67%
+Phase: Milestone v1.0.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-01 — Milestone v1.0.0 completed and archived
 
 ## Phase 1 Completion Summary
 
@@ -264,3 +259,7 @@ Items acknowledged and carried forward:
 Last session: 2026-06-01T11:14:05.986Z
 Stopped at: Phase 10 plan 10-01 complete — all 5/5 tasks done, 23 packages green
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

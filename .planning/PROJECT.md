@@ -10,6 +10,14 @@ Built by Mfanafuthi Mhlanga / Mzansi Agentive Pty Ltd. Solo project, public from
 
 A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
 
+## Current State
+
+**v1.0.0 — Comprehensive Standalone Release — SHIPPED 2026-06-01.** All 10 phases complete (50 plans, 53 tasks, 270 commits over 7 days). The full v1.0.0 requirement set (HOOK/CTLG/SFDF/PLCY/EDXT/INTG/SLNX/LLMF/AUDT/SMAC/SWIN/TUI/CODE) is implemented, verified, and archived in [`milestones/v1.0.0-REQUIREMENTS.md`](milestones/v1.0.0-REQUIREMENTS.md); the milestone audit (PASSED) is in [`milestones/v1.0.0-MILESTONE-AUDIT.md`](milestones/v1.0.0-MILESTONE-AUDIT.md).
+
+Shipped: single static Go binary; pure corroboration policy engine; editor-extension defense; Claude Code/Cursor/Codex hooks + MCP gateway + shims; cross-platform Sentry (Linux eBPF/fanotify, macOS eslogger, Windows ETW); supervised LlamaFirewall sidecar + full audit sinks; Bubble Tea v2 TUI; declarative policy-as-code enforced live across check/gateway/watch/scan; layered config; `beekeeper diag`; the `beekeeper-self` self-quarantine client; reproducible builds + Sigstore + SLSA L3 + SBOM; public `docs/THREAT-MODEL.md`.
+
+**Carried to v1.x:** live external `beekeeper-self` hosting (separate host + signing key) + end-to-end refuse-to-run; independent external security review + VDP publication; distributed mode / team-shared catalogs; weighted corroboration. Tech stack: Go 1.25, no CGO in core; Python 3.11+ optional sidecar; Bubble Tea v2.
+
 ## Requirements
 
 ### Validated
