@@ -774,9 +774,11 @@ verified by: bantuson
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does upstream `main_test.go` have any tests that compile-fail on Windows (not just skip)?**
+All three were resolved during planning and are implemented in the plans: **Q1** → 01-01 Task 3 (`GOOS=windows go build ./...` compile check with build-tag remediation); **Q2** → 01-01 Task 1 (`git remote add upstream …/perplexityai/bumblebee.git` at repo init); **Q3** → 01-04 Task 2a (`govulncheck` CI job, kept for posture parity despite zero deps).
+
+1. **Does upstream `main_test.go` have any tests that compile-fail on Windows (not just skip)?** — **RESOLVED** → 01-01 Task 3.
    - What we know: `main_test.go` uses `t.Skipf("profile defaults are darwin/linux specific")` for darwin-only tests.
    - What's unclear: Whether any tests reference `syscall` or Unix-specific APIs that would cause a compile error (not just a skip) on Windows.
    - Recommendation: Run `go build ./...` with `GOOS=windows` locally before committing. If compile errors surface, add build tags to those test files.
