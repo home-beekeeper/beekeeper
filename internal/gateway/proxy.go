@@ -160,7 +160,7 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 				chFull <- policyResultFull{panicked: true, panicVal: rec}
 			}
 		}()
-		chFull <- policyResultFull{d: applyPolicy(msg, h.idx, ac)}
+		chFull <- policyResultFull{d: applyPolicy(msg, h.idx, h.cfg, ac)}
 	}()
 
 	var decision policy.Decision

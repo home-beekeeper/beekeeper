@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mzansi-agentive/beekeeper/internal/catalog"
+	"github.com/mzansi-agentive/beekeeper/internal/policy"
 )
 
 const (
@@ -67,12 +68,31 @@ func Start(ctx context.Context, cfg Config) error {
 	}
 	defer bbIdx.Close()
 
-	// Build multi-source index. OSV and Socket adapters are intentionally nil
-	// here: they require a per-request context with a deadline that the
-	// gatewayHandler constructs per-request. For the initial Phase 4 gateway,
-	// Bumblebee-only corroboration is used. OSV/Socket adapters will be wired in
-	// a future plan (beekeeper gateway --enable-osv --socket-token flags).
-	multiIdx := catalog.NewMultiIndex(bbIdx, nil, nil)
+	// Build the OSV adapter. Uses a background context with per-request
+	// sub-contexts applied via the gatewayHandler's policy evaluation goroutine.
+	// On OSV error, LookupAll returns nil — source degrades to no-match.
+	httpClient := &http.Client{Timeout: 4 * time.Second}
+	var osvAdapter policy.MultiCatalogLookup = &catalog.OSVAdapter{
+		Client:   httpClient,
+		CacheDir: cfg.CacheDir,
+		Ctx:      context.Background(), // handler goroutine uses its own deadline
+	}
+
+	// Build the Socket adapter. Empty token → Socket disabled (not an error).
+	var socketAdapter policy.MultiCatalogLookup
+	if cfg.SocketToken != "" {
+		socketAdapter = catalog.SocketAdapter{
+			Client:   httpClient,
+			CacheDir: cfg.CacheDir,
+			Token:    cfg.SocketToken,
+			Ctx:      context.Background(),
+		}
+	}
+
+	// Aggregate all three sources into a MultiIndex. Mirrors handler.go:194-213.
+	// Nil adapters are skipped. Closes INT-BLOCK-3: gateway now performs
+	// multi-source corroboration identical to the hook handler.
+	multiIdx := catalog.NewMultiIndex(bbIdx, osvAdapter, socketAdapter)
 
 	// Step 3: write gateway state (token + port + PID) to state.json (0o600).
 	st := GatewayState{

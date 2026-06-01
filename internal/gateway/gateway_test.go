@@ -361,9 +361,77 @@ func TestApplyPolicyMalformedParams(t *testing.T) {
 		Params:  []byte(`not valid json`),
 	}
 
-	d := applyPolicy(msg, allowIdx(), policy.AgentContext{})
+	d := applyPolicy(msg, allowIdx(), Config{}, policy.AgentContext{})
 	if d.Level != "block" {
 		t.Errorf("decision.Level = %q, want block (malformed params → fail-closed)", d.Level)
+	}
+}
+
+// TestGatewayTwoSourceCorroborationProducesBlock verifies INT-BLOCK-3 closure:
+// a gateway tools/call for a package matched by two signed sources (bumblebee +
+// osv via blockIdx) must produce a block decision (-32001 JSON-RPC error).
+func TestGatewayTwoSourceCorroborationProducesBlock(t *testing.T) {
+	// blockIdx returns two signed matches (bumblebee + osv) → corroboration block.
+	h := newTestHandler("test-token", blockIdx(), "http://upstream-unused")
+
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"Bash","arguments":{"ecosystem":"npm","package":"evil-pkg"}}}`)
+	rr := postJSON(t, h, "test-token", body)
+
+	// Expect -32001 JSON-RPC error (blocked by Beekeeper).
+	code := parseJSONRPCError(t, rr.Body.Bytes())
+	if code != -32001 {
+		t.Errorf("error code = %d, want -32001 (block) for 2-source corroboration", code)
+	}
+}
+
+// TestGatewayPolicyOverlayAffectsDecision verifies INT-WARN-1 closure for gateway:
+// a package_allowlist block rule in a policy file causes an engine-allow decision
+// to become a block at the gateway path.
+func TestGatewayPolicyOverlayAffectsDecision(t *testing.T) {
+	dir := t.TempDir()
+
+	// cacheDir → sibling policies/ with a block rule for "overlay-test-evil-pkg".
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	policiesDir := filepath.Join(dir, "policies")
+	if err := os.MkdirAll(policiesDir, 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	policyJSON := `{
+		"schema_version": "1",
+		"name": "gw-test-block",
+		"rules": [
+			{
+				"id": "gw-block-overlay-test",
+				"rule_type": "package_allowlist",
+				"ecosystem": "npm",
+				"packages": ["overlay-test-evil-pkg"],
+				"action": "block"
+			}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(policiesDir, "test-block.json"), []byte(policyJSON), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// allowIdx() returns no catalog matches → engine decision is allow.
+	// The overlay block rule must override to block.
+	cfg := Config{
+		UpstreamURL: "http://upstream-unused",
+		BindAddr:    defaultBindAddr,
+		Port:        defaultPort,
+		CacheDir:    cacheDir,
+	}
+	h := newGatewayHandler(cfg, "test-token", allowIdx())
+
+	body := []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"Bash","arguments":{"ecosystem":"npm","package":"overlay-test-evil-pkg"}}}`)
+	rr := postJSON(t, h, "test-token", body)
+
+	code := parseJSONRPCError(t, rr.Body.Bytes())
+	if code != -32001 {
+		t.Errorf("error code = %d, want -32001 (block) for policy overlay block rule", code)
 	}
 }
 

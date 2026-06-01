@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
 	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/mzansi-agentive/beekeeper/internal/policyloader"
 )
 
 // Config holds the runtime configuration for the MCP gateway daemon.
@@ -58,15 +60,20 @@ type toolCallParams struct {
 }
 
 // applyPolicy extracts the ToolCall from a tools/call JSONRPCMessage, evaluates
-// it against the policy engine, and returns the Decision. It is the single
-// bridge between the gateway's JSON-RPC layer and the pure policy engine.
+// it against the policy engine with policy-file-derived thresholds, applies the
+// policy overlay, and returns the Decision. It is the single bridge between the
+// gateway's JSON-RPC layer and the pure policy engine.
 //
 // The AgentContext passed to Evaluate comes from extractAgentContext(r) — the
 // optional X-Beekeeper-* headers injected by MCP clients that support them.
 //
 // If the params JSON cannot be decoded (malformed tools/call), applyPolicy
 // returns a block decision so the gateway fails closed (T-04-03-06).
-func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, ac policy.AgentContext) policy.Decision {
+//
+// Policy overlay (INT-WARN-1 + INT-BLOCK-3): policy files are loaded from the
+// standard ~/.beekeeper/policies dir (derived from cfg.CacheDir) and applied in
+// the same way as handler.go. Missing policies dir = no-op; malformed file = skip.
+func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, cfg Config, ac policy.AgentContext) policy.Decision {
 	var params toolCallParams
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		// Malformed tools/call params → fail closed (block).
@@ -83,7 +90,36 @@ func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, ac policy.Ag
 		ToolInput: params.Arguments,
 	}
 
-	return policy.Evaluate(tc, idx, policy.DefaultCorroborationThresholds(), ac)
+	// Load policy files to derive corroboration thresholds (INT-BLOCK-3 / PLCY-07):
+	// mirrors handler.go runCheck so gateway enforcement matches hook enforcement.
+	var policyFiles []policyloader.PolicyFile
+	if cfg.CacheDir != "" {
+		policiesDir := filepath.Join(filepath.Dir(cfg.CacheDir), "policies")
+		var loadErr error
+		policyFiles, loadErr = policyloader.LoadPolicyDir(policiesDir)
+		if loadErr != nil {
+			// Directory read error: fail closed per gateway FailOpen flag.
+			if !cfg.FailOpen {
+				return policy.Decision{
+					Allow:  false,
+					Level:  "block",
+					Reason: fmt.Sprintf("policies directory unreadable (fail-closed): %v", loadErr),
+				}
+			}
+			// fail-open: log and continue with defaults.
+			policyFiles = nil
+		}
+	}
+	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
+
+	decision := policy.Evaluate(tc, idx, thresholds, ac)
+
+	// Apply package_allowlist / sensitive_path overlay (INT-WARN-1).
+	if len(policyFiles) > 0 {
+		decision = policyloader.ApplyPolicyOverlay(policyFiles, tc, decision)
+	}
+
+	return decision
 }
 
 // GatewayScanner is satisfied by *llamafirewall.Supervisor.
