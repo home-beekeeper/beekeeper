@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	audit "github.com/mzansi-agentive/beekeeper/internal/audit"
+	audit "github.com/bantuson/beekeeper/internal/audit"
 )
 
 // ndjsonLine serialises rec as a JSON object followed by a newline.

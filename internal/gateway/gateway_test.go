@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/llamafirewall"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // mockGatewayScanner implements GatewayScanner for testing.

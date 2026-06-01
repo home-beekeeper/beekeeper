@@ -7,8 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
-	platform "github.com/mzansi-agentive/beekeeper/internal/platform"
-	quarantine "github.com/mzansi-agentive/beekeeper/internal/quarantine"
+	platform "github.com/bantuson/beekeeper/internal/platform"
+	quarantine "github.com/bantuson/beekeeper/internal/quarantine"
 )
 
 // QuarantineActionMsg is sent back to App when a quarantine action completes.

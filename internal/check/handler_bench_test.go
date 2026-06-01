@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/config"
 )
 
 // BenchmarkCheck measures RunCheck latency against a realistic ~200-entry index,

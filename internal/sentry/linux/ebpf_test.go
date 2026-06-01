@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 func TestParseProcessEvent(t *testing.T) {

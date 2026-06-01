@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	catalog "github.com/mzansi-agentive/beekeeper/internal/catalog"
+	catalog "github.com/bantuson/beekeeper/internal/catalog"
 )
 
 func newCatalogsPanelForTest() *CatalogsPanel {

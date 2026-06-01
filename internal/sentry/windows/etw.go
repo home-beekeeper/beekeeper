@@ -8,7 +8,7 @@ import (
 
 	etw "github.com/tekert/golang-etw/etw"
 
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 // EventsLost is incremented atomically when the SentryEvent channel is full.

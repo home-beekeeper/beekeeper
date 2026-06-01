@@ -18,7 +18,7 @@
 #     mutation during the build.
 
 # Module path + version variable locations (see internal/version/version.go).
-MODULE     := github.com/mzansi-agentive/beekeeper
+MODULE     := github.com/bantuson/beekeeper
 VERSION    ?= dev
 COMMIT     := $(shell git rev-parse HEAD)
 # Commit DATE (RFC-3339), NOT the wall-clock build time — required for

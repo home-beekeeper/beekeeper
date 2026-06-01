@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 func TestLoadMissingReturnsEmpty(t *testing.T) {

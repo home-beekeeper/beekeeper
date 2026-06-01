@@ -14,10 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/ipc"
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
-	linux "github.com/mzansi-agentive/beekeeper/internal/sentry/linux"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/ipc"
+	"github.com/bantuson/beekeeper/internal/platform"
+	linux "github.com/bantuson/beekeeper/internal/sentry/linux"
 )
 
 func runProtectInstall(cmd *cobra.Command, _ []string) error {

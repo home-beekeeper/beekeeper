@@ -10,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // Store persists per-project behavioral baseline counters to disk.

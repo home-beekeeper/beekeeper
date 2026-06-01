@@ -33,7 +33,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // ApplyPolicyOverlay evaluates package_allowlist and sensitive_path rules from

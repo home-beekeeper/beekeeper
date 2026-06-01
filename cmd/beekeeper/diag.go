@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mzansi-agentive/beekeeper/internal/check"
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/check"
+	"github.com/bantuson/beekeeper/internal/platform"
 )
 
 // newDiagCmd implements `beekeeper diag`.

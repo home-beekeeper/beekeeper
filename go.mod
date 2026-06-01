@@ -1,4 +1,4 @@
-module github.com/mzansi-agentive/beekeeper
+module github.com/bantuson/beekeeper
 
 go 1.25.0
 

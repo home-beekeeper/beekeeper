@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
-	"github.com/mzansi-agentive/beekeeper/internal/ipc"
+	"github.com/bantuson/beekeeper/internal/ipc"
 )
 
 const (

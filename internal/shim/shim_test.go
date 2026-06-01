@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/shim"
+	"github.com/bantuson/beekeeper/internal/shim"
 )
 
 // TestShimInstallUnix verifies that Install creates an executable shell script

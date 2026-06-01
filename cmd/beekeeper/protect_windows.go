@@ -16,10 +16,10 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/windows"
 
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/ipc"
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
-	winsentry "github.com/mzansi-agentive/beekeeper/internal/sentry/windows"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/ipc"
+	"github.com/bantuson/beekeeper/internal/platform"
+	winsentry "github.com/bantuson/beekeeper/internal/sentry/windows"
 )
 
 // installPath is the canonical location for the installed Beekeeper binary on Windows.

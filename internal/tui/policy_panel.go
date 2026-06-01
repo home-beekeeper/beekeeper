@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	platform "github.com/mzansi-agentive/beekeeper/internal/platform"
+	platform "github.com/bantuson/beekeeper/internal/platform"
 )
 
 // PolicyPanel implements PanelContent for the policy & thresholds overlay.

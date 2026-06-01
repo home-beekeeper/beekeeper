@@ -16,8 +16,8 @@ package check
 import (
 	"sort"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/llamafirewall"
 )
 
 // DiagReport is the complete health report assembled by CollectDiag.

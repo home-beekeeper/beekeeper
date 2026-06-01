@@ -3,7 +3,7 @@ package policyloader
 import (
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // baseAllow is a convenient allow base decision for overlay tests.

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/catalog"
 )
 
 func TestScanWithBumblebee(t *testing.T) {

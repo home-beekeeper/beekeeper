@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 func TestAlertToAuditRecord(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // TestFromDecisionMapsProvenance verifies that a Decision with CorroborationCount,

@@ -19,7 +19,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"golang.org/x/sys/unix"
 
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 // EventsDropped is incremented atomically when the events channel is full and

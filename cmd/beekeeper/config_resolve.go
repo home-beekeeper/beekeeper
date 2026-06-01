@@ -17,8 +17,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/platform"
 )
 
 // resolveConfig builds LayerOpts for LoadLayered from platform paths plus the

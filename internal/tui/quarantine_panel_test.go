@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	quarantine "github.com/mzansi-agentive/beekeeper/internal/quarantine"
+	quarantine "github.com/bantuson/beekeeper/internal/quarantine"
 )
 
 func TestQuarantinePanelEmpty(t *testing.T) {

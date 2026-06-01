@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // osvQueryURL is the public, no-auth OSV REST API endpoint. POST with JSON body.

@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
-	"github.com/mzansi-agentive/beekeeper/internal/version"
+	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/version"
 )
 
 // errIntegrity is the sentinel error returned when the beekeeper-self feed

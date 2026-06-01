@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // --- Task 1: FromDecision mapping tests ---

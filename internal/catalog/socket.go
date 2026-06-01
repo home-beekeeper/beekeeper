@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // socketPURLURL is the Socket PURL API endpoint.

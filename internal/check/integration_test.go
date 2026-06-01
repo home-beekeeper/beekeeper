@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // mapMultiIndex implements catalogIndex for hermetic integration tests. It

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	gateway "github.com/mzansi-agentive/beekeeper/internal/gateway"
-	ipc "github.com/mzansi-agentive/beekeeper/internal/ipc"
-	platform "github.com/mzansi-agentive/beekeeper/internal/platform"
+	gateway "github.com/bantuson/beekeeper/internal/gateway"
+	ipc "github.com/bantuson/beekeeper/internal/ipc"
+	platform "github.com/bantuson/beekeeper/internal/platform"
 )
 
 const healthProbeTimeout = 200 * time.Millisecond

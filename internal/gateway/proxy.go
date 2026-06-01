@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 const bearerPrefix = "Bearer "

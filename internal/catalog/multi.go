@@ -3,7 +3,7 @@
 // single policy.MultiCatalogLookup implementation passed to policy.Evaluate.
 package catalog
 
-import "github.com/mzansi-agentive/beekeeper/internal/policy"
+import "github.com/bantuson/beekeeper/internal/policy"
 
 // MultiIndex aggregates the three independent threat-intel sources into a single
 // policy.MultiCatalogLookup. It is the concrete aggregator wired by the hook

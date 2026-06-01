@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 func loadFixture(t *testing.T, name string) []byte {

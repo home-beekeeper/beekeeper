@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/notify"
-	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/notify"
+	"github.com/bantuson/beekeeper/internal/quarantine"
 )
 
 // newSignedTestEntry builds a catalog.Entry with a non-empty CatalogSignature so

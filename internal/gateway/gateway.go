@@ -11,8 +11,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 const (

@@ -13,11 +13,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/ipc"
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/ipc"
+	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 // daemonSensitivePaths mirrors sentry.defaultSensitivePaths for use in fanotify

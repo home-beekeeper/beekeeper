@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/llamafirewall"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // buildTestIndex writes a small real mmap index in dir containing the

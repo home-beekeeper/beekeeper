@@ -3,9 +3,9 @@
 // The package-level variables are overwritten at release time via
 // -ldflags -X, for example:
 //
-//	-X github.com/mzansi-agentive/beekeeper/internal/version.Version=v0.1.0
-//	-X github.com/mzansi-agentive/beekeeper/internal/version.Commit=<sha>
-//	-X github.com/mzansi-agentive/beekeeper/internal/version.Date=<commit-date>
+//	-X github.com/bantuson/beekeeper/internal/version.Version=v0.1.0
+//	-X github.com/bantuson/beekeeper/internal/version.Commit=<sha>
+//	-X github.com/bantuson/beekeeper/internal/version.Date=<commit-date>
 //
 // The defaults below are what a plain `go build`/`go run` produces when no
 // ldflags are supplied.

@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/llamafirewall"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // upstreamCallCount is an atomic counter used by tests that need to verify

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 func makeEventSummary(providerGUID string, eventID uint16, pid uint32, data map[string]interface{}) etwEventSummary {

@@ -24,12 +24,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/llamafirewall"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
-	"github.com/mzansi-agentive/beekeeper/internal/policyloader"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/llamafirewall"
+	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policyloader"
 )
 
 const (

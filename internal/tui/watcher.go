@@ -12,7 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	audit "github.com/mzansi-agentive/beekeeper/internal/audit"
+	audit "github.com/bantuson/beekeeper/internal/audit"
 )
 
 // newRecordsMsg carries newly-appended audit records from the watcher goroutine.

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/platform"
 )
 
 // Rotate rotates the audit log at auditPath when its size exceeds maxBytes.

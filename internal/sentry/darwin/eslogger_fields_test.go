@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 // TestEsloggerFieldValidation reads a live eslogger NDJSON capture from the

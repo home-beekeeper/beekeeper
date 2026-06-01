@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/config"
 )
 
 // --- Mock sink helpers ---

@@ -36,10 +36,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
-	"github.com/mzansi-agentive/beekeeper/internal/version"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/version"
 )
 
 // checkSelfCatalogFn is the injectable seam for catalog.CheckSelfCatalog.
@@ -59,13 +59,13 @@ To verify binary integrity and determine safe next steps, run:
 
   make verify-release VERSION=<your-version>
         - or -
-  cosign verify --certificate-identity=https://github.com/mzansi-agentive/beekeeper/.github/workflows/release.yml@refs/heads/main \
+  cosign verify --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/heads/main \
                 --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
                 <binary-path>
         - or -
   slsa-verifier verify-artifact <binary-path> \
                 --provenance-path beekeeper.intoto.jsonl \
-                --source-uri github.com/mzansi-agentive/beekeeper
+                --source-uri github.com/bantuson/beekeeper
 
 See SECURITY.md for the full verification path and disclosure process.
 Diagnostic commands (beekeeper version, beekeeper diag, beekeeper selftest,

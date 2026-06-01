@@ -1,6 +1,6 @@
 package policyloader
 
-import "github.com/mzansi-agentive/beekeeper/internal/policy"
+import "github.com/bantuson/beekeeper/internal/policy"
 
 // emptyLookup is a no-op MultiCatalogLookup that always returns nil. It is used
 // as the default catalog for RunPolicyTest so that dry-run results reflect only

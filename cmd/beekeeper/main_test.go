@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/scan"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/scan"
 )
 
 // TestLayeredConfigProjectOverridesUser verifies CODE-05 SC2 closure:

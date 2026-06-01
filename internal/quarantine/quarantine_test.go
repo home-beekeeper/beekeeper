@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
+	"github.com/bantuson/beekeeper/internal/quarantine"
 )
 
 // writeManifest is a test helper that creates a quarantine entry directory

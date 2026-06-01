@@ -10,8 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
-	catalog "github.com/mzansi-agentive/beekeeper/internal/catalog"
-	platform "github.com/mzansi-agentive/beekeeper/internal/platform"
+	catalog "github.com/bantuson/beekeeper/internal/catalog"
+	platform "github.com/bantuson/beekeeper/internal/platform"
 )
 
 // syncCatalogsMsg is sent to App when the user presses s in the catalogs panel.

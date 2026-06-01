@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
-	"github.com/mzansi-agentive/beekeeper/internal/notify"
-	"github.com/mzansi-agentive/beekeeper/internal/policy"
-	"github.com/mzansi-agentive/beekeeper/internal/policyloader"
-	"github.com/mzansi-agentive/beekeeper/internal/quarantine"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/notify"
+	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policyloader"
+	"github.com/bantuson/beekeeper/internal/quarantine"
 )
 
 // Handler evaluates newly-detected extension directories against the Beekeeper

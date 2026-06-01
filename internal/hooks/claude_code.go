@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/mzansi-agentive/beekeeper/internal/editorinit"
+	"github.com/bantuson/beekeeper/internal/editorinit"
 )
 
 // claudeHookConfig builds the hooks map for Claude Code's settings.json.

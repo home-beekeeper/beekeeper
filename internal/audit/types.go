@@ -8,7 +8,7 @@
 // export, rotation) are Phase 6 and deliberately out of scope.
 package audit
 
-import "github.com/mzansi-agentive/beekeeper/internal/policy"
+import "github.com/bantuson/beekeeper/internal/policy"
 
 // AuditRecord is one NDJSON line in the audit log: a single policy decision
 // with its provenance. ScannerName is always the literal "beekeeper" and

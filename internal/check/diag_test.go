@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mzansi-agentive/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/catalog"
 )
 
 // TestEventsLost_NonWindows verifies that eventsLost() returns 0 on non-Windows

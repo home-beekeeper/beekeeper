@@ -107,14 +107,14 @@ Actions OIDC. No long-lived private signing key exists to be stolen. The
 signing identity is tied to the GitHub Actions workflow:
 
 ```
-https://github.com/mzansi-agentive/beekeeper/.github/workflows/release.yml
+https://github.com/bantuson/beekeeper/.github/workflows/release.yml
 ```
 
 Verify with cosign:
 
 ```bash
 cosign verify \
-  --certificate-identity=https://github.com/mzansi-agentive/beekeeper/.github/workflows/release.yml@refs/heads/main \
+  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/heads/main \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```
@@ -135,7 +135,7 @@ Verify SLSA provenance:
 ```bash
 slsa-verifier verify-artifact beekeeper \
   --provenance-path beekeeper.intoto.jsonl \
-  --source-uri github.com/mzansi-agentive/beekeeper
+  --source-uri github.com/bantuson/beekeeper
 ```
 
 ### Pinned Dependencies
@@ -421,7 +421,7 @@ the released binary was not produced from the tagged source.
 
 ```bash
 cosign verify \
-  --certificate-identity=https://github.com/mzansi-agentive/beekeeper/.github/workflows/release.yml@refs/heads/main \
+  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/heads/main \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```
@@ -435,7 +435,7 @@ held key.
 ```bash
 slsa-verifier verify-artifact beekeeper \
   --provenance-path beekeeper.intoto.jsonl \
-  --source-uri github.com/mzansi-agentive/beekeeper
+  --source-uri github.com/bantuson/beekeeper
 ```
 
 SLSA Level 3 provenance confirms the build environment was ephemeral,

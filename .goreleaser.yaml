@@ -36,10 +36,10 @@ builds:
       - -buildvcs=false
     ldflags:
       - -s -w
-      - -X github.com/mzansi-agentive/beekeeper/internal/version.Version={{.Version}}
-      - -X github.com/mzansi-agentive/beekeeper/internal/version.Commit={{.Commit}}
+      - -X github.com/bantuson/beekeeper/internal/version.Version={{.Version}}
+      - -X github.com/bantuson/beekeeper/internal/version.Commit={{.Commit}}
       # Commit date, NOT the build wall-clock time.
-      - -X github.com/mzansi-agentive/beekeeper/internal/version.Date={{.CommitDate}}
+      - -X github.com/bantuson/beekeeper/internal/version.Date={{.CommitDate}}
     binary: beekeeper
 
 checksums:

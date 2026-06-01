@@ -17,11 +17,11 @@ import (
 	etw "github.com/tekert/golang-etw/etw"
 	"golang.org/x/sys/windows/svc"
 
-	"github.com/mzansi-agentive/beekeeper/internal/audit"
-	"github.com/mzansi-agentive/beekeeper/internal/config"
-	"github.com/mzansi-agentive/beekeeper/internal/ipc"
-	"github.com/mzansi-agentive/beekeeper/internal/platform"
-	"github.com/mzansi-agentive/beekeeper/internal/sentry"
+	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/ipc"
+	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/sentry"
 )
 
 // daemonState holds shared state protected by mu.
