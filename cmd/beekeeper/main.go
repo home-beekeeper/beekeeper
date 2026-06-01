@@ -43,6 +43,14 @@ func main() {
 	}
 }
 
+// scanOnDeltaFn is the function called by the catalogs watch onDelta callback
+// to trigger an extension rescan after a catalog delta. It is a package-level
+// var so tests can replace it with a mock without needing a live scan binary.
+// Production code leaves this as the default (scan.Scan).
+var scanOnDeltaFn = func(ctx context.Context, cfg scan.Config, out io.Writer) error {
+	return scan.Scan(ctx, cfg, out)
+}
+
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "beekeeper",
@@ -348,7 +356,17 @@ func newCatalogsCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve state directory: %w", err)
 			}
+			auditDir, err := platform.AuditDir()
+			if err != nil {
+				return fmt.Errorf("resolve audit directory: %w", err)
+			}
 			stateFile := filepath.Join(stateDir, "state.json")
+
+			// CODE-05 SC2: use layered resolver for watch commands.
+			beekeeperCfg, cfgErr := resolveConfig(cmd)
+			if cfgErr != nil {
+				return fmt.Errorf("load config: %w", cfgErr)
+			}
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
@@ -362,6 +380,19 @@ func newCatalogsCmd() *cobra.Command {
 				Sanity:       catalog.DefaultSanityConfig(),
 			}
 
+			// Resolve extension dirs for post-delta scan (same logic as newScanCmd).
+			var extDirs []string
+			if configDirs := beekeeperCfg.WatchDirectories(); len(configDirs) > 0 {
+				extDirs = configDirs
+			} else {
+				editors, _ := editorinit.DetectEditors()
+				for _, e := range editors {
+					if e.ExtensionDir != "" {
+						extDirs = append(extDirs, e.ExtensionDir)
+					}
+				}
+			}
+
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Starting catalog watch daemon (interval: %s, Ctrl+C to stop)...\n", cfg.PollInterval)
 
@@ -369,6 +400,9 @@ func newCatalogsCmd() *cobra.Command {
 				if sanity.Block {
 					fmt.Fprintf(out, "catalog delta [HARD-BLOCK sanity breach]: source=%s prev=%d new=%d delta=%d — %s\n",
 						delta.Source, delta.PrevCount, delta.NewCount, delta.DeltaCount, sanity.Reason)
+					// Hard-block sanity breach: do NOT trigger re-scan on potentially
+					// poisoned catalog data. Log and await operator intervention.
+					return
 				} else if sanity.Alert {
 					fmt.Fprintf(out, "catalog delta [ALERT sanity breach]: source=%s prev=%d new=%d delta=%d — %s\n",
 						delta.Source, delta.PrevCount, delta.NewCount, delta.DeltaCount, sanity.Reason)
@@ -376,6 +410,35 @@ func newCatalogsCmd() *cobra.Command {
 					fmt.Fprintf(out, "catalog delta: source=%s prev_count=%d new_count=%d delta=%d prev_hash=%s new_hash=%s\n",
 						delta.Source, delta.PrevCount, delta.NewCount, delta.DeltaCount,
 						delta.PrevHash, delta.NewHash)
+				}
+
+				// CTLG-06: on a real delta (non-block), refresh the catalog via Sync
+				// then trigger an immediate scan of installed extensions so newly-
+				// published threat_intel entries are acted on without waiting for the
+				// next user-triggered scan.
+				if delta.HasChanges() || sanity.Alert {
+					fmt.Fprintf(out, "catalog delta: triggering catalog sync + extension rescan...\n")
+
+					// Re-sync the catalog so the mmap index is up-to-date.
+					if _, syncErr := catalog.Sync(ctx, client, catalogDir); syncErr != nil {
+						fmt.Fprintf(os.Stderr, "beekeeper watch: catalog sync on delta failed: %v\n", syncErr)
+						// Non-fatal: continue to scan with existing index.
+					}
+
+					// Run a fresh extension scan against the updated index.
+					scanCfg := scan.Config{
+						ExtensionDirs: extDirs,
+						IndexPath:     filepath.Join(catalogDir, "bumblebee.idx"),
+						CacheDir:      catalogDir,
+						AuditPath:     filepath.Join(auditDir, "beekeeper.ndjson"),
+						SocketToken:   beekeeperCfg.SocketAPIToken(),
+						HTTPClient:    &http.Client{Timeout: 4 * time.Second},
+						Now:           func() time.Time { return time.Now().UTC() },
+					}
+					if scanErr := scanOnDeltaFn(ctx, scanCfg, out); scanErr != nil {
+						fmt.Fprintf(os.Stderr, "beekeeper watch: extension scan on delta failed: %v\n", scanErr)
+						// Non-fatal: daemon keeps running; next delta will retry.
+					}
 				}
 			})
 		},
