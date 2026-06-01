@@ -27,7 +27,7 @@ Current phase and status: see `.planning/STATE.md`
 - **Fail closed by default** — Any crash, timeout, or unavailability in `beekeeper check` or the gateway must result in block, not allow. `fail_open` is an explicit opt-in documented as reducing security.
 - **MCP gateway: stateless per-request proxy** — MCP July 2026 spec has no session state. Correlate JSON-RPC responses by `id` field, never by position.
 - **Bubble Tea: `charm.land/bubbletea/v2` import path** — NOT `github.com/charmbracelet`. Windows resize polling workaround required (TUI-10).
-- **eBPF: pre-compiled bytecode, embedded at build time via `bpf2go`** — Never compile at runtime. Must be done from the first Sentry commit.
+- **eBPF: pre-compiled bytecode, embedded at build time via `bpf2go`** — Never compile at runtime. Must be done from the first Sentry commit. Bytecode is CI-generated at build time (`go generate ./internal/sentry/linux/...` runs in the CI Linux job and the GoReleaser before-hook), NEVER committed to the repo, NEVER compiled at runtime. The loader stubs in `bpf_beekeeper_*_bpfel.go` fail closed (return a clear error) when bytecode is absent. To regenerate: run on Linux with `clang`, `llvm`, `libelf-dev`, `libbpf-dev`, and `linux-headers` installed. Windows/macOS builds are unaffected — the linux bpf files are guarded by `//go:build linux` tags.
 - **ETW: `tekert/golang-etw` (no CGO)** — NOT `bi-zone/etw` which requires CGO.
 
 ## Key Technical Decisions (locked)

@@ -25,6 +25,17 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
+      - name: Install clang/llvm/libbpf for eBPF bytecode generation (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            clang llvm libelf-dev libbpf-dev linux-headers-$(uname -r) bpftool
+
+      - name: Generate eBPF bytecode bindings (Linux only)
+        if: runner.os == 'Linux'
+        run: go generate ./internal/sentry/linux/...
+
       - name: Build
         run: go build -v -trimpath -buildvcs=false ./...
 

@@ -32,7 +32,18 @@ LDFLAGS    := -s -w \
 	-X $(MODULE)/internal/version.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/version.Date=$(DATE)
 
-.PHONY: build test vet verify-release
+.PHONY: build test vet generate verify-release
+
+# generate: run go generate for the Linux eBPF bindings.
+# Must be run on Linux with clang/llvm/libbpf installed. Used by CI and
+# GoReleaser before-hooks for Linux release builds. Never run locally on
+# non-Linux dev machines — the linux bpf files are build-tagged.
+generate:
+ifeq ($(shell uname -s),Linux)
+	go generate ./internal/sentry/linux/...
+else
+	@echo "SKIP: 'make generate' is Linux-only (eBPF bytecode requires clang/llvm/libbpf)"
+endif
 
 build:
 	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o dist/beekeeper ./cmd/beekeeper
