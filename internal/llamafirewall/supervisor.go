@@ -294,7 +294,11 @@ func (s *Supervisor) Scan(ctx context.Context, req ScanRequest) (ScanResponse, e
 		return ScanResponse{}, err
 	}
 
+	// Record into the per-instance tracker (for StatusInfo / supervisor-local use)
+	// and into the package-level GlobalLatencyTracker so CollectDiag (beekeeper diag)
+	// reports a real sidecar p95 after production sidecar calls. Closes INT-BLOCK-4.
 	s.latency.Record(resp.LatencyMS)
+	GlobalLatencyTracker.Record(resp.LatencyMS)
 	return resp, nil
 }
 
