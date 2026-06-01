@@ -1,14 +1,15 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1.0
-milestone_name: Pollen
-status: planning
-last_updated: "2026-06-01T00:00:00.000Z"
-last_activity: 2026-06-01
+milestone_name: "Pollen" — Windows Inventory Compatibility
+status: executing
+stopped_at: v1.0.0 complete. v1.1.0 roadmap defined (5 phases, 22 requirements mapped, 100% coverage). Phase numbering reset to 1 for this milestone.
+last_updated: "2026-06-01T20:02:41.181Z"
+last_activity: 2026-06-01 -- Phase 1 planning complete
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
   percent: 0
 ---
@@ -26,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 
 Phase: Not started (roadmap defined, awaiting plan-phase)
 Plan: —
-Status: Planning
-Last activity: 2026-06-01 — v1.1.0 roadmap created (5 phases, 22 requirements mapped)
+Status: Ready to execute
+Last activity: 2026-06-01 -- Phase 1 planning complete
 
 Progress: `░░░░░░░░░░░░░░░░░░░░` 0% (0/5 phases)
 
