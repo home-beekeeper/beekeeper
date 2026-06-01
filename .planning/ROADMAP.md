@@ -49,7 +49,12 @@
   3. `LICENSE` is verbatim Apache-2.0; `NOTICE` names Perplexity/Bumblebee as origin; `CHANGES.md` records every delta; `UPSTREAM.md` records the pinned 40-char SHA with tag + date + verifier
   4. "Bumblebee" does not appear in any command name, package name, or README headline — only in NOTICE, README attribution paragraph, and UPSTREAM.md
   5. The `v0.1.1-pollen.1` GitHub release carries a Sigstore/cosign signature and a CycloneDX SBOM recording the upstream pinned commit
-**Plans**: TBD
+**Plans**: 5 plans (4 waves)
+- [ ] 01-01-PLAN.md — Wave 0: fork upstream @ pinned SHA, rewrite module path, rename cmd/bumblebee→cmd/pollen, trademark fixes, build + Windows cross-compile + selftest (FORK-01, FORK-04)
+- [ ] 01-02-PLAN.md — Wave 1: Apache-2.0 attribution (LICENSE/NOTICE/CHANGES/UPSTREAM), VERSION, empty threat_intel, full-repo trademark audit (FORK-02, FORK-04)
+- [ ] 01-03-PLAN.md — Wave 1: NDJSON normalization harness + TestDifferential vs pinned upstream + selftest 3-finding regression (PTEST-02, PTEST-03)
+- [ ] 01-04-PLAN.md — Wave 2: reproducible Makefile + goreleaser (cosign + CycloneDX SBOM), 3-OS CI matrix + differential + govulncheck, release.yml SLSA L3, THREAT-MODEL (FORK-03, SDEF-02)
+- [ ] 01-05-PLAN.md — Wave 3: create bantuson/pollen repo, green CI, tag + signed v0.1.1-pollen.1 release, verify signature + SBOM (FORK-03, SDEF-02)
 
 ### Phase 2: Windows Root Resolver
 **Goal**: Pollen can discover all 8 package-manager roots on Windows — npm/pnpm/Yarn/Bun (JS ecosystems), PyPI, Go modules, RubyGems, and Composer — using `%APPDATA%`/`%LOCALAPPDATA%`/`%USERPROFILE%`/`%ProgramFiles%` environment variables, with the cross-platform parity test asserting equivalent detection counts against Linux.
