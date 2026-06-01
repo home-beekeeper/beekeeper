@@ -253,15 +253,14 @@ func newCheckCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve audit directory: %w", err)
 			}
-			configPath, err := platform.ConfigPath()
-			if err != nil {
-				return fmt.Errorf("resolve config path: %w", err)
-			}
 
 			indexPath := filepath.Join(catalogDir, "bumblebee.idx")
 			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
 
-			cfg, err := config.Load(configPath)
+			// CODE-05 SC2: use layered resolver so system→user→project→BEEKEEPER_*
+			// all apply to enforcement decisions. resolveConfig is defined in
+			// config_resolve.go (shared by check/gateway/watch/scan).
+			cfg, err := resolveConfig(cmd)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
@@ -459,12 +458,9 @@ func newWatchCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve audit directory: %w", err)
 			}
-			configPath, err := platform.ConfigPath()
-			if err != nil {
-				return fmt.Errorf("resolve config path: %w", err)
-			}
 
-			cfg, err := config.Load(configPath)
+			// CODE-05 SC2: layered resolver so project config overrides user config.
+			cfg, err := resolveConfig(cmd)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
@@ -532,12 +528,9 @@ func newScanCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve audit directory: %w", err)
 			}
-			configPath, err := platform.ConfigPath()
-			if err != nil {
-				return fmt.Errorf("resolve config path: %w", err)
-			}
 
-			cfg, err := config.Load(configPath)
+			// CODE-05 SC2: layered resolver so project config overrides user config.
+			cfg, err := resolveConfig(cmd)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
@@ -1048,12 +1041,9 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 			if err != nil {
 				return fmt.Errorf("resolve audit directory: %w", err)
 			}
-			configPath, err := platform.ConfigPath()
-			if err != nil {
-				return fmt.Errorf("resolve config path: %w", err)
-			}
 
-			cfg, err := config.Load(configPath)
+			// CODE-05 SC2: layered resolver so project config overrides user config.
+			cfg, err := resolveConfig(cmd)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
