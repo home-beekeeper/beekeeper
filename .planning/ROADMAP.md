@@ -21,6 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Cross-Platform Sentry** - macOS eslogger Sentry, Windows ETW Sentry, SLSA Level 3 provenance + SBOM
 - [x] **Phase 8: TUI Dashboard** - Bubble Tea v2 dashboard, all panels (activity, alerts, catalog, scan, policies, quarantine, health), admin mode
 - [x] **Phase 9: Policy as Code + Self-Defense Capstone** - Declarative JSON policies, `policy test/validate/list`, layered config, `beekeeper-self` catalog live, v1.0.0 (completed 2026-05-29)
+- [ ] **Phase 10: Cross-Phase Integration Closure** - Wire the four cross-phase blockers from the v1.0.0 milestone audit: live corroboration_threshold, gateway corroboration, LlamaFirewall supervisor + scan, diag sidecar latency, overlay coverage
 
 ## Phase Details
 
@@ -203,3 +204,19 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Cross-Platform Sentry | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | 5/5 | Complete   | 2026-05-29 |
+| 10. Cross-Phase Integration Closure | 0/1 | Not started | - |
+
+### Phase 10: Cross-Phase Integration Closure
+**Goal**: Close the four cross-phase wiring blockers found by the v1.0.0 milestone audit (`.planning/v1.0.0-MILESTONE-AUDIT.md`) so every shipped requirement is functional end-to-end — not just verified per-phase in isolation
+**Depends on**: Phase 9
+**Requirements**: PLCY-01, PLCY-07, CTLG-09, CODE-01, CODE-06, INTG-03, INTG-04, LLMF-01, LLMF-02, LLMF-03, LLMF-04, LLMF-05, LLMF-06
+**Success Criteria** (what must be TRUE):
+  1. A `corroboration_threshold` rule in a `policies/*.json` file changes the decision of live `beekeeper check` (not just `beekeeper policy test`) — live/dry-run parity (INT-BLOCK-2 / PLCY-07)
+  2. The MCP gateway evaluates tool calls against all corroboration sources (Bumblebee + OSV + Socket), so two independent sources produce a block via the gateway path, matching the hook handler (INT-BLOCK-3 / PLCY-01, CTLG-09, INTG-03/04)
+  3. With LlamaFirewall enabled, the supervisor is actually started and `audit-record` + the gateway proxy invoke the scan path (`RunAuditRecordWithLLMF` / `ScanProxiedResponse`), with fail-closed on sidecar unavailability; no orphaned LLMF exports remain (INT-BLOCK-1 / LLMF-01..06)
+  4. `beekeeper diag` reports a non-zero LlamaFirewall sidecar p95 after real sidecar invocations (`GlobalLatencyTracker` populated) (INT-BLOCK-4 / CODE-06)
+  5. The policy-as-code overlay (`package_allowlist`, `sensitive_path`) is applied in `gateway`, `watch`, and `scan` decision paths, not only `beekeeper check` (INT-WARN-1 / CODE-01)
+**Plans:** planned via /gsd-plan-phase 10 (no discuss — audit is the spec)
+
+Plans:
+- [ ] 10-01: Cross-phase wiring closure (corroboration_threshold live, gateway corroboration, LLMF supervisor + scan, diag sidecar latency, overlay coverage)
