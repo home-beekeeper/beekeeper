@@ -35,8 +35,8 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 ### Testing & Compatibility (PTEST)
 
 - [ ] **PTEST-01**: Cross-platform parity test — identical fake-package fixtures (`internal/testfixtures/`) produce equivalent inventory records on Linux/macOS/Windows (same packages, same severity matches, equivalent counts modulo OS path strings); `endpoint.os` differs correctly per platform
-- [ ] **PTEST-02**: Differential test — Pollen output is byte-for-byte identical to upstream Bumblebee on Linux and macOS for a fixed fixture; runs on every Pollen PR; re-run manually against any new upstream tag before absorbing
-- [ ] **PTEST-03**: `pollen selftest` passes on all three OSes; Pollen CI matrix (ubuntu/macos/windows, go 1.25.x) runs `go vet`, `go test -race ./...`, selftest, and a versioned build green; upstream's inherited Go test suite passes unchanged on Linux/macOS
+- [x] **PTEST-02**: Differential test — Pollen output is byte-for-byte identical to upstream Bumblebee on Linux and macOS for a fixed fixture; runs on every Pollen PR; re-run manually against any new upstream tag before absorbing
+- [x] **PTEST-03**: `pollen selftest` passes on all three OSes; Pollen CI matrix (ubuntu/macos/windows, go 1.25.x) runs `go vet`, `go test -race ./...`, selftest, and a versioned build green; upstream's inherited Go test suite passes unchanged on Linux/macOS
 - [ ] **PTEST-04**: The Pollen compatibility test runs from beekeeper's harness on all three OSes — invokes `pollen scan`, asserts NDJSON schema-consistency with beekeeper's audit schema, runs beekeeper rules on top, asserts no double-counting and correct `scanner_name`; the Windows skip baseline for these tests is zero
 - [ ] **PTEST-05**: Windows honeypot E2E — a planted process tree that reads synthetic `%USERPROFILE%\.aws\credentials` and makes an outbound connection fires beekeeper's Sentry exfil-signature-fusion rule on Windows
 
@@ -91,8 +91,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | FORK-02 | Phase 1 | Complete |
 | FORK-03 | Phase 1 | Pending |
 | FORK-04 | Phase 1 | Complete |
-| PTEST-02 | Phase 1 | Pending |
-| PTEST-03 | Phase 1 | Pending |
+| PTEST-02 | Phase 1 | Complete |
+| PTEST-03 | Phase 1 | Complete |
 | SDEF-02 | Phase 1 | Pending |
 | WRES-01 | Phase 2 | Pending |
 | WRES-02 | Phase 2 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
-stopped_at: v1.0.0 complete. v1.1.0 roadmap defined (5 phases, 22 requirements mapped, 100% coverage). Phase numbering reset to 1 for this milestone.
-last_updated: "2026-06-01T20:45:28.485Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-06-01T21:01:46.677Z"
 last_activity: 2026-06-01
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 01 (fork-setup-discipline) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-06-01
 
@@ -209,6 +209,7 @@ Next action: Execute plan 01-02
 | Phase 10 P10-01 | 45 | 5 tasks | 13 files |
 | Phase 11 P11-01 | 27min | 6 tasks | 15 files |
 | Phase 01 P01 | 19min | 3 tasks | 42 files |
+| Phase 01-fork-setup-discipline P03 | 35 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -265,6 +266,9 @@ Earlier decisions from Phase 1 (full log in PROJECT.md):
 - [Phase ?]: gateway.Config.Scanner GatewayScanner field (nil=disabled) for LLMF; lifecycle owned by main.go
 - [Phase ?]: llmfClientScanner adapter bridges *llamafirewall.Client to check.Scannable for one-shot audit-record
 - [Phase ?]: watch/scan policy overlay errors are non-fatal; handler.go is fail-closed as primary enforcement point
+- [Phase ?]: scanner_name stripped alongside 7 non-det fields in normalize() — differential asserts detection-logic parity not self-identification-string parity
+- [Phase ?]: TestDifferential name LOCKED in cmd/pollen/differential_test.go — plan 04 CI invokes it via go test ./cmd/pollen/ -run '^TestDifferential$'
+- [Phase ?]: normalize() uses map[string]any (not struct) — tolerates additive upstream fields without requiring schema updates; Go json.Marshal sorts map keys deterministically
 
 ### Open Research Flags (v1.1.0)
 
@@ -297,8 +301,8 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-01T20:45:28.442Z
-Stopped at: v1.0.0 complete. v1.1.0 roadmap defined (5 phases, 22 requirements mapped, 100% coverage). Phase numbering reset to 1 for this milestone.
+Last session: 2026-06-01T21:01:46.646Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
