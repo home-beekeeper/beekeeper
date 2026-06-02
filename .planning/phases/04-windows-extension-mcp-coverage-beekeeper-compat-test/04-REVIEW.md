@@ -15,6 +15,7 @@ findings:
   info: 4
   total: 7
 status: issues_found
+resolution: "WR-01, WR-02 fixed in pollen b906404 (2026-06-02). WR-03 + IN-01..IN-04 accepted/deferred — see Resolution section."
 ---
 
 # Phase 4: Code Review Report
@@ -23,6 +24,18 @@ status: issues_found
 **Depth:** standard
 **Files Reviewed:** 5
 **Status:** issues_found
+
+## Resolution (2026-06-02)
+
+| Finding | Disposition |
+|---------|-------------|
+| **WR-01** `.vscode-oss` mislabeled as `vscode` | ✅ **Fixed** — pollen `b906404`: added `.vscode-oss` → `vscodium` case in `hostFromExtRoot`. Both VSCodium variants now labelled correctly. |
+| **WR-02** test asserts only `.vscode-oss`, not `.vscodium` | ✅ **Fixed** — pollen `b906404`: `TestWindowsExtensionMCPRoots` now creates + asserts both `.vscode-oss/extensions` and `.vscodium/extensions`. |
+| **WR-03** `audit.NewWriter` per extension (FD churn) | ⏸ **Deferred** — pre-existing Phase-3 code in `evaluateExtension`, not introduced by Phase 4's seam rename. Out of phase scope; tracked as a perf nit for a future cleanup. |
+| **IN-01** `TestScanWithBumblebee` name not renamed | ⏸ Accepted — cosmetic; the test exercises the renamed `runPollenFn` seam correctly. |
+| **IN-02** dead `parentSlash == seg` branch | ⏸ Accepted — harmless dead branch, pre-existing. |
+| **IN-03** MCP fixture missing `normalized_name` | ⏸ Accepted — double-counting check still valid; minor adversarial-power nit. |
+| **IN-04** browser-profile assertion only covers `Default` | ⏸ Accepted — `Default` profile proves the per-profile loop wiring; non-default profiles are the same code path. |
 
 ## Summary
 
