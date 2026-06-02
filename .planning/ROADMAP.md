@@ -102,7 +102,7 @@
   5. `v0.1.1-pollen.4` is tagged and signed (DEFERRED to M2 close per D-06 — plan 04-03 prepares VERSION + CHANGES.md locally; the signed git tag is batched to milestone close)
 **Plans**: 3 plans (2 waves)
 - [x] 04-01-PLAN.md — Wave 1 (Pollen): WEXT-01/02/03 — fill browser `case "windows":` skeletons + Windows MCP roots (%APPDATA%\Claude, %APPDATA%\cline) + unconditional .windsurf MCP root + .vscode-oss editor segment; TestWindowsExtensionMCPRoots
-- [ ] 04-02-PLAN.md — Wave 1 (beekeeper): BKINT-01 in-place rename runBumblebeeFn→runPollenFn in internal/scan/scanner.go + PTEST-04 TestPollenCompatibility (5 record types, scanner_name=pollen, no double-counting, zero t.Skip)
+- [x] 04-02-PLAN.md — Wave 1 (beekeeper): BKINT-01 in-place rename runBumblebeeFn→runPollenFn in internal/scan/scanner.go + PTEST-04 TestPollenCompatibility (5 record types, scanner_name=pollen, no double-counting, zero t.Skip)
 - [ ] 04-03-PLAN.md — Wave 2 (Pollen): VERSION bump 0.1.1-pollen.4 + CHANGES.md WEXT section (no tag — D-06 deferral)
 **UI hint**: no
 
@@ -127,7 +127,7 @@
 | 1. Foundation + Hook Handler | v1.0.0 | 4/5 | In Progress|  |
 | 2. Policy Engine + Multi-Source Catalogs | v1.0.0 | 3/4 | In Progress|  |
 | 3. Editor Extension Defense | v1.0.0 | 5/5 | Complete | 2026-05-26 |
-| 4. Integration Surfaces | v1.0.0 | 1/3 | In Progress|  |
+| 4. Integration Surfaces | v1.0.0 | 2/3 | In Progress|  |
 | 5. Linux Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 6. LlamaFirewall + Audit Sinks | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 7. Cross-Platform Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |

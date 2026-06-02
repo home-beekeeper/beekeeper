@@ -37,12 +37,12 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 - [x] **PTEST-01**: Cross-platform parity test — identical fake-package fixtures (`internal/testfixtures/`) produce equivalent inventory records on Linux/macOS/Windows (same packages, same severity matches, equivalent counts modulo OS path strings); `endpoint.os` differs correctly per platform
 - [x] **PTEST-02**: Differential test — Pollen output is byte-for-byte identical to upstream Bumblebee on Linux and macOS for a fixed fixture; runs on every Pollen PR; re-run manually against any new upstream tag before absorbing
 - [x] **PTEST-03**: `pollen selftest` passes on all three OSes; Pollen CI matrix (ubuntu/macos/windows, go 1.25.x) runs `go vet`, `go test -race ./...`, selftest, and a versioned build green; upstream's inherited Go test suite passes unchanged on Linux/macOS
-- [ ] **PTEST-04**: The Pollen compatibility test runs from beekeeper's harness on all three OSes — invokes `pollen scan`, asserts NDJSON schema-consistency with beekeeper's audit schema, runs beekeeper rules on top, asserts no double-counting and correct `scanner_name`; the Windows skip baseline for these tests is zero
+- [x] **PTEST-04**: The Pollen compatibility test runs from beekeeper's harness on all three OSes — invokes `pollen scan`, asserts NDJSON schema-consistency with beekeeper's audit schema, runs beekeeper rules on top, asserts no double-counting and correct `scanner_name`; the Windows skip baseline for these tests is zero
 - [ ] **PTEST-05**: Windows honeypot E2E — a planted process tree that reads synthetic `%USERPROFILE%\.aws\credentials` and makes an outbound connection fires beekeeper's Sentry exfil-signature-fusion rule on Windows
 
 ### Beekeeper Integration (BKINT)
 
-- [ ] **BKINT-01**: Beekeeper consumes Pollen across the `internal/inventory/` boundary — invokes `pollen scan`, parses NDJSON, applies beekeeper rules; the `bumblebee` subprocess call in `internal/scan` (`runBumblebeeFn`) is swapped for `pollen` behind a mockable interface so beekeeper unit tests don't require Pollen to run
+- [x] **BKINT-01**: Beekeeper consumes Pollen across the `internal/inventory/` boundary — invokes `pollen scan`, parses NDJSON, applies beekeeper rules; the `bumblebee` subprocess call in `internal/scan` (`runBumblebeeFn`) is swapped for `pollen` behind a mockable interface so beekeeper unit tests don't require Pollen to run
 - [ ] **BKINT-02**: Beekeeper's `go.mod` pins Pollen at an explicit version (no auto-update; bumps require explicit beekeeper PRs); beekeeper CI installs Pollen and runs the compatibility + honeypot tests, flipping Windows CI from "skipped Bumblebee tests" to fully green
 
 ### Upstream Sync & Contribution-Back (SYNC)
@@ -102,8 +102,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | WEXT-01 | Phase 4 | Complete |
 | WEXT-02 | Phase 4 | Complete |
 | WEXT-03 | Phase 4 | Complete |
-| BKINT-01 | Phase 4 | Pending |
-| PTEST-04 | Phase 4 | Pending |
+| BKINT-01 | Phase 4 | Complete |
+| PTEST-04 | Phase 4 | Complete |
 | SYNC-01 | Phase 5 | Pending |
 | SYNC-02 | Phase 5 | Pending |
 | BKINT-02 | Phase 5 | Pending |
