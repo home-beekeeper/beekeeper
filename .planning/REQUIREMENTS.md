@@ -28,9 +28,9 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 ### Windows Extension & MCP Coverage (WEXT)
 
-- [ ] **WEXT-01**: Windows editor-extension paths — VS Code, Code Insiders, Cursor, Windsurf, VSCodium (`%USERPROFILE%\.vscode\extensions\` and equivalents)
-- [ ] **WEXT-02**: Windows browser-extension paths — Chrome, Chromium, Edge, Brave (`%LOCALAPPDATA%\...\User Data\<Profile>\Extensions\`) and Firefox (`%APPDATA%\Mozilla\Firefox\Profiles\<profile>\extensions.json`), per profile
-- [ ] **WEXT-03**: Windows MCP host-config paths — Claude Desktop (`%APPDATA%\Claude\...`), Cursor MCP, Windsurf MCP, Cline (`%APPDATA%\cline\...`), Gemini CLI (`%USERPROFILE%\.gemini\settings.json`)
+- [x] **WEXT-01**: Windows editor-extension paths — VS Code, Code Insiders, Cursor, Windsurf, VSCodium (`%USERPROFILE%\.vscode\extensions\` and equivalents)
+- [x] **WEXT-02**: Windows browser-extension paths — Chrome, Chromium, Edge, Brave (`%LOCALAPPDATA%\...\User Data\<Profile>\Extensions\`) and Firefox (`%APPDATA%\Mozilla\Firefox\Profiles\<profile>\extensions.json`), per profile
+- [x] **WEXT-03**: Windows MCP host-config paths — Claude Desktop (`%APPDATA%\Claude\...`), Cursor MCP, Windsurf MCP, Cline (`%APPDATA%\cline\...`), Gemini CLI (`%USERPROFILE%\.gemini\settings.json`)
 
 ### Testing & Compatibility (PTEST)
 
@@ -99,9 +99,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PTEST-01 | Phase 2 | Complete |
 | WPATH-01 | Phase 3 | Pending |
 | WPATH-02 | Phase 3 | Pending |
-| WEXT-01 | Phase 4 | Pending |
-| WEXT-02 | Phase 4 | Pending |
-| WEXT-03 | Phase 4 | Pending |
+| WEXT-01 | Phase 4 | Complete |
+| WEXT-02 | Phase 4 | Complete |
+| WEXT-03 | Phase 4 | Complete |
 | BKINT-01 | Phase 4 | Pending |
 | PTEST-04 | Phase 4 | Pending |
 | SYNC-01 | Phase 5 | Pending |

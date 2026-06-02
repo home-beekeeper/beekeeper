@@ -4,13 +4,13 @@ milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-06-02T17:03:03.826Z"
-last_activity: 2026-06-02 -- Phase 4 planning complete
+last_updated: "2026-06-02T18:09:15.452Z"
+last_activity: 2026-06-02
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
   percent: 60
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 04 — windows-extension-&-mcp-coverage (Phase 3 complete & verified 2026-06-02; `v0.1.1-pollen.3` signed tag deferred to M2 close)
+**Current focus:** Phase 04 — Windows Extension & MCP Coverage + Beekeeper Compat Test
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
+Phase: 04 (Windows Extension & MCP Coverage + Beekeeper Compat Test) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-02 -- Phase 4 planning complete
+Last activity: 2026-06-02
 
 Progress: `[██████░░░░] 60%` (3/5 phases complete; Phases 2 & 3 code done & verified, signed releases deferred to M2 close)
 
@@ -213,6 +213,7 @@ Next action: Execute Phase 4 — `/gsd-execute-phase 4` (Windows Extension & MCP
 | Phase 02-windows-root-resolver P01 | 15 | 3 tasks | 3 files |
 | Phase 02-windows-root-resolver P02 | 25 | 3 tasks | 3 files |
 | Phase 02-windows-root-resolver P03 | 15 | 3 tasks | 9 files |
+| Phase 04-windows-extension-mcp-coverage-beekeeper-compat-test P01 | 25min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -283,6 +284,7 @@ Earlier decisions from Phase 1 (full log in PROJECT.md):
 - [Phase ?]: Phase 02-01: roots_notwindows.go (//go:build !windows) stubs required — Go compiles all switch case bodies at build time; case windows: bodies need !windows stubs for tri-GOOS build
 - [Phase ?]: Phase 02-01: env-var guards are per-variable (if appdata := ...) not single upfront check — Windows has multiple independent env vars unlike Unix HOME
 - [Phase ?]: Phase 02-01: GOPATH not consulted for Go modules root — mirrors upstream Unix behavior using %USERPROFILE%\go\pkg\mod only
+- [Phase ?]: Phase 04-01 complete
 
 ### Open Research Flags (v1.1.0)
 
@@ -317,7 +319,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-02T10:22:57.275Z
+Last session: 2026-06-02T18:09:15.428Z
 Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
