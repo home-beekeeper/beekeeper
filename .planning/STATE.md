@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1.0
-milestone_name: "Pollen" — Windows Inventory Compatibility
+milestone_name: Pollen" — Windows Inventory Compatibility
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-06-01T21:15:22.106Z"
+last_updated: "2026-06-02T07:14:05.313Z"
 last_activity: 2026-06-01
 progress:
   total_phases: 5
