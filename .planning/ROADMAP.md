@@ -99,8 +99,11 @@
   2. On Windows CI, `pollen scan` detects fake Chrome/Chromium/Edge/Brave (per-profile) and Firefox (per-profile `extensions.json`) browser extensions; all Chromium-family and Firefox paths return records
   3. On Windows CI, `pollen scan` finds fake MCP config files at `%APPDATA%\Claude\`, `%USERPROFILE%\.cursor\mcp.json`, `%USERPROFILE%\.windsurf\mcp.json`, `%APPDATA%\cline\`, and `%USERPROFILE%\.gemini\settings.json`
   4. Beekeeper's Pollen compatibility test (invoking `pollen scan`, asserting NDJSON schema-consistency, running beekeeper rules, asserting `scanner_name`) runs green on ubuntu/macos/windows with zero `t.Skip` calls — the beekeeper Windows CI skip baseline for inventory tests is zero
-  5. `v0.1.1-pollen.4` is tagged and signed
-**Plans**: TBD
+  5. `v0.1.1-pollen.4` is tagged and signed (DEFERRED to M2 close per D-06 — plan 04-03 prepares VERSION + CHANGES.md locally; the signed git tag is batched to milestone close)
+**Plans**: 3 plans (2 waves)
+- [ ] 04-01-PLAN.md — Wave 1 (Pollen): WEXT-01/02/03 — fill browser `case "windows":` skeletons + Windows MCP roots (%APPDATA%\Claude, %APPDATA%\cline) + unconditional .windsurf MCP root + .vscode-oss editor segment; TestWindowsExtensionMCPRoots
+- [ ] 04-02-PLAN.md — Wave 1 (beekeeper): BKINT-01 in-place rename runBumblebeeFn→runPollenFn in internal/scan/scanner.go + PTEST-04 TestPollenCompatibility (5 record types, scanner_name=pollen, no double-counting, zero t.Skip)
+- [ ] 04-03-PLAN.md — Wave 2 (Pollen): VERSION bump 0.1.1-pollen.4 + CHANGES.md WEXT section (no tag — D-06 deferral)
 **UI hint**: no
 
 ### Phase 5: Contribution-Back & Milestone Close
@@ -135,5 +138,5 @@
 | **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
 | **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
-| **4. Windows Extension & MCP Coverage** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
+| **4. Windows Extension & MCP Coverage** | **v1.1.0** | **0/3** | **Planned** | **—** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
