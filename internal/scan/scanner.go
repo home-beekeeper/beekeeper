@@ -1,7 +1,7 @@
 // Package scan implements the Beekeeper scan orchestrator (EDXT-04).
-// It invokes the Bumblebee CLI when present, reads its NDJSON stdout, and merges
+// It invokes the Pollen CLI when present, reads its NDJSON stdout, and merges
 // it with Beekeeper-own per-extension catalog/release-age findings into one NDJSON
-// stream. When Bumblebee is unavailable, a scan_status record is emitted and the
+// stream. When Pollen is unavailable, a scan_status record is emitted and the
 // Beekeeper-own scan continues uninterrupted.
 package scan
 
@@ -53,19 +53,19 @@ type FindingRecord struct {
 }
 
 // Package-level injectable vars for tests.
-var lookBumblebee = func() (string, error) { return exec.LookPath("bumblebee") }
+var lookPollenFn = func() (string, error) { return exec.LookPath("pollen") }
 
-// runBumblebeeFn is replaced in tests to yield canned lines without spawning a real process.
-// Returns (channel, true) when bumblebee is available, (nil, false) otherwise.
-var runBumblebeeFn = func(ctx context.Context, deep bool) (<-chan []byte, bool) {
-	return defaultRunBumblebee(ctx, deep)
+// runPollenFn is replaced in tests to yield canned lines without spawning a real process.
+// Returns (channel, true) when pollen is available, (nil, false) otherwise.
+var runPollenFn = func(ctx context.Context, deep bool) (<-chan []byte, bool) {
+	return defaultRunPollen(ctx, deep)
 }
 
-// defaultRunBumblebee invokes bumblebee and streams its stdout NDJSON lines over the
-// returned channel. Returns (nil, false) if bumblebee is not in PATH or fails to start.
-// NOTE: no --format flag is passed — NDJSON is bumblebee's default output format.
-func defaultRunBumblebee(ctx context.Context, deep bool) (<-chan []byte, bool) {
-	bin, err := lookBumblebee()
+// defaultRunPollen invokes pollen and streams its stdout NDJSON lines over the
+// returned channel. Returns (nil, false) if pollen is not in PATH or fails to start.
+// NOTE: no --format flag is passed — NDJSON is pollen's default output format.
+func defaultRunPollen(ctx context.Context, deep bool) (<-chan []byte, bool) {
+	bin, err := lookPollenFn()
 	if err != nil {
 		return nil, false
 	}
@@ -96,7 +96,7 @@ func defaultRunBumblebee(ctx context.Context, deep bool) (<-chan []byte, bool) {
 	return ch, true
 }
 
-// Scan orchestrates the Bumblebee CLI (when available) and the Beekeeper-own
+// Scan orchestrates the Pollen CLI (when available) and the Beekeeper-own
 // per-extension catalog/release-age scan, writing merged NDJSON results to out.
 func Scan(ctx context.Context, cfg Config, out io.Writer) error {
 	if cfg.HTTPClient == nil {
@@ -106,7 +106,7 @@ func Scan(ctx context.Context, cfg Config, out io.Writer) error {
 		cfg.Now = func() time.Time { return time.Now().UTC() }
 	}
 
-	ch, ok := runBumblebeeFn(ctx, cfg.Deep)
+	ch, ok := runPollenFn(ctx, cfg.Deep)
 	if ok {
 		for line := range ch {
 			if len(line) == 0 {
@@ -118,8 +118,8 @@ func Scan(ctx context.Context, cfg Config, out io.Writer) error {
 				warn := map[string]any{
 					"record_type":  "scan_error",
 					"scanner_name": "beekeeper",
-					"source":       "bumblebee",
-					"error":        "malformed NDJSON from bumblebee subprocess",
+					"source":       "pollen",
+					"error":        "malformed NDJSON from pollen subprocess",
 				}
 				_ = writeJSONLine(out, warn)
 				continue
@@ -131,14 +131,14 @@ func Scan(ctx context.Context, cfg Config, out io.Writer) error {
 			}
 		}
 	} else {
-		// Bumblebee not in PATH or failed to start — degrade gracefully.
+		// Pollen not in PATH or failed to start — degrade gracefully.
 		status := map[string]any{
-			"record_type":           "scan_status",
-			"bumblebee_unavailable": true,
-			"scanner_name":          "beekeeper",
+			"record_type":        "scan_status",
+			"pollen_unavailable": true,
+			"scanner_name":       "beekeeper",
 		}
 		if err := writeJSONLine(out, status); err != nil {
-			return fmt.Errorf("write bumblebee_unavailable status: %w", err)
+			return fmt.Errorf("write pollen_unavailable status: %w", err)
 		}
 		if cfg.AuditPath != "" {
 			if b, err := json.Marshal(status); err == nil {
