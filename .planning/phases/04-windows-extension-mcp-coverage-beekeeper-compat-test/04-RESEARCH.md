@@ -848,7 +848,9 @@ t.Setenv("ProgramFiles", filepath.Join(tmp, "ProgramFiles"))
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved in planning — answers embedded below and reflected in 04-01/04-02 task actions.
 
 1. **VSCodium `.vscodium` vs `.vscode-oss` — which does Phase 4 add?**
    - What we know: PRD §8.2 says `.vscode-oss\extensions\`. Live code has `.vscodium/extensions`.
