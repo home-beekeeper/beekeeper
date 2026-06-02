@@ -4,8 +4,8 @@ milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-06-02T14:47:16.979Z"
-last_activity: 2026-06-02 -- Phase 3 planning complete
+last_updated: "2026-06-02T15:16:47.944Z"
+last_activity: 2026-06-02 -- Phase 03 execution started
 progress:
   total_phases: 5
   completed_phases: 2
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 03 — windows-path-representation (Phase 2 code complete; v0.1.1-pollen.2 signed release deferred to M2 close — see Deferred Items)
+**Current focus:** Phase 03 — windows-path-representation
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-02 -- Phase 3 planning complete
+Phase: 03 (windows-path-representation) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 03
+Last activity: 2026-06-02 -- Phase 03 execution started
 
 Progress: `[████░░░░░░] 40%` (2/5 phases complete; Phase 2 code done, release deferred to M2 close)
 

@@ -85,8 +85,8 @@
   3. Beekeeper's audit-log consumer parses a Windows-shaped Pollen NDJSON record without error and round-trips the endpoint fields correctly; a test in `internal/scan/` asserts this (locus corrected from `internal/inventory/` per 03-RESEARCH.md — `internal/inventory/` is Phase 4's BKINT-01 boundary)
   4. `v0.1.1-pollen.3` is tagged and signed (DEFERRED to M2 close per D-06 / Phase-2 precedent — plan 03-03 prepares VERSION + CHANGES.md locally; the signed git tag is batched to milestone close)
 **Plans**: 3 plans (2 waves)
-- [ ] 03-01-PLAN.md — Wave 1 (Pollen): WPATH-01 — wrap npm.go + pnpm.go projectPath join in filepath.FromSlash (backslash on Windows, Unix-identity) + Windows-gated unit tests
-- [ ] 03-02-PLAN.md — Wave 1 (Pollen): WPATH-02 — guard both endpoint.Current() UID assignments with runtime.GOOS != "windows" (empty uid on Windows, unchanged on Unix) + endpoint tests
+- [x] 03-01-PLAN.md — Wave 1 (Pollen): WPATH-01 — wrap npm.go + pnpm.go projectPath join in filepath.FromSlash (backslash on Windows, Unix-identity) + Windows-gated unit tests
+- [x] 03-02-PLAN.md — Wave 1 (Pollen): WPATH-02 — guard both endpoint.Current() UID assignments with runtime.GOOS != "windows" (empty uid on Windows, unchanged on Unix) + endpoint tests
 - [ ] 03-03-PLAN.md — Wave 2 (both repos): parity_test.go Windows path-shape + empty-uid assertions, beekeeper internal/scan round-trip test (D-03), VERSION/CHANGES bump to 0.1.1-pollen.3 (no tag)
 
 ### Phase 4: Windows Extension & MCP Coverage + Beekeeper Compat Test
