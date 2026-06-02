@@ -70,7 +70,9 @@
 - [x] 02-01-PLAN.md — Wave 1: roots_windows.go (8-ecosystem Windows root table) + case "windows": wiring in roots.go + isBroadHomeRoot drive-root branch (WRES-01, WRES-02)
 - [x] 02-02-PLAN.md — Wave 2: roots_windows_test.go (Windows unit tests) + flip the 6 Phase-2 skips in main_test.go (WRES-01, WRES-02 verification)
 - [x] 02-03-PLAN.md — Wave 2: parity_test.go + testdata/parity-fixture/ 8-ecosystem fixture (PTEST-01)
-- [ ] 02-04-PLAN.md — Wave 3: VERSION bump 0.1.1-pollen.2 + CHANGES.md + tag/sign release (Success Criterion 4 gate)
+- [~] 02-04-PLAN.md — Wave 3: VERSION bump 0.1.1-pollen.2 + CHANGES.md **prepared & committed locally** (`../pollen` HEAD `c94b271`); **tag + Sigstore signing DEFERRED to M2 close** by maintainer decision (Success Criterion 4 gate)
+
+> **⏸ Pending release (future context):** Phase 2 code is complete and verified (SC1–SC3 ✅; SC4 skips-flipped ✅, signed tag deferred). The `v0.1.1-pollen.2` signed release is intentionally batched to **end of Milestone 2**. 4 commits sit unpushed on `../pollen` `main`. Cut it via: `git push origin main` → confirm 3-OS CI green → `git tag -a v0.1.1-pollen.2 …` + push → `cosign verify-blob`. Full commands in `.planning/phases/02-windows-root-resolver/02-04-SUMMARY.md` and the STATE.md Deferred Items table.
 
 ### Phase 3: Windows Path Representation
 **Goal**: Every NDJSON record emitted by Pollen on Windows carries native Windows paths — backslash separators, drive letters, `endpoint.os="windows"`, correct `arch` and `username`, and empty `uid` — and beekeeper's audit-log consumer handles Windows-shaped endpoint records correctly on round-trip.
@@ -128,7 +130,7 @@
 | 10. Cross-Phase Integration Closure | v1.0.0 | 1/1 | Complete | 2026-06-01 |
 | 11. v1.0.0 PRD-Gap Closure (pre-push) | v1.0.0 | 1/1 | Complete | 2026-06-01 |
 | **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
-| **2. Windows Root Resolver** | **v1.1.0** | **0/4** | **Planned** | **—** |
+| **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
 | **3. Windows Path Representation** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
