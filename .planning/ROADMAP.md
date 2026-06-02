@@ -32,7 +32,7 @@
 
 - [x] **Phase 1: Fork Setup & Discipline** — Pollen module established, Apache-2.0 attribution, reproducible builds + Sigstore, differential + selftest CI green; tag `v0.1.1-pollen.1`
 - [~] **Phase 2: Windows Root Resolver** — All 8 ecosystems resolved on Windows, parity test passes (code complete & verified); tag `v0.1.1-pollen.2` **deferred to M2 close**
-- [ ] **Phase 3: Windows Path Representation** — Native backslash paths and Windows endpoint record in NDJSON, round-trip verified; tag `v0.1.1-pollen.3`
+- [~] **Phase 3: Windows Path Representation** — Native backslash paths and Windows endpoint record in NDJSON, round-trip verified (code complete & verified 2026-06-02); tag `v0.1.1-pollen.3` **deferred to M2 close**
 - [ ] **Phase 4: Windows Extension & MCP Coverage** — Editor, browser, MCP config paths complete; beekeeper compat test runs on all 3 OSes with zero skips; tag `v0.1.1-pollen.4`
 - [ ] **Phase 5: Contribution-Back & Milestone Close** — Upstream PRs prepared, beekeeper full CI green including honeypot E2E, `pollen-self` in catalog, sync workflow documented; tag `v0.1.1-pollen.5`
 
@@ -134,6 +134,6 @@
 | 11. v1.0.0 PRD-Gap Closure (pre-push) | v1.0.0 | 1/1 | Complete | 2026-06-01 |
 | **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
-| **3. Windows Path Representation** | **v1.1.0** | **0/3** | **Planned** | **—** |
+| **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/TBD** | **Not started** | **—** |

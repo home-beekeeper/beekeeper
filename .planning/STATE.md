@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 03 — windows-path-representation
+**Current focus:** Phase 04 — windows-extension-&-mcp-coverage (Phase 3 complete & verified 2026-06-02; `v0.1.1-pollen.3` signed tag deferred to M2 close)
 
 ## Current Position
 
 Phase: 4
 Plan: Not started
-Status: Executing Phase 03
+Status: Phase 3 complete & verified — ready to plan Phase 4
 Last activity: 2026-06-02
 
-Progress: `[████░░░░░░] 40%` (2/5 phases complete; Phase 2 code done, release deferred to M2 close)
+Progress: `[██████░░░░] 60%` (3/5 phases complete; Phases 2 & 3 code done & verified, signed releases deferred to M2 close)
 
-Next action: Plan Phase 3 — `/gsd-plan-phase 3` (Windows Path Representation)
+Next action: Plan Phase 4 — `/gsd-plan-phase 4` (Windows Extension & MCP Coverage)
 
 ## Phase Summary (v1.1.0)
 
@@ -40,7 +40,7 @@ Next action: Plan Phase 3 — `/gsd-plan-phase 3` (Windows Path Representation)
 |-------|------|-----|--------------|--------|
 | 1 | Fork Setup & Discipline | v0.1.1-pollen.1 | FORK-01–04, PTEST-02–03, SDEF-02 | ✅ Complete |
 | 2 | Windows Root Resolver | v0.1.1-pollen.2 | WRES-01–02, PTEST-01 | ✅ Code complete — signed release deferred to M2 close |
-| 3 | Windows Path Representation | v0.1.1-pollen.3 | WPATH-01–02 | Not started |
+| 3 | Windows Path Representation | v0.1.1-pollen.3 | WPATH-01–02 | ✅ Code complete & verified — signed release deferred to M2 close |
 | 4 | Windows Extension & MCP Coverage | v0.1.1-pollen.4 | WEXT-01–03, BKINT-01, PTEST-04 | Not started |
 | 5 | Contribution-Back & Milestone Close | v0.1.1-pollen.5 | SYNC-01–02, BKINT-02, PTEST-05, SDEF-01 | Not started |
 
@@ -313,6 +313,7 @@ Items acknowledged and carried forward:
 | Distribution | Pollen binary releases (DIST-01) | v2 requirement | v1.1.0 scoping |
 | Self-catalog | Separate `pollen-self` catalog (SELF-02) | v2 requirement | v1.1.0 scoping |
 | Release | **`v0.1.1-pollen.2` signed tag (Phase 2 SC4)** — VERSION+CHANGES bumped and 4 commits prepared locally in `../pollen` (HEAD `c94b271`), **unpushed, untagged**. Cut the release at M2 close: `git push origin main` → confirm 3-OS CI green → `git tag -a v0.1.1-pollen.2` + push → cosign verify. Exact commands in `.planning/phases/02-windows-root-resolver/02-04-SUMMARY.md`. | **Deferred to M2 close** (maintainer decision 2026-06-02) | Phase 2 (v1.1.0) |
+| Release | **`v0.1.1-pollen.3` signed tag (Phase 3 SC4)** — VERSION bumped to `0.1.1-pollen.3` + CHANGES.md WPATH section prepared locally in `../pollen` (commits incl. `1cb3fdb`, `19695e3`), **untagged, unsigned**. Cut at M2 close together with pollen.2: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.3` + push → cosign verify. Details in `.planning/phases/03-windows-path-representation/03-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 3 (v1.1.0) |
 
 ## Session Continuity
 
