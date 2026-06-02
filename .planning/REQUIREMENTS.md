@@ -34,7 +34,7 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 ### Testing & Compatibility (PTEST)
 
-- [ ] **PTEST-01**: Cross-platform parity test — identical fake-package fixtures (`internal/testfixtures/`) produce equivalent inventory records on Linux/macOS/Windows (same packages, same severity matches, equivalent counts modulo OS path strings); `endpoint.os` differs correctly per platform
+- [x] **PTEST-01**: Cross-platform parity test — identical fake-package fixtures (`internal/testfixtures/`) produce equivalent inventory records on Linux/macOS/Windows (same packages, same severity matches, equivalent counts modulo OS path strings); `endpoint.os` differs correctly per platform
 - [x] **PTEST-02**: Differential test — Pollen output is byte-for-byte identical to upstream Bumblebee on Linux and macOS for a fixed fixture; runs on every Pollen PR; re-run manually against any new upstream tag before absorbing
 - [x] **PTEST-03**: `pollen selftest` passes on all three OSes; Pollen CI matrix (ubuntu/macos/windows, go 1.25.x) runs `go vet`, `go test -race ./...`, selftest, and a versioned build green; upstream's inherited Go test suite passes unchanged on Linux/macOS
 - [ ] **PTEST-04**: The Pollen compatibility test runs from beekeeper's harness on all three OSes — invokes `pollen scan`, asserts NDJSON schema-consistency with beekeeper's audit schema, runs beekeeper rules on top, asserts no double-counting and correct `scanner_name`; the Windows skip baseline for these tests is zero
@@ -96,7 +96,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | SDEF-02 | Phase 1 | Complete |
 | WRES-01 | Phase 2 | Complete |
 | WRES-02 | Phase 2 | Complete |
-| PTEST-01 | Phase 2 | Pending |
+| PTEST-01 | Phase 2 | Complete |
 | WPATH-01 | Phase 3 | Pending |
 | WPATH-02 | Phase 3 | Pending |
 | WEXT-01 | Phase 4 | Pending |
