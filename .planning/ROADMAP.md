@@ -138,5 +138,5 @@
 | **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
 | **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
-| **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete — release deferred to M2 close** | **2026-06-02** |
+| **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
