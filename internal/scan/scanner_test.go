@@ -43,6 +43,53 @@ func TestScanWithBumblebee(t *testing.T) {
 	}
 }
 
+func TestScanWindowsShapedRecord(t *testing.T) {
+	old := runBumblebeeFn
+	defer func() { runBumblebeeFn = old }()
+
+	// Windows-shaped Pollen NDJSON record:
+	//   - project_path and source_file use backslash separators + drive letter
+	//   - endpoint.os = "windows", endpoint.uid = "" (WPATH-02)
+	// JSON-encoded backslashes: C:\Users\fana → C:\\Users\\fana in the raw string.
+	windowsRecord := `{"record_type":"package","record_id":"package:abc123",` +
+		`"schema_version":"0.1.0","scanner_name":"pollen",` +
+		`"endpoint":{"hostname":"WIN-BOX","os":"windows","arch":"amd64",` +
+		`"username":"fana","uid":""},"ecosystem":"npm",` +
+		`"normalized_name":"left-pad","version":"1.3.0",` +
+		`"project_path":"C:\\Users\\fana\\code\\web-app",` +
+		`"source_type":"npm-lockfile",` +
+		`"source_file":"C:\\Users\\fana\\code\\web-app\\package-lock.json",` +
+		`"confidence":"high","has_lifecycle_scripts":false}`
+
+	runBumblebeeFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
+		ch := make(chan []byte, 1)
+		ch <- []byte(windowsRecord)
+		close(ch)
+		return ch, true
+	}
+
+	var buf bytes.Buffer
+	if err := Scan(context.Background(), Config{}, &buf); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	out := buf.String()
+	// Assert: record passed through — NOT rewritten as scan_error.
+	if strings.Contains(out, `"record_type":"scan_error"`) {
+		t.Errorf("Windows-shaped record rejected as malformed: %s", out)
+	}
+	if !strings.Contains(out, `"os":"windows"`) {
+		t.Errorf("endpoint.os=windows not preserved in passthrough: %s", out)
+	}
+	if !strings.Contains(out, `"uid":""`) {
+		t.Errorf("empty uid not preserved in passthrough: %s", out)
+	}
+	// Backslash paths survive JSON round-trip (JSON doubles them: C:\ → C:\\ in encoded form).
+	if !strings.Contains(out, `C:\\`) {
+		t.Errorf("Windows drive+backslash path not preserved in passthrough: %s", out)
+	}
+}
+
 func TestScanBumblebeeUnavailable(t *testing.T) {
 	old := runBumblebeeFn
 	defer func() { runBumblebeeFn = old }()
