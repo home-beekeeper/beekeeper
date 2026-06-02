@@ -771,7 +771,12 @@ This is a code-addition phase (no rename/refactor). No runtime state categories 
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved during pattern-mapping and incorporated into the plans:
+> Q1 (Bun/pnpm/Yarn ecosystem constants → all emit `EcosystemNPM`; 5 distinct strings `npm`/`pypi`/`go`/`rubygems`/`packagist`) is reflected in plan 02-03's fixture/assertions.
+> Q2 (`isBroadHomeRoot` `C:\` drive-root detection) is implemented in plan 02-01 and asserted in 02-02.
+> Q3 (GOPATH handling) is resolved by the explicit recommendation implemented in plan 02-01.
 
 1. **Bun/pnpm/Yarn ecosystem constants**
    - What we know: `model.go` has no `EcosystemBun`, `EcosystemPnpm`, or `EcosystemYarn` constants — only `EcosystemNPM`.
