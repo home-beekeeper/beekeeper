@@ -76,15 +76,18 @@
 
 ### Phase 3: Windows Path Representation
 **Goal**: Every NDJSON record emitted by Pollen on Windows carries native Windows paths — backslash separators, drive letters, `endpoint.os="windows"`, correct `arch` and `username`, and empty `uid` — and beekeeper's audit-log consumer handles Windows-shaped endpoint records correctly on round-trip.
-**Repo locus**: `bantuson/pollen` (`internal/output/paths_windows.go`) and beekeeper `internal/inventory/` (consumer-side round-trip verification).
+**Repo locus**: `bantuson/pollen` — WPATH-01 fix lives in the ecosystem scanners `internal/ecosystem/npm/npm.go` + `internal/ecosystem/pnpm/pnpm.go` (NOT `internal/output/` — that package is a thin JSON encoder; verified in 03-RESEARCH.md), WPATH-02 in `internal/endpoint/endpoint.go`; beekeeper round-trip test co-located in `internal/scan/scanner_test.go` (NOT a new `internal/inventory/` package — that boundary is Phase 4 BKINT-01).
 **Depends on**: Phase 2
 **Requirements**: WPATH-01, WPATH-02
 **Success Criteria** (what must be TRUE):
   1. A Windows CI `pollen scan` run produces NDJSON where `project_path` and `source_file` fields contain backslash separators and drive letters (`C:\Users\...`) with no Unix-to-Windows conversion artifacts
   2. The `endpoint` record in every NDJSON output on Windows contains `os="windows"`, `arch` matching `runtime.GOARCH`, a non-empty `username`, and an empty `uid`; Linux/macOS records are unchanged
-  3. Beekeeper's audit-log consumer parses a Windows-shaped Pollen NDJSON record without error and round-trips the endpoint fields correctly; a test in `internal/inventory/` asserts this
-  4. `v0.1.1-pollen.3` is tagged and signed
-**Plans**: TBD
+  3. Beekeeper's audit-log consumer parses a Windows-shaped Pollen NDJSON record without error and round-trips the endpoint fields correctly; a test in `internal/scan/` asserts this (locus corrected from `internal/inventory/` per 03-RESEARCH.md — `internal/inventory/` is Phase 4's BKINT-01 boundary)
+  4. `v0.1.1-pollen.3` is tagged and signed (DEFERRED to M2 close per D-06 / Phase-2 precedent — plan 03-03 prepares VERSION + CHANGES.md locally; the signed git tag is batched to milestone close)
+**Plans**: 3 plans (2 waves)
+- [ ] 03-01-PLAN.md — Wave 1 (Pollen): WPATH-01 — wrap npm.go + pnpm.go projectPath join in filepath.FromSlash (backslash on Windows, Unix-identity) + Windows-gated unit tests
+- [ ] 03-02-PLAN.md — Wave 1 (Pollen): WPATH-02 — guard both endpoint.Current() UID assignments with runtime.GOOS != "windows" (empty uid on Windows, unchanged on Unix) + endpoint tests
+- [ ] 03-03-PLAN.md — Wave 2 (both repos): parity_test.go Windows path-shape + empty-uid assertions, beekeeper internal/scan round-trip test (D-03), VERSION/CHANGES bump to 0.1.1-pollen.3 (no tag)
 
 ### Phase 4: Windows Extension & MCP Coverage + Beekeeper Compat Test
 **Goal**: Pollen enumerates all Windows editor-extension directories (VS Code family), browser-extension profile paths (Chromium + Firefox), and MCP host-config files (Claude Desktop, Cursor, Windsurf, Cline, Gemini CLI); and beekeeper's Pollen compatibility test runs on all three OSes with a Windows skip count of zero.
@@ -131,6 +134,6 @@
 | 11. v1.0.0 PRD-Gap Closure (pre-push) | v1.0.0 | 1/1 | Complete | 2026-06-01 |
 | **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
-| **3. Windows Path Representation** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
+| **3. Windows Path Representation** | **v1.1.0** | **0/3** | **Planned** | **—** |
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
