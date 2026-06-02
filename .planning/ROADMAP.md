@@ -31,7 +31,7 @@
 ### v1.1.0 "Pollen" — Windows Inventory Compatibility
 
 - [x] **Phase 1: Fork Setup & Discipline** — Pollen module established, Apache-2.0 attribution, reproducible builds + Sigstore, differential + selftest CI green; tag `v0.1.1-pollen.1`
-- [ ] **Phase 2: Windows Root Resolver** — All 8 ecosystems resolved on Windows, parity test against Linux passes; tag `v0.1.1-pollen.2`
+- [~] **Phase 2: Windows Root Resolver** — All 8 ecosystems resolved on Windows, parity test passes (code complete & verified); tag `v0.1.1-pollen.2` **deferred to M2 close**
 - [ ] **Phase 3: Windows Path Representation** — Native backslash paths and Windows endpoint record in NDJSON, round-trip verified; tag `v0.1.1-pollen.3`
 - [ ] **Phase 4: Windows Extension & MCP Coverage** — Editor, browser, MCP config paths complete; beekeeper compat test runs on all 3 OSes with zero skips; tag `v0.1.1-pollen.4`
 - [ ] **Phase 5: Contribution-Back & Milestone Close** — Upstream PRs prepared, beekeeper full CI green including honeypot E2E, `pollen-self` in catalog, sync workflow documented; tag `v0.1.1-pollen.5`
