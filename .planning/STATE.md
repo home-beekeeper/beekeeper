@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-06-02T18:18:45.437Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-06-02T18:30:00.000Z"
 last_activity: 2026-06-02
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 15
-  completed_plans: 14
-  percent: 60
+  completed_plans: 15
+  percent: 80
 ---
 
 # Project State
@@ -25,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 
 ## Current Position
 
-Phase: 04 (Windows Extension & MCP Coverage + Beekeeper Compat Test) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
+Phase: 04 (Windows Extension & MCP Coverage + Beekeeper Compat Test) — COMPLETE
+Plan: 3 of 3 (all done)
+Status: Phase 4 complete — all 3 plans executed
 Last activity: 2026-06-02
 
-Progress: `[██████░░░░] 60%` (3/5 phases complete; Phases 2 & 3 code done & verified, signed releases deferred to M2 close)
+Progress: `[████████░░] 80%` (4/5 phases complete; Phases 2, 3 & 4 code done & verified, signed releases deferred to M2 close)
 
-Next action: Execute Phase 4 — `/gsd-execute-phase 4` (Windows Extension & MCP Coverage) — 3 plans in 2 waves ready
+Next action: Execute Phase 5 — `/gsd-execute-phase 5` (Contribution-Back & Milestone Close)
 
 ## Phase Summary (v1.1.0)
 
@@ -41,7 +41,7 @@ Next action: Execute Phase 4 — `/gsd-execute-phase 4` (Windows Extension & MCP
 | 1 | Fork Setup & Discipline | v0.1.1-pollen.1 | FORK-01–04, PTEST-02–03, SDEF-02 | ✅ Complete |
 | 2 | Windows Root Resolver | v0.1.1-pollen.2 | WRES-01–02, PTEST-01 | ✅ Code complete — signed release deferred to M2 close |
 | 3 | Windows Path Representation | v0.1.1-pollen.3 | WPATH-01–02 | ✅ Code complete & verified — signed release deferred to M2 close |
-| 4 | Windows Extension & MCP Coverage | v0.1.1-pollen.4 | WEXT-01–03, BKINT-01, PTEST-04 | Not started |
+| 4 | Windows Extension & MCP Coverage | v0.1.1-pollen.4 | WEXT-01–03, BKINT-01, PTEST-04 | ✅ Code complete & verified — signed release deferred to M2 close |
 | 5 | Contribution-Back & Milestone Close | v0.1.1-pollen.5 | SYNC-01–02, BKINT-02, PTEST-05, SDEF-01 | Not started |
 
 ## Phase 1 Completion Summary (v1.0.0 reference)
@@ -215,6 +215,7 @@ Next action: Execute Phase 4 — `/gsd-execute-phase 4` (Windows Extension & MCP
 | Phase 02-windows-root-resolver P03 | 15 | 3 tasks | 9 files |
 | Phase 04-windows-extension-mcp-coverage-beekeeper-compat-test P01 | 25min | 3 tasks | 3 files |
 | Phase 04-windows-extension-mcp-coverage-beekeeper-compat-test P02 | 10min | 2 tasks | 2 files |
+| Phase 04-windows-extension-mcp-coverage-beekeeper-compat-test P03 | 5min | 1 task | 2 files |
 
 ## Accumulated Context
 
@@ -286,6 +287,7 @@ Earlier decisions from Phase 1 (full log in PROJECT.md):
 - [Phase ?]: Phase 02-01: env-var guards are per-variable (if appdata := ...) not single upfront check — Windows has multiple independent env vars unlike Unix HOME
 - [Phase ?]: Phase 02-01: GOPATH not consulted for Go modules root — mirrors upstream Unix behavior using %USERPROFILE%\go\pkg\mod only
 - [Phase ?]: Phase 04-01 complete
+- Phase 04-03: D-06 honored — pollen.4 VERSION+CHANGES prepared locally (../pollen HEAD a9db7b3); signed tag deferred to M2 close together with pollen.2 and pollen.3 (all three batched)
 
 ### Open Research Flags (v1.1.0)
 
@@ -317,11 +319,12 @@ Items acknowledged and carried forward:
 | Self-catalog | Separate `pollen-self` catalog (SELF-02) | v2 requirement | v1.1.0 scoping |
 | Release | **`v0.1.1-pollen.2` signed tag (Phase 2 SC4)** — VERSION+CHANGES bumped and 4 commits prepared locally in `../pollen` (HEAD `c94b271`), **unpushed, untagged**. Cut the release at M2 close: `git push origin main` → confirm 3-OS CI green → `git tag -a v0.1.1-pollen.2` + push → cosign verify. Exact commands in `.planning/phases/02-windows-root-resolver/02-04-SUMMARY.md`. | **Deferred to M2 close** (maintainer decision 2026-06-02) | Phase 2 (v1.1.0) |
 | Release | **`v0.1.1-pollen.3` signed tag (Phase 3 SC4)** — VERSION bumped to `0.1.1-pollen.3` + CHANGES.md WPATH section prepared locally in `../pollen` (commits incl. `1cb3fdb`, `19695e3`), **untagged, unsigned**. Cut at M2 close together with pollen.2: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.3` + push → cosign verify. Details in `.planning/phases/03-windows-path-representation/03-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 3 (v1.1.0) |
+| Release | **`v0.1.1-pollen.4` signed tag (Phase 4 SC5)** — VERSION bumped to `0.1.1-pollen.4` + CHANGES.md WEXT section prepared locally in `../pollen` (HEAD `a9db7b3`), **untagged, unsigned**. Cut at M2 close together with pollen.2 + pollen.3: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.4` + push → cosign verify. Details in `.planning/phases/04-windows-extension-mcp-coverage-beekeeper-compat-test/04-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 4 (v1.1.0) |
 
 ## Session Continuity
 
-Last session: 2026-06-02T18:18:45.405Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-06-02T18:30:00.000Z
+Stopped at: Completed 04-03-PLAN.md (Phase 4 complete — all 3 plans done)
 Resume file: None
 
 ## Operator Next Steps
