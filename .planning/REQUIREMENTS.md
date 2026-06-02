@@ -18,8 +18,8 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 ### Windows Root Resolver (WRES)
 
-- [ ] **WRES-01**: `internal/resolver/resolver_windows.go` (build tag `windows`) discovers Windows package roots for the JS ecosystems — npm (global `%APPDATA%\npm\node_modules` + user cache), pnpm (`%LOCALAPPDATA%\pnpm\store`), Yarn (`%LOCALAPPDATA%\Yarn\Data\global`), Bun (`%USERPROFILE%\.bun\install\cache`) per PRD §8.1
-- [ ] **WRES-02**: Windows root discovery for PyPI (user `%APPDATA%\Python\...` + venv `<venv>\Lib\site-packages`), Go modules (`%USERPROFILE%\go\pkg\mod`), RubyGems (`%USERPROFILE%\.gem\...` + `%ProgramFiles%\Ruby*`), Composer (`%APPDATA%\Composer\vendor`)
+- [x] **WRES-01**: `internal/resolver/resolver_windows.go` (build tag `windows`) discovers Windows package roots for the JS ecosystems — npm (global `%APPDATA%\npm\node_modules` + user cache), pnpm (`%LOCALAPPDATA%\pnpm\store`), Yarn (`%LOCALAPPDATA%\Yarn\Data\global`), Bun (`%USERPROFILE%\.bun\install\cache`) per PRD §8.1
+- [x] **WRES-02**: Windows root discovery for PyPI (user `%APPDATA%\Python\...` + venv `<venv>\Lib\site-packages`), Go modules (`%USERPROFILE%\go\pkg\mod`), RubyGems (`%USERPROFILE%\.gem\...` + `%ProgramFiles%\Ruby*`), Composer (`%APPDATA%\Composer\vendor`)
 
 ### Windows Path Representation (WPATH)
 
@@ -94,8 +94,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PTEST-02 | Phase 1 | Complete |
 | PTEST-03 | Phase 1 | Complete |
 | SDEF-02 | Phase 1 | Complete |
-| WRES-01 | Phase 2 | Pending |
-| WRES-02 | Phase 2 | Pending |
+| WRES-01 | Phase 2 | Complete |
+| WRES-02 | Phase 2 | Complete |
 | PTEST-01 | Phase 2 | Pending |
 | WPATH-01 | Phase 3 | Pending |
 | WPATH-02 | Phase 3 | Pending |

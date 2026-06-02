@@ -67,7 +67,7 @@
   3. The differential test continues to pass on Linux and macOS — Windows resolver additions have not drifted Pollen from upstream Bumblebee on the platforms upstream supports
   4. `v0.1.1-pollen.2` is tagged and signed; Windows CI no longer skips root-resolver tests
 **Plans**: 4 plans (3 waves)
-- [ ] 02-01-PLAN.md — Wave 1: roots_windows.go (8-ecosystem Windows root table) + case "windows": wiring in roots.go + isBroadHomeRoot drive-root branch (WRES-01, WRES-02)
+- [x] 02-01-PLAN.md — Wave 1: roots_windows.go (8-ecosystem Windows root table) + case "windows": wiring in roots.go + isBroadHomeRoot drive-root branch (WRES-01, WRES-02)
 - [ ] 02-02-PLAN.md — Wave 2: roots_windows_test.go (Windows unit tests) + flip the 6 Phase-2 skips in main_test.go (WRES-01, WRES-02 verification)
 - [ ] 02-03-PLAN.md — Wave 2: parity_test.go + testdata/parity-fixture/ 8-ecosystem fixture (PTEST-01)
 - [ ] 02-04-PLAN.md — Wave 3: VERSION bump 0.1.1-pollen.2 + CHANGES.md + tag/sign release (Success Criterion 4 gate)
@@ -117,7 +117,7 @@
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
 | 1. Foundation + Hook Handler | v1.0.0 | 4/5 | In Progress|  |
-| 2. Policy Engine + Multi-Source Catalogs | v1.0.0 | 9/9 | Complete | 2026-05-26 |
+| 2. Policy Engine + Multi-Source Catalogs | v1.0.0 | 1/4 | In Progress|  |
 | 3. Editor Extension Defense | v1.0.0 | 5/5 | Complete | 2026-05-26 |
 | 4. Integration Surfaces | v1.0.0 | 5/5 | Complete | 2026-05-27 |
 | 5. Linux Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |

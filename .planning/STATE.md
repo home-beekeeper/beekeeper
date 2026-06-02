@@ -4,13 +4,13 @@ milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-06-02T09:05:28.606Z"
-last_activity: 2026-06-02 -- Phase 2 planning complete
+last_updated: "2026-06-02T10:04:40.085Z"
+last_activity: 2026-06-02
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 20
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 02 — windows-root-resolver (Phase 01 COMPLETE)
+**Current focus:** Phase 02 — windows-root-resolver
 
 ## Current Position
 
-Phase: 01 COMPLETE — Phase 02 (windows-root-resolver) is next
-Plan: 5 of 5
+Phase: 02 (windows-root-resolver) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-06-02 -- Phase 2 planning complete
+Last activity: 2026-06-02
 
 Progress: `[██░░░░░░░░] 20%` (1/5 plans in phase 01)
 
@@ -210,6 +210,7 @@ Next action: Execute plan 01-02
 | Phase 11 P11-01 | 27min | 6 tasks | 15 files |
 | Phase 01 P01 | 19min | 3 tasks | 42 files |
 | Phase 01-fork-setup-discipline P03 | 35 | 2 tasks | 7 files |
+| Phase 02-windows-root-resolver P01 | 15 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -269,6 +270,10 @@ Earlier decisions from Phase 1 (full log in PROJECT.md):
 - [Phase ?]: scanner_name stripped alongside 7 non-det fields in normalize() — differential asserts detection-logic parity not self-identification-string parity
 - [Phase ?]: TestDifferential name LOCKED in cmd/pollen/differential_test.go — plan 04 CI invokes it via go test ./cmd/pollen/ -run '^TestDifferential$'
 - [Phase ?]: normalize() uses map[string]any (not struct) — tolerates additive upstream fields without requiring schema updates; Go json.Marshal sorts map keys deterministically
+- [Phase ?]: test decision
+- [Phase ?]: Phase 02-01: roots_notwindows.go (//go:build !windows) stubs required — Go compiles all switch case bodies at build time; case windows: bodies need !windows stubs for tri-GOOS build
+- [Phase ?]: Phase 02-01: env-var guards are per-variable (if appdata := ...) not single upfront check — Windows has multiple independent env vars unlike Unix HOME
+- [Phase ?]: Phase 02-01: GOPATH not consulted for Go modules root — mirrors upstream Unix behavior using %USERPROFILE%\go\pkg\mod only
 
 ### Open Research Flags (v1.1.0)
 
@@ -301,7 +306,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-01T21:15:22.077Z
+Last session: 2026-06-02T10:04:40.068Z
 Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
