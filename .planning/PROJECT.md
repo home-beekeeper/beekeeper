@@ -32,6 +32,8 @@ Shipped: single static Go binary; pure corroboration policy engine; editor-exten
 
 **Scope source:** `beekeeper-m2-prd.md` (repo root). Detailed REQ-IDs in `.planning/REQUIREMENTS.md`. Spans two repos: the new `bantuson/pollen` module **+** beekeeper `internal/inventory/` integration across a subprocess boundary (`internal/scan` swaps the `bumblebee` binary call for `pollen`). Pollen versions separately as `v0.1.1-pollen.1…5`, one per sub-phase. `threat_intel/` catalogs keep flowing through beekeeper's own `catalogs sync` (not duplicated in Pollen).
 
+**Progress (3/5 phases):** Phase 1 Fork Setup & Discipline ✓ (tag `v0.1.1-pollen.1` shipped) · Phase 2 Windows Root Resolver ✓ (code complete & verified; signed tag deferred to M2 close) · **Phase 3 Windows Path Representation ✓** (WPATH-01/02 — `filepath.FromSlash` path preservation in npm/pnpm + empty-Windows-uid guard in `endpoint.Current()` + beekeeper `internal/scan` round-trip test; verified 2026-06-02; signed `v0.1.1-pollen.3` tag deferred to M2 close per the Phase-2 precedent). Phases 4 (Windows extension/MCP coverage + compat test) and 5 (contribution-back & milestone close) not started. The PRD's idealized `internal/resolver/` / `internal/output/paths_windows.go` layout does **not** match the live fork — fixes land in `internal/ecosystem/{npm,pnpm}` and `internal/endpoint`; beekeeper's `internal/inventory/` package is reserved for Phase 4 (BKINT-01), so the Phase-3 round-trip test lives in `internal/scan/`.
+
 ## Requirements
 
 ### Validated
@@ -185,4 +187,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-01 — milestone v1.1.0 Pollen started*
+*Last updated: 2026-06-02 — Phase 3 (Windows Path Representation) complete; milestone v1.1.0 Pollen at 3/5 phases*
