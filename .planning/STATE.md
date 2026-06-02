@@ -4,12 +4,12 @@ milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-06-02T11:13:46.383Z"
-last_activity: 2026-06-02
+last_updated: "2026-06-02T14:47:16.979Z"
+last_activity: 2026-06-02 -- Phase 3 planning complete
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 9
+  total_plans: 12
   completed_plans: 9
   percent: 40
 ---
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 Phase: 3
 Plan: Not started
 Status: Ready to execute
-Last activity: 2026-06-02
+Last activity: 2026-06-02 -- Phase 3 planning complete
 
 Progress: `[████░░░░░░] 40%` (2/5 phases complete; Phase 2 code done, release deferred to M2 close)
 
