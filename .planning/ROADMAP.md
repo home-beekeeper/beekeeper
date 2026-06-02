@@ -58,7 +58,7 @@
 
 ### Phase 2: Windows Root Resolver
 **Goal**: Pollen can discover all 8 package-manager roots on Windows — npm/pnpm/Yarn/Bun (JS ecosystems), PyPI, Go modules, RubyGems, and Composer — using `%APPDATA%`/`%LOCALAPPDATA%`/`%USERPROFILE%`/`%ProgramFiles%` environment variables, with the cross-platform parity test asserting equivalent detection counts against Linux.
-**Repo locus**: Primarily `bantuson/pollen` — `internal/resolver/resolver_windows.go`.
+**Repo locus**: Primarily `bantuson/pollen` — `cmd/pollen/roots_windows.go` (//go:build windows; in-place minimal-diff per RESEARCH Option B — the PRD-draft `internal/resolver/` path does not exist in the live repo).
 **Depends on**: Phase 1
 **Requirements**: WRES-01, WRES-02, PTEST-01
 **Success Criteria** (what must be TRUE):
@@ -66,7 +66,11 @@
   2. The cross-platform parity test passes on all three OSes: same packages detected, same severity matches, equivalent record counts (modulo OS path strings), `endpoint.os` differs correctly per platform
   3. The differential test continues to pass on Linux and macOS — Windows resolver additions have not drifted Pollen from upstream Bumblebee on the platforms upstream supports
   4. `v0.1.1-pollen.2` is tagged and signed; Windows CI no longer skips root-resolver tests
-**Plans**: TBD
+**Plans**: 4 plans (3 waves)
+- [ ] 02-01-PLAN.md — Wave 1: roots_windows.go (8-ecosystem Windows root table) + case "windows": wiring in roots.go + isBroadHomeRoot drive-root branch (WRES-01, WRES-02)
+- [ ] 02-02-PLAN.md — Wave 2: roots_windows_test.go (Windows unit tests) + flip the 6 Phase-2 skips in main_test.go (WRES-01, WRES-02 verification)
+- [ ] 02-03-PLAN.md — Wave 2: parity_test.go + testdata/parity-fixture/ 8-ecosystem fixture (PTEST-01)
+- [ ] 02-04-PLAN.md — Wave 3: VERSION bump 0.1.1-pollen.2 + CHANGES.md + tag/sign release (Success Criterion 4 gate)
 
 ### Phase 3: Windows Path Representation
 **Goal**: Every NDJSON record emitted by Pollen on Windows carries native Windows paths — backslash separators, drive letters, `endpoint.os="windows"`, correct `arch` and `username`, and empty `uid` — and beekeeper's audit-log consumer handles Windows-shaped endpoint records correctly on round-trip.
@@ -124,7 +128,7 @@
 | 10. Cross-Phase Integration Closure | v1.0.0 | 1/1 | Complete | 2026-06-01 |
 | 11. v1.0.0 PRD-Gap Closure (pre-push) | v1.0.0 | 1/1 | Complete | 2026-06-01 |
 | **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
-| **2. Windows Root Resolver** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
+| **2. Windows Root Resolver** | **v1.1.0** | **0/4** | **Planned** | **—** |
 | **3. Windows Path Representation** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
