@@ -1,10 +1,11 @@
 ---
 phase: 3
 slug: windows-path-representation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-02
+approved: 2026-06-02
 ---
 
 # Phase 3 — Validation Strategy
@@ -53,7 +54,7 @@ round-trip test lives in this repo.
 | Behavior (anchor) | Requirement | Secure Behavior | Test Type | Automated Command | Status |
 |-------------------|-------------|-----------------|-----------|-------------------|--------|
 | npm/pnpm `projectPath` retains backslash+drive on Windows | WPATH-01 | no Unix→Win path artifacts in emitted records | unit (Windows) | `cd ../pollen && go test ./internal/ecosystem/npm/ ./internal/ecosystem/pnpm/` | ⬜ pending |
-| Emitted `project_path`/`source_file` are native Windows paths | WPATH-01 | `C:\...` not `/c/...` | unit (Windows) | `cd ../pollen && go test ./internal/output/` | ⬜ pending |
+| Emitted `project_path`/`source_file` are native Windows paths | WPATH-01 | `C:\...` not `/c/...` | unit (Windows) | `cd ../pollen && go test ./internal/ecosystem/npm/ ./internal/ecosystem/pnpm/` | ⬜ pending |
 | Unix NDJSON bytes unchanged (FromSlash no-op) | WPATH-01 | no upstream drift | differential | `cd ../pollen && go test ./cmd/pollen/ -run '^TestDifferential$'` | ⬜ pending |
 | `endpoint.uid` empty on Windows; populated on Unix | WPATH-02 | no SID leakage as uid | unit | `cd ../pollen && go test ./internal/endpoint/` | ⬜ pending |
 | `endpoint.os/arch/username` correct per platform | WPATH-02 | host identity accurate | unit | `cd ../pollen && go test ./internal/endpoint/` | ⬜ pending |
@@ -85,11 +86,16 @@ round-trip test lives in this repo.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have automated verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify or Wave 0 dependencies — every plan task carries an `<automated>` `go test` verify (confirmed by plan-checker, all 3 plans `valid: true`)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify — each plan has ≥1 automated verify per task
+- [x] Wave 0 covers all MISSING references — no separate Wave 0 needed: `go test` infra already exists; the new Windows tests are appended to existing files (`npm_test.go`, `pnpm_test.go`, `endpoint_test.go`, `scanner_test.go`, `parity_test.go`) within their implementing tasks
+- [x] No watch-mode flags — all commands are single-shot `go test`
+- [x] Feedback latency < 60s — quick commands target single packages
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Note:** This phase has no traditional separate Wave-0 test-stub plan — the WPATH-01/02 Windows
+tests are added in the same tasks that make the fix (the fix is a no-op on the dev OS until run on
+Windows CI, so a fail-first stub adds no signal locally). Sampling continuity (Dimension 8c) is
+satisfied because every task has an automated verify.
+
+**Approval:** approved 2026-06-02 (orchestrator, post-plan-check remediation)

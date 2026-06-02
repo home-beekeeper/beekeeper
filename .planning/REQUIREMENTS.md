@@ -23,7 +23,7 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 ### Windows Path Representation (WPATH)
 
-- [ ] **WPATH-01**: `internal/output/paths_windows.go` preserves native Windows paths in NDJSON `endpoint`/`project_path`/`source_file` — backslash separators and drive letters retained (`C:\Users\...`, not `/c/Users/...`), no Unix-to-Windows conversion artifacts
+- [ ] **WPATH-01**: NDJSON `project_path`/`source_file` preserve native Windows paths — backslash separators and drive letters retained (`C:\Users\...`, not `/c/Users/...`), no Unix-to-Windows conversion artifacts. (Live locus per Phase-3 RESEARCH: the `projectPath` join in `internal/ecosystem/npm/npm.go` and `internal/ecosystem/pnpm/pnpm.go` wrapped in `filepath.FromSlash` — a no-op on Unix so the PTEST-02 differential stays byte-identical; `source_file` is already native. The PRD §5.2 `internal/output/paths_windows.go` path does not exist in the live fork.)
 - [ ] **WPATH-02**: `endpoint` record emits `os="windows"`, `arch` from `runtime.GOARCH`, `username` from the Windows environment, and empty `uid`; beekeeper's audit-log consumer handles Windows-shaped endpoint records (round-trip verified)
 
 ### Windows Extension & MCP Coverage (WEXT)

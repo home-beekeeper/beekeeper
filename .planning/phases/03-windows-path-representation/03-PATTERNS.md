@@ -1,8 +1,18 @@
 # Phase 3: Windows Path Representation - Pattern Map
 
 **Mapped:** 2026-06-02
-**Files analyzed:** 9 (5 modified, 4 created)
+**Files analyzed:** 9 (3 source files modified, 5 existing test files EXTENDED; 1 optional build-tag pair)
 **Analogs found:** 9 / 9
+
+> **Correction (2026-06-02, post-plan-check):** An earlier draft of this map claimed
+> `npm_test.go`, `pnpm_test.go`, and `endpoint_test.go` did not exist and had to be created from
+> scratch. **That is wrong — all three exist.** Verified live test functions:
+> - `npm_test.go`: `TestIsNodeModulesPackageJSONShapes`, `TestIsNodeModulesPackageJSONRelativeRoot`, `TestScanLockfileV3ScopedAndUnscoped`, … (extend, do NOT recreate)
+> - `pnpm_test.go`: `TestIsPnpmStorePackageJSON`, `TestIsPnpmStorePackageJSONRelativeRoot`, … (extend)
+> - `endpoint_test.go`: `TestCurrentPopulatesDeviceID`, `TestCurrentEmptyDeviceID` (extend — do NOT
+>   redeclare these; adding a second `TestCurrentPopulatesDeviceID` is a duplicate-symbol compile error)
+>
+> All five test changes are **append a new test func to the existing file**, not create-from-scratch.
 
 ---
 
@@ -13,9 +23,9 @@
 | `internal/ecosystem/npm/npm.go` | pollen | utility (path helper) | transform | `internal/ecosystem/pnpm/pnpm.go` (symmetric defect) | exact |
 | `internal/ecosystem/pnpm/pnpm.go` | pollen | utility (path helper) | transform | `internal/ecosystem/npm/npm.go` (symmetric defect) | exact |
 | `internal/endpoint/endpoint.go` | pollen | utility (record builder) | request-response | `cmd/pollen/roots_windows.go` + `roots_notwindows.go` (Phase-2 build-tag precedent) | role-match |
-| `internal/ecosystem/npm/npm_test.go` | pollen | test | unit | `beekeeper/internal/scan/scanner_test.go` (`TestScanWithBumblebee` injection pattern) | role-match |
-| `internal/ecosystem/pnpm/pnpm_test.go` | pollen | test | unit | `beekeeper/internal/scan/scanner_test.go` (same injection pattern) | role-match |
-| `internal/endpoint/endpoint_test.go` | pollen | test | unit | `cmd/pollen/parity_test.go` (`assertEndpointOS` parse-and-assert pattern) | role-match |
+| `internal/ecosystem/npm/npm_test.go` *(EXTEND existing)* | pollen | test | unit | self — existing `TestIsNodeModulesPackageJSONShapes` in same file | exact |
+| `internal/ecosystem/pnpm/pnpm_test.go` *(EXTEND existing)* | pollen | test | unit | self — existing `TestIsPnpmStorePackageJSON` in same file | exact |
+| `internal/endpoint/endpoint_test.go` *(EXTEND existing)* | pollen | test | unit | self — existing `TestCurrentPopulatesDeviceID` / `TestCurrentEmptyDeviceID` in same file | exact |
 | `cmd/pollen/parity_test.go` | pollen | test (integration) | batch | `cmd/pollen/parity_test.go` (self — extend existing `assertEndpointOS`) | exact |
 | `internal/scan/scanner_test.go` | beekeeper | test | unit | `internal/scan/scanner_test.go` (`TestScanWithBumblebee`) | exact |
 | `internal/endpoint/endpoint_windows.go` *(optional — see discretion)* | pollen | config (build-tag override) | — | `cmd/pollen/roots_windows.go` | exact |
@@ -211,69 +221,69 @@ See "Shared Patterns: Build-Tag Stub Pattern" below. Use if planner prefers file
 
 ---
 
-### `../pollen/internal/ecosystem/npm/npm_test.go` (test — new file, WPATH-01)
+### `../pollen/internal/ecosystem/npm/npm_test.go` (test — **EXTEND existing file**, WPATH-01)
 
-**Analog:** `beekeeper/internal/scan/scanner_test.go` (direct call to the helper + assertion pattern)
+**EXISTS** with `TestIsNodeModulesPackageJSONShapes`, `TestIsNodeModulesPackageJSONRelativeRoot`,
+`TestScanLockfileV3ScopedAndUnscoped`, etc. **APPEND** the new Windows test func(s) below; do NOT
+recreate the file and do NOT redeclare existing funcs.
 
-**No existing test file in npm/** — file must be created from scratch.
+**Analog:** self — the existing `TestIsNodeModulesPackageJSONShapes` in the same file (calls the
+helper directly and asserts the returned `projectPath`).
 
-**Test package and imports pattern** (mirror scanner_test.go structure):
-```go
-package npm
+**Imports:** the file already imports `testing`. The Windows test below also needs `runtime` — add
+it to the existing import block if not present.
 
-import (
-    "path/filepath"
-    "testing"
-)
-```
-
-**Core test pattern — call helper directly, assert returned projectPath:**
+**Core test pattern — LEAD with the `runtime.GOOS` skip, then use a raw Windows string literal**
+(this is the recommended, portable form — `filepath.Join("C:\\", ...)` produces an invalid
+`C:\\/Users/...` path on Unix and must NOT be used):
 ```go
 func TestIsNodeModulesPackageJSONWindowsPath(t *testing.T) {
-    // Construct a Windows-style absolute path for the test.
-    // Use filepath.Join so the test produces the correct separator on
-    // the running OS (backslash on Windows, slash on Linux/macOS).
-    // This test is meaningful primarily on Windows; on Unix the fix is a
-    // no-op (filepath.FromSlash is identity when / is native separator).
-    base := filepath.Join("C:\\", "Users", "fana", "code", "web-app",
-        "node_modules", "left-pad", "package.json")
+    if runtime.GOOS != "windows" {
+        t.Skip("WPATH-01: Windows path-shape test — meaningful only on Windows (/ is native here)")
+    }
+    // Raw Windows string literal — backslash separators + drive letter.
+    base := `C:\Users\fana\code\web-app\node_modules\left-pad\package.json`
 
     ok, projectPath := IsNodeModulesPackageJSON(base)
     if !ok {
         t.Fatalf("IsNodeModulesPackageJSON(%q): got ok=false, want true", base)
     }
-
-    want := filepath.Join("C:\\", "Users", "fana", "code", "web-app")
+    want := `C:\Users\fana\code\web-app`
     if projectPath != want {
         t.Errorf("IsNodeModulesPackageJSON projectPath = %q, want %q", projectPath, want)
     }
 }
 
 func TestIsNodeModulesPackageJSONScopedWindowsPath(t *testing.T) {
-    base := filepath.Join("C:\\", "Users", "fana", "code", "web-app",
-        "node_modules", "@scope", "pkg", "package.json")
+    if runtime.GOOS != "windows" {
+        t.Skip("WPATH-01: Windows path-shape test — meaningful only on Windows")
+    }
+    base := `C:\Users\fana\code\web-app\node_modules\@scope\pkg\package.json`
 
     ok, projectPath := IsNodeModulesPackageJSON(base)
     if !ok {
         t.Fatalf("IsNodeModulesPackageJSON(%q): got ok=false, want true", base)
     }
-
-    want := filepath.Join("C:\\", "Users", "fana", "code", "web-app")
+    want := `C:\Users\fana\code\web-app`
     if projectPath != want {
         t.Errorf("IsNodeModulesPackageJSON projectPath = %q, want %q", projectPath, want)
     }
 }
 ```
 
-**Note on `filepath.Join("C:\\", ...)` portability:** On Linux/macOS `filepath.Join("C:\\", "Users", ...)` produces `C:\\/Users/...` which is not a valid Unix path. For a test that runs cleanly on all platforms, either (a) use `//go:build windows` to gate the Windows path test, or (b) construct the path string literally with `runtime.GOOS` detection and skip on non-Windows. Option (b) mirrors the Phase-2 pattern (`t.Skip` with structured reason when the assertion is Windows-only). Option (a) is cleaner if the test is truly Windows-only.
-
-**Recommended approach:** Use `if runtime.GOOS != "windows" { t.Skip("Windows path shape test — runs on Windows only") }` at the top of Windows-path tests. This mirrors Phase-2 structured skip pattern from `differential_test.go` line 55.
+**Do NOT use** `filepath.Join("C:\\", ...)` — on Linux/macOS it yields `C:\\/Users/...` (invalid
+Unix path) and the assertion becomes meaningless. The `runtime.GOOS != "windows"` skip + raw string
+literal mirrors the Phase-2 structured-skip precedent (`differential_test.go` line 55) and is what
+Plan 03-01 specifies.
 
 ---
 
-### `../pollen/internal/ecosystem/pnpm/pnpm_test.go` (test — new file, WPATH-01)
+### `../pollen/internal/ecosystem/pnpm/pnpm_test.go` (test — **EXTEND existing file**, WPATH-01)
 
-**Analog:** `beekeeper/internal/scan/scanner_test.go` + `../pollen/internal/ecosystem/npm/npm_test.go` (sibling)
+**EXISTS** with `TestIsPnpmStorePackageJSON`, `TestIsPnpmStorePackageJSONRelativeRoot`, etc.
+**APPEND** the new Windows test func below; do NOT recreate the file.
+
+**Analog:** self — existing `TestIsPnpmStorePackageJSON` in the same file (sibling of the npm test).
 
 **Symmetric to npm_test.go.** The pnpm store path layout differs from npm node_modules layout:
 
@@ -312,53 +322,34 @@ func TestIsPnpmStorePackageJSONWindowsPath(t *testing.T) {
 
 ---
 
-### `../pollen/internal/endpoint/endpoint_test.go` (test — new file, WPATH-02)
+### `../pollen/internal/endpoint/endpoint_test.go` (test — **EXTEND existing file**, WPATH-02)
 
-**Analog:** `cmd/pollen/parity_test.go` — `assertEndpointOS` parse-and-assert pattern (lines 89–112)
+**EXISTS** with `TestCurrentPopulatesDeviceID` and `TestCurrentEmptyDeviceID`. **APPEND** the single
+new func `TestCurrentWindowsUID` below. **CRITICAL: do NOT redeclare `TestCurrentPopulatesDeviceID`** —
+it already exists; a second declaration is a duplicate-symbol compile error. The existing
+`TestCurrentPopulatesDeviceID` already covers OS/Arch/DeviceID/Username population (the D-04
+regression guard), so the new file only needs the uid-specific test.
 
-**No existing test file in endpoint/** — file must be created from scratch.
+**Analog:** self — existing `TestCurrentPopulatesDeviceID` in the same file (calls `Current()` and
+asserts fields). The file already imports `runtime` and `testing`.
 
-**Test package and structure:**
-```go
-package endpoint
-
-import (
-    "runtime"
-    "testing"
-)
-```
-
-**Core test pattern — call Current(), assert uid empty on Windows, non-empty on Unix:**
+**New test to ADD — call Current(), assert uid empty on Windows, non-empty on Unix:**
 ```go
 func TestCurrentWindowsUID(t *testing.T) {
     ep := Current("")
     if runtime.GOOS == "windows" {
+        // WPATH-02: on Windows, user.Current().Uid is a SID string; endpoint.uid must be empty.
         if ep.UID != "" {
             t.Errorf("endpoint.uid on Windows = %q, want empty string (WPATH-02)", ep.UID)
         }
     } else {
-        // On Linux/macOS: UID must be a non-empty numeric string (regression guard D-04).
+        // D-04 regression guard: Unix UID must remain a non-empty numeric string.
         if ep.UID == "" {
             t.Errorf("endpoint.uid on %s = empty, want non-empty numeric UID (regression)", runtime.GOOS)
         }
     }
-}
-
-func TestCurrentPopulatesDeviceID(t *testing.T) {
-    // Existing fields must be populated on all OSes (regression guard D-04).
-    ep := Current("test-device-001")
-    if ep.OS != runtime.GOOS {
-        t.Errorf("endpoint.os = %q, want %q", ep.OS, runtime.GOOS)
-    }
-    if ep.Arch != runtime.GOARCH {
-        t.Errorf("endpoint.arch = %q, want %q", ep.Arch, runtime.GOARCH)
-    }
-    if ep.DeviceID != "test-device-001" {
-        t.Errorf("endpoint.device_id = %q, want %q", ep.DeviceID, "test-device-001")
-    }
-    if ep.Username == "" {
-        t.Errorf("endpoint.username = empty, want non-empty")
-    }
+    // os/arch/username are already asserted by the existing TestCurrentPopulatesDeviceID — no need
+    // to duplicate that here.
 }
 ```
 
@@ -692,10 +683,10 @@ For the planner, the natural wave ordering is:
 2. `internal/ecosystem/pnpm/pnpm.go` line 87 — single-line `filepath.FromSlash` wrap
 3. `internal/endpoint/endpoint.go` lines 29, 31 — `runtime.GOOS != "windows"` guard on both UID assignments
 
-**Wave 2 — Unit tests (Pollen):**
-4. `internal/ecosystem/npm/npm_test.go` — new file, `TestIsNodeModulesPackageJSONWindowsPath`
-5. `internal/ecosystem/pnpm/pnpm_test.go` — new file, `TestIsPnpmStorePackageJSONWindowsPath`
-6. `internal/endpoint/endpoint_test.go` — new file, `TestCurrentWindowsUID` + `TestCurrentPopulatesDeviceID`
+**Wave 2 — Unit tests (Pollen) — all EXTEND existing files (append funcs):**
+4. `internal/ecosystem/npm/npm_test.go` — extend: add `TestIsNodeModulesPackageJSONWindowsPath`
+5. `internal/ecosystem/pnpm/pnpm_test.go` — extend: add `TestIsPnpmStorePackageJSONWindowsPath`
+6. `internal/endpoint/endpoint_test.go` — extend: add `TestCurrentWindowsUID` (do NOT redeclare existing `TestCurrentPopulatesDeviceID`)
 
 **Wave 3 — Integration tests (Pollen + Beekeeper):**
 7. `cmd/pollen/parity_test.go` — extend with `assertWindowsPathShape` + `assertWindowsEndpointUID` + call in `TestParityAllEcosystems`
