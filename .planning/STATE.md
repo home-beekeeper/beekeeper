@@ -4,13 +4,13 @@ milestone: v1.1.0
 milestone_name: "Pollen" — Windows Inventory Compatibility
 status: executing
 stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-06-02T10:04:40.085Z"
+last_updated: "2026-06-02T10:15:11.739Z"
 last_activity: 2026-06-02
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
   percent: 20
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 02 (windows-root-resolver) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-06-02
 
@@ -211,10 +211,18 @@ Next action: Execute plan 01-02
 | Phase 01 P01 | 19min | 3 tasks | 42 files |
 | Phase 01-fork-setup-discipline P03 | 35 | 2 tasks | 7 files |
 | Phase 02-windows-root-resolver P01 | 15 | 3 tasks | 3 files |
+| Phase 02-windows-root-resolver P02 | 25 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 02 (v1.1.0 Pollen - plan 02-02):
+
+- Phase 02-02: isBroadHomeRoot gains C:\Users and C:\Users\<name> broad detection (Rule-1 auto-fix) — mirrors /Users and /Users/<name> on Unix; test asserted C:\Users broad but implementation only had C:\ drive-root
+- Phase 02-02: roots_windows_test.go uses t.Setenv(USERPROFILE/APPDATA/LOCALAPPDATA/ProgramFiles) — never HOME — for Windows test isolation (Pitfall 5 prevention)
+- Phase 02-02: glob root fixtures: create concrete versioned dirs (Python313, 3.3.0, Ruby33-x64) under wildcard parent so filepath.Glob resolves (needed for PyPI/RubyGems test assertions)
+- Phase 02-02: TestResolveRootsBaselineIncludesUserLocalPython keeps Windows skip; reason updated to Unix-specific (non-Phase-2) language pointing to TestWindowsBaselineRoots for Windows PyPI coverage
 
 Recent decisions from Phase 01 (v1.1.0 Pollen - plan 01-01):
 
@@ -306,7 +314,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-02T10:04:40.068Z
+Last session: 2026-06-02T10:15:11.723Z
 Stopped at: Completed 01-03-PLAN.md
 Resume file: None
 
