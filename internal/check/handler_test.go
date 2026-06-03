@@ -653,3 +653,165 @@ func TestHandlerLLMFCodeShieldWarn(t *testing.T) {
 		t.Errorf("expected exit 0 (warn, not block) for CodeShield warn action, got %d", exitCode)
 	}
 }
+
+// ─── Phase 6 Plan 03: CORR-02 integration tests (RunCheck end-to-end) ───────
+
+// buildCriticalTestIndex writes a small mmap index containing a single SIGNED
+// critical-severity bumblebee entry for "ai-figure-test". The entry is signed
+// (CatalogSignature != "") so the bumblebee adapter sets Signed:true and the
+// single signed source can reach the effectiveBlockAt=1 threshold from the
+// SeverityOverrides["critical"] override (CORR-01). This simulates the
+// ai-figure/Shai-Hulud scenario in a fully offline integration test.
+func buildCriticalTestIndex(t *testing.T, dir string) string {
+	t.Helper()
+	entries := []catalog.Entry{
+		{
+			ID:               "beekeeper-test-critical-signed-corr02",
+			Name:             "ai-figure-test critical compromise",
+			Ecosystem:        "npm",
+			Package:          "ai-figure-test",
+			Versions:         []string{"1.0.0"},
+			Severity:         "critical",
+			CatalogSource:    "bumblebee",
+			CatalogSignature: "sha256:corr02-test-sig", // non-empty → Signed:true in adapter
+		},
+	}
+	idxPath := filepath.Join(dir, "bumblebee-critical.idx")
+	if err := catalog.BuildIndex(idxPath, entries); err != nil {
+		t.Fatalf("BuildIndex (critical): %v", err)
+	}
+	return idxPath
+}
+
+// TestRunCheckAiFigureBlocks proves SC1 (Roadmap): a critical-severity signed
+// bumblebee entry with a healthy catalog (no state.json) causes RunCheck to
+// return decision "block" and exit code 1. This test exercises the full
+// stdin → RunCheck → policy.Evaluate path (not just corroborate() directly),
+// proving that the SeverityOverrides["critical"] escalation is live.
+//
+// RED state (before Task 2 wiring): CatalogHealthy is always true from
+// DefaultCorroborationThresholds() defaults; this test passes in both states
+// because the default already includes CatalogHealthy:true.
+// The critical wiring gap is exercised by TestRunCheckCriticalDegradedCatalogWarn.
+func TestRunCheckAiFigureBlocks(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildCriticalTestIndex(t, dir)
+
+	// cacheDir with no state.json → resolveCatalogHealthy returns true (healthy).
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	// Simulate npm install for the critical package.
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install ai-figure-test@1.0.0"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	// Signed critical bumblebee (signedCount=1) + SeverityOverrides["critical"]{BlockAt:1}
+	// + CatalogHealthy:true → effectiveBlockAt=1 → block.
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (critical signed single source must block via CORR-01)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d (block decision must exit non-zero)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow {
+		t.Error("Allow = true, want false for block decision")
+	}
+}
+
+// TestRunCheckCriticalDegradedCatalogWarn proves SC2 (Roadmap): the same
+// critical signed bumblebee entry that blocks under a healthy catalog instead
+// produces a "warn" decision when state.json marks bumblebee as Degraded.
+//
+// RED state (before Task 2 wiring): CatalogHealthy is always true from
+// DefaultCorroborationThresholds() defaults — the state.json is not read, so
+// the degradation flag is ignored and the critical entry still blocks. This
+// test FAILS in RED (asserts "warn", gets "block"), proving the wiring is absent.
+//
+// GREEN state (after Task 2 wiring): resolveCatalogHealthy reads state.json,
+// finds bumblebee Degraded:true, sets CatalogHealthy:false → findSeverityOverride
+// returns nil → effectiveBlockAt=2 → signedCount=1 < 2 → warn.
+func TestRunCheckCriticalDegradedCatalogWarn(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildCriticalTestIndex(t, dir)
+
+	// cacheDir = dir/catalogs; state.json lives at dir/state.json
+	// (filepath.Dir(cacheDir) == dir, so resolveCatalogHealthy finds dir/state.json).
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	// Write a degraded state: bumblebee Degraded=true, simulating a sanity-check
+	// failure after 1001+ new entries were injected (catalog poisoning scenario).
+	statePath := filepath.Join(dir, "state.json")
+	err := catalog.SaveState(statePath, catalog.WatchState{
+		Sources: map[string]catalog.SourceState{
+			"bumblebee": {Degraded: true, DegradedReason: "test: injected degradation (CORR-02)"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install ai-figure-test@1.0.0"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	// Degraded catalog: CatalogHealthy=false → findSeverityOverride returns nil
+	// → effectiveBlockAt=2 (global default) → signedCount=1 < 2 → warn (not block).
+	if res.Decision.Level != "warn" {
+		t.Errorf("Level = %q, want warn (degraded catalog must suppress critical escalation)", res.Decision.Level)
+	}
+	// warn → Allow:true → ExitCode 0.
+	if res.ExitCode != exitAllow {
+		t.Errorf("ExitCode = %d, want %d (warn must not block)", res.ExitCode, exitAllow)
+	}
+	if !res.Decision.Allow {
+		t.Error("Allow = false, want true for warn decision")
+	}
+}
+
+// TestRunCheckCriticalBlockWithHealthyCatalog proves CORR-02 wiring: an
+// explicit healthy state.json (Degraded:false) still produces a block,
+// confirming that resolveCatalogHealthy reads the flag and sets CatalogHealthy:true
+// rather than silently defaulting. This distinguishes "wiring reads state.json"
+// from "wiring is absent but default is true anyway".
+//
+// Together with TestRunCheckCriticalDegradedCatalogWarn, the pair proves that
+// the state.json flag is read on BOTH the degraded (false) and healthy (true) paths.
+func TestRunCheckCriticalBlockWithHealthyCatalog(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildCriticalTestIndex(t, dir)
+
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	// Write an explicitly healthy state: bumblebee Degraded=false.
+	statePath := filepath.Join(dir, "state.json")
+	err := catalog.SaveState(statePath, catalog.WatchState{
+		Sources: map[string]catalog.SourceState{
+			"bumblebee": {Degraded: false, DegradedReason: ""},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install ai-figure-test@1.0.0"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	// Healthy catalog: CatalogHealthy=true → SeverityOverrides["critical"]{BlockAt:1}
+	// → effectiveBlockAt=1 → signedCount=1 >= 1 → block.
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (healthy catalog with critical signed entry must block)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d (block decision must exit non-zero)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow {
+		t.Error("Allow = true, want false for block decision")
+	}
+}
