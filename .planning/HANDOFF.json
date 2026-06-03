@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-03T11:53:20.132Z",
+  "phase": "05",
+  "phase_name": "Contribution-Back & Milestone Close",
+  "phase_dir": ".planning/phases/05-contribution-back-milestone-close",
+  "plan": 5,
+  "task": 2,
+  "total_tasks": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": "05-01", "name": "PTEST-05 — isSensitivePath ToSlash fix + Windows honeypot (SENTRY-005)", "status": "done", "commit": "10ab2ba"},
+    {"id": "05-02", "name": "SDEF-01 — pollen-self in beekeeper-self catalog", "status": "done", "commit": "107cf90"},
+    {"id": "05-03", "name": "SYNC-01/02 — UPSTREAM.md sync workflow + pollen.5 VERSION/CHANGES", "status": "done", "commit": "d466815"},
+    {"id": "05-04", "name": "BKINT-02 — CI go-install pin + release runbook", "status": "done", "commit": "ebc3cdd"},
+    {"id": "05-05-task1", "name": "Release pre-flight verification (both repos green, 4 tag commits present)", "status": "done", "progress": "verified inline during E2E"},
+    {"id": "e2e", "name": "Local E2E validation (beekeeper<->pollen cross-binary scan on Windows) + --deep fix", "status": "done", "commit": "9d5de68"}
+  ],
+  "remaining_tasks": [
+    {"id": "05-05-task2", "name": "MAINTAINER CHECKPOINT (autonomous:false): push pollen, cut+cosign-sign tags pollen.2/.3/.4/.5, verify, create+push beekeeper", "status": "not_started"},
+    {"id": "05-05-task3", "name": "Post-release tracking update (STATE/ROADMAP/REQUIREMENTS DISCHARGED rows) + phase verify + milestone v1.1.0 close", "status": "not_started"}
+  ],
+  "blockers": [
+    {"description": "Release is auth-gated (GitHub gh auth + cosign OIDC) and irreversible — only the maintainer can perform it", "type": "human_action", "workaround": "Follow docs/release-runbook.md step-by-step"}
+  ],
+  "human_actions_pending": [
+    {"action": "Run docs/release-runbook.md: push ../pollen (16 commits ahead, remote github.com/Bantuson/pollen) -> 3-OS CI green -> tag+push v0.1.1-pollen.2 (c94b271) / .3 (19695e3) / .4 (b906404) / .5 (HEAD 3b6d8f2) -> cosign verify-blob (identity ^https://github.com/Bantuson/pollen/) -> gh repo create bantuson/beekeeper + push beekeeper", "context": "Milestone v1.1.0 close (SC6). Pollen MUST be pushed+tagged BEFORE beekeeper push so beekeeper CI's go install @v0.1.1-pollen.4 resolves.", "blocking": true}
+  ],
+  "decisions": [
+    {"decision": "SYNC-02 / roadmap SC2 DESCOPED — no upstream PRs to perplexityai/bumblebee", "rationale": "Upstream Windows PRs #3/#4 ignored; maintainers doing their own Windows update — no viable contribution path. Documented in pollen UPSTREAM.md.", "phase": "05"},
+    {"decision": "Four signed tags (pollen.2/.3/.4/.5) cut at the 05-05 checkpoint; GitHub push enabled (reverses local-only posture)", "rationale": "D-3/D-4; fork must stand on its own published signed release", "phase": "05"},
+    {"decision": "pollen.4 tags at b906404 (the WR-01 .vscode-oss->vscodium fix), NOT a9db7b3; cosign identity is capital-B Bantuson", "rationale": "ship the VSCodium label fix; GitHub OIDC binds canonical account casing", "phase": "05"},
+    {"decision": "BKINT-02 is binary-only (CI go install @version + source const), no go.mod module import", "rationale": "preserves the BKINT-01 subprocess boundary", "phase": "05"},
+    {"decision": "beekeeper scan --deep now wires --root <home> + emits scan_error on any non-zero pollen exit (fix 9d5de68)", "rationale": "E2E found --deep silently produced nothing (pollen deep needs --root; non-zero exit was swallowed). Pre-existing latent bug, not an M2 regression.", "phase": "05"}
+  ],
+  "uncommitted_files": ["beekeeper-tui-prototype.html (untracked, pre-existing, NOT part of this work)"],
+  "next_action": "Maintainer runs docs/release-runbook.md (push pollen + 4 signed tags + cosign verify + push beekeeper). Then reply 'done' or re-run /gsd-execute-phase 5 to finish 05-05 task 3 (tracking) -> phase verify -> milestone v1.1.0 close.",
+  "context_notes": "All four autonomous plans (05-01..05-04) are committed and local E2E is fully validated & green on Windows (beekeeper 22 pkgs + pollen all pkgs; live beekeeper scan spawns real pollen -> 14,929 merged records, 0 unavailable/malformed; --deep now 30,690 deep records after fix). Nothing has been pushed/tagged/signed. The ONLY remaining work is the maintainer's auth-gated GitHub release (05-05 checkpoint) then the wrap-up. Binaries are installed at $(go env GOPATH)/bin (C:\\Users\\Bantu\\go\\bin) and on PATH. CROSS-REPO GOTCHA: the Bash tool cwd resets to the beekeeper root after a compound 'cd ../pollen && ...' — use explicit absolute cd or git -C for pollen ops."
+}
