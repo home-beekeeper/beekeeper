@@ -696,7 +696,7 @@ func newScanCmd() *cobra.Command {
 			return scan.Scan(cmd.Context(), scanCfg, cmd.OutOrStdout())
 		},
 	}
-	cmd.Flags().BoolVar(&deep, "deep", false, "Run a deep scan (passes --profile deep to Bumblebee)")
+	cmd.Flags().BoolVar(&deep, "deep", false, "Run a deep scan (passes --profile deep --root <home> to Pollen)")
 	return cmd
 }
 

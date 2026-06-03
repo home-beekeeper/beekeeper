@@ -7,6 +7,7 @@ package scan
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -61,23 +62,47 @@ var runPollenFn = func(ctx context.Context, deep bool) (<-chan []byte, bool) {
 	return defaultRunPollen(ctx, deep)
 }
 
+// pollenScanArgs builds the argument vector for the pollen scan subprocess.
+// When deep is set, pollen's incident-response "deep" profile requires at least
+// one explicit --root (it exits non-zero otherwise), so beekeeper supplies the
+// user's home directory. home is os.UserHomeDir() ("" if it could not be resolved,
+// in which case no --root is appended and pollen will report the missing-root error
+// — which defaultRunPollen surfaces as an observable scan_error).
+func pollenScanArgs(deep bool, home string) []string {
+	args := []string{"scan"}
+	if deep {
+		args = append(args, "--profile", "deep")
+		if home != "" {
+			args = append(args, "--root", home)
+		}
+	}
+	return args
+}
+
+// pollenCommand builds the *exec.Cmd that runs pollen. It is a package var so tests
+// can substitute a helper process without spawning a real pollen binary.
+var pollenCommand = func(ctx context.Context, bin string, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, bin, args...)
+}
+
 // defaultRunPollen invokes pollen and streams its stdout NDJSON lines over the
 // returned channel. Returns (nil, false) if pollen is not in PATH or fails to start.
 // NOTE: no --format flag is passed — NDJSON is pollen's default output format.
+// A non-zero pollen exit is surfaced as a scan_error line (fail-closed/observable)
+// rather than a silent empty scan, so a failed subprocess is never a false success.
 func defaultRunPollen(ctx context.Context, deep bool) (<-chan []byte, bool) {
 	bin, err := lookPollenFn()
 	if err != nil {
 		return nil, false
 	}
-	args := []string{"scan"}
-	if deep {
-		args = append(args, "--profile", "deep")
-	}
-	cmd := exec.CommandContext(ctx, bin, args...)
+	home, _ := os.UserHomeDir()
+	cmd := pollenCommand(ctx, bin, pollenScanArgs(deep, home)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, false
 	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return nil, false
 	}
@@ -91,7 +116,23 @@ func defaultRunPollen(ctx context.Context, deep bool) (<-chan []byte, bool) {
 			copy(out, line)
 			ch <- out
 		}
-		_ = cmd.Wait()
+		if werr := cmd.Wait(); werr != nil {
+			// Non-zero pollen exit — emit an observable scan_error instead of a
+			// silent empty scan (fail-closed). stderr carries pollen's reason
+			// (e.g. "profile=deep requires at least one explicit --root").
+			rec := map[string]any{
+				"record_type":  "scan_error",
+				"scanner_name": "beekeeper",
+				"source":       "pollen",
+				"error":        fmt.Sprintf("pollen subprocess exited non-zero: %v", werr),
+			}
+			if detail := strings.TrimSpace(stderr.String()); detail != "" {
+				rec["detail"] = detail
+			}
+			if b, merr := json.Marshal(rec); merr == nil {
+				ch <- b
+			}
+		}
 	}()
 	return ch, true
 }

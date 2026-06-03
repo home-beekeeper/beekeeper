@@ -6,13 +6,62 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bantuson/beekeeper/internal/catalog"
 )
+
+func TestPollenScanArgs(t *testing.T) {
+	if got := pollenScanArgs(false, `C:\Users\x`); !reflect.DeepEqual(got, []string{"scan"}) {
+		t.Errorf("baseline args = %v, want [scan]", got)
+	}
+	if got := pollenScanArgs(true, `C:\Users\x`); !reflect.DeepEqual(got, []string{"scan", "--profile", "deep", "--root", `C:\Users\x`}) {
+		t.Errorf(`deep args = %v, want [scan --profile deep --root C:\Users\x]`, got)
+	}
+	if got := pollenScanArgs(true, ""); !reflect.DeepEqual(got, []string{"scan", "--profile", "deep"}) {
+		t.Errorf("deep-no-home args = %v, want no --root", got)
+	}
+}
+
+// TestHelperPollenFail is a subprocess helper (standard os/exec idiom): when the
+// env var is set it mimics pollen exiting non-zero with a stderr reason and no
+// stdout. It is a no-op during a normal test run.
+func TestHelperPollenFail(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_POLLEN_FAIL") != "1" {
+		return
+	}
+	os.Stderr.WriteString("profile=deep requires at least one explicit --root.\n")
+	os.Exit(2)
+}
+
+// TestDefaultRunPollenNonZeroExitEmitsScanError verifies that a non-zero pollen
+// exit produces an observable scan_error line rather than a silent empty scan
+// (fail-closed). Uses TestHelperPollenFail as a stand-in for the pollen binary.
+func TestDefaultRunPollenNonZeroExitEmitsScanError(t *testing.T) {
+	oldLook, oldCmd := lookPollenFn, pollenCommand
+	defer func() { lookPollenFn, pollenCommand = oldLook, oldCmd }()
+
+	lookPollenFn = func() (string, error) { return os.Args[0], nil }
+	pollenCommand = func(ctx context.Context, bin string, args ...string) *exec.Cmd {
+		c := exec.CommandContext(ctx, os.Args[0], "-test.run=TestHelperPollenFail")
+		c.Env = append(os.Environ(), "GO_WANT_HELPER_POLLEN_FAIL=1")
+		return c
+	}
+
+	var buf bytes.Buffer
+	if err := Scan(context.Background(), Config{}, &buf); err != nil {
+		t.Fatalf("Scan returned error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"record_type":"scan_error"`) || !strings.Contains(out, `"source":"pollen"`) {
+		t.Errorf("expected an observable scan_error (source pollen) on non-zero pollen exit; got:\n%s", out)
+	}
+}
 
 func TestScanWithBumblebee(t *testing.T) {
 	old := runPollenFn
