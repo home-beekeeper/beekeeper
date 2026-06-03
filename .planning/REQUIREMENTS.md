@@ -38,7 +38,7 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 - [x] **PTEST-02**: Differential test — Pollen output is byte-for-byte identical to upstream Bumblebee on Linux and macOS for a fixed fixture; runs on every Pollen PR; re-run manually against any new upstream tag before absorbing
 - [x] **PTEST-03**: `pollen selftest` passes on all three OSes; Pollen CI matrix (ubuntu/macos/windows, go 1.25.x) runs `go vet`, `go test -race ./...`, selftest, and a versioned build green; upstream's inherited Go test suite passes unchanged on Linux/macOS
 - [x] **PTEST-04**: The Pollen compatibility test runs from beekeeper's harness on all three OSes — invokes `pollen scan`, asserts NDJSON schema-consistency with beekeeper's audit schema, runs beekeeper rules on top, asserts no double-counting and correct `scanner_name`; the Windows skip baseline for these tests is zero
-- [ ] **PTEST-05**: Windows honeypot E2E — a planted process tree that reads synthetic `%USERPROFILE%\.aws\credentials` and makes an outbound connection fires beekeeper's Sentry exfil-signature-fusion rule on Windows
+- [x] **PTEST-05**: Windows honeypot E2E — a planted process tree that reads synthetic `%USERPROFILE%\.aws\credentials` and makes an outbound connection fires beekeeper's Sentry exfil-signature-fusion rule on Windows
 
 ### Beekeeper Integration (BKINT)
 
@@ -107,7 +107,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | SYNC-01 | Phase 5 | Pending |
 | SYNC-02 | Phase 5 | Pending |
 | BKINT-02 | Phase 5 | Pending |
-| PTEST-05 | Phase 5 | Pending |
+| PTEST-05 | Phase 5 | Complete |
 | SDEF-01 | Phase 5 | Pending |
 
 **Coverage:**
