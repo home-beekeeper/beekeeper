@@ -18,7 +18,23 @@ Shipped: single static Go binary; pure corroboration policy engine; editor-exten
 
 **Carried to v1.x:** live external `beekeeper-self` hosting (separate host + signing key) + end-to-end refuse-to-run; independent external security review + VDP publication; distributed mode / team-shared catalogs; weighted corroboration. Tech stack: Go 1.25, no CGO in core; Python 3.11+ optional sidecar; Bubble Tea v2.
 
-## Current Milestone: v1.1.0 Pollen
+## Current Milestone: v1.2.0 Runtime Behavioral Hardening
+
+**Goal:** Close the three runtime-enforcement gaps that live `beekeeper check` validation exposed (with the agent itself as the test subject), so a hijacked agent cannot read credential files, slip malware past via `pnpm`/`bun`, or install a *critical*-severity package on a warn-only pass — each locked in by a behavioral test suite.
+
+**Target features:**
+- **PLCY-05** (sensitive-path enforcement, F2) — wire the already-built `EvaluatePath`/`DefaultSensitivePaths` engine into the live `beekeeper check` path: evaluate `file_path` (Read/Write/Edit) **and** command targets (`cat`/`type`/`Get-Content` of credential files) against the sensitive-path policy; fail-closed; allowlist + policy-overlay merged. Today that engine is referenced only by its own test, so credential reads (`~/.aws/credentials`, `~/.ssh/id_rsa`, `~/.npmrc`, `.env`) return ALLOW.
+- **NUDGE** package-manager nudge (F3) — full spec in [`.planning/specs/NUDGE-PRD.md`](specs/NUDGE-PRD.md). New `internal/nudge/` package: detect local pnpm(>=11)/bun(>=1.3)/node(>=22), recognize npm/pnpm/bun/yarn/npx install patterns, soft-advise by default / hard-rewrite on opt-in / block when `requireHardened` and no hardened PM is present; `record_type:"nudge"` audit; `beekeeper nudge status|check|audit` CLI; wired into check + gateway + shim. Also closes the F3 gap that `pnpm`/`bun` installs are currently unparsed and bypass catalog matching.
+- **PLCY-07** corroboration hardening (F1) — a *critical*-severity catalog match must not pass warn-only. Today `npm install ai-figure` (Shai-Hulud worm, OSV `MAL-2026-4126`, matched bumblebee+OSV) only WARNED because bumblebee entries are unsigned (`Signed:false`) → `CorroborationCount:1 < BlockAt:2`. Add per-severity escalation (critical → block at one trusted source) or treat the bundled catalog as signed-equivalent, with sanity bounds + documented false-positive rigor.
+- **BTEST** behavioral test suite (cross-cutting) — table-driven pure-policy tests + check-handler integration tests (stdin→decision) + a live-binary E2E battery (catalog-backed) mirroring the validation run that surfaced these gaps. Threaded through every phase per the project's testing requirements.
+
+**Scope source:** `.planning/specs/NUDGE-PRD.md` (nudge feature) + the runtime-validation findings F1/F2/F3 (captured in this milestone's discuss/plan artifacts). Detailed REQ-IDs in `.planning/REQUIREMENTS.md`.
+
+**Architecture constraint reminder:** `internal/policy` stays a pure function library — nudge detection I/O lives in `internal/nudge/detect.go`, and `nudge.Evaluate` decides over a caller-resolved `PMState`, mirroring `policy.EvaluateReleaseAge(ReleaseAgeInput, …)`.
+
+## Parked Milestone: v1.1.0 Pollen (paused at maintainer release checkpoint — NOT closed)
+
+> **Status: PARKED, not complete.** v1.1.0 is paused at its 05-05 maintainer release checkpoint (auth-gated GitHub push + signed tags `pollen.2/.3/.4/.5` + cosign verify). Resume artifacts are preserved: `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in STATE.md "Deferred Items". Do **not** archive or close v1.1.0 until the maintainer runs the runbook and completes 05-05 Task 3. v1.2.0 phases continue the numbering at 06+ so the parked `05-*` phase dir is untouched.
 
 **Goal:** Own Windows inventory compatibility by forking Bumblebee into a bounded Apache-2.0 derivative ("Pollen"), so the Windows CI matrix goes fully green and cross-platform test discipline holds instead of rotting behind `t.Skip`.
 
@@ -187,4 +203,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-02 — Phase 4 (Windows Extension & MCP Coverage + Beekeeper Compat Test) complete; milestone v1.1.0 Pollen at 4/5 phases*
+*Last updated: 2026-06-03 — Milestone v1.2.0 "Runtime Behavioral Hardening" started (PLCY-05 sensitive-path wiring, NUDGE package-manager nudge, PLCY-07 corroboration hardening, BTEST). v1.1.0 Pollen parked at its maintainer release checkpoint (not closed).*

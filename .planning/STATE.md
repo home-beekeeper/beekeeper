@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1.0
-milestone_name: "Pollen" — Windows Inventory Compatibility
-status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-06-03T09:03:30.221Z"
+milestone: v1.2.0
+milestone_name: Runtime Behavioral Hardening
+status: planning
+last_updated: "2026-06-03T14:04:39.991Z"
 last_activity: 2026-06-03
 progress:
-  total_phases: 5
-  completed_phases: 4
-  total_plans: 20
-  completed_plans: 19
-  percent: 80
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,20 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 05 — Contribution-Back & Milestone Close
+**Current focus:** v1.2.0 Runtime Behavioral Hardening — defining requirements (PLCY-05 sensitive-path wiring, NUDGE package-manager nudge, PLCY-07 corroboration hardening, BTEST)
+
+> ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 05 (Contribution-Back & Milestone Close) — EXECUTING (paused at maintainer checkpoint)
-Plan: 5 of 5 (04 autonomous plans done; 05-05 is the blocking maintainer release checkpoint)
-Status: BLOCKED on maintainer release — local E2E validated & green; awaiting GitHub push + signed tags
-Last activity: 2026-06-03 -- local E2E pass (beekeeper↔pollen cross-binary scan on Windows) + --deep fix 9d5de68
-
-Local E2E validated (2026-06-03, this machine): pollen selftest OK + live `pollen scan` (Windows endpoint/backslash paths/scanner_name=pollen); beekeeper selftest PASS 11/0; `beekeeper scan` spawns real pollen → 14,929 merged records, 0 unavailable, 0 malformed, +18 findings; negative path → graceful pollen_unavailable. Defect found + fixed (9d5de68): `scan --deep` silently produced nothing (pollen deep needs --root; non-zero exit swallowed) → now wires --root <home> (30,690 deep records) + emits observable scan_error on any non-zero pollen exit + help-text Bumblebee→Pollen. Both full suites green.
-
-Progress: `[████████░░] 80%` (Phase 5 plans 01–04 executed & green; local E2E validated; 05-05 release checkpoint pending maintainer)
-
-Next action: Run `docs/release-runbook.md` (push pollen + cut signed tags pollen.2/.3/.4/.5 + cosign verify + push beekeeper), then re-run `/gsd-execute-phase 5` to finish 05-05 tracking + verify + milestone close.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-03 — Milestone v1.2.0 started
 
 ## Phase Summary (v1.1.0)
 
@@ -331,12 +326,12 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-03T09:03:30.203Z
-Stopped at: Completed 05-04-PLAN.md
-Resume file: None
+Last session: 2026-06-03 — Started milestone v1.2.0 "Runtime Behavioral Hardening" (parked v1.1.0 Pollen at its release checkpoint without closing it). Ran live `beekeeper check` runtime validation that surfaced 3 gaps (F1 critical-malware warn-only, F2 credential reads unflagged, F3 pnpm/bun unparsed). Defining requirements next.
+Stopped at: Milestone v1.2.0 setup — requirements/roadmap pending.
+Resume file: None (v1.1.0 release resume artifacts: HANDOFF.json + 05-05 .continue-here.md, preserved)
 
 ## Operator Next Steps
 
-- **Plan Phase 1** with `/gsd-plan-phase 1` — Fork Setup & Discipline (FORK-01–04, PTEST-02–03, SDEF-02). Work happens in the NEW `bantuson/pollen` repo (create it first).
-- **Create the pollen repo** at `github.com/bantuson/pollen` before or during Phase 1 plan execution — the fork target must exist.
-- **Still pending (from v1.0.0 close):** push `bantuson/beekeeper` to GitHub remote if not done; verify CI fires correctly.
+- **v1.2.0 (current):** define requirements (PLCY-05/NUDGE/PLCY-07/BTEST) → roadmap (phases 06+) → `/gsd-discuss-phase 06`. Nudge spec: `.planning/specs/NUDGE-PRD.md`.
+- **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: `HANDOFF.json` + 05-05 `.continue-here.md`. Do NOT close v1.1.0 before this runs.
+- **Still pending (from v1.0.0 close):** the beekeeper GitHub remote is created as part of the v1.1.0 runbook (Step 1: `gh repo create bantuson/beekeeper`).
