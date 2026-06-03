@@ -1,4 +1,4 @@
-# Roadmap: Beekeeper
+﻿# Roadmap: Beekeeper
 
 ## Milestones
 
@@ -118,7 +118,14 @@
   4. The Windows Sentry honeypot E2E test — a planted process tree reading synthetic `%USERPROFILE%\.aws\credentials` and making an outbound connection — fires beekeeper's exfil-signature-fusion rule on the Windows CI runner and the test asserts the expected alert is emitted
   5. `beekeeper-self` catalog contains `pollen-self` entries so that a known-bad Pollen release is detectable by beekeeper's self-quarantine mechanism; `beekeeper selftest` passes with the extended catalog
   6. `v0.1.1-pollen.5` is tagged and signed — the milestone-complete tag
-**Plans**: TBD
+**Plans**: 5 plans (3 waves)
+- [ ] 05-01-PLAN.md — Wave 1 (beekeeper): PTEST-05 — fix isSensitivePath (filepath.ToSlash, Windows backslash bug) + Windows honeypot E2E (TestHoneypotExfilFusion fires SENTRY-005)
+- [ ] 05-02-PLAN.md — Wave 1 (beekeeper): SDEF-01 — pollen-self entries in the unified beekeeper-self catalog + selftest fixture (non-production version)
+- [ ] 05-03-PLAN.md — Wave 1 (pollen): SYNC-01 UPSTREAM.md sync workflow + version history; SYNC-02 contribution-back-deferred rationale (D-2); pollen.5 VERSION/CHANGES prep
+- [ ] 05-04-PLAN.md — Wave 2 (beekeeper): BKINT-02 — CI go install Pollen pin (v0.1.1-pollen.4) + PinnedPollenVersion const + D-5 release runbook
+- [ ] 05-05-PLAN.md — Wave 3 (CHECKPOINT, autonomous:false): maintainer pushes both repos + cuts four signed tags (pollen.2/.3/.4/.5) + cosign verify; CI-green confirmation; milestone close
+
+> **SC2 relaxed (D-2):** No upstream contribution-back PRs against perplexityai/bumblebee this milestone (upstream Windows-support path unviable; PRs #3/#4 ignored). SYNC-02 is satisfied-by-documented-deferral in UPSTREAM.md (05-03). The verifier MUST NOT flag the absence of an upstream PR as a Phase-5 gap.
 
 ## Progress
 
@@ -139,4 +146,4 @@
 | **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
 | **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
-| **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
+| **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
