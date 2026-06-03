@@ -117,6 +117,12 @@ func RunSelftest() (passed, failed int, err error) {
 	multi := &bumblebeeAdapter{idx: idx}
 
 	// Catalog-match (warn) and allow fixtures: evaluate via the pure engine.
+	// Phase-6 audit (CORR-01): all selftestEntries carry Severity:"critical" but
+	// CatalogSignature:"" (unsigned), so bumblebeeAdapter emits Signed:false.
+	// signedCount=0 → hasSignedSource=false → the critical escalation path
+	// (signedCount >= effectiveBlockAt && hasSignedSource) does not fire.
+	// All critical-severity fixtures correctly remain at "warn". No expectation
+	// changes required. See 06-01-SUMMARY.md § Task 3 for full analysis.
 	for _, f := range fixtures {
 		d := policy.Evaluate(f.ToolCall, multi, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 		if fixtureMatches(f, d) {
