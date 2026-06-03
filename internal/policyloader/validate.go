@@ -55,12 +55,21 @@ func ValidateSchema(pf PolicyFile) []error {
 		}
 		if r.RuleType == "corroboration_threshold" && r.CriticalBlockAt != 0 {
 			// CriticalBlockAt zero means "use default" — only validate non-zero values.
+			// Note: JSON omitempty makes 0 and absent field identical; both decode as 0.
 			if r.CriticalBlockAt < 1 {
 				errs = append(errs, fmt.Errorf("rule[%d] %q: critical_block_at (%d) must be >= 1",
 					i, r.ID, r.CriticalBlockAt))
 			}
-			// Upper bound (CriticalBlockAt <= global block_at) is validated at eval time by
-			// validateCorroborationThresholds, which has the fully-resolved global BlockAt.
+			// When block_at is also present in this same rule, we have both values and
+			// can catch the inversion immediately at validate time, giving the operator
+			// immediate feedback from `beekeeper policy validate` rather than deferring
+			// to eval-time fail-closed. When block_at is absent from this rule (zero),
+			// the effective global BlockAt is only known after merging all policy files,
+			// so the upper-bound check must remain at eval time (validateCorroborationThresholds).
+			if r.BlockAt > 0 && r.CriticalBlockAt > r.BlockAt {
+				errs = append(errs, fmt.Errorf("rule[%d] %q: critical_block_at (%d) must be <= block_at (%d) when both are set in the same rule",
+					i, r.ID, r.CriticalBlockAt, r.BlockAt))
+			}
 		}
 	}
 

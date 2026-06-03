@@ -108,6 +108,77 @@ func TestValidateSchema_AllErrorsCollected(t *testing.T) {
 	}
 }
 
+// TestValidateSchema_CriticalBlockAtUpperBound (WR-02): when a single
+// corroboration_threshold rule sets both block_at and critical_block_at,
+// ValidateSchema must reject critical_block_at > block_at immediately at load
+// time (not defer to eval-time validateCorroborationThresholds). When block_at
+// is absent from the rule, no load-time upper-bound error is produced.
+func TestValidateSchema_CriticalBlockAtUpperBound(t *testing.T) {
+	// Case 1: both block_at and critical_block_at present, inverted — must error.
+	pfBothInverted := PolicyFile{
+		SchemaVersion: "1",
+		Name:          "inverted-upper-bound",
+		Rules: []PolicyRule{
+			{
+				ID:              "CORR-inverted",
+				RuleType:        "corroboration_threshold",
+				BlockAt:         2,
+				CriticalBlockAt: 5, // > block_at: 2 — must be rejected at load time
+			},
+		},
+	}
+	errs := ValidateSchema(pfBothInverted)
+	if len(errs) == 0 {
+		t.Error("ValidateSchema: expected error for critical_block_at(5) > block_at(2), got none")
+	}
+	found := false
+	for _, e := range errs {
+		if containsStr(e.Error(), "critical_block_at") || containsStr(e.Error(), "block_at") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("error does not mention critical_block_at/block_at: %v", errs)
+	}
+
+	// Case 2: both present and valid (critical_block_at <= block_at) — must not error.
+	pfBothValid := PolicyFile{
+		SchemaVersion: "1",
+		Name:          "valid-upper-bound",
+		Rules: []PolicyRule{
+			{
+				ID:              "CORR-valid",
+				RuleType:        "corroboration_threshold",
+				BlockAt:         2,
+				CriticalBlockAt: 1, // <= block_at: 2 — valid
+			},
+		},
+	}
+	errs2 := ValidateSchema(pfBothValid)
+	if len(errs2) != 0 {
+		t.Errorf("ValidateSchema: unexpected errors for valid critical_block_at(1) <= block_at(2): %v", errs2)
+	}
+
+	// Case 3: critical_block_at present but block_at absent — no load-time upper-bound
+	// check (effective global BlockAt is only known after full policy-file merge).
+	pfCriticalOnly := PolicyFile{
+		SchemaVersion: "1",
+		Name:          "critical-only",
+		Rules: []PolicyRule{
+			{
+				ID:              "CORR-critical-only",
+				RuleType:        "corroboration_threshold",
+				CriticalBlockAt: 5, // no block_at — cannot validate upper bound at load time
+			},
+		},
+	}
+	errs3 := ValidateSchema(pfCriticalOnly)
+	if len(errs3) != 0 {
+		t.Errorf("ValidateSchema: unexpected errors when block_at is absent (upper bound unknown at load time): %v", errs3)
+	}
+}
+
 // containsStr is a helper that checks if s contains substr (case-sensitive).
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
