@@ -27,10 +27,12 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 
 Phase: 05 (Contribution-Back & Milestone Close) — EXECUTING (paused at maintainer checkpoint)
 Plan: 5 of 5 (04 autonomous plans done; 05-05 is the blocking maintainer release checkpoint)
-Status: BLOCKED on maintainer release — all local work green; awaiting GitHub push + signed tags
-Last activity: 2026-06-03
+Status: BLOCKED on maintainer release — local E2E validated & green; awaiting GitHub push + signed tags
+Last activity: 2026-06-03 -- local E2E pass (beekeeper↔pollen cross-binary scan on Windows) + --deep fix 9d5de68
 
-Progress: `[████████░░] 80%` (Phase 5 plans 01–04 executed & green; 05-05 release checkpoint pending maintainer)
+Local E2E validated (2026-06-03, this machine): pollen selftest OK + live `pollen scan` (Windows endpoint/backslash paths/scanner_name=pollen); beekeeper selftest PASS 11/0; `beekeeper scan` spawns real pollen → 14,929 merged records, 0 unavailable, 0 malformed, +18 findings; negative path → graceful pollen_unavailable. Defect found + fixed (9d5de68): `scan --deep` silently produced nothing (pollen deep needs --root; non-zero exit swallowed) → now wires --root <home> (30,690 deep records) + emits observable scan_error on any non-zero pollen exit + help-text Bumblebee→Pollen. Both full suites green.
+
+Progress: `[████████░░] 80%` (Phase 5 plans 01–04 executed & green; local E2E validated; 05-05 release checkpoint pending maintainer)
 
 Next action: Run `docs/release-runbook.md` (push pollen + cut signed tags pollen.2/.3/.4/.5 + cosign verify + push beekeeper), then re-run `/gsd-execute-phase 5` to finish 05-05 tracking + verify + milestone close.
 
