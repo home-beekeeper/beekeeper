@@ -968,7 +968,7 @@ Step 2.6: SKIPPED — Phase 6 is code/config-only changes to `internal/policy` a
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`catalog.LoadState` signature** — CLOSED (VERIFIED during research)
    - `catalog.LoadState(path string)` takes a full path. `WatchState.Sources["bumblebee"].Degraded bool`
