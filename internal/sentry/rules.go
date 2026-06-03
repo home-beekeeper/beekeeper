@@ -63,7 +63,19 @@ func isSensitivePath(path string) bool {
 // isCredentialCLI reports whether the base name of exe is a known
 // credential-management CLI.
 func isCredentialCLI(exe string) bool {
-	return credentialCLIs[filepath.Base(exe)]
+	return credentialCLIs[exeBaseName(exe)]
+}
+
+// exeBaseName returns the base name of exe with any platform executable suffix
+// stripped (e.g. ".exe" on Windows). This normalises ETW-emitted Windows paths
+// such as "cursor.exe" to "cursor" so that editorExes and credentialCLIs lookups
+// work correctly on all platforms.
+func exeBaseName(exe string) string {
+	base := filepath.Base(exe)
+	if strings.HasSuffix(strings.ToLower(base), ".exe") {
+		return base[:len(base)-4]
+	}
+	return base
 }
 
 // isEditorDescendant reports whether pid is a direct child of an editor process
@@ -77,7 +89,7 @@ func isEditorDescendant(pid uint32, tree map[uint32]ProcessNode) bool {
 		if !ok {
 			return false
 		}
-		if editorExes[filepath.Base(node.Exe)] {
+		if editorExes[exeBaseName(node.Exe)] {
 			return true
 		}
 		if node.PPID == 0 || node.PPID == current {
