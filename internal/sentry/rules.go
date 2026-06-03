@@ -45,9 +45,15 @@ var editorExes = map[string]bool{
 
 // isSensitivePath reports whether path contains any of the well-known sensitive
 // credential-store substrings.
+//
+// filepath.ToSlash normalises Windows backslash separators to forward slashes
+// before matching so that ETW-emitted paths such as C:\Users\x\.aws\credentials
+// match the forward-slash entries in defaultSensitivePaths. On Unix/macOS the
+// call is a no-op (paths already use forward slashes).
 func isSensitivePath(path string) bool {
+	normalised := filepath.ToSlash(path)
 	for _, s := range defaultSensitivePaths {
-		if strings.Contains(path, s) {
+		if strings.Contains(normalised, s) {
 			return true
 		}
 	}
