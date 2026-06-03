@@ -25,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 
 ## Current Position
 
-Phase: 05 (Contribution-Back & Milestone Close) — EXECUTING
-Plan: 5 of 5
-Status: Ready to execute
+Phase: 05 (Contribution-Back & Milestone Close) — EXECUTING (paused at maintainer checkpoint)
+Plan: 5 of 5 (04 autonomous plans done; 05-05 is the blocking maintainer release checkpoint)
+Status: BLOCKED on maintainer release — all local work green; awaiting GitHub push + signed tags
 Last activity: 2026-06-03
 
-Progress: `[████████░░] 80%` (4/5 phases complete; Phases 2, 3 & 4 code done & verified, signed releases deferred to M2 close)
+Progress: `[████████░░] 80%` (Phase 5 plans 01–04 executed & green; 05-05 release checkpoint pending maintainer)
 
-Next action: Execute Phase 5 — `/gsd-execute-phase 5` (Contribution-Back & Milestone Close)
+Next action: Run `docs/release-runbook.md` (push pollen + cut signed tags pollen.2/.3/.4/.5 + cosign verify + push beekeeper), then re-run `/gsd-execute-phase 5` to finish 05-05 tracking + verify + milestone close.
 
 ## Phase Summary (v1.1.0)
 
