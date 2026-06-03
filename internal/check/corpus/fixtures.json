@@ -130,5 +130,20 @@
     "expect_allow": true,
     "expect_catalog_match": true,
     "expect_rule_id": "bumblebee-catalog-match"
+  },
+  {
+    "name": "pollen-self: hypothetical compromised pollen release routes through beekeeper-self catalog",
+    "tool_call": {
+      "agent_name": "test",
+      "tool_name": "Install",
+      "tool_input": {
+        "ecosystem": "beekeeper",
+        "package": "pollen",
+        "version": "pollen-test-v0.0.1"
+      }
+    },
+    "expect_level": "warn",
+    "expect_allow": true,
+    "expect_catalog_match": true
   }
 ]

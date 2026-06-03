@@ -45,6 +45,19 @@ var selftestEntries = []catalog.Entry{
 		Severity:      "critical",
 		CatalogSource: "bumblebee",
 	},
+	// SDEF-01: pollen-self entry — makes a hypothetical compromised Pollen release
+	// detectable by the selftest catalog engine. Uses the non-production version
+	// string "pollen-test-v0.0.1" so the fixture can never match a real shipped
+	// Pollen release (v0.1.1-pollen.N) and trigger a false self-quarantine (T-05-06).
+	{
+		ID:            "pollen-self-2026-001",
+		Name:          "pollen (hypothetical compromised pollen release)",
+		Ecosystem:     "beekeeper",
+		Package:       "pollen",
+		Versions:      []string{"pollen-test-v0.0.1"},
+		Severity:      "critical",
+		CatalogSource: "beekeeper-self",
+	},
 }
 
 // fixture is one embedded selftest case: a tool call and its expected decision.
