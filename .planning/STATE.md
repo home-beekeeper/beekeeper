@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: Phase 6 complete (CORR-01/02 + 2 code-review fixes); ready to plan Phase 7.
-last_updated: "2026-06-03T20:06:49.204Z"
+stopped_at: Phase 7 planned (3 plans, 2 waves; checker PASSED iter-2); ready to execute Phase 7.
+last_updated: "2026-06-03T23:35:00.000Z"
 last_activity: 2026-06-03
 progress:
   total_phases: 3
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 7 — Sensitive-Path Runtime Enforcement (Phase 6 ✅ complete & verified)
+**Current focus:** Phase 7 — Sensitive-Path Runtime Enforcement (✅ planned — 3 plans, ready to execute)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 6 of 8 complete — next: Phase 7 (Sensitive-Path Runtime Enforcement)
-Plan: —
-Status: Phase 6 complete & verified (5/5 must-haves; 2 code-review criticals fixed) — ready to plan Phase 7
-Last activity: 2026-06-03 — Phase 6 executed + verified; CR-01/CR-02 fixed (commit e8bdf8a)
+Phase: 7 of 8 — PLANNED (Phase 6 ✅ complete & verified); ready to execute Phase 7
+Plan: 07-01, 07-02 (Wave 1, parallel) → 07-03 (Wave 2)
+Status: Phase 7 planned — 3 plans / 2 waves; plan-checker VERIFICATION PASSED (iter 2, 12/12 dimensions); Nyquist VALIDATION approved
+Last activity: 2026-06-03 — Phase 7 researched + planned + verified (commits b449324, 6379044, + checker-fix revision)
 
 Progress (v1.2.0): [███░░░░░░░] 33% (1 of 3 phases)
 
@@ -49,7 +49,7 @@ Progress (v1.2.0): [███░░░░░░░] 33% (1 of 3 phases)
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 6 | Corroboration Severity Hardening | CORR-01, CORR-02 | ✅ Complete (3/3 plans; +2 code-review fixes) |
-| 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | Not started |
+| 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | ✅ Planned (3 plans, 2 waves) — ready to execute |
 | 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | Not started |
 
 ## Performance Metrics
@@ -144,6 +144,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- **v1.2.0 (current):** run `/gsd-plan-phase 6` to plan Phase 6 (Corroboration Severity Hardening — CORR-01/02, pure internal/policy change, no architectural decisions outstanding). Then Phase 7 (SPATH wiring), then Phase 8 (NUDGE — resolve Flag 2 + Flag 4 in discuss/plan before planning).
+- **v1.2.0 (current):** Phase 7 is planned & checker-verified (3 plans, 2 waves) — run `/gsd-execute-phase 7` to execute (Wave 1: 07-01 + 07-02 in parallel; Wave 2: 07-03). Then Phase 8 (NUDGE — resolve Flag 2 + Flag 4 in discuss/plan before planning). NOTE: the `gsd-sdk` init resolver maps bare phase number `7` to the ARCHIVED v1.0.0 `07-cross-platform-sentry` dir; the live v1.2.0 phase is `.planning/phases/07-sensitive-path-runtime-enforcement/` — pass explicit paths / verify dir when running phase-numbered SDK commands.
 - **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: `HANDOFF.json` + 05-05 `.continue-here.md`. Do NOT close v1.1.0 before this runs.
 - **Still pending (from v1.0.0 close):** the beekeeper GitHub remote is created as part of the v1.1.0 runbook (Step 1: `gh repo create bantuson/beekeeper`).

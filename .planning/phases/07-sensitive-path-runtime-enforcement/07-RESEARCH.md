@@ -445,7 +445,7 @@ After extraction, each token is run through `canonicalizePath` and then `policy.
 | Bypass | In scope Phase 7 | Notes |
 |--------|-----------------|-------|
 | `cat ~/.aws/credentials` | YES | Direct verb+tilde — handled |
-| `type %USERPROFILE%\.ssh\id_rsa` | PARTIAL — `type ` verb is parsed; `%USERPROFILE%` env-var expansion is deferred | `filepath.Abs` won't expand env vars; the raw token `%USERPROFILE%\.ssh\id_rsa` will NOT match `/.ssh/` after ToSlash. Documented as deferred: detecting `%USERPROFILE%` expansion requires `os.ExpandEnv` which introduces complexity and a new attack surface. The agent on Windows typically uses tilde via the tool, not `type`. |
+| `type %USERPROFILE%\.ssh\id_rsa` | YES (D-01) — `type ` verb parsed; `%USERPROFILE%` expanded by `expandWinEnvVars` in `canonicalizePath` | `expandWinEnvVars` does a targeted `%VAR%`→`os.Getenv` replacement (NOT `os.ExpandEnv`) so the resolved path contains `/.ssh/` after ToSlash and `EvaluatePath` blocks it. SC2 fully met. |
 | `cat "~/.aws/credentials"` (quoted) | YES — `firstShellToken` strips leading/trailing quotes | |
 | `cat ~/.aws/credentials ~/.npmrc` (multiple paths) | YES — loop re-runs for each verb occurrence | |
 | `zsh -c "cat ~/.aws/credentials"` (nested shell) | DEFERRED — not in SPATH-03 scope | |
@@ -453,7 +453,7 @@ After extraction, each token is run through `canonicalizePath` and then `policy.
 | Command chaining: `ls && cat ~/.aws/credentials` | PARTIAL — `cat ` verb will be found anywhere in the string | |
 | Here-string: `cat <<EOF` | DEFERRED | |
 
-The success criterion SC2 in the ROADMAP is: `cat ~/.ssh/id_rsa` and `type %USERPROFILE%\.ssh\id_rsa`. The tilde form is fully covered. The `%USERPROFILE%` form requires env-var expansion; document this as a known limitation of Phase 7 (deferred to Phase 8+) and ensure the test for SC2 passes with the tilde form.
+The success criterion SC2 in the ROADMAP is: `cat ~/.ssh/id_rsa` and `type %USERPROFILE%\.ssh\id_rsa`. Both forms are fully in scope per D-01: the tilde form via `expandHome`, the `%USERPROFILE%` form via `expandWinEnvVars` in `canonicalizePath`. SC2 tests cover both (`TestRunCheckBashCatCredentialBlocks` and `TestRunCheckBashTypeUserProfileBlocks`).
 
 **Purity:** `extractBashCredentialPaths` is I/O-free — it operates only on the `string` extracted from `tc.ToolInput["command"]`. Canonicalization of the extracted tokens happens in `canonicalizePath` in the same `paths.go` file.
 
@@ -641,13 +641,15 @@ See Section: Validation Architecture below.
 
 **Warning signs:** Unit tests green, but manual `echo '{"tool_name":"Read","tool_input":{"file_path":"~/.aws/credentials"}}' | beekeeper check` returns exit 0.
 
-### Pitfall 6: `%USERPROFILE%` in Bash `type` Command Not Expanded
+### Pitfall 6: `%USERPROFILE%` in Bash `type` Command Must Be Expanded (D-01 — IN SCOPE)
 
-**What goes wrong:** The ROADMAP success criterion SC2 includes `type %USERPROFILE%\.ssh\id_rsa`. The `%USERPROFILE%` env-var expansion is NOT handled by `canonicalizePath` (only tilde and `filepath.Abs` are performed). The path token `%USERPROFILE%\.ssh\id_rsa` does not contain `\.ssh\` after `filepath.ToSlash` because `%USERPROFILE%` is not expanded.
+> **SUPERSEDED by D-01.** This pitfall originally recommended deferring `%USERPROFILE%`
+> expansion. Maintainer decision D-01 makes it IN SCOPE. The guidance below is rewritten to
+> the in-scope outcome.
 
-**Why it happens:** Env-var expansion is complex (which vars, which OS, etc.) and introduces a new attack surface.
+**What goes wrong if NOT handled:** The ROADMAP success criterion SC2 includes `type %USERPROFILE%\.ssh\id_rsa`. If `canonicalizePath` only performs tilde + `filepath.Abs`, the token `%USERPROFILE%\.ssh\id_rsa` does not contain `/.ssh/` after `filepath.ToSlash` (because `%USERPROFILE%` is unexpanded), so SC2 silently fails.
 
-**How to avoid:** Document this as a Phase 7 known limitation. The success criterion for SC2 can be satisfied by `cat ~/.ssh/id_rsa` (tilde form, which is fully in scope). `type %USERPROFILE%` detection is explicitly deferred. Add a comment in `extractBashCredentialPaths` noting the limitation.
+**How to handle (D-01):** Implement `expandWinEnvVars` as the FIRST step of `canonicalizePath` (before `expandHome`/`filepath.Abs`). Use a targeted `%VAR%` → `os.Getenv(VAR)` replacement — NOT `os.ExpandEnv` (which only handles `$VAR`/`${VAR}`). Expansion is for matching only; the command is never executed. On an unresolved/empty env var, fail-closed (keep the raw token; never silently allow). Tests use `t.Setenv("USERPROFILE", …)` so the expansion chain is exercised end-to-end.
 
 ---
 
@@ -791,29 +793,36 @@ Note: the `isAllowedPath` function must be extended to match basename patterns (
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
 | A1 | Claude Code Read/Write/Edit tools emit `"file_path"` as the ToolInput key; agents don't vary this | Q2 Wiring Point, Q6 Tests | If some agents use `"path"`, the fallback in `extractPathTargets` catches it. Low risk. |
-| A2 | `%USERPROFILE%` in Windows Bash `type` commands is not in-scope for SPATH-03 Phase 7 | Q4 Shell Extraction | If the success criterion SC2 requires `%USERPROFILE%` detection to pass, test will fail. Mitigated by documenting the limitation and satisfying SC2 via tilde form. |
+| A2 | ~~`%USERPROFILE%` in Windows Bash `type` commands is not in-scope~~ → **OVERRIDDEN by D-01: IN SCOPE.** `expandWinEnvVars` in `canonicalizePath` handles it. | Q4 Shell Extraction | Resolved — SC2 `%USERPROFILE%` form is a must-pass test (`TestRunCheckBashTypeUserProfileBlocks`). No remaining risk. |
 | A3 | Cursor and Windsurf MCP config files are at `~/.cursor/` and `~/.windsurf/` respectively | Q1 Engine Surface | Confirmed in Phase 4 v1.1.0 work (WEXT-03). LOW confidence for exact paths on all platforms — but the fragment match means any path under `/.cursor/` is caught. |
 
 **Claims tagged `[ASSUMED]`:** None beyond the above. All code citations are `[VERIFIED]` from direct file inspection.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved 2026-06-03 via maintainer decisions captured in `07-CONTEXT.md`
+> (D-01/D-02/D-03). The original recommendations are retained for provenance; the
+> binding outcome is the `RESOLVED:` line on each.
 
 1. **SPATH-03 `%USERPROFILE%` expansion scope**
    - What we know: `%USERPROFILE%\.ssh\id_rsa` in a `type` command does not resolve via `filepath.Abs` alone
    - What's unclear: Is the ROADMAP SC2 assertion `type %USERPROFILE%\.ssh\id_rsa` a must-pass test or a documented limitation?
-   - Recommendation: Satisfy SC2 with `cat ~/.ssh/id_rsa` (fully covered). Document `%USERPROFILE%` as deferred in the Phase 7 plan. Check with the user if SC2 literally requires the `type %USERPROFILE%` form.
+   - Original recommendation: Satisfy SC2 with `cat ~/.ssh/id_rsa`; defer `%USERPROFILE%`.
+   - **RESOLVED (D-01): IN SCOPE.** Maintainer chose "Expand %USERPROFILE% (full SC2)". The adapter MUST implement `expandWinEnvVars` (`%USERPROFILE%`/`%HOMEPATH%`) in `canonicalizePath` so the literal SC2 `type %USERPROFILE%\.ssh\id_rsa` form blocks. This supersedes Q4/Pitfall-6/Assumption-A2 "defer" language below.
 
 2. **`.cursor/` and `.windsurf/` in DefaultSensitivePaths**
    - What we know: Phase 4 confirmed these dirs contain MCP config; `path.go:22` comment says "MCP config files enumerated by Bumblebee are appended to BlockPatterns at Plan 08 time"
    - What's unclear: Should Phase 7 add `/.cursor/` and `/.windsurf/` to BlockPatterns now (getting ahead of the plan 08 comment), or follow the comment and defer to Phase 8?
-   - Recommendation: Add them now since they are confirmed MCP config dirs and Phase 7 is the wiring phase. The plan 08 comment referred to the old v1.0.0 planning; v1.2.0 Phase 7 is the appropriate home.
+   - Original recommendation: Add them now; the plan 08 comment referred to old v1.0.0 planning.
+   - **RESOLVED (D-02): ADD NOW.** Phase 7 adds `/.cursor/`, `/.windsurf/`, and bare `/.cargo/credentials` to `BlockPatterns`, and updates the stale `path.go:22-23` comment to reference v1.2.0 Phase 7.
 
 3. **Gateway/watch/scan consumers for SPATH**
    - What we know: Phase 6 wired CORR-02 into all four consumers; SPATH REQUIREMENTS.md maps only to Phase 7 (check only)
    - What's unclear: Does the planner expect SPATH wiring in gateway, watch, scan for Phase 7, or is check-only correct?
-   - Recommendation: Check-only per REQUIREMENTS.md traceability. Gateway SPATH wiring should be a Phase 8+ item when nudge wiring also hits the gateway.
+   - Original recommendation: Check-only per REQUIREMENTS.md traceability.
+   - **RESOLVED (D-03): CHECK-ONLY.** SPATH wiring lands in `beekeeper check` (`runCheck`) only. Gateway/watch/scan are out of scope this phase; do NOT replicate Phase 6's four-consumer fan-out.
 
 ---
 

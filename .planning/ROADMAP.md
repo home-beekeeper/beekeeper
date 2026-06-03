@@ -171,10 +171,18 @@
   2. A `Bash` tool call containing `cat ~/.ssh/id_rsa` or `type %USERPROFILE%\.ssh\id_rsa` is detected as a credential-access attempt and flagged — shell-command target extraction is live, not just direct `file_path` reads
   3. Safe lookalikes `.env.example`, `.env.test`, and `.env.schema` are NOT blocked — the built-in allowlist prevents false positives on development fixture files; project-level policy-file `sensitive_path.allow` rules merge by most-restrictive-wins
   4. `RunCheck` integration tests drive the full stdin-to-exit-code path for credential reads (SPATH-01/02/03) and assert both the exit code and the presence of a `decision:"block"` audit record — wiring is proven live, not just that `EvaluatePath` returns the correct value in isolation
-**Plans**: 3 plans
+**Plans**: 3 plans (2 waves)
+
+**Wave 1** *(parallel — no inter-plan `files_modified` overlap: `internal/policy`+`internal/policyloader` vs new `internal/check/paths.go`)*
 - [ ] 07-01-PLAN.md — Pure policy + policyloader fixes (DefaultSensitivePaths block/allow entries, isAllowedPath basename match, extractTargetPath file_path key)
 - [ ] 07-02-PLAN.md — Impure canonicalization adapter (internal/check/paths.go: extract / canonicalize / %USERPROFILE% expand / Bash credential detection / mergeDecisions)
+
+**Wave 2** *(blocked on Wave 1 — imports the 07-02 adapter and depends on the 07-01 allowlist/basename fix)*
 - [ ] 07-03-PLAN.md — Wire path block into runCheck + runCheckWithIndex; RunCheck integration tests for SC1-SC4 with audit-record assertions
+
+**Cross-cutting constraints** *(truths appearing in ≥2 plans):*
+- `internal/policy/path.go` stays pure (no I/O imports — `TestPathImportsArePure`); all FS/env I/O confined to `internal/check/paths.go` (07-01, 07-02)
+- The path block fires independently of catalog matching and emits an NDJSON `decision:"block"` audit record (SC4 — 07-02 adapter + 07-03 wiring/tests)
 **UI hint**: no
 
 ### Phase 8: Package-Manager Nudge + Behavioral Test Suite

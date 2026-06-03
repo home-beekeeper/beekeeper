@@ -88,12 +88,22 @@ internal/
 
 ## Self-Defense Non-Negotiables
 
-Every phase includes self-defense work. Never defer these:
+Every phase includes self-defense work. Never defer these.
+
+**v1.0.0 milestone (Phases 1–11 — all shipped 2026-06-01):**
 - Phase 1: Reproducible builds + Sigstore + `SECURITY.md` + pinned deps
 - Phase 2: Corroboration sanity bounds + catalog signature verification
 - Phase 4: MCP gateway fuzz tests (release gate, not backlog)
 - Phase 7: SLSA Level 3 + CycloneDX SBOM
 - Phase 9: `beekeeper-self` catalog live
+
+> ⚠ **Phase-number collision:** v1.1.0 ("Pollen") and v1.2.0 ("Runtime Hardening") reuse phase
+> numbers 1–8. The list above is **v1.0.0-indexed and already shipped** — it does NOT impose
+> SLSA/SBOM (the old "Phase 7" item) on v1.2.0 Phase 7 (Sensitive-Path Runtime Enforcement).
+> v1.2.0 phases carry their own self-defense: Phase 6 = per-severity corroboration + anti-poisoning
+> sanity gate (shipped); Phase 7 = the credential-block wiring + `RunCheck` integration tests is
+> itself the self-defense (no extra deliverable); Phase 8 = behavioral test suite + live-binary E2E
+> as the release gate. Always disambiguate "Phase N" by milestone (see `.planning/ROADMAP.md`).
 
 ## Research Flags (open items per phase)
 
