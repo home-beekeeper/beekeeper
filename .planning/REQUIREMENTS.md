@@ -52,7 +52,7 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 ### Self-Defense (SDEF)
 
-- [ ] **SDEF-01**: `pollen-self` entries added to the `beekeeper-self` catalog so a compromised Pollen release is detectable by beekeeper itself (recursive self-quarantine across the dependency boundary)
+- [x] **SDEF-01**: `pollen-self` entries added to the `beekeeper-self` catalog so a compromised Pollen release is detectable by beekeeper itself (recursive self-quarantine across the dependency boundary)
 - [x] **SDEF-02**: CycloneDX SBOM published per Pollen release, recording the source upstream commit and the Windows additions
 
 ## v2 Requirements
@@ -108,7 +108,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | SYNC-02 | Phase 5 | Pending |
 | BKINT-02 | Phase 5 | Pending |
 | PTEST-05 | Phase 5 | Complete |
-| SDEF-01 | Phase 5 | Pending |
+| SDEF-01 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 22 total
