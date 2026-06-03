@@ -245,6 +245,12 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// PLCY-01 defaults when no policy file sets a threshold field.
 	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
 
+	// CORR-02: thread catalog sanity state into thresholds.
+	// Reads SourceState.Degraded from state.json — written by the watch daemon at sync
+	// time. Defaults to true (healthy) when state is unavailable: inability to read state
+	// is not evidence of degradation. Only confirmed degradation suppresses escalation.
+	thresholds.CatalogHealthy = resolveCatalogHealthy(cacheDir)
+
 	// Pure, synchronous policy evaluation (no I/O, no goroutines).
 	// multiIdx implements policy.MultiCatalogLookup aggregating Bumblebee+OSV+Socket.
 	// Policy-file-derived thresholds are passed here so live check matches policy test.
