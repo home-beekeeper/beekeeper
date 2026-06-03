@@ -25,6 +25,17 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
+      # BKINT-02: install the Pollen binary at the pinned version so that
+      # inventory/scan tests (TestScanWithBumblebee, TestScanWindowsShapedRecord,
+      # TestScanPollenUnavailable, TestPollenCompatibility) have pollen on PATH.
+      # The pinned version is recorded in internal/scan/pollen_version.go as
+      # PinnedPollenVersion (source of truth — keep in sync with this step).
+      # NOTE: Pollen must be pushed + tagged on github.com/bantuson/pollen BEFORE
+      # beekeeper CI runs this step (Pitfall 3, 05-RESEARCH.md). This step is local
+      # prep; CI resolves it after the plan-05 checkpoint push.
+      - name: Install Pollen (BKINT-02 — pinned binary for inventory tests)
+        run: go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
+
       - name: Install clang/llvm/libbpf for eBPF bytecode generation (Linux only)
         if: runner.os == 'Linux'
         run: |
