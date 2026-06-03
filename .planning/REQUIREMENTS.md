@@ -47,8 +47,8 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 
 ### Upstream Sync & Contribution-Back (SYNC)
 
-- [ ] **SYNC-01**: Documented, repeatable upstream sync workflow in UPSTREAM.md — `git remote update upstream`, diff-review (new files / NDJSON schema / root resolver / LICENSE+NOTICE), run upstream tests on Linux+macOS, cherry-pick preserving Windows code paths, re-run the differential test, update pinned commit + CHANGES.md, tag a new `v0.1.1-pollen.N`
-- [ ] **SYNC-02**: Windows additions prepared as upstream-shaped PRs against `perplexityai/bumblebee` — root resolver (build-tag pattern like PR #4), path representation (closes upstream #1), extension/MCP coverage — each referencing the equivalent Pollen tag and linking parity tests as evidence
+- [x] **SYNC-01**: Documented, repeatable upstream sync workflow in UPSTREAM.md — `git remote update upstream`, diff-review (new files / NDJSON schema / root resolver / LICENSE+NOTICE), run upstream tests on Linux+macOS, cherry-pick preserving Windows code paths, re-run the differential test, update pinned commit + CHANGES.md, tag a new `v0.1.1-pollen.N`
+- [x] **SYNC-02**: Windows additions prepared as upstream-shaped PRs against `perplexityai/bumblebee` — root resolver (build-tag pattern like PR #4), path representation (closes upstream #1), extension/MCP coverage — each referencing the equivalent Pollen tag and linking parity tests as evidence
 
 ### Self-Defense (SDEF)
 
@@ -104,8 +104,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | WEXT-03 | Phase 4 | Complete |
 | BKINT-01 | Phase 4 | Complete |
 | PTEST-04 | Phase 4 | Complete |
-| SYNC-01 | Phase 5 | Pending |
-| SYNC-02 | Phase 5 | Pending |
+| SYNC-01 | Phase 5 | Complete |
+| SYNC-02 | Phase 5 | Complete |
 | BKINT-02 | Phase 5 | Pending |
 | PTEST-05 | Phase 5 | Complete |
 | SDEF-01 | Phase 5 | Complete |
