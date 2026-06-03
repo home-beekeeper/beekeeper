@@ -1,85 +1,65 @@
-# Requirements: Beekeeper — Milestone v1.1.0 "Pollen"
+# Requirements: Beekeeper — Milestone v1.2.0 "Runtime Behavioral Hardening"
 
-**Defined:** 2026-06-01
+**Defined:** 2026-06-03
 **Core Value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Milestone Goal:** Own Windows inventory compatibility by forking Bumblebee into a bounded Apache-2.0 derivative ("Pollen"), so the Windows CI matrix goes fully green and cross-platform test discipline holds instead of rotting behind `t.Skip`.
-**Scope source:** `beekeeper-m2-prd.md` (repo root).
+**Milestone Goal:** Close the three runtime-enforcement gaps that live `beekeeper check` validation exposed — credential-file access flagging, package-manager nudging, and critical-severity corroboration — each locked in by a behavioral test suite.
+**Scope source:** `.planning/specs/NUDGE-PRD.md` (nudge feature) + runtime-validation findings F1/F2/F3 + `.planning/research/SUMMARY.md`.
+
+> ⏸ **Parked milestone:** v1.1.0 "Pollen" is paused at its release checkpoint (not closed). Its requirements are preserved at `.planning/milestones/v1.1.0-REQUIREMENTS.md`; release resume via `docs/release-runbook.md` + `HANDOFF.json`.
 
 ## v1 Requirements
 
-Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans two repos: the new `github.com/bantuson/pollen` module and beekeeper's `internal/inventory/` integration.
+Requirements for milestone v1.2.0. Each maps to exactly one roadmap phase. All work is in `beekeeper` core (not the Pollen fork). `internal/policy` stays a pure function library — detection/normalization I/O lives in adapters, mirroring `policy.EvaluateReleaseAge`.
 
-### Fork Setup & Hygiene (FORK)
+### Sensitive-Path Runtime Enforcement (SPATH) — finding F2
 
-- [x] **FORK-01**: Pollen exists as a separate Go module `github.com/bantuson/pollen`, forked from `perplexityai/bumblebee` at a pinned commit (v0.1.1 tag), with `cmd/bumblebee/` renamed to `cmd/pollen/`; the `pollen` CLI binary builds on ubuntu/macos/windows
-- [x] **FORK-02**: Apache-2.0 LICENSE preserved verbatim; NOTICE attributes upstream Perplexity/Bumblebee and states non-affiliation; CHANGES.md documents every delta from the pinned commit; UPSTREAM.md records the pinned commit (40-char SHA + tag + date + verifier) and the sync workflow
-- [x] **FORK-03**: Reproducible builds (`-trimpath -buildvcs=false`) + Sigstore keyless signing via GitHub Actions OIDC wired into Pollen's release workflow; first tag `v0.1.1-pollen.1` proves fork hygiene before any Windows code lands
-- [x] **FORK-04**: Trademark discipline — "Bumblebee" appears only in attribution contexts (NOTICE, README "derived from" paragraph, UPSTREAM.md), never in command names, package names, README headlines, or `cmd/`
+- [ ] **SPATH-01**: `beekeeper check` blocks (fail-closed) an agent tool call whose `file_path` target (Read/Write/Edit) is a sensitive credential path — `~/.ssh/*`, `~/.aws/*`, `~/.gnupg/*`, `~/.npmrc`, `~/.pypirc`, `~/.cargo/credentials*`, `.env`/`.env.*`, and MCP host-config files — by wiring the existing `policy.EvaluatePath`/`DefaultSensitivePaths` engine into the live check pipeline (currently referenced only by its own test).
+- [ ] **SPATH-02**: Path targets are canonicalized before evaluation (tilde expansion, `filepath.Abs`, `EvalSymlinks`, slash normalization) so `..`-traversal (`../../.aws/credentials`), relative paths, `~`, and Windows backslash/drive forms cannot bypass the blocklist.
+- [ ] **SPATH-03**: Credential access via shell-command targets (`cat`/`type`/`Get-Content`/`gc` of a sensitive path inside a `Bash` tool call) is detected and flagged, not just direct `file_path` reads.
+- [ ] **SPATH-04**: A default allowlist prevents false positives on safe lookalikes (`.env.example`, `.env.test`, `.env.schema`); built-in defaults merge with project/user policy-file `sensitive_path` rules and allowlist by most-restrictive-wins with an allowlist escape hatch.
 
-### Windows Root Resolver (WRES)
+### Package-Manager Nudge (NUDGE) — finding F3, spec `.planning/specs/NUDGE-PRD.md`
 
-- [x] **WRES-01**: `internal/resolver/resolver_windows.go` (build tag `windows`) discovers Windows package roots for the JS ecosystems — npm (global `%APPDATA%\npm\node_modules` + user cache), pnpm (`%LOCALAPPDATA%\pnpm\store`), Yarn (`%LOCALAPPDATA%\Yarn\Data\global`), Bun (`%USERPROFILE%\.bun\install\cache`) per PRD §8.1
-- [x] **WRES-02**: Windows root discovery for PyPI (user `%APPDATA%\Python\...` + venv `<venv>\Lib\site-packages`), Go modules (`%USERPROFILE%\go\pkg\mod`), RubyGems (`%USERPROFILE%\.gem\...` + `%ProgramFiles%\Ruby*`), Composer (`%APPDATA%\Composer\vendor`)
+- [ ] **NUDGE-01**: npm install commands (`npm install`/`i`/`add`, `npx`) are recognized, and `pnpm`/`bun`/`yarn` install commands are likewise parsed so catalog matching applies to them too (closes the F3 bypass where pnpm/bun installs were unparsed).
+- [ ] **NUDGE-02**: Beekeeper detects locally-installed pnpm (>=11), bun (>=1.3), node (>=22), and the `@socketsecurity/bun-security-scanner`, producing a `PMState` via a timeout-bounded (2s) detection adapter; `nudge.Evaluate(ParsedCommand, PMState, Config)` is a pure decision (no I/O).
+- [ ] **NUDGE-03**: Soft mode (default) advises steering `npm install` toward the hardened equivalent — correct verb/flag mapping incl. no-arg `npm install`→`pnpm install`/`bun install` and `npx`→`pnpm dlx`/`bun x` — and proceeds (exit 0); at most one advisory per session; never blocks.
+- [ ] **NUDGE-04**: Hard mode (opt-in `mode:"hard"`) rewrites the command to the pnpm/bun equivalent; `requireHardened` (opt-in) blocks `npm install` when no hardened PM is present, with a structured reason pointing to install guidance.
+- [ ] **NUDGE-05**: The nudge flags unpinned installs (`@latest`, bare name, or wide `^`/`~` range) and recommends an exact-pinned spec, naming the detected risk pattern.
+- [ ] **NUDGE-06**: Every nudge decision emits a `record_type:"nudge"` NDJSON audit record (original command, decision, closed-enum reason code, PMState); the weekly major-version drift check emits a `record_type:"version_drift"` record.
+- [ ] **NUDGE-07**: `beekeeper nudge status | check <command> | audit [--since]` CLI surfaces current PM state + config, dry-runs a command, and queries nudge decisions from the audit log.
+- [ ] **NUDGE-08**: The nudge is wired into all three enforcement consumers (check hook, MCP gateway, shim) and honors layered config (the `nudge` block; project `.beekeeper.json` `nudge.enabled:false` disables it); the 60s detection cache lives only where it is effective (long-lived gateway), per the resolved check-hot-path decision.
 
-### Windows Path Representation (WPATH)
+### Corroboration Severity Hardening (CORR) — finding F1
 
-- [ ] **WPATH-01**: NDJSON `project_path`/`source_file` preserve native Windows paths — backslash separators and drive letters retained (`C:\Users\...`, not `/c/Users/...`), no Unix-to-Windows conversion artifacts. (Live locus per Phase-3 RESEARCH: the `projectPath` join in `internal/ecosystem/npm/npm.go` and `internal/ecosystem/pnpm/pnpm.go` wrapped in `filepath.FromSlash` — a no-op on Unix so the PTEST-02 differential stays byte-identical; `source_file` is already native. The PRD §5.2 `internal/output/paths_windows.go` path does not exist in the live fork.)
-- [ ] **WPATH-02**: `endpoint` record emits `os="windows"`, `arch` from `runtime.GOARCH`, `username` from the Windows environment, and empty `uid`; beekeeper's audit-log consumer handles Windows-shaped endpoint records (round-trip verified)
+- [ ] **CORR-01**: A *critical*-severity catalog match escalates to **block** at a single trusted source via a per-severity threshold override (`SeverityOverrides["critical"]={BlockAt:1}`), so a known critical malware package (e.g. `ai-figure` / Shai-Hulud, OSV `MAL-2026-4126`, currently warn-only) is blocked.
+- [ ] **CORR-02**: The escalation is gated on catalog sanity — it does NOT apply when `catalog/sanity.go` reports a degraded/alert state — and `validateCorroborationThresholds` rejects unsafe overrides (`BlockAt < 1`); a mis-tagged all-versions (`versions:["*"]`) critical entry still requires 2-source corroboration (anti-poisoning sanity bound; self-defense).
 
-### Windows Extension & MCP Coverage (WEXT)
+### Behavioral Test Suite (BTEST) — cross-cutting, the milestone's primary ask
 
-- [x] **WEXT-01**: Windows editor-extension paths — VS Code, Code Insiders, Cursor, Windsurf, VSCodium (`%USERPROFILE%\.vscode\extensions\` and equivalents)
-- [x] **WEXT-02**: Windows browser-extension paths — Chrome, Chromium, Edge, Brave (`%LOCALAPPDATA%\...\User Data\<Profile>\Extensions\`) and Firefox (`%APPDATA%\Mozilla\Firefox\Profiles\<profile>\extensions.json`), per profile
-- [x] **WEXT-03**: Windows MCP host-config paths — Claude Desktop (`%APPDATA%\Claude\...`), Cursor MCP, Windsurf MCP, Cline (`%APPDATA%\cline\...`), Gemini CLI (`%USERPROFILE%\.gemini\settings.json`)
+- [ ] **BTEST-01**: Table-driven pure-policy tests cover each new behavior — sensitive-path decisions (traversal, allowlist, OS path forms); severity escalation incl. the degraded-catalog regression; nudge `Evaluate` over `PMState` (PRD §10 criteria 1–10, 14–17).
+- [ ] **BTEST-02**: Check-handler integration tests drive `RunCheck` with raw stdin JSON and assert decision + exit code for credential reads, catalog-critical blocks, and pnpm/bun installs (proves wiring is live, not just that component functions return correct values).
+- [ ] **BTEST-03**: A live-binary E2E battery invokes the compiled `beekeeper` against the real catalog (mirroring the validation run that surfaced F1/F2/F3), asserting exit codes + audit records — a release gate; hand-written config scanners (`bunfig.toml`, `pnpm-workspace.yaml`) carry fuzz targets per the CI fuzz gate.
 
-### Testing & Compatibility (PTEST)
+## Future Requirements
 
-- [x] **PTEST-01**: Cross-platform parity test — identical fake-package fixtures (`internal/testfixtures/`) produce equivalent inventory records on Linux/macOS/Windows (same packages, same severity matches, equivalent counts modulo OS path strings); `endpoint.os` differs correctly per platform
-- [x] **PTEST-02**: Differential test — Pollen output is byte-for-byte identical to upstream Bumblebee on Linux and macOS for a fixed fixture; runs on every Pollen PR; re-run manually against any new upstream tag before absorbing
-- [x] **PTEST-03**: `pollen selftest` passes on all three OSes; Pollen CI matrix (ubuntu/macos/windows, go 1.25.x) runs `go vet`, `go test -race ./...`, selftest, and a versioned build green; upstream's inherited Go test suite passes unchanged on Linux/macOS
-- [x] **PTEST-04**: The Pollen compatibility test runs from beekeeper's harness on all three OSes — invokes `pollen scan`, asserts NDJSON schema-consistency with beekeeper's audit schema, runs beekeeper rules on top, asserts no double-counting and correct `scanner_name`; the Windows skip baseline for these tests is zero
-- [x] **PTEST-05**: Windows honeypot E2E — a planted process tree that reads synthetic `%USERPROFILE%\.aws\credentials` and makes an outbound connection fires beekeeper's Sentry exfil-signature-fusion rule on Windows
+Deferred to a later release (v1.3.0+). Tracked but not in this roadmap.
 
-### Beekeeper Integration (BKINT)
-
-- [x] **BKINT-01**: Beekeeper consumes Pollen across the `internal/inventory/` boundary — invokes `pollen scan`, parses NDJSON, applies beekeeper rules; the `bumblebee` subprocess call in `internal/scan` (`runBumblebeeFn`) is swapped for `pollen` behind a mockable interface so beekeeper unit tests don't require Pollen to run
-- [x] **BKINT-02**: Beekeeper's `go.mod` pins Pollen at an explicit version (no auto-update; bumps require explicit beekeeper PRs); beekeeper CI installs Pollen and runs the compatibility + honeypot tests, flipping Windows CI from "skipped Bumblebee tests" to fully green
-
-### Upstream Sync & Contribution-Back (SYNC)
-
-- [x] **SYNC-01**: Documented, repeatable upstream sync workflow in UPSTREAM.md — `git remote update upstream`, diff-review (new files / NDJSON schema / root resolver / LICENSE+NOTICE), run upstream tests on Linux+macOS, cherry-pick preserving Windows code paths, re-run the differential test, update pinned commit + CHANGES.md, tag a new `v0.1.1-pollen.N`
-- [x] **SYNC-02**: Windows additions prepared as upstream-shaped PRs against `perplexityai/bumblebee` — root resolver (build-tag pattern like PR #4), path representation (closes upstream #1), extension/MCP coverage — each referencing the equivalent Pollen tag and linking parity tests as evidence
-
-### Self-Defense (SDEF)
-
-- [x] **SDEF-01**: `pollen-self` entries added to the `beekeeper-self` catalog so a compromised Pollen release is detectable by beekeeper itself (recursive self-quarantine across the dependency boundary)
-- [x] **SDEF-02**: CycloneDX SBOM published per Pollen release, recording the source upstream commit and the Windows additions
-
-## v2 Requirements
-
-Deferred to a future release. Tracked but not in the current roadmap.
-
-### Distribution (DIST)
-
-- **DIST-01**: Pollen binary releases (currently source-only via `go install`) — revisit if external users without a Go toolchain request them (PRD §13 open question)
-
-### Self-Catalog Separation (SELF)
-
-- **SELF-02**: A separate `pollen-self` catalog distinct from `beekeeper-self` — leaning unified for v0.1; revisit if operational separation is warranted (PRD §13 open question)
+- **NUDGE-F1**: Hard-rewrite mode hardened + on by default — gated on soft-advise validation in production (agent-output-parsing compatibility risk).
+- **NUDGE-F2**: Nudge coverage for Yarn Berry (`npmMinimalAge`) and pip/cargo/gem/composer ecosystems.
+- **CORR-F1**: OSV/Socket consulted as an automatic second corroborating source on the hot path (currently rejected for added check-path latency).
+- **NUDGE-F3**: Distinguish `GHSA-*` (patched CVEs in legit packages) from `MAL-*` (actively malicious) in the critical-escalation path.
 
 ## Out of Scope
 
-Explicitly excluded. Documented to prevent scope creep.
+Explicitly excluded for v1.2.0.
 
 | Feature | Reason |
 |---------|--------|
-| New ecosystems beyond upstream (Cargo, etc.) | Pollen is parity-plus-Windows, not feature-extension; stays an upstream concern (PRD §4.2) |
-| SARIF export; live OSV.dev source (upstream #21) | Upstream features, not in Pollen's scope |
-| Changing matching semantics / NDJSON schema / CLI surface | `schema_version` stays `0.1.0`; Pollen is a behavioral fork, not a protocol fork |
-| Pollen as a standalone product | Exists to serve beekeeper; README points general users to upstream Bumblebee |
-| Public binary distribution of Pollen | For our CI / internal use; not advertised as a Bumblebee alternative (revisit → DIST-01) |
-| Indefinite maintenance of Pollen | Planned EOL — Pollen retires or becomes a thin shim when upstream merges equivalent Windows support (PRD §12.3) |
-| Mirroring upstream `threat_intel/` catalogs into Pollen | Single-source: catalogs flow through beekeeper's own `catalogs sync` (PRD §6.3 "reference") |
+| Beekeeper installing or configuring pnpm/bun (editing `pnpm-workspace.yaml`/`bunfig.toml`) | Detect-and-report only; users own their package-manager config (PRD §2.2, §12) |
+| Blocking on `@latest`/unpinned in soft mode | Soft mode advises + proceeds; agency preserved (PRD §4) |
+| Treating the bundled Bumblebee catalog as cryptographically signed | Inverts the corroboration trust model → poisoning vector; use sanity-gated severity override instead (research Flag 3) |
+| Auto-updating the pnpm/bun/node version floors on detected drift | Drift is logged for review; floor bumps require an explicit Beekeeper release (PRD §7.1) |
+| New TOML/YAML library dependency | Two config values → hand scanners + fuzz targets; keep the dependency surface minimal (CLAUDE.md; research Flag 1) |
 
 ## Traceability
 
@@ -87,41 +67,12 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FORK-01 | Phase 1 | Complete |
-| FORK-02 | Phase 1 | Complete |
-| FORK-03 | Phase 1 | Complete |
-| FORK-04 | Phase 1 | Complete |
-| PTEST-02 | Phase 1 | Complete |
-| PTEST-03 | Phase 1 | Complete |
-| SDEF-02 | Phase 1 | Complete |
-| WRES-01 | Phase 2 | Complete |
-| WRES-02 | Phase 2 | Complete |
-| PTEST-01 | Phase 2 | Complete |
-| WPATH-01 | Phase 3 | Pending |
-| WPATH-02 | Phase 3 | Pending |
-| WEXT-01 | Phase 4 | Complete |
-| WEXT-02 | Phase 4 | Complete |
-| WEXT-03 | Phase 4 | Complete |
-| BKINT-01 | Phase 4 | Complete |
-| PTEST-04 | Phase 4 | Complete |
-| SYNC-01 | Phase 5 | Complete |
-| SYNC-02 | Phase 5 | Complete |
-| BKINT-02 | Phase 5 | Complete |
-| PTEST-05 | Phase 5 | Complete |
-| SDEF-01 | Phase 5 | Complete |
+| _(populated by roadmapper)_ | | |
 
 **Coverage:**
-- v1 requirements: 22 total
-- Mapped to phases: 22
-- Unmapped: 0 ✓
-
-**Phase breakdown:**
-- Phase 1 (Fork Setup & Discipline): FORK-01, FORK-02, FORK-03, FORK-04, PTEST-02, PTEST-03, SDEF-02 (7 requirements)
-- Phase 2 (Windows Root Resolver): WRES-01, WRES-02, PTEST-01 (3 requirements)
-- Phase 3 (Windows Path Representation): WPATH-01, WPATH-02 (2 requirements)
-- Phase 4 (Windows Extension & MCP Coverage): WEXT-01, WEXT-02, WEXT-03, BKINT-01, PTEST-04 (5 requirements)
-- Phase 5 (Contribution-Back & Milestone Close): SYNC-01, SYNC-02, BKINT-02, PTEST-05, SDEF-01 (5 requirements)
+- v1 requirements: 17 total (SPATH ×4, NUDGE ×8, CORR ×2, BTEST ×3)
+- Mapped to phases: _(roadmapper)_
+- Unmapped: _(roadmapper)_
 
 ---
-*Requirements defined: 2026-06-01*
-*Last updated: 2026-06-01 — traceability filled, 22/22 mapped*
+*Requirements defined: 2026-06-03 — milestone v1.2.0 "Runtime Behavioral Hardening"*
