@@ -336,6 +336,52 @@ func TestBaselineModeNoQuarantine(t *testing.T) {
 	}
 }
 
+// ---- isSensitivePath Windows backslash regression tests --------------------
+
+// TestIsSensitivePathWindows verifies that isSensitivePath recognises native
+// Windows backslash paths produced by the ETW kernel logger, as well as
+// confirming that Unix forward-slash paths still match and that non-sensitive
+// Windows paths do not.
+//
+// This is an all-OS regression test — it is NOT build-tagged because the fix
+// (filepath.ToSlash normalisation) must be correct on every platform.
+func TestIsSensitivePathWindows(t *testing.T) {
+	cases := []struct {
+		name     string
+		path     string
+		wantTrue bool
+	}{
+		{
+			name:     "Windows backslash AWS credentials path",
+			path:     `C:\Users\runner\.aws\credentials`,
+			wantTrue: true,
+		},
+		{
+			name:     "Windows backslash SSH private key path",
+			path:     `C:\Users\runner\.ssh\id_rsa`,
+			wantTrue: true,
+		},
+		{
+			name:     "Unix forward-slash AWS credentials path (no regression)",
+			path:     "/home/user/.aws/credentials",
+			wantTrue: true,
+		},
+		{
+			name:     "Windows backslash non-sensitive path",
+			path:     `C:\Users\runner\Documents\notes.txt`,
+			wantTrue: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isSensitivePath(tc.path)
+			if got != tc.wantTrue {
+				t.Errorf("isSensitivePath(%q) = %v; want %v", tc.path, got, tc.wantTrue)
+			}
+		})
+	}
+}
+
 // ---- Window expiry test -----------------------------------------------------
 
 func TestWindowExpiry(t *testing.T) {
