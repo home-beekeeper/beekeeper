@@ -352,6 +352,67 @@ func TestSelfCatalog_CustomKeyVerifiesAndEmbeddedFails(t *testing.T) {
 	}
 }
 
+// TestSelfCatalogAdapter_PollenEntries verifies that the selfCatalogAdapter
+// correctly discriminates pollen entries from beekeeper entries using the
+// package field. This covers SDEF-01: a known-bad Pollen release must be
+// detectable via the unified beekeeper-self catalog.
+//
+// The test uses a non-production version string ("pollen-test-v0.0.1") so the
+// entry can never match a real shipped pollen version (v0.1.1-pollen.N) and
+// trigger a false self-quarantine on production installations (T-05-06).
+func TestSelfCatalogAdapter_PollenEntries(t *testing.T) {
+	pollenEntry := selfCatalogEntry{
+		ID:            "pollen-self-2026-001",
+		Name:          "pollen (hypothetical compromised pollen release)",
+		Ecosystem:     "beekeeper",
+		Package:       "pollen",
+		Versions:      []string{"pollen-test-v0.0.1"},
+		Severity:      "critical",
+		CatalogSource: "beekeeper-self",
+	}
+	adapter := &selfCatalogAdapter{entries: []selfCatalogEntry{pollenEntry}}
+
+	// Test 1: LookupAll("beekeeper","pollen") returns exactly one match.
+	matches := adapter.LookupAll("beekeeper", "pollen")
+	if len(matches) != 1 {
+		t.Fatalf("LookupAll(beekeeper,pollen): expected 1 match, got %d", len(matches))
+	}
+
+	// Test 2: the returned match has the correct fields.
+	m := matches[0]
+	if m.CatalogSource != "beekeeper-self" {
+		t.Errorf("CatalogSource: want %q, got %q", "beekeeper-self", m.CatalogSource)
+	}
+	if m.Package != "pollen" {
+		t.Errorf("Package: want %q, got %q", "pollen", m.Package)
+	}
+	if !m.Signed {
+		t.Error("Signed must be true — beekeeper-self feed is always signature-verified")
+	}
+	if m.Severity != "critical" {
+		t.Errorf("Severity: want %q, got %q", "critical", m.Severity)
+	}
+	if m.Version != "pollen-test-v0.0.1" {
+		t.Errorf("Version: want %q, got %q", "pollen-test-v0.0.1", m.Version)
+	}
+	if m.EntryID != "pollen-self-2026-001" {
+		t.Errorf("EntryID: want %q, got %q", "pollen-self-2026-001", m.EntryID)
+	}
+
+	// Test 3: LookupAll("beekeeper","beekeeper") on a pollen-only adapter returns nil
+	// — the package discriminator must exclude pollen entries from beekeeper lookups.
+	beekeeperMatches := adapter.LookupAll("beekeeper", "beekeeper")
+	if beekeeperMatches != nil {
+		t.Errorf("LookupAll(beekeeper,beekeeper) on pollen-only adapter: expected nil, got %v", beekeeperMatches)
+	}
+
+	// Test 4: LookupAll("npm","pollen") returns nil — non-beekeeper ecosystem.
+	npmMatches := adapter.LookupAll("npm", "pollen")
+	if npmMatches != nil {
+		t.Errorf("LookupAll(npm,pollen): expected nil for non-beekeeper ecosystem, got %v", npmMatches)
+	}
+}
+
 // TestSelfCatalogAdapter_LookupAll verifies that the selfCatalogAdapter satisfies
 // policy.MultiCatalogLookup and returns CatalogMatch records for the "beekeeper"
 // ecosystem when entries exist.
