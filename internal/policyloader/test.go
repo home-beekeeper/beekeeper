@@ -51,8 +51,8 @@ func thresholdsFromPolicyFile(pf PolicyFile) policy.CorroborationThresholds {
 			}
 			existing := t.SeverityOverrides["critical"]
 			existing.BlockAt = r.CriticalBlockAt
-			if existing.QuarantineAt == 0 {
-				existing.QuarantineAt = r.CriticalBlockAt + 1 // default: quarantine one above block
+			if existing.QuarantineAt <= existing.BlockAt {
+				existing.QuarantineAt = existing.BlockAt + 1 // CR-02: quarantine strictly above block (handles zero + raised-block collapse)
 			}
 			t.SeverityOverrides["critical"] = existing
 		}
@@ -95,8 +95,8 @@ func ThresholdsFromPolicyFiles(files []PolicyFile) policy.CorroborationThreshold
 				}
 				existing := t.SeverityOverrides["critical"]
 				existing.BlockAt = r.CriticalBlockAt
-				if existing.QuarantineAt == 0 {
-					existing.QuarantineAt = r.CriticalBlockAt + 1 // default: quarantine one above block
+				if existing.QuarantineAt <= existing.BlockAt {
+					existing.QuarantineAt = existing.BlockAt + 1 // CR-02: quarantine strictly above block (handles zero + raised-block collapse)
 				}
 				t.SeverityOverrides["critical"] = existing
 			}

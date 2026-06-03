@@ -149,6 +149,32 @@ func TestThresholdsFromPolicyFilesCriticalBlockAt(t *testing.T) {
 	}
 }
 
+// TestThresholdsFromPolicyFilesCriticalBlockAtNoTierCollapse (CR-02 regression):
+// when two policy files both set critical_block_at and the second RAISES it, the
+// merged override must keep QuarantineAt strictly above BlockAt — the earlier
+// merge's QuarantineAt must be recomputed, not left stale, so the block and
+// quarantine tiers never collapse to the same threshold.
+func TestThresholdsFromPolicyFilesCriticalBlockAtNoTierCollapse(t *testing.T) {
+	first := PolicyFile{
+		SchemaVersion: "1",
+		Name:          "first",
+		Rules:         []PolicyRule{{ID: "CORR-a", RuleType: "corroboration_threshold", CriticalBlockAt: 1}},
+	}
+	second := PolicyFile{
+		SchemaVersion: "1",
+		Name:          "second",
+		Rules:         []PolicyRule{{ID: "CORR-b", RuleType: "corroboration_threshold", CriticalBlockAt: 2}},
+	}
+	thresholds := ThresholdsFromPolicyFiles([]PolicyFile{first, second})
+	ov := thresholds.SeverityOverrides["critical"]
+	if ov.BlockAt != 2 {
+		t.Errorf("BlockAt = %d, want 2 (second file raises it)", ov.BlockAt)
+	}
+	if ov.QuarantineAt <= ov.BlockAt {
+		t.Errorf("QuarantineAt = %d, BlockAt = %d — quarantine must stay STRICTLY above block (CR-02 tier collapse)", ov.QuarantineAt, ov.BlockAt)
+	}
+}
+
 // TestThresholdsFromPolicyFile verifies that thresholdsFromPolicyFile correctly
 // overrides the PLCY-01 defaults with values from corroboration_threshold rules.
 func TestThresholdsFromPolicyFile(t *testing.T) {

@@ -270,6 +270,23 @@ func TestCorroborationAllVersionsCriticalWildcardStaysWarn(t *testing.T) {
 	}
 }
 
+// TestCorroborationMixedWildcardDoesNotDowngradeVersionedCritical (CR-01 regression):
+// when a package is matched by BOTH an injected all-versions wildcard entry AND a real
+// version-specific signed critical advisory, the wildcard must NOT suppress escalation —
+// otherwise one poisoned wildcard entry could downgrade a legitimate critical block→warn.
+// The all-versions guard suppresses only when EVERY non-dissented match is a wildcard.
+func TestCorroborationMixedWildcardDoesNotDowngradeVersionedCritical(t *testing.T) {
+	matches := []CatalogMatch{
+		{CatalogSource: "bumblebee", Severity: "critical", Version: "*", Signed: false},     // injected wildcard
+		{CatalogSource: "osv", Severity: "critical", Version: "1.2.3", Signed: true},        // real version-specific critical
+	}
+	thresholds := DefaultCorroborationThresholds() // CatalogHealthy:true, critical→BlockAt:1
+	level, _, _, _, _ := corroborate(matches, thresholds)
+	if level != "block" {
+		t.Errorf("level = %q, want block — a co-occurring wildcard must not downgrade a version-specific signed critical (CR-01)", level)
+	}
+}
+
 // TestValidateCorroborationThresholdsRejectsBlockAtZero: BlockAt<1 override fails closed.
 func TestValidateCorroborationThresholdsRejectsBlockAtZero(t *testing.T) {
 	thresholds := DefaultCorroborationThresholds()
@@ -292,6 +309,18 @@ func TestValidateCorroborationThresholdsRejectsLooserOverride(t *testing.T) {
 	thresholds.SeverityOverrides["critical"] = SeverityThreshold{BlockAt: 3, QuarantineAt: 4}
 	if err := validateCorroborationThresholds(thresholds); err == nil {
 		t.Error("want error for override BlockAt(3) > global BlockAt(2), got nil")
+	}
+}
+
+// TestValidateCorroborationThresholdsRejectsEqualQuarantine (CR-02 regression):
+// an override where QuarantineAt == BlockAt collapses the two protection tiers
+// (every block also quarantines). It must be rejected — QuarantineAt must be
+// STRICTLY above BlockAt.
+func TestValidateCorroborationThresholdsRejectsEqualQuarantine(t *testing.T) {
+	thresholds := DefaultCorroborationThresholds()
+	thresholds.SeverityOverrides["critical"] = SeverityThreshold{BlockAt: 2, QuarantineAt: 2}
+	if err := validateCorroborationThresholds(thresholds); err == nil {
+		t.Error("want error for override QuarantineAt(2) == BlockAt(2) (tier collapse), got nil")
 	}
 }
 

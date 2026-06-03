@@ -44,8 +44,10 @@ func validateCorroborationThresholds(t CorroborationThresholds) error {
 		if ov.BlockAt > t.BlockAt {
 			return fmt.Errorf("corroboration: SeverityOverrides[%q].BlockAt (%d) must be <= global BlockAt (%d)", sev, ov.BlockAt, t.BlockAt)
 		}
-		if ov.QuarantineAt < ov.BlockAt {
-			return fmt.Errorf("corroboration: SeverityOverrides[%q].QuarantineAt (%d) must be >= BlockAt (%d)", sev, ov.QuarantineAt, ov.BlockAt)
+		if ov.QuarantineAt <= ov.BlockAt {
+			// CR-02: quarantine must be STRICTLY above block, else the two protection
+			// tiers collapse (every block also quarantines). >= allowed equality.
+			return fmt.Errorf("corroboration: SeverityOverrides[%q].QuarantineAt (%d) must be > BlockAt (%d)", sev, ov.QuarantineAt, ov.BlockAt)
 		}
 	}
 	return nil
@@ -54,7 +56,9 @@ func validateCorroborationThresholds(t CorroborationThresholds) error {
 // findSeverityOverride returns the most-restrictive SeverityThreshold override
 // from overrides that applies to any match, or nil when:
 //   - catalogHealthy is false (sanity gate: degraded catalog suppresses escalation)
-//   - any non-dissented match has Version == "*" (all-versions guard)
+//   - EVERY non-dissented match has Version == "*" (all-versions guard — a lone
+//     wildcard entry must not single-source-block, but a version-specific match
+//     co-occurring with a wildcard still escalates; CR-01)
 //   - no match severity is in overrides
 //
 // "Most restrictive" means the override with the lowest BlockAt.
@@ -72,15 +76,28 @@ func findSeverityOverride(
 		return nil
 	}
 
-	// CORR-02 all-versions guard: if ANY non-dissented match has Version == "*",
-	// do not escalate. A mis-tagged wildcard entry must never block at single-source.
+	// CORR-02 all-versions guard: suppress escalation only when EVERY non-dissented
+	// match is an all-versions wildcard (Version == "*"). A lone mis-tagged wildcard
+	// entry must never block at a single source (prevents a wildcard critical from
+	// blocking all installs of e.g. react/typescript). But a co-occurring wildcard
+	// entry must NOT downgrade a legitimate version-specific critical (e.g. a real
+	// OSV MAL-* advisory): if any non-dissented match is version-specific, escalation
+	// still applies. (CR-01: ALL, not ANY — guarding against an escalation-suppression
+	// bypass where one injected wildcard entry masks a real version-specific match.)
+	sawNonDissented := false
+	allWildcard := true
 	for _, m := range matches {
 		if m.Dissented {
 			continue
 		}
-		if m.Version == "*" {
-			return nil
+		sawNonDissented = true
+		if m.Version != "*" {
+			allWildcard = false
+			break
 		}
+	}
+	if sawNonDissented && allWildcard {
+		return nil
 	}
 
 	var best *SeverityThreshold
