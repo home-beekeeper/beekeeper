@@ -40,7 +40,7 @@
 
 ### v1.2.0 "Runtime Behavioral Hardening"
 
-- [ ] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate
+- [x] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate (completed 2026-06-03)
 - [ ] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses
 - [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/evaluate/rewrite/CLI); PRD §10 acceptance tests; live-binary E2E release gate
 
@@ -160,7 +160,7 @@
 **Plans**: 3 plans (2 waves)
 - [x] 06-01-PLAN.md - Wave 1: pure policy core - SeverityThreshold/SeverityOverrides/CatalogHealthy types, findSeverityOverride + all-versions guard, sanity-bound validateCorroborationThresholds, 6 unit tests, selftest fixture audit (CORR-01, CORR-02)
 - [x] 06-02-PLAN.md - Wave 2: policy-file configurable critical_block_at (loader/validate/test merge + bound) + loader test (CORR-01)
-- [ ] 06-03-PLAN.md - Wave 2: resolveCatalogHealthy wired into all four policy.Evaluate consumers (check/gateway/watch/scan) + 3 RunCheck integration tests proving live wiring (CORR-02)
+- [x] 06-03-PLAN.md - Wave 2: resolveCatalogHealthy wired into all four policy.Evaluate consumers (check/gateway/watch/scan) + 3 RunCheck integration tests proving live wiring (CORR-02)
 
 ### Phase 7: Sensitive-Path Runtime Enforcement
 **Goal**: `beekeeper check` blocks agent reads of credential files — `~/.aws/credentials`, `~/.ssh/id_rsa`, `.env`, and MCP config files — via the already-built `policy.EvaluatePath`/`DefaultSensitivePaths` engine wired into the live check pipeline, with path canonicalization that closes `..`-traversal and tilde-expansion bypasses.
@@ -196,7 +196,7 @@
 | 3. Editor Extension Defense | v1.0.0 | 5/5 | Complete | 2026-05-26 |
 | 4. Integration Surfaces | v1.0.0 | 2/3 | In Progress|  |
 | 5. Linux Sentry | v1.0.0 | 4/5 | In Progress|  |
-| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 2/3 | In Progress|  |
+| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 3/3 | Complete   | 2026-06-03 |
 | 7. Cross-Platform Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | v1.0.0 | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | v1.0.0 | 5/5 | Complete | 2026-05-29 |

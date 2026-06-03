@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
-status: executing
+status: verifying
 stopped_at: Roadmap creation complete — ready to plan Phase 6.
-last_updated: "2026-06-03T19:18:35.616Z"
+last_updated: "2026-06-03T19:32:26.673Z"
 last_activity: 2026-06-03
 progress:
   total_phases: 5
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 Phase: 6 (Corroboration Severity Hardening) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-03
 
 Progress (v1.2.0): [██████████] 95%
@@ -134,10 +134,11 @@ Items acknowledged and carried forward:
 | Release | **`v0.1.1-pollen.4` signed tag (Phase 4 SC5)** — VERSION bumped to `0.1.1-pollen.4` + CHANGES.md WEXT section prepared locally in `../pollen` (HEAD `a9db7b3`), **untagged, unsigned**. Cut at M2 close together with pollen.2 + pollen.3: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.4` + push → cosign verify. Details in `.planning/phases/04-windows-extension-mcp-coverage-beekeeper-compat-test/04-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 4 (v1.1.0) |
 | Phase 06 P01 | 440 | 3 tasks | 5 files |
 | Phase 06 P02 | 171 | 2 tasks | 4 files |
+| Phase 06-corroboration-severity-hardening P03 | 15 | 3 tasks | 9 files |
 
 ## Session Continuity
 
-Last session: 2026-06-03T19:18:35.596Z
+Last session: 2026-06-03T19:32:26.629Z
 Stopped at: Roadmap creation complete — ready to plan Phase 6.
 Resume file: None
 
