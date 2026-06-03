@@ -274,12 +274,20 @@ func extractEcoPackageFromCommand(cmd string) (eco, pkg string) {
 	return "", ""
 }
 
-// extractTargetPath extracts a filesystem path from a ToolCall. Looks for a
-// "path" key (WriteFile, ReadFile, etc.) or falls back to an empty string.
+// extractTargetPath extracts a filesystem path from a ToolCall.
+//
+// "file_path" is the primary key used by Claude Code's Read/Write/Edit/MultiEdit
+// tools. "path" is the legacy key kept for backward compatibility. Returns ""
+// when neither key is present or when ToolInput is nil.
 func extractTargetPath(tc policy.ToolCall) string {
 	if tc.ToolInput == nil {
 		return ""
 	}
+	// file_path: primary key for Read/Write/Edit/MultiEdit (Claude Code)
+	if p, ok := tc.ToolInput["file_path"].(string); ok && p != "" {
+		return p
+	}
+	// path: legacy key; keep for backward compatibility
 	if p, ok := tc.ToolInput["path"].(string); ok {
 		return p
 	}
