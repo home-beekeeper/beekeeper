@@ -53,6 +53,15 @@ func ValidateSchema(pf PolicyFile) []error {
 			errs = append(errs, fmt.Errorf("rule[%d] %q: invalid action %q (want \"block\", \"warn\", or \"allow\")",
 				i, r.ID, r.Action))
 		}
+		if r.RuleType == "corroboration_threshold" && r.CriticalBlockAt != 0 {
+			// CriticalBlockAt zero means "use default" — only validate non-zero values.
+			if r.CriticalBlockAt < 1 {
+				errs = append(errs, fmt.Errorf("rule[%d] %q: critical_block_at (%d) must be >= 1",
+					i, r.ID, r.CriticalBlockAt))
+			}
+			// Upper bound (CriticalBlockAt <= global block_at) is validated at eval time by
+			// validateCorroborationThresholds, which has the fully-resolved global BlockAt.
+		}
 	}
 
 	return errs

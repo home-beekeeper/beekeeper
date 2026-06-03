@@ -43,6 +43,19 @@ func thresholdsFromPolicyFile(pf PolicyFile) policy.CorroborationThresholds {
 		if r.QuarantineAt > 0 {
 			t.QuarantineAt = r.QuarantineAt
 		}
+		// CORR-01: non-zero CriticalBlockAt merges into SeverityOverrides["critical"].
+		// Zero means "use default" (mirrors the WarnAt/BlockAt/QuarantineAt pattern).
+		if r.CriticalBlockAt > 0 {
+			if t.SeverityOverrides == nil {
+				t.SeverityOverrides = make(map[string]policy.SeverityThreshold)
+			}
+			existing := t.SeverityOverrides["critical"]
+			existing.BlockAt = r.CriticalBlockAt
+			if existing.QuarantineAt == 0 {
+				existing.QuarantineAt = r.CriticalBlockAt + 1 // default: quarantine one above block
+			}
+			t.SeverityOverrides["critical"] = existing
+		}
 	}
 
 	return t
@@ -73,6 +86,19 @@ func ThresholdsFromPolicyFiles(files []PolicyFile) policy.CorroborationThreshold
 			}
 			if r.QuarantineAt > 0 {
 				t.QuarantineAt = r.QuarantineAt
+			}
+			// CORR-01: non-zero CriticalBlockAt merges into SeverityOverrides["critical"].
+			// Zero means "use default" (mirrors the WarnAt/BlockAt/QuarantineAt pattern).
+			if r.CriticalBlockAt > 0 {
+				if t.SeverityOverrides == nil {
+					t.SeverityOverrides = make(map[string]policy.SeverityThreshold)
+				}
+				existing := t.SeverityOverrides["critical"]
+				existing.BlockAt = r.CriticalBlockAt
+				if existing.QuarantineAt == 0 {
+					existing.QuarantineAt = r.CriticalBlockAt + 1 // default: quarantine one above block
+				}
+				t.SeverityOverrides["critical"] = existing
 			}
 		}
 	}

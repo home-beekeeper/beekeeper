@@ -46,7 +46,12 @@ type PolicyRule struct {
 	WarnAt       int      `json:"warn_at,omitempty"`       // for corroboration_threshold rules
 	BlockAt      int      `json:"block_at,omitempty"`      // for corroboration_threshold rules
 	QuarantineAt int      `json:"quarantine_at,omitempty"` // for corroboration_threshold rules
-	Note         string   `json:"note,omitempty"`
+	// CriticalBlockAt sets the minimum signed-source count to block at
+	// "critical" severity. Extends the corroboration_threshold rule type (CORR-01).
+	// Valid range: 1 <= CriticalBlockAt <= block_at.
+	// Zero means "use default" (not "block unconditionally").
+	CriticalBlockAt int `json:"critical_block_at,omitempty"` // for corroboration_threshold rules
+	Note            string `json:"note,omitempty"`
 }
 
 // PolicyFileSummary is a lightweight summary of a loaded policy file, used by
