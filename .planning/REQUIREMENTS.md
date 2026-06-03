@@ -67,12 +67,28 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(populated by roadmapper)_ | | |
+| CORR-01 | Phase 6 | Pending |
+| CORR-02 | Phase 6 | Pending |
+| SPATH-01 | Phase 7 | Pending |
+| SPATH-02 | Phase 7 | Pending |
+| SPATH-03 | Phase 7 | Pending |
+| SPATH-04 | Phase 7 | Pending |
+| NUDGE-01 | Phase 8 | Pending |
+| NUDGE-02 | Phase 8 | Pending |
+| NUDGE-03 | Phase 8 | Pending |
+| NUDGE-04 | Phase 8 | Pending |
+| NUDGE-05 | Phase 8 | Pending |
+| NUDGE-06 | Phase 8 | Pending |
+| NUDGE-07 | Phase 8 | Pending |
+| NUDGE-08 | Phase 8 | Pending |
+| BTEST-01 | Phase 8 | Pending |
+| BTEST-02 | Phase 8 | Pending |
+| BTEST-03 | Phase 8 | Pending |
 
 **Coverage:**
-- v1 requirements: 17 total (SPATH ×4, NUDGE ×8, CORR ×2, BTEST ×3)
-- Mapped to phases: _(roadmapper)_
-- Unmapped: _(roadmapper)_
+- v1 requirements: 17 total (SPATH x4, NUDGE x8, CORR x2, BTEST x3)
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-03 — milestone v1.2.0 "Runtime Behavioral Hardening"*

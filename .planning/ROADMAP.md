@@ -1,4 +1,4 @@
-﻿# Roadmap: Beekeeper
+# Roadmap: Beekeeper
 
 ## Milestones
 
@@ -8,6 +8,8 @@
   Summary: [`MILESTONES.md`](MILESTONES.md).
 - 🔄 **v1.1.0 — "Pollen"** — Phases 1–5 (in progress)
   Goal: Own Windows inventory compatibility via a bounded Apache-2.0 Bumblebee derivative so the Windows CI matrix goes fully green.
+- 📋 **v1.2.0 — "Runtime Behavioral Hardening"** — Phases 6–8 (planned)
+  Goal: Close three runtime-enforcement gaps (credential reads, critical-malware warn-only, pnpm/bun bypass) locked in by a behavioral test suite.
 
 ## Phases
 
@@ -35,6 +37,12 @@
 - [~] **Phase 3: Windows Path Representation** — Native backslash paths and Windows endpoint record in NDJSON, round-trip verified (code complete & verified 2026-06-02); tag `v0.1.1-pollen.3` **deferred to M2 close**
 - [~] **Phase 4: Windows Extension & MCP Coverage** — Editor, browser, MCP config paths complete; beekeeper compat test runs on all 3 OSes with zero skips (code complete & verified 2026-06-02); tag `v0.1.1-pollen.4` **deferred to M2 close**
 - [ ] **Phase 5: Contribution-Back & Milestone Close** — Upstream PRs prepared, beekeeper full CI green including honeypot E2E, `pollen-self` in catalog, sync workflow documented; tag `v0.1.1-pollen.5`
+
+### v1.2.0 "Runtime Behavioral Hardening"
+
+- [ ] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate
+- [ ] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses
+- [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/evaluate/rewrite/CLI); PRD §10 acceptance tests; live-binary E2E release gate
 
 ## Phase Details
 
@@ -127,6 +135,55 @@
 
 > **SC2 relaxed (D-2):** No upstream contribution-back PRs against perplexityai/bumblebee this milestone (upstream Windows-support path unviable; PRs #3/#4 ignored). SYNC-02 is satisfied-by-documented-deferral in UPSTREAM.md (05-03). The verifier MUST NOT flag the absence of an upstream PR as a Phase-5 gap.
 
+---
+
+## Milestone v1.2.0 — Runtime Behavioral Hardening
+
+**Milestone Goal:** Close three runtime-enforcement gaps surfaced by live `beekeeper check` validation — a critical-severity malware package that warns instead of blocks (F1), credential files that return ALLOW to agent reads (F2), and pnpm/bun installs that bypass catalog matching entirely (F3) — each locked in by a behavioral test suite proving the wiring is live.
+
+**Phases (continuing numbering from v1.1.0):**
+
+- [ ] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate
+- [ ] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses; integration tests prove check wiring is live
+- [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/parse/evaluate/rewrite/CLI); PRD §10 acceptance tests; complete table-driven test suite; live-binary E2E release gate
+
+### Phase 6: Corroboration Severity Hardening
+**Goal**: A critical-severity catalog match blocks at a single trusted source — so `ai-figure` (Shai-Hulud / OSV `MAL-2026-4126`) is blocked, not warned — with an anti-poisoning sanity gate that prevents a degraded or flooded catalog from triggering false escalations.
+**Depends on**: Phase 5 (v1.1.0) or Phase 10/11 (v1.0.0) — `internal/policy/corroboration.go` and `catalog/sanity.go` must be present
+**Requirements**: CORR-01, CORR-02
+**Success Criteria** (what must be TRUE):
+  1. `beekeeper check` with a Bumblebee-matched + OSV-confirmed `ai-figure` install returns exit 1 (block) and audit `decision:"block"` — previously exit 0 warn-only
+  2. When the catalog sanity check reports a degraded state (>1000 alert-delta entries injected), the critical-severity escalation does NOT activate and the same match returns warn-only — proving the anti-poisoning gate is live
+  3. A catalog entry with `versions:["*"]` and `severity:"critical"` still requires 2-source corroboration to block — the all-versions guard prevents a mis-tagged wildcard entry from blocking all installs of a legitimate package (e.g. `react`, `typescript`)
+  4. `validateCorroborationThresholds` rejects any configuration where `BlockAt < 1` with a descriptive error at startup
+  5. Table-driven unit tests in `internal/policy/` cover the Shai-Hulud fixture (1-source critical → block), degraded-catalog regression (1001 entries → warn), and all-versions guard (wildcard + critical → 2-source required)
+**Plans**: TBD
+
+### Phase 7: Sensitive-Path Runtime Enforcement
+**Goal**: `beekeeper check` blocks agent reads of credential files — `~/.aws/credentials`, `~/.ssh/id_rsa`, `.env`, and MCP config files — via the already-built `policy.EvaluatePath`/`DefaultSensitivePaths` engine wired into the live check pipeline, with path canonicalization that closes `..`-traversal and tilde-expansion bypasses.
+**Depends on**: Phase 6
+**Requirements**: SPATH-01, SPATH-02, SPATH-03, SPATH-04
+**Success Criteria** (what must be TRUE):
+  1. `beekeeper check` with stdin `{"tool_name":"Read","tool_input":{"file_path":"~/.aws/credentials"}}` returns exit 1 (block) — previously exit 0 allow; the same test with `{"file_path":"../../.aws/credentials"}` also blocks (traversal closed)
+  2. A `Bash` tool call containing `cat ~/.ssh/id_rsa` or `type %USERPROFILE%\.ssh\id_rsa` is detected as a credential-access attempt and flagged — shell-command target extraction is live, not just direct `file_path` reads
+  3. Safe lookalikes `.env.example`, `.env.test`, and `.env.schema` are NOT blocked — the built-in allowlist prevents false positives on development fixture files; project-level policy-file `sensitive_path.allow` rules merge by most-restrictive-wins
+  4. `RunCheck` integration tests drive the full stdin-to-exit-code path for credential reads (SPATH-01/02/03) and assert both the exit code and the presence of a `decision:"block"` audit record — wiring is proven live, not just that `EvaluatePath` returns the correct value in isolation
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 8: Package-Manager Nudge + Behavioral Test Suite
+**Goal**: Agents running `npm install` are steered toward pnpm (>=11) or bun (>=1.3) — soft-advise by default, hard-rewrite on opt-in — with pnpm/bun install commands now parsed and catalog-matched; the full behavioral test suite (PRD §10, table-driven pure-policy tests, check-handler integration, live-binary E2E) passes as the v1.2.0 release gate.
+**Depends on**: Phase 7
+**Requirements**: NUDGE-01, NUDGE-02, NUDGE-03, NUDGE-04, NUDGE-05, NUDGE-06, NUDGE-07, NUDGE-08, BTEST-01, BTEST-02, BTEST-03
+**Success Criteria** (what must be TRUE):
+  1. `beekeeper check` parses `pnpm add malware-pkg` and `bun add malware-pkg` install commands and applies catalog matching — packages that were previously bypassed (F3 gap) now surface in corroboration decisions and audit records
+  2. When pnpm >= 11 is locally installed, an agent `npm install foo` call receives an advisory message and proceeds (soft mode, default); when `nudge.mode:"hard"` is set, the command is rewritten to `pnpm add foo` and the agent reissues it; when no hardened PM is installed and `requireHardened:true`, the call is blocked with a structured reason
+  3. PRD §10 acceptance criteria 1–10 and 14–17 pass as table-driven tests against `nudge.Evaluate` — covering Advise/Rewrite/Proceed/Block decisions, reason codes, sudo passthrough, detection timeout graceful fallback, `bunfig.toml` parse failure safety, audit record schema, and config-change audit logging
+  4. A live-binary E2E test executes the compiled `beekeeper` binary against the real catalog with raw stdin JSON for credential reads (SPATH), the `ai-figure` critical install (CORR), and a `pnpm add` / `bun add` install (NUDGE); all three assert the correct exit code and a well-formed `decision` audit record — this test is the v1.2.0 release gate and must pass before any release tag is cut
+  5. `beekeeper nudge status` outputs human-readable current PM state and config; `beekeeper nudge check "npm install chalk"` dry-runs the nudge decision; `beekeeper nudge audit --since=1h` queries nudge records from the audit log
+**Plans**: TBD
+**UI hint**: no
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -147,3 +204,6 @@
 | **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
+| **6. Corroboration Severity Hardening** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
+| **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
+| **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
