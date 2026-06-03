@@ -229,6 +229,137 @@ func TestPathImportsArePure(t *testing.T) {
 	}
 }
 
+// TestEvaluatePathBasenameAllowlist verifies that the .env.example, .env.test,
+// and .env.schema safe lookalikes are allowed by the basename allowlist, while
+// .env.production and .env (blocked patterns) remain blocked.
+func TestEvaluatePathBasenameAllowlist(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	tests := []struct {
+		name      string
+		path      string
+		wantAllow bool
+		wantLevel string
+	}{
+		{
+			name:      ".env.example allowed via basename allowlist",
+			path:      "/home/u/project/.env.example",
+			wantAllow: true,
+			wantLevel: "allow",
+		},
+		{
+			name:      ".env.test allowed via basename allowlist",
+			path:      "/home/u/project/.env.test",
+			wantAllow: true,
+			wantLevel: "allow",
+		},
+		{
+			name:      ".env.schema allowed via basename allowlist",
+			path:      "/home/u/project/.env.schema",
+			wantAllow: true,
+			wantLevel: "allow",
+		},
+		{
+			name:      ".env.production still blocked by .env.* glob",
+			path:      "/home/u/project/.env.production",
+			wantAllow: false,
+			wantLevel: "block",
+		},
+		{
+			name:      ".env still blocked",
+			path:      "/home/u/project/.env",
+			wantAllow: false,
+			wantLevel: "block",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := EvaluatePath(tt.path, cfg)
+			if d.Allow != tt.wantAllow {
+				t.Errorf("Allow = %v, want %v", d.Allow, tt.wantAllow)
+			}
+			if d.Level != tt.wantLevel {
+				t.Errorf("Level = %q, want %q", d.Level, tt.wantLevel)
+			}
+		})
+	}
+}
+
+// TestEvaluatePathCursorMCPBlocked verifies that Cursor MCP config paths are
+// blocked by the /.cursor/ fragment pattern (D-02).
+func TestEvaluatePathCursorMCPBlocked(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	paths := []string{
+		"/home/u/.cursor/mcp.json",
+		"/home/u/.cursor/settings.json",
+		`C:\Users\u\.cursor\mcp.json`,
+	}
+
+	for _, p := range paths {
+		t.Run(p, func(t *testing.T) {
+			d := EvaluatePath(p, cfg)
+			if d.Level != "block" {
+				t.Errorf("EvaluatePath(%q).Level = %q, want %q", p, d.Level, "block")
+			}
+			if d.Allow {
+				t.Errorf("EvaluatePath(%q).Allow = true, want false", p)
+			}
+		})
+	}
+}
+
+// TestEvaluatePathWindsurfMCPBlocked verifies that Windsurf MCP config paths
+// are blocked by the /.windsurf/ fragment pattern (D-02).
+func TestEvaluatePathWindsurfMCPBlocked(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	paths := []string{
+		"/home/u/.windsurf/mcp.json",
+		"/home/u/.windsurf/settings.json",
+		`C:\Users\u\.windsurf\mcp.json`,
+	}
+
+	for _, p := range paths {
+		t.Run(p, func(t *testing.T) {
+			d := EvaluatePath(p, cfg)
+			if d.Level != "block" {
+				t.Errorf("EvaluatePath(%q).Level = %q, want %q", p, d.Level, "block")
+			}
+			if d.Allow {
+				t.Errorf("EvaluatePath(%q).Allow = true, want false", p)
+			}
+		})
+	}
+}
+
+// TestEvaluatePathCargoCredentialsBlocked verifies that both the bare
+// /.cargo/credentials file and the .toml variant are blocked (D-02).
+func TestEvaluatePathCargoCredentialsBlocked(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"bare credentials (pre-2022 format)", "/home/u/.cargo/credentials"},
+		{"credentials.toml (current format)", "/home/u/.cargo/credentials.toml"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := EvaluatePath(tt.path, cfg)
+			if d.Level != "block" {
+				t.Errorf("EvaluatePath(%q).Level = %q, want %q", tt.path, d.Level, "block")
+			}
+			if d.Allow {
+				t.Errorf("EvaluatePath(%q).Allow = true, want false", tt.path)
+			}
+		})
+	}
+}
+
 // containsStr reports whether s contains substr.
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
