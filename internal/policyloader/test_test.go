@@ -115,6 +115,40 @@ func TestPolicyTest_AllowlistOverride(t *testing.T) {
 	}
 }
 
+// TestThresholdsFromPolicyFilesCriticalBlockAt verifies that a policy file with a
+// corroboration_threshold rule setting CriticalBlockAt:1 causes ThresholdsFromPolicyFiles
+// to return thresholds where SeverityOverrides["critical"].BlockAt == 1 and
+// QuarantineAt >= 1 (default: CriticalBlockAt+1).
+func TestThresholdsFromPolicyFilesCriticalBlockAt(t *testing.T) {
+	pf := PolicyFile{
+		SchemaVersion: "1",
+		Name:          "critical-block-policy",
+		Rules: []PolicyRule{
+			{
+				ID:              "CORR-01",
+				RuleType:        "corroboration_threshold",
+				CriticalBlockAt: 1,
+			},
+		},
+	}
+
+	thresholds := ThresholdsFromPolicyFiles([]PolicyFile{pf})
+
+	if thresholds.SeverityOverrides == nil {
+		t.Fatal("SeverityOverrides is nil, want non-nil map")
+	}
+	ov, ok := thresholds.SeverityOverrides["critical"]
+	if !ok {
+		t.Fatal("SeverityOverrides[\"critical\"] not set")
+	}
+	if ov.BlockAt != 1 {
+		t.Errorf("BlockAt = %d, want 1", ov.BlockAt)
+	}
+	if ov.QuarantineAt < 1 {
+		t.Errorf("QuarantineAt = %d, want >= 1 (default: CriticalBlockAt+1)", ov.QuarantineAt)
+	}
+}
+
 // TestThresholdsFromPolicyFile verifies that thresholdsFromPolicyFile correctly
 // overrides the PLCY-01 defaults with values from corroboration_threshold rules.
 func TestThresholdsFromPolicyFile(t *testing.T) {
