@@ -130,6 +130,8 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 		// Errors are ignored (non-fatal for watch): missing/unreadable dir = no overlay.
 	}
 	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
+	// CORR-02: thread catalog sanity state into thresholds.
+	thresholds.CatalogHealthy = resolveCatalogHealthy(h.CacheDir)
 
 	// 7. Catalog evaluation using policy-file-derived thresholds.
 	tc := policy.ToolCall{

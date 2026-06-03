@@ -278,6 +278,8 @@ func evaluateExtension(
 		policyFiles, _ = policyloader.LoadPolicyDir(policiesDir)
 	}
 	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
+	// CORR-02: thread catalog sanity state into thresholds.
+	thresholds.CatalogHealthy = resolveCatalogHealthy(cfg.CacheDir)
 
 	tc := policy.ToolCall{
 		ToolName: "scan",

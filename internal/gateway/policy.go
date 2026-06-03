@@ -117,6 +117,8 @@ func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, cfg Config, 
 		}
 	}
 	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
+	// CORR-02: thread catalog sanity state into thresholds.
+	thresholds.CatalogHealthy = resolveCatalogHealthy(cfg.CacheDir)
 
 	decision := policy.Evaluate(tc, idx, thresholds, ac)
 
