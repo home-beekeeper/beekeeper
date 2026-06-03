@@ -31,8 +31,8 @@ Requirements for milestone v1.2.0. Each maps to exactly one roadmap phase. All w
 
 ### Corroboration Severity Hardening (CORR) — finding F1
 
-- [ ] **CORR-01**: A *critical*-severity catalog match escalates to **block** at a single trusted source via a per-severity threshold override (`SeverityOverrides["critical"]={BlockAt:1}`), so a known critical malware package (e.g. `ai-figure` / Shai-Hulud, OSV `MAL-2026-4126`, currently warn-only) is blocked.
-- [ ] **CORR-02**: The escalation is gated on catalog sanity — it does NOT apply when `catalog/sanity.go` reports a degraded/alert state — and `validateCorroborationThresholds` rejects unsafe overrides (`BlockAt < 1`); a mis-tagged all-versions (`versions:["*"]`) critical entry still requires 2-source corroboration (anti-poisoning sanity bound; self-defense).
+- [x] **CORR-01**: A *critical*-severity catalog match escalates to **block** at a single trusted source via a per-severity threshold override (`SeverityOverrides["critical"]={BlockAt:1}`), so a known critical malware package (e.g. `ai-figure` / Shai-Hulud, OSV `MAL-2026-4126`, currently warn-only) is blocked.
+- [x] **CORR-02**: The escalation is gated on catalog sanity — it does NOT apply when `catalog/sanity.go` reports a degraded/alert state — and `validateCorroborationThresholds` rejects unsafe overrides (`BlockAt < 1`); a mis-tagged all-versions (`versions:["*"]`) critical entry still requires 2-source corroboration (anti-poisoning sanity bound; self-defense).
 
 ### Behavioral Test Suite (BTEST) — cross-cutting, the milestone's primary ask
 
@@ -67,8 +67,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORR-01 | Phase 6 | Pending |
-| CORR-02 | Phase 6 | Pending |
+| CORR-01 | Phase 6 | Complete |
+| CORR-02 | Phase 6 | Complete |
 | SPATH-01 | Phase 7 | Pending |
 | SPATH-02 | Phase 7 | Pending |
 | SPATH-03 | Phase 7 | Pending |

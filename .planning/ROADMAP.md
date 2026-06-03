@@ -158,7 +158,7 @@
   4. `validateCorroborationThresholds` rejects any configuration where `BlockAt < 1` with a descriptive error at startup
   5. Table-driven unit tests in `internal/policy/` cover the Shai-Hulud fixture (1-source critical → block), degraded-catalog regression (1001 entries → warn), and all-versions guard (wildcard + critical → 2-source required)
 **Plans**: 3 plans (2 waves)
-- [ ] 06-01-PLAN.md - Wave 1: pure policy core - SeverityThreshold/SeverityOverrides/CatalogHealthy types, findSeverityOverride + all-versions guard, sanity-bound validateCorroborationThresholds, 6 unit tests, selftest fixture audit (CORR-01, CORR-02)
+- [x] 06-01-PLAN.md - Wave 1: pure policy core - SeverityThreshold/SeverityOverrides/CatalogHealthy types, findSeverityOverride + all-versions guard, sanity-bound validateCorroborationThresholds, 6 unit tests, selftest fixture audit (CORR-01, CORR-02)
 - [ ] 06-02-PLAN.md - Wave 2: policy-file configurable critical_block_at (loader/validate/test merge + bound) + loader test (CORR-01)
 - [ ] 06-03-PLAN.md - Wave 2: resolveCatalogHealthy wired into all four policy.Evaluate consumers (check/gateway/watch/scan) + 3 RunCheck integration tests proving live wiring (CORR-02)
 
@@ -196,7 +196,7 @@
 | 3. Editor Extension Defense | v1.0.0 | 5/5 | Complete | 2026-05-26 |
 | 4. Integration Surfaces | v1.0.0 | 2/3 | In Progress|  |
 | 5. Linux Sentry | v1.0.0 | 4/5 | In Progress|  |
-| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 5/5 | Complete | 2026-05-28 |
+| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 1/3 | In Progress|  |
 | 7. Cross-Platform Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | v1.0.0 | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | v1.0.0 | 5/5 | Complete | 2026-05-29 |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: Roadmap creation complete — ready to plan Phase 6.
-last_updated: "2026-06-03T18:29:40.665Z"
-last_activity: 2026-06-03 -- Phase 6 planning complete
+stopped_at: "Completed 06-01-PLAN.md — CORR-01/02 severity escalation + sanity gate"
+last_updated: "2026-06-03T19:09:01Z"
+last_activity: 2026-06-03
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 20
-  completed_plans: 19
-  percent: 80
+  completed_plans: 20
+  percent: 95
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** v1.2.0 Runtime Behavioral Hardening — Phase 6 ready to plan (CORR corroboration hardening)
+**Current focus:** Phase 6 — Corroboration Severity Hardening
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 6 of 8 — Corroboration Severity Hardening (not started)
-Plan: —
-Status: Ready to execute
-Last activity: 2026-06-03 -- Phase 6 planning complete
+Phase: 6 (Corroboration Severity Hardening) — EXECUTING
+Plan: 2 of 3
+Status: Plan 06-01 complete — CORR-01/02 severity escalation + sanity gate shipped
+Last activity: 2026-06-03 -- 06-01 complete
 
-Progress (v1.2.0): [░░░░░░░░░░] 0%
+Progress (v1.2.0): [██████████] 95%
 
 ## Phase Summary (v1.1.0)
 
@@ -100,6 +100,10 @@ Recent decisions from Phase 6:
 - AuditConfig imported by audit/sink.go from internal/config — no import cycle (config imports only stdlib)
 - LlamaFirewall injection detection (LLMF-02) exits 0 in hook handler — PostToolUse hooks must not block agent flow; llmf_alert is the forensic signal
 - scan_code / scan_alignment are Python sidecar stubs; CodeShield model integration deferred
+- Phase 06-01 (CORR-01): CatalogHealthy defaults true — escalation active by default; callers explicitly set false on confirmed catalog degradation
+- Phase 06-01 (CORR-01): findSeverityOverride all-versions guard inside helper — Version=="*" returns nil, preventing wildcard mis-tagged critical entries from single-source block
+- Phase 06-01 (CORR-02): validateCorroborationThresholds extended with per-severity bounds loop; fail-closed to "block" on violation (BlockAt<1, BlockAt>globalBlockAt, QuarantineAt<BlockAt)
+- Phase 06-01 (CORR-01/02): escalation + sanity gate shipped atomically in one commit (STATE.md Blockers/Concerns constraint satisfied)
 
 ### Open Research Flags (v1.2.0)
 
@@ -110,7 +114,7 @@ Recent decisions from Phase 6:
 ### Blockers/Concerns
 
 - Phase 8 (NUDGE): two unresolved architectural decisions (Flag 2 + Flag 4) must be settled in discuss/plan before `detect.go` is written — surfaced in Phase 8 success criteria and must not be deferred to implementation
-- PLCY-07 (Phase 6) self-defense: escalation + sanity gate are one atomic deliverable — shipping escalation without the sanity gate inverts the trust model; the all-versions guard (`versions:["*"]`) must ship in the same commit as `SeverityOverrides`
+- PLCY-07 (Phase 6) self-defense: [RESOLVED in 06-01] escalation + sanity gate shipped atomically; all-versions guard + SeverityOverrides in one commit
 
 ## Deferred Items
 
@@ -127,12 +131,13 @@ Items acknowledged and carried forward:
 | Release | **`v0.1.1-pollen.2` signed tag (Phase 2 SC4)** — VERSION+CHANGES bumped and 4 commits prepared locally in `../pollen` (HEAD `c94b271`), **unpushed, untagged**. Cut the release at M2 close: `git push origin main` → confirm 3-OS CI green → `git tag -a v0.1.1-pollen.2` + push → cosign verify. Exact commands in `.planning/phases/02-windows-root-resolver/02-04-SUMMARY.md`. | **Deferred to M2 close** (maintainer decision 2026-06-02) | Phase 2 (v1.1.0) |
 | Release | **`v0.1.1-pollen.3` signed tag (Phase 3 SC4)** — VERSION bumped to `0.1.1-pollen.3` + CHANGES.md WPATH section prepared locally in `../pollen` (commits incl. `1cb3fdb`, `19695e3`), **untagged, unsigned**. Cut at M2 close together with pollen.2: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.3` + push → cosign verify. Details in `.planning/phases/03-windows-path-representation/03-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 3 (v1.1.0) |
 | Release | **`v0.1.1-pollen.4` signed tag (Phase 4 SC5)** — VERSION bumped to `0.1.1-pollen.4` + CHANGES.md WEXT section prepared locally in `../pollen` (HEAD `a9db7b3`), **untagged, unsigned**. Cut at M2 close together with pollen.2 + pollen.3: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.4` + push → cosign verify. Details in `.planning/phases/04-windows-extension-mcp-coverage-beekeeper-compat-test/04-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 4 (v1.1.0) |
+| Phase 06 P01 | 440 | 3 tasks | 5 files |
 
 ## Session Continuity
 
-Last session: 2026-06-03 — Roadmap for v1.2.0 created (Phases 6–8, 17 requirements mapped, traceability table populated).
+Last session: 2026-06-03T19:11:32.307Z
 Stopped at: Roadmap creation complete — ready to plan Phase 6.
-Resume file: None (v1.1.0 release resume artifacts: HANDOFF.json + 05-05 .continue-here.md, preserved)
+Resume file: None
 
 ## Operator Next Steps
 
