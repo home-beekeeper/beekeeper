@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: "Completed 06-01-PLAN.md — CORR-01/02 severity escalation + sanity gate"
-last_updated: "2026-06-03T19:09:01Z"
+stopped_at: Roadmap creation complete — ready to plan Phase 6.
+last_updated: "2026-06-03T19:18:35.616Z"
 last_activity: 2026-06-03
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 20
-  completed_plans: 20
-  percent: 95
+  completed_plans: 19
+  percent: 80
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 ## Current Position
 
 Phase: 6 (Corroboration Severity Hardening) — EXECUTING
-Plan: 2 of 3
-Status: Plan 06-01 complete — CORR-01/02 severity escalation + sanity gate shipped
-Last activity: 2026-06-03 -- 06-01 complete
+Plan: 3 of 3
+Status: Ready to execute
+Last activity: 2026-06-03
 
 Progress (v1.2.0): [██████████] 95%
 
@@ -104,6 +104,7 @@ Recent decisions from Phase 6:
 - Phase 06-01 (CORR-01): findSeverityOverride all-versions guard inside helper — Version=="*" returns nil, preventing wildcard mis-tagged critical entries from single-source block
 - Phase 06-01 (CORR-02): validateCorroborationThresholds extended with per-severity bounds loop; fail-closed to "block" on violation (BlockAt<1, BlockAt>globalBlockAt, QuarantineAt<BlockAt)
 - Phase 06-01 (CORR-01/02): escalation + sanity gate shipped atomically in one commit (STATE.md Blockers/Concerns constraint satisfied)
+- [Phase ?]: critical_block_at operator configurability added to policyloader
 
 ### Open Research Flags (v1.2.0)
 
@@ -132,10 +133,11 @@ Items acknowledged and carried forward:
 | Release | **`v0.1.1-pollen.3` signed tag (Phase 3 SC4)** — VERSION bumped to `0.1.1-pollen.3` + CHANGES.md WPATH section prepared locally in `../pollen` (commits incl. `1cb3fdb`, `19695e3`), **untagged, unsigned**. Cut at M2 close together with pollen.2: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.3` + push → cosign verify. Details in `.planning/phases/03-windows-path-representation/03-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 3 (v1.1.0) |
 | Release | **`v0.1.1-pollen.4` signed tag (Phase 4 SC5)** — VERSION bumped to `0.1.1-pollen.4` + CHANGES.md WEXT section prepared locally in `../pollen` (HEAD `a9db7b3`), **untagged, unsigned**. Cut at M2 close together with pollen.2 + pollen.3: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.4` + push → cosign verify. Details in `.planning/phases/04-windows-extension-mcp-coverage-beekeeper-compat-test/04-03-SUMMARY.md`. | **Deferred to M2 close** (D-06, maintainer decision 2026-06-02) | Phase 4 (v1.1.0) |
 | Phase 06 P01 | 440 | 3 tasks | 5 files |
+| Phase 06 P02 | 171 | 2 tasks | 4 files |
 
 ## Session Continuity
 
-Last session: 2026-06-03T19:11:32.307Z
+Last session: 2026-06-03T19:18:35.596Z
 Stopped at: Roadmap creation complete — ready to plan Phase 6.
 Resume file: None
 
