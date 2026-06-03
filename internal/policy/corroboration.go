@@ -36,7 +36,66 @@ func validateCorroborationThresholds(t CorroborationThresholds) error {
 	if t.BlockAt > t.QuarantineAt {
 		return fmt.Errorf("corroboration: BlockAt (%d) must be <= QuarantineAt (%d)", t.BlockAt, t.QuarantineAt)
 	}
+	// CORR-02: validate per-severity overrides.
+	for sev, ov := range t.SeverityOverrides {
+		if ov.BlockAt < 1 {
+			return fmt.Errorf("corroboration: SeverityOverrides[%q].BlockAt (%d) must be >= 1 (zero blocks unconditionally)", sev, ov.BlockAt)
+		}
+		if ov.BlockAt > t.BlockAt {
+			return fmt.Errorf("corroboration: SeverityOverrides[%q].BlockAt (%d) must be <= global BlockAt (%d)", sev, ov.BlockAt, t.BlockAt)
+		}
+		if ov.QuarantineAt < ov.BlockAt {
+			return fmt.Errorf("corroboration: SeverityOverrides[%q].QuarantineAt (%d) must be >= BlockAt (%d)", sev, ov.QuarantineAt, ov.BlockAt)
+		}
+	}
 	return nil
+}
+
+// findSeverityOverride returns the most-restrictive SeverityThreshold override
+// from overrides that applies to any match, or nil when:
+//   - catalogHealthy is false (sanity gate: degraded catalog suppresses escalation)
+//   - any non-dissented match has Version == "*" (all-versions guard)
+//   - no match severity is in overrides
+//
+// "Most restrictive" means the override with the lowest BlockAt.
+// Pure: reads only matches, overrides map, and the healthy flag — no I/O.
+// Imports: only "fmt" and "sort" (existing) — never add "os", "net", etc.
+func findSeverityOverride(
+	matches []CatalogMatch,
+	overrides map[string]SeverityThreshold,
+	catalogHealthy bool,
+) *SeverityThreshold {
+	if !catalogHealthy {
+		return nil // CORR-02: sanity gate — no escalation on degraded catalog
+	}
+	if len(overrides) == 0 {
+		return nil
+	}
+
+	// CORR-02 all-versions guard: if ANY non-dissented match has Version == "*",
+	// do not escalate. A mis-tagged wildcard entry must never block at single-source.
+	for _, m := range matches {
+		if m.Dissented {
+			continue
+		}
+		if m.Version == "*" {
+			return nil
+		}
+	}
+
+	var best *SeverityThreshold
+	for _, m := range matches {
+		if m.Dissented {
+			continue
+		}
+		if ov, ok := overrides[m.Severity]; ok {
+			if best == nil || ov.BlockAt < best.BlockAt {
+				cp := ov // copy to avoid aliasing map value
+				best = &cp
+			}
+		}
+	}
+	return best
 }
 
 func corroborate(matches []CatalogMatch, t CorroborationThresholds) (level string, quarantine bool, count int, agreed, dissented []string) {
@@ -94,11 +153,22 @@ func corroborate(matches []CatalogMatch, t CorroborationThresholds) (level strin
 	}
 	sort.Strings(dissentList)
 
-	// Escalation decision table (PLCY-01).
+	// CORR-01/02: check for per-severity threshold override.
+	// findSeverityOverride returns nil when: catalog is degraded (CatalogHealthy=false),
+	// any non-dissented match is an all-versions wildcard (Version=="*"), or no severity
+	// matches SeverityOverrides keys.
+	effectiveBlockAt := t.BlockAt
+	effectiveQuarantineAt := t.QuarantineAt
+	if ov := findSeverityOverride(matches, t.SeverityOverrides, t.CatalogHealthy); ov != nil {
+		effectiveBlockAt = ov.BlockAt
+		effectiveQuarantineAt = ov.QuarantineAt
+	}
+
+	// Escalation decision table (PLCY-01 + CORR-01 severity override).
 	switch {
-	case signedCount >= t.QuarantineAt && hasSignedSource:
+	case signedCount >= effectiveQuarantineAt && hasSignedSource:
 		return "block", true, signedCount, agreedList, dissentList
-	case signedCount >= t.BlockAt && hasSignedSource:
+	case signedCount >= effectiveBlockAt && hasSignedSource:
 		return "block", false, signedCount, agreedList, dissentList
 	case signedCount >= t.WarnAt || hasUnsigned:
 		return "warn", false, signedCount, agreedList, dissentList

@@ -40,8 +40,10 @@ func nxConsoleMatch(source string, signed bool) CatalogMatch {
 
 // ─── Phase 2 multi-source corroboration tests ───────────────────────────────
 
-// TestEvaluateSingleSignedSourceWarns: one signed match via fakeMultiCatalog →
-// Level "warn", Allow true, CorroborationCount 1.
+// TestEvaluateSingleSignedSourceWarns: one signed critical match via fakeMultiCatalog →
+// Phase-6: Level "block", Allow false, CorroborationCount 1.
+// (nxConsoleMatch has Severity:"critical"; DefaultCorroborationThresholds() sets
+// SeverityOverrides["critical"]={BlockAt:1}, so 1 signed critical source → block.)
 func TestEvaluateSingleSignedSourceWarns(t *testing.T) {
 	idx := newFakeMulti(map[string][]CatalogMatch{
 		"editor-extension::nrwl.angular-console": {
@@ -59,11 +61,12 @@ func TestEvaluateSingleSignedSourceWarns(t *testing.T) {
 	}
 	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
-	if d.Level != "warn" {
-		t.Errorf("Level = %q, want %q", d.Level, "warn")
+	// Phase-6 (CORR-01): critical severity + 1 signed source → block (effectiveBlockAt=1).
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q (critical single signed source must block)", d.Level, "block")
 	}
-	if !d.Allow {
-		t.Errorf("Allow = false, want true (single source → warn, not block)")
+	if d.Allow {
+		t.Errorf("Allow = true, want false (critical single signed source → block)")
 	}
 	if d.CorroborationCount != 1 {
 		t.Errorf("CorroborationCount = %d, want 1", d.CorroborationCount)
@@ -72,7 +75,7 @@ func TestEvaluateSingleSignedSourceWarns(t *testing.T) {
 		t.Errorf("SourcesAgreed = %v, want [bumblebee]", d.SourcesAgreed)
 	}
 	if d.Quarantine {
-		t.Error("Quarantine = true, want false")
+		t.Error("Quarantine = true, want false (signedCount=1 < QuarantineAt=2)")
 	}
 }
 
@@ -251,11 +254,13 @@ func TestUnsignedCatalogIsWarnOnly(t *testing.T) {
 	}
 }
 
-// TestSignedCatalogStillWarnWithSingleSource: one signed source → warn (block needs 2).
+// TestSignedCatalogStillWarnWithSingleSource: one signed critical source → block (Phase-6 CORR-01).
+// (nxConsoleMatch has Severity:"critical"; DefaultCorroborationThresholds() sets
+// SeverityOverrides["critical"]={BlockAt:1}, so 1 signed critical source → block.)
 func TestSignedCatalogStillWarnWithSingleSource(t *testing.T) {
 	idx := newFakeMulti(map[string][]CatalogMatch{
 		"editor-extension::nrwl.angular-console": {
-			nxConsoleMatch("bumblebee", true), // signed but single source
+			nxConsoleMatch("bumblebee", true), // signed, critical severity
 		},
 	})
 	tc := ToolCall{
@@ -267,11 +272,12 @@ func TestSignedCatalogStillWarnWithSingleSource(t *testing.T) {
 	}
 	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
 
-	if d.Level != "warn" {
-		t.Errorf("Level = %q, want %q (single signed source → warn)", d.Level, "warn")
+	// Phase-6 (CORR-01): critical + 1 signed source → block.
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q (critical single signed source → block)", d.Level, "block")
 	}
-	if !d.Allow {
-		t.Errorf("Allow = false, want true (block escalation requires 2 signed sources)")
+	if d.Allow {
+		t.Errorf("Allow = true, want false (critical single signed source → block)")
 	}
 	if len(d.CatalogMatches) != 1 {
 		t.Fatalf("len(CatalogMatches) = %d, want 1", len(d.CatalogMatches))

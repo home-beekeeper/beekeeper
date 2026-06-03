@@ -81,6 +81,18 @@ type MultiCatalogLookup interface {
 	LookupAll(ecosystem, pkg string) []CatalogMatch
 }
 
+// SeverityThreshold specifies escalation thresholds for a specific severity level.
+// Used in CorroborationThresholds.SeverityOverrides for per-severity escalation (CORR-01).
+//
+// Sanity bounds enforced by validateCorroborationThresholds:
+//   - BlockAt >= 1 (zero would block unconditionally on any catalog hit)
+//   - BlockAt <= global CorroborationThresholds.BlockAt (cannot be looser than global)
+//   - QuarantineAt >= BlockAt
+type SeverityThreshold struct {
+	BlockAt      int // minimum signed-source count to block at this severity (min 1)
+	QuarantineAt int // minimum signed-source count to block+quarantine at this severity
+}
+
 // CorroborationThresholds controls when corroboration escalates the decision
 // level. Thresholds are per-ecosystem configurable; the defaults (WarnAt 1,
 // BlockAt 2, QuarantineAt 3) match the PLCY-01 specification.
@@ -88,18 +100,35 @@ type MultiCatalogLookup interface {
 // Only SIGNED sources count toward thresholds. Unsigned sources contribute
 // warn-only weight (0.5) and can never alone reach BlockAt.
 type CorroborationThresholds struct {
-	WarnAt      int // minimum signed-source count for warn level (default 1)
-	BlockAt     int // minimum signed-source count for block level (default 2)
+	WarnAt       int // minimum signed-source count for warn level (default 1)
+	BlockAt      int // minimum signed-source count for block level (default 2)
 	QuarantineAt int // minimum signed-source count for block+quarantine (default 3)
+	// CORR-01: per-severity threshold overrides. When ANY non-dissented CatalogMatch
+	// has Severity in this map AND CatalogHealthy is true AND no all-versions wildcard
+	// applies, corroborate() uses the override's BlockAt/QuarantineAt instead of the
+	// global values.
+	//
+	// Default: {"critical": {BlockAt:1, QuarantineAt:2}}
+	// Nil map is valid (no overrides — standard global thresholds apply).
+	SeverityOverrides map[string]SeverityThreshold
+	// CORR-02: CatalogHealthy signals whether the catalog passed its sanity check.
+	// When false, SeverityOverrides are suppressed (poisoning guard).
+	// Default: true (caller sets false when SourceState.Degraded is true).
+	CatalogHealthy bool
 }
 
 // DefaultCorroborationThresholds returns the PLCY-01 default thresholds:
 // warn at 1 signed source, block at 2, quarantine at 3. No I/O.
+// CORR-01/02: includes CatalogHealthy:true and SeverityOverrides["critical"]={BlockAt:1,QuarantineAt:2}.
 func DefaultCorroborationThresholds() CorroborationThresholds {
 	return CorroborationThresholds{
-		WarnAt:       1,
-		BlockAt:      2,
-		QuarantineAt: 3,
+		WarnAt:         1,
+		BlockAt:        2,
+		QuarantineAt:   3,
+		CatalogHealthy: true, // default healthy; callers override to false when degraded
+		SeverityOverrides: map[string]SeverityThreshold{
+			"critical": {BlockAt: 1, QuarantineAt: 2},
+		},
 	}
 }
 
