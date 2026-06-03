@@ -359,6 +359,61 @@ func TestApplyPolicyOverlay_MultiEcosystemRule(t *testing.T) {
 	}
 }
 
+// TestExtractTargetPathFilePath verifies that extractTargetPath reads the
+// "file_path" key (Claude Code Read/Write/Edit primary) before "path" (legacy
+// fallback), and handles nil ToolInput and missing keys gracefully (Pitfall 4).
+func TestExtractTargetPathFilePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		tc       policy.ToolCall
+		wantPath string
+	}{
+		{
+			name: "file_path key returns its value",
+			tc: policy.ToolCall{
+				ToolInput: map[string]any{"file_path": "~/.aws/credentials"},
+			},
+			wantPath: "~/.aws/credentials",
+		},
+		{
+			name: "path key used as legacy fallback when file_path absent",
+			tc: policy.ToolCall{
+				ToolInput: map[string]any{"path": "/etc/legacy"},
+			},
+			wantPath: "/etc/legacy",
+		},
+		{
+			name: "file_path wins over path when both present",
+			tc: policy.ToolCall{
+				ToolInput: map[string]any{
+					"file_path": "/a",
+					"path":      "/b",
+				},
+			},
+			wantPath: "/a",
+		},
+		{
+			name:     "nil ToolInput returns empty string without panic",
+			tc:       policy.ToolCall{ToolInput: nil},
+			wantPath: "",
+		},
+		{
+			name:     "neither key present returns empty string",
+			tc:       policy.ToolCall{ToolInput: map[string]any{}},
+			wantPath: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractTargetPath(tt.tc)
+			if got != tt.wantPath {
+				t.Errorf("extractTargetPath() = %q, want %q", got, tt.wantPath)
+			}
+		})
+	}
+}
+
 // TestLoadPolicyDir_MissingDir verifies that a missing directory returns an
 // empty slice and no error.
 func TestLoadPolicyDir_MissingDir(t *testing.T) {
