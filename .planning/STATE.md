@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
-status: verifying
-stopped_at: Roadmap creation complete — ready to plan Phase 6.
-last_updated: "2026-06-03T19:32:26.673Z"
+status: executing
+stopped_at: Phase 6 complete (CORR-01/02 + 2 code-review fixes); ready to plan Phase 7.
+last_updated: "2026-06-03T20:06:49.204Z"
 last_activity: 2026-06-03
 progress:
-  total_phases: 5
-  completed_phases: 4
-  total_plans: 20
-  completed_plans: 19
-  percent: 80
+  total_phases: 3
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 6 — Corroboration Severity Hardening
+**Current focus:** Phase 7 — Sensitive-Path Runtime Enforcement (Phase 6 ✅ complete & verified)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 6 (Corroboration Severity Hardening) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-06-03
+Phase: 6 of 8 complete — next: Phase 7 (Sensitive-Path Runtime Enforcement)
+Plan: —
+Status: Phase 6 complete & verified (5/5 must-haves; 2 code-review criticals fixed) — ready to plan Phase 7
+Last activity: 2026-06-03 — Phase 6 executed + verified; CR-01/CR-02 fixed (commit e8bdf8a)
 
-Progress (v1.2.0): [██████████] 95%
+Progress (v1.2.0): [███░░░░░░░] 33% (1 of 3 phases)
 
 ## Phase Summary (v1.1.0)
 
@@ -48,7 +48,7 @@ Progress (v1.2.0): [██████████] 95%
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
-| 6 | Corroboration Severity Hardening | CORR-01, CORR-02 | Not started |
+| 6 | Corroboration Severity Hardening | CORR-01, CORR-02 | ✅ Complete (3/3 plans; +2 code-review fixes) |
 | 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | Not started |
 | 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | Not started |
 
@@ -56,7 +56,7 @@ Progress (v1.2.0): [██████████] 95%
 
 **Velocity (v1.0.0):**
 
-- Total plans completed: 61
+- Total plans completed: 64
 - Average duration: ~10 min/plan
 
 ## Accumulated Context

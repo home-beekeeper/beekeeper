@@ -143,7 +143,7 @@
 
 **Phases (continuing numbering from v1.1.0):**
 
-- [ ] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate
+- [x] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate (completed 2026-06-03)
 - [ ] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses; integration tests prove check wiring is live
 - [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/parse/evaluate/rewrite/CLI); PRD §10 acceptance tests; complete table-driven test suite; live-binary E2E release gate
 
@@ -196,7 +196,7 @@
 | 3. Editor Extension Defense | v1.0.0 | 5/5 | Complete | 2026-05-26 |
 | 4. Integration Surfaces | v1.0.0 | 2/3 | In Progress|  |
 | 5. Linux Sentry | v1.0.0 | 4/5 | In Progress|  |
-| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 3/3 | Complete   | 2026-06-03 |
+| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 3/3 | Complete    | 2026-06-03 |
 | 7. Cross-Platform Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | v1.0.0 | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | v1.0.0 | 5/5 | Complete | 2026-05-29 |
@@ -207,6 +207,6 @@
 | **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
-| **6. Corroboration Severity Hardening** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
+| **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
