@@ -171,7 +171,10 @@
   2. A `Bash` tool call containing `cat ~/.ssh/id_rsa` or `type %USERPROFILE%\.ssh\id_rsa` is detected as a credential-access attempt and flagged — shell-command target extraction is live, not just direct `file_path` reads
   3. Safe lookalikes `.env.example`, `.env.test`, and `.env.schema` are NOT blocked — the built-in allowlist prevents false positives on development fixture files; project-level policy-file `sensitive_path.allow` rules merge by most-restrictive-wins
   4. `RunCheck` integration tests drive the full stdin-to-exit-code path for credential reads (SPATH-01/02/03) and assert both the exit code and the presence of a `decision:"block"` audit record — wiring is proven live, not just that `EvaluatePath` returns the correct value in isolation
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 07-01-PLAN.md — Pure policy + policyloader fixes (DefaultSensitivePaths block/allow entries, isAllowedPath basename match, extractTargetPath file_path key)
+- [ ] 07-02-PLAN.md — Impure canonicalization adapter (internal/check/paths.go: extract / canonicalize / %USERPROFILE% expand / Bash credential detection / mergeDecisions)
+- [ ] 07-03-PLAN.md — Wire path block into runCheck + runCheckWithIndex; RunCheck integration tests for SC1-SC4 with audit-record assertions
 **UI hint**: no
 
 ### Phase 8: Package-Manager Nudge + Behavioral Test Suite
@@ -208,5 +211,5 @@
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
-| **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
+| **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **0/3** | **Planned** | **—** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
