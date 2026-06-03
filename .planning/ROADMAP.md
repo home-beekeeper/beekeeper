@@ -157,7 +157,10 @@
   3. A catalog entry with `versions:["*"]` and `severity:"critical"` still requires 2-source corroboration to block — the all-versions guard prevents a mis-tagged wildcard entry from blocking all installs of a legitimate package (e.g. `react`, `typescript`)
   4. `validateCorroborationThresholds` rejects any configuration where `BlockAt < 1` with a descriptive error at startup
   5. Table-driven unit tests in `internal/policy/` cover the Shai-Hulud fixture (1-source critical → block), degraded-catalog regression (1001 entries → warn), and all-versions guard (wildcard + critical → 2-source required)
-**Plans**: TBD
+**Plans**: 3 plans (2 waves)
+- [ ] 06-01-PLAN.md - Wave 1: pure policy core - SeverityThreshold/SeverityOverrides/CatalogHealthy types, findSeverityOverride + all-versions guard, sanity-bound validateCorroborationThresholds, 6 unit tests, selftest fixture audit (CORR-01, CORR-02)
+- [ ] 06-02-PLAN.md - Wave 2: policy-file configurable critical_block_at (loader/validate/test merge + bound) + loader test (CORR-01)
+- [ ] 06-03-PLAN.md - Wave 2: resolveCatalogHealthy wired into all four policy.Evaluate consumers (check/gateway/watch/scan) + 3 RunCheck integration tests proving live wiring (CORR-02)
 
 ### Phase 7: Sensitive-Path Runtime Enforcement
 **Goal**: `beekeeper check` blocks agent reads of credential files — `~/.aws/credentials`, `~/.ssh/id_rsa`, `.env`, and MCP config files — via the already-built `policy.EvaluatePath`/`DefaultSensitivePaths` engine wired into the live check pipeline, with path canonicalization that closes `..`-traversal and tilde-expansion bypasses.
