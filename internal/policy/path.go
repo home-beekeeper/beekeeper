@@ -12,15 +12,18 @@ const ruleSensitivePath = "sensitive-path-policy"
 //     resolved path. A fragment containing "/" (or "\") is matched via
 //     strings.Contains; a basename pattern (like ".env") is matched against
 //     the last path segment only.
-//   - AllowPatterns: exact or prefix patterns. A match here overrides any
-//     blocklist match — checked first.
+//   - AllowPatterns: exact/prefix patterns (separator-bearing) or basename
+//     patterns (no separator). A match here overrides any blocklist match —
+//     checked first. Basename patterns (no "/" or "\") are matched against
+//     the last path segment, mirroring matchesBlockPattern's basename logic.
 //
 // Path normalization (resolving "~" to the home directory, converting OS
 // separators) is the CALLER's responsibility. EvaluatePath receives an
 // already-resolved string and matches verbatim.
 //
-// MCP config files enumerated by Bumblebee are appended to BlockPatterns by
-// the wiring layer at Plan 08 time — not hardcoded here.
+// MCP host-config directories (/.cursor/, /.windsurf/) and bare credential
+// files (/.cargo/credentials) are hardcoded in DefaultSensitivePaths as of
+// v1.2.0 Phase 7 (SPATH-01, D-02).
 type SensitivePathConfig struct {
 	BlockPatterns []string
 	AllowPatterns []string
@@ -31,6 +34,10 @@ type SensitivePathConfig struct {
 // BlockPatterns are forward-slash-canonical fragments; the caller normalizes OS
 // separators before calling EvaluatePath. The basename-glob entries (".env",
 // ".env.local") are recognized by EvaluatePath as last-segment matches.
+//
+// AllowPatterns holds basename-only safe lookalikes for .env files (SPATH-04).
+// These are checked FIRST by EvaluatePath, so .env.example etc. are allowed
+// even though the .env.* glob in BlockPatterns would otherwise block them.
 func DefaultSensitivePaths() SensitivePathConfig {
 	return SensitivePathConfig{
 		BlockPatterns: []string{
@@ -40,10 +47,13 @@ func DefaultSensitivePaths() SensitivePathConfig {
 			"/.config/Claude/",
 			"/.config/op/",
 			"/.config/gh/",
+			"/.cursor/",              // Cursor MCP config (SPATH-01, D-02, Phase 7)
+			"/.windsurf/",            // Windsurf MCP config (SPATH-01, D-02, Phase 7)
 			"/.netrc",
 			"/.npmrc",
 			"/.pypirc",
 			"/.cargo/credentials.toml",
+			"/.cargo/credentials",    // bare pre-2022 format (D-02, Phase 7)
 			// Basename glob patterns — matched against last path segment.
 			// ".env" covers exact ".env"; ".env.local" covers exact ".env.local";
 			// ".env.*" covers any basename with prefix ".env." (e.g. .env.production).
@@ -51,7 +61,11 @@ func DefaultSensitivePaths() SensitivePathConfig {
 			".env.local",
 			".env.*",
 		},
-		AllowPatterns: nil,
+		AllowPatterns: []string{
+			".env.example", // safe lookalike — not a secrets file (SPATH-04)
+			".env.test",    // safe lookalike (SPATH-04)
+			".env.schema",  // safe lookalike (SPATH-04)
+		},
 	}
 }
 
@@ -138,7 +152,25 @@ func matchesBlockPattern(resolvedPath, pattern string) bool {
 // must be followed by a path separator before it matches — preventing
 // "/home/user/projects-secret" from being allowed by a "/home/user/projects"
 // entry (WR-04).
+//
+// When the allow pattern contains no path separator ("/" or "\"), it is a
+// basename pattern: matched against lastSegment(resolvedPath), mirroring
+// matchesBlockPattern's basename logic (including the ".*" glob-prefix branch).
 func isAllowedPath(resolvedPath, allow string) bool {
+	// Basename pattern: no separator → match against the last path segment.
+	// This enables AllowPatterns like ".env.example" to match any absolute path
+	// whose final component is ".env.example" (Pitfall 2 fix, SPATH-04).
+	if !strings.Contains(allow, "/") && !strings.Contains(allow, "\\") {
+		seg := lastSegment(resolvedPath)
+		// Handle glob: ".env.*" style allow patterns.
+		if strings.HasSuffix(allow, ".*") {
+			prefix := allow[:len(allow)-1] // strip trailing "*", keep "."
+			return strings.HasPrefix(seg, prefix)
+		}
+		return seg == allow
+	}
+
+	// Separator-bearing pattern: exact or path-boundary prefix (WR-04 preserved).
 	if resolvedPath == allow {
 		return true
 	}
