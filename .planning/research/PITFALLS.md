@@ -1,256 +1,411 @@
 # Pitfalls Research
 
-**Domain:** Agent runtime safety harness / security daemon (Go, eBPF, ETW, eslogger, MCP proxy)
-**Researched:** 2026-05-26
-**Confidence:** HIGH (most pitfalls verified against official docs, real-world tool postmortems, and community issue trackers)
+**Domain:** Agent runtime safety harness — v1.2.0 "Runtime Behavioral Hardening" (PLCY-05 sensitive-path wiring, NUDGE package-manager nudge, PLCY-07 corroboration hardening, BTEST behavioral tests)
+**Researched:** 2026-06-03
+**Confidence:** HIGH — pitfalls derived from live codebase inspection (handler.go, policy/path.go, policy/corroboration.go, catalog/verify.go, catalog/sanity.go), the NUDGE PRD spec (§11 edge cases, §12 self-defense), PROJECT.md milestone findings (F1/F2/F3 runtime-validation gaps), and CLAUDE.md constraints.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Hook Handler Cold-Start Latency Compounds Under Heavy Sessions
+### Pitfall 1: NUDGE Detection on the One-Shot `beekeeper check` Hot Path — The 60-Second Cache Trap
 
 **What goes wrong:**
 
-The PRD targets sub-100ms p99 for `beekeeper check`. A fresh Go process startup is documented at ~10-30ms before any policy evaluation runs. That looks safe with single-digit milliseconds of evaluation cost. But Claude Code hooks spawn a subprocess per tool call, and at 50-200 tool calls per hour in a heavy coding session, the compound effect matters less for throughput than for perceived latency. The real failure mode is that `beekeeper check` is on the hot path for every single agent action — file reads, shell commands, MCP calls — meaning any regression above the budget blocks the agent's next step.
+The NUDGE PRD §4 describes a "60-second detection cache" and criterion §10.11 says "Detection cache prevents re-running `pnpm --version` more than once per 60 seconds in the **same session**." This makes sense in a long-running daemon or shim process. It is **completely meaningless** in `beekeeper check`, which is a one-shot process: every hook invocation forks a new OS process, lives for the duration of one tool call, and exits. There is no in-process cache to hit. The first time `Evaluate` is called in a fresh process, `DetectPnpm()` execs `pnpm --version`. That exec happens every single hook invocation — because there is no surviving process to hold the cache.
 
-The documented worst case from real Claude Code hook deployments: a project with 11+ hooks across 9 lifecycle events caused 13-16 seconds overhead per prompt interaction (not per tool call — per prompt). The root cause was sequential Node.js subprocess spawning. Go starts faster than Node, but the architecture trap is the same: each hook invocation is a fresh process, and if policy evaluation touches disk (catalog lookup, baseline counters), OS file cache misses add latency that won't appear in synthetic benchmarks.
+With the exec budget unrestricted, every `beekeeper check` invocation on the hook hot path runs `pnpm --version`, `bun --version`, and `node --version` — three subprocess execs — before the policy engine can decide anything. Each `exec.Command` on Windows with the 2-second timeout specified in PRD §6.1 can take 30-80ms in practice (process startup + PATH lookup + binary load), even on a warm machine. Three execs × 50ms = 150ms overhead per tool call, before catalog lookup or policy evaluation runs. This demolishes the sub-100ms target established in CLAUDE.md.
 
-The second failure mode is the "fast in dev, slow in prod" trap. A developer benchmarks `beekeeper check` on a warm SSD with a small catalog. The actual user has a cold catalog cache (first run after boot), a spinning disk under I/O load from the agent's `npm install`, and a LlamaFirewall sidecar that's just been restarted. The p99 blows out. The agent stalls visibly. The user disables the hook.
+The PRD is self-consistent within a shim or gateway context (long-lived processes). The critical omission is that `internal/check/handler.go` (the `beekeeper check` one-shot process) is listed as the **first** integration point in PRD §3.3, and the cache does not help there at all.
 
 **Why it happens:**
 
-The sub-100ms target is achievable for the happy path — warm binary, small catalog in OS cache, no sidecar. It is not achievable without care for the cold-start case. Go's process startup adds 10-30ms before `main()` runs. JSON parsing of the tool call adds a few ms. The catalog lookup against an in-memory structure is fast, but loading the catalog from disk on first invocation adds real latency. The PRD correctly identifies this as an empirical question ("Latency budget under load... is unknown until prototyped"), but the pitfall is treating the p50 case as the p99 target.
+The PRD was drafted with a session-oriented mental model. The NUDGE feature is conceptually session-scoped ("detect once, nudge during the session"). The hook handler, however, is invocation-scoped. The mismatch is invisible at spec time because both paths call `nudge.Evaluate` through the same interface — the difference only manifests under real workload profiling.
 
 **How to avoid:**
 
-- Implement the catalog and policy engine as in-memory structures loaded once at process start, not re-parsed per invocation. Keep a persistent daemon (`beekeeper sentry` is already planned; the same pattern can serve as a policy cache daemon) that `beekeeper check` talks to via Unix domain socket / Windows named pipe IPC instead of loading state fresh each time.
-- Benchmark `beekeeper check` specifically under the "cold OS file cache, large catalog, sidecar starting" case from v0.1.0. Set the latency regression gate at 100ms p95, not p50.
-- The hook handler's stdin read has a 1MB cap (per PRD); enforce it early to avoid spending latency on oversized payloads before the bounds check kicks in.
-- Test with a realistic catalog size. Bumblebee's `threat_intel/` is growing rapidly post-May 2026 campaigns. A catalog with 5,000 entries behaves differently than one with 50.
-- Consider a persistent socket daemon as the v0.3.0 optimization path: `beekeeper check` sends a short IPC message to a warm `beekeeper daemon` process and gets a response. Cold start cost collapses to IPC overhead (~1ms). This is the pattern used by `gopls`, `rust-analyzer`, and LSP servers generally.
+Pick exactly one mitigation path and commit to it in the NUDGE phase plan before writing `detect.go`:
+
+1. **File-based detection cache** (recommended for check): Write detected PM state to `~/.beekeeper/state/nudge-detect.json` with a `last_checked` timestamp. On the next `beekeeper check` invocation, if `last_checked` is within 60 seconds (or a configurable window), load the cached state rather than exec-ing version commands. The file must be written atomically (write to `.tmp` + rename) and handled gracefully on read error (fall through to live detection, no crash). This is the only approach that survives the one-shot process model. 60s TTL means a developer who changes pnpm version mid-session gets a stale detection for up to 60 seconds — acceptable trade-off vs. per-invocation exec overhead.
+
+2. **Skip detection in `check`; only nudge in gateway/shim**: The NUDGE PRD lists three integration points (check, gateway, shim). Detection in `beekeeper check` adds latency on every hook (file Read, Bash, Edit). Detection in the MCP gateway and shim adds latency once per long-lived session, where the 60-second in-process cache actually helps. A simpler v1.2.0 scope: wire nudge only into the gateway and shim, not into check. The check path gets a no-op nudge stub that always returns `Proceed`. Defer check-path nudge to v1.3.0 when the latency budget is re-evaluated.
+
+3. **Lazy/async detection with PROCEED-on-miss**: Detection runs asynchronously; the first invocation returns `Proceed` immediately while detection executes in background and stores the result to the file cache. This adds implementation complexity and leaves a window where `npm install` is not nudged (the first call in a session). Not recommended as the primary strategy.
+
+**The file-based cache is the correct default.** Build it first. Make TTL configurable in the nudge config block. Document that the in-process 60-second cache described in the PRD applies only to gateway/shim; the check path uses the file cache.
 
 **Warning signs:**
 
-- p99 latency in `beekeeper diag` above 80ms in a warm-cache test
-- User bug reports: "agent feels slow" or "Claude keeps waiting before each tool"
-- Integration tests that measure only average latency, not p99
-- Benchmark environment using in-memory catalog, production environment loading from disk
+- `beekeeper check` latency benchmark showing 100ms+ on a machine with pnpm installed — the exec overhead is present
+- PRD criterion §10.11 passing in a test that creates a long-lived `detect` object in process (mocks the check invocation model, doesn't test it)
+- No `nudge-detect.json` state file in the design — means file cache was not implemented
+- `beekeeper diag` p99 regression appearing exactly after NUDGE phase is merged
 
 **Phase to address:**
 
-v0.1.0: Establish the latency benchmark baseline with realistic catalog sizes and document p50/p95/p99 in `beekeeper diag` output. v0.3.0: Implement persistent IPC daemon if cold-start latency exceeds budget under realistic loads.
+NUDGE phase (v1.2.0). Must be resolved in the NUDGE detection design, not deferred. Gate the NUDGE phase plan on confirming which mitigation path is chosen before any `detect.go` implementation begins.
 
 ---
 
-### Pitfall 2: eBPF Kernel Version Fragmentation Silently Degrades Sentry
+### Pitfall 2: PLCY-07 Corroboration Poisoning — Treating Bundled Catalog as Signed-Equivalent Creates a New Single Point of Compromise
 
 **What goes wrong:**
 
-The PRD specifies fanotify + eBPF (`cilium/ebpf`) for Linux Sentry. This combination has hard kernel version dependencies that vary across features:
+PLCY-07's goal is to make a critical-severity catalog match block even when the bumblebee catalog is unsigned (`Signed:false`), because today a critical match from bumblebee + OSV gets `CorroborationCount:1` (only OSV is signed) and only warns. The tempting implementation is: "if severity == critical and the bundled bumblebee catalog matched, treat it as signed-equivalent for corroboration purposes."
 
-- `CAP_BPF` (granular eBPF capability) requires kernel **5.8+**. On 5.4 and earlier, you need `CAP_SYS_ADMIN` — a significantly broader privilege that many hardened systems deny.
-- `FAN_MARK_FILESYSTEM` (efficient whole-filesystem fanotify mark, avoiding per-directory walking) requires kernel **4.20+**.
-- `FAN_CREATE` / `FAN_DELETE` events for new file detection require kernel **5.1+**.
-- eBPF CO-RE (Compile Once, Run Everywhere, needed for portable programs without headers) requires kernel **5.4+** with BTF enabled.
-- Ring buffers (`BPF_MAP_TYPE_RINGBUF`) — more efficient than perf buffers for high-event-rate Sentry — require kernel **5.8+**.
-- The `BPFize fanotify` integration (native BPF hooks on fanotify struct_ops) is still in-kernel-development as of 2025-2026.
+This is the self-defense trap CLAUDE.md identifies as a Phase 2 non-negotiable: **corroboration sanity bounds + catalog signature verification**. If you treat the bundled bumblebee catalog as signed-equivalent without cryptographic verification, you have just created a scenario where a single poisoned entry in the local bumblebee `threat_intel/` directory can single-handedly block any package as "critical". The bumblebee catalog is fetched from an unauthenticated GitHub raw endpoint (unless catalog signature verification is implemented). An attacker who can perform a MITM, a compromised CDN cache, or a supply-chain compromise of the bumblebee repo itself can inject a critical-severity entry for any package — say, `react` or `typescript` — and every Beekeeper user who then runs `beekeeper catalogs sync` will have that entry load as "signed-equivalent", causing every React install to be blocked with no second-source corroboration required.
 
-The fragmentation risk: Ubuntu 20.04 LTS ships kernel 5.4 by default (5.15 with HWE), Debian 11 ships 5.10, CentOS 8 ships 4.18. A developer on Ubuntu 20.04 without HWE kernel gets `CAP_SYS_ADMIN` requirement (broader privilege) and no ring buffers. The Sentry daemon may fail to load eBPF programs entirely and produce no error visible to the user.
+This is strictly worse than the current state. Today a poisoned bumblebee entry + no OSV corroboration = warn only. After the "treat bundled as signed-equivalent" shortcut, a poisoned bumblebee entry + no OSV corroboration = block. You have traded "critical CVEs only warn" for "a single poisoned catalog can block anything."
 
-fanotify has an additional limitation that never appears in synthetic tests: it does **not** report file accesses via `mmap()`, `msync()`, or `munmap()`. A malicious extension reading credential files via memory-mapped I/O would be invisible to fanotify-based monitoring.
+The existing `catalog/verify.go` has `VerifySignatureWithKey(entry, pubKey)` already built. The existing `catalog/sanity.go` has delta sanity bounds already built. The corroboration model in `policy/corroboration.go` correctly requires `Signed:true` for escalation. The infrastructure exists; the question is whether PLCY-07 uses it correctly.
 
 **Why it happens:**
 
-eBPF's feature matrix is a function of kernel version, kernel compile-time config (`CONFIG_BPF`, `CONFIG_BPF_SYSCALL`, `CONFIG_FANOTIFY`, `CONFIG_FANOTIFY_ACCESS_PERMISSIONS`), and distro-specific patches. The `cilium/ebpf` library provides good abstractions but cannot conjure missing kernel features. Projects using eBPF often test on their own kernel (likely recent Ubuntu or Fedora) and only discover fragmentation when users on older LTS kernels file issues.
+The symptom (critical CVEs warn-only) is real and needs fixing. The fast path — escalate severity-tagged matches regardless of signature — solves the symptom without addressing the root cause (bumblebee entries are unsigned because there is no trusted Ed25519 key configured for the bundled catalog). Severity-based escalation without signature verification inverts the trust model: the catalog's own claim of "critical" is now sufficient to block, which is exactly the attack surface the corroboration model was designed to prevent.
 
 **How to avoid:**
 
-- Implement capability probing at `beekeeper protect install` time. Before loading any eBPF programs, check kernel version, BTF availability (`/sys/kernel/btf/vmlinux`), and specific required features. If the check fails, report exactly which features are missing and which kernel version would enable them.
-- Implement graceful degradation tiers:
-  - Tier 1 (kernel 5.8+, BTF): Full eBPF + fanotify, ring buffers. Full Sentry capability.
-  - Tier 2 (kernel 5.1-5.7): fanotify with perf buffers, CAP_SYS_ADMIN required. Functional but noisier.
-  - Tier 3 (kernel 4.20-5.0): fanotify only, no eBPF process events. File monitoring only, no network correlation.
-  - Tier 4 (below 4.20): inotify fallback, no fanotify permission events, limited coverage. Surface in `beekeeper diag` as "degraded coverage."
-- Document the mmap gap explicitly in the threat model: Sentry's file monitoring will not detect credential reads via memory-mapped I/O. This is a known limitation of the fanotify API, not a Beekeeper bug.
-- Add kernel version to `beekeeper protect status` output and `beekeeper diag` so users can see what tier they're on.
+There are two correct paths — choose one:
+
+1. **Sign the bundled bumblebee catalog slice** (correct, higher effort): Generate an Ed25519 keypair for Beekeeper's bundled catalog. During `beekeeper catalogs sync`, verify each downloaded bumblebee entry against the public key (using the existing `VerifySignatureWithKey`). Entries that pass verification are loaded with `Signed:true`. Critical-severity signed entries then naturally reach the corroboration block threshold (1 signed source at `WarnAt:1, BlockAt:1` for critical, configurable via policy file). The bundled public key is pinned in the Beekeeper binary (not downloaded at runtime — downloaded public keys are trivially MITMed). This is the long-term correct architecture.
+
+2. **Per-severity corroboration threshold policy** (correct, lower effort): Keep `Signed:false` for bumblebee entries. Add a configurable per-severity corroboration override to `CorroborationThresholds`: `CriticalBlockAt: 1` means "for critical severity, block at 1 source regardless of signing." Crucially: this threshold applies only when the sanity check passes (catalog delta is within bounds, catalog signature verification is not actively failing), and the threshold is set conservatively: `CriticalBlockAt:1` with unsigned is still gated on the sanity bounds system treating the catalog as non-degraded. Document explicitly: if the bumblebee catalog fails sanity bounds (sudden delta spike), it reverts to unsigned warn-only regardless of severity, so catalog poisoning that injects many critical entries at once triggers the sanity system and fails closed. The existing `catalog/sanity.go` `BlockDeltaEntries:10000` and `AlertDeltaEntries:1000` thresholds are the backstop.
+
+**Option 2 is the right scope for v1.2.0.** Document path 1 as the v1.3.0 or v2.0.0 follow-on (catalog signing infrastructure). Include in the policy file schema:
+
+```json
+{
+  "corroboration_threshold": {
+    "warn_at": 1,
+    "block_at": 2,
+    "quarantine_at": 3,
+    "critical_block_at": 1
+  }
+}
+```
+
+Gate `critical_block_at: 1` on the source not being in degraded mode (sanity bounds not exceeded). Test this explicitly: inject a single bumblebee entry with `severity: "critical"` and zero OSV corroboration — should block. Then inject 1001 new critical entries at once (triggers alert sanity bound) — should revert to warn-only regardless of severity.
 
 **Warning signs:**
 
-- CI tests passing on ubuntu-latest (typically 6.x) but Sentry failing silently on user-reported older kernels
-- `beekeeper protect install` succeeding but Sentry generating zero events in the audit log
-- User reports of Sentry rules never firing despite configured sensitive paths being accessed
-- Missing `/sys/kernel/btf/vmlinux` (BTF not available, CO-RE will fail)
+- PLCY-07 implementation adds `if severity == "critical" { forceSigned = true }` or similar shortcut in `corroborate()` without sanity-bound gating
+- No test covering the case: "critical severity match + catalog sanity bound exceeded → still warn only"
+- No test covering: "catalog with 1000 new critical entries → degraded mode, not block storm"
+- `critical_block_at` threshold is not configurable (hardcoded 1) — means it cannot be dialed back if false positives occur
 
 **Phase to address:**
 
-v0.6.0 (Sentry Linux implementation): Build capability probing and degradation tiers from the first commit of Sentry. Do not build for the happy path first and add degradation later — by then the code assumes kernel 5.8+ throughout.
+PLCY-07 phase (v1.2.0). The sanity-bound gating is non-negotiable before the severity-escalation threshold is live. Both must ship together.
 
 ---
 
-### Pitfall 3: Windows ETW Event Loss Under Load Creates Coverage Blind Spots
+### Pitfall 3: PLCY-05 Path Canonicalization — The `~` Unresolved and Windows Path Mismatch Gaps
 
 **What goes wrong:**
 
-The PRD notes that ETW rate-limits under load and that Beekeeper will surface this in `beekeeper diag`. This is the right posture, but the practical impact is worse than "some events get dropped." ETW event loss under load is an architectural property of the system, not a transient glitch.
+`EvaluatePath` in `policy/path.go` is a pure function that receives an "already-resolved string" — normalization is explicitly the caller's responsibility (see the doc comment: "Path normalization (resolving `~` to the home directory, converting OS separators) is the CALLER's responsibility"). The existing engine is correct and well-tested in isolation. The pitfall is in the wiring: when the hook handler calls `EvaluatePath` with a `file_path` from agent tool call JSON, the `file_path` may arrive in any of these forms:
 
-ETW uses a fixed-size circular buffer per session. When the consumer (Beekeeper's Sentry daemon) cannot drain the buffer as fast as the provider writes events, the oldest events are overwritten. The events that get dropped are the high-rate, low-value ones (file access in a hot loop from `npm install`) — but also potentially the high-value, low-frequency ones (credential file read from an extension host process) if the drop timing is unlucky.
+- `~/.aws/credentials` — tilde not expanded (most common in Claude Code tool calls)
+- `../../.env` — relative path with traversal
+- `.env` — relative, no traversal, but the cwd context is unknown
+- `C:\Users\user\.aws\credentials` — Windows backslash (the primary dev machine)
+- `C:/Users/user/.aws/credentials` — Windows forward-slash variant
+- `//server/share/.aws/credentials` — UNC path
+- `//?/C:/Users/user/.aws/credentials` — Win32 extended-length path prefix
 
-Additional ETW constraints for Beekeeper:
+The existing `normalizeSlashes()` in `path.go` handles backslash→forward-slash conversion for fragment matching. But if the caller passes `~/.aws/credentials` unresolved, `strings.Contains(path, "/.aws/")` will match (the `~` prefix is irrelevant for the fragment). So the tilde case accidentally works for fragment patterns — but it will NOT work for allow patterns: if the user has an allowlist entry like `/home/user/projects/.env.test`, the tilde in the incoming path won't match `/home/user/projects/` as a prefix.
 
-- Windows supports only **one active NT Kernel Logger session** at any time. If Windows Defender, Carbon Black, or another EDR is already consuming the NT Kernel Logger, Beekeeper cannot also subscribe without coordination. This is not a rate-limit; it is an architectural exclusion. The `Microsoft-Windows-Threat-Intelligence` provider (which exposes process injection events) has similar single-consumer restrictions.
-- Per-session buffer sizes are configurable (`MaximumBuffers`, `BufferSize`) but require the Sentry daemon to set them at session creation. Default values are often too small for high-event-rate workloads.
-- ETW is also a documented EDR blind-spot class: attackers can patch ETW in-process (etw.dll) to suppress events from their own process. This is not a Beekeeper bug but limits what Sentry can detect when an adversary is in the same process as the legitimate application (e.g., a compromised dependency loaded into the extension host process).
+The deeper problem is relative paths with `..` traversal: `../../.aws/credentials` does NOT contain `/.aws/` as a substring — it contains `.aws/credentials`. The fragment pattern `/.aws/` requires the leading slash. An agent reading `../../.aws/credentials` from within a project directory bypasses the block check entirely.
+
+On Windows, UNC paths (`\\server\share\`) and extended-length prefixes (`\\?\`) are additional cases that `normalizeSlashes()` does not handle.
 
 **Why it happens:**
 
-ETW was designed as a diagnostic tracing mechanism, not a real-time security event bus. The session model, buffer architecture, and single-consumer constraints were designed for profiling workloads, not adversarial environments. Security tools have adopted ETW because it is the canonical Windows kernel event source, but its diagnostic-tool heritage creates structural gaps.
+Path normalization is handled at the caller level by design (keeping `EvaluatePath` pure). The pitfall is that the wiring in `internal/check/handler.go` may not call `filepath.Abs()` + `os.UserHomeDir()` before invoking `EvaluatePath`. If the handler just extracts `file_path` from the tool call JSON and passes it directly, all relative and tilde paths are under-normalized.
 
 **How to avoid:**
 
-- At `beekeeper protect install` on Windows, probe for existing NT Kernel Logger consumers and document which providers will be shared vs. exclusive.
-- Set explicit `MinimumBuffers` and `MaximumBuffers` values when creating the ETW session, sized for worst-case `npm install` event rates (empirically measurable in v0.9.0 development).
-- Implement an event loss counter in the Sentry daemon using ETW's built-in `EventsLost` session statistic. Surface this counter in `beekeeper diag` and in the TUI system health panel with a clear "detection coverage degraded" warning when it exceeds a configurable threshold.
-- Document the single-consumer NT Kernel Logger constraint in the user-facing installation guide. If another EDR is present, recommend checking for provider conflicts with `logman query -ets`.
-- For the extension-host credential cluster rule specifically, fall back to polling-based sensitive-path monitoring (ReadDirectoryChangesW on the credential directories) as a complement to ETW process events on Windows. This survives ETW consumer conflicts.
+In the PLCY-05 wiring layer (not in `EvaluatePath` itself, which should remain pure):
+
+1. **Expand `~`**: Replace leading `~` with `os.UserHomeDir()` result before path evaluation. On Windows, `os.UserHomeDir()` returns the correct `C:\Users\user` path. Handle `~/` and `~\` variants.
+
+2. **Resolve to absolute**: Call `filepath.Abs(expandedPath)` to resolve relative paths against the process working directory. For tool calls that include a `cwd` field (Claude Code provides this in some contexts), use that cwd, not `os.Getwd()`.
+
+3. **Normalize separators**: After `filepath.Abs()`, call `filepath.ToSlash()` so the resolved path is forward-slash canonical before pattern matching. This is already what `normalizeSlashes()` does, but it needs to run on the fully-resolved path, not just the fragment patterns.
+
+4. **Handle UNC paths**: On Windows, `filepath.Abs()` preserves UNC paths but the leading `\\` needs special handling. Normalize `\\server\share\` to `/server/share/` or treat UNC as out-of-scope and log a warning.
+
+5. **Test the wiring, not just `EvaluatePath`**: Add integration tests in `check/integration_test.go` that feed raw tilde-prefixed and relative `file_path` values through `RunCheck` (stdin→decision) and assert they trigger the sensitive-path block. This is the gap the milestone's F2 finding surfaced — the engine was correct but the wiring was absent.
+
+The `EvaluatePath` function itself needs no changes. The wiring adapter that resolves paths before calling it is the PLCY-05 deliverable.
 
 **Warning signs:**
 
-- `EventsLost` counter in ETW session statistics above zero during `npm install`
-- Sentry audit log shows gap in process events during file-heavy operations
-- `beekeeper protect install` on a machine with an existing EDR failing silently or producing no Sentry events
-- TUI showing "Sentry active" but zero process events in a 5-minute window during active development
+- PLCY-05 tests only unit-test `EvaluatePath` with already-resolved paths (no integration test feeding `~/.aws/credentials` through `RunCheck`)
+- Handler code extracting `tool_call.FilePath` and passing it directly to `EvaluatePath` without `filepath.Abs()` + tilde expansion
+- Windows CI showing pass on sensitive-path tests but the tests only use Unix-style paths with forward slashes
+- `.env` (relative, no directory component) not being matched by the `basename pattern` branch — needs a test specifically for the no-separator case
 
 **Phase to address:**
 
-v0.9.0 (Windows Sentry implementation). Set the `EventsLost` surfacing requirement as a release gate criterion, not a backlog item.
+PLCY-05 phase (v1.2.0). The path normalization adapter must be written and tested as part of the wiring, not treated as a caller assumption.
 
 ---
 
-### Pitfall 4: eslogger on macOS Cannot Catch In-Memory Credential Theft
+### Pitfall 4: PLCY-05 False Negatives — Indirect Credential Access Bypasses `file_path` Inspection
 
 **What goes wrong:**
 
-The PRD correctly limits v1 macOS Sentry to eslogger and documents this as a known gap. The pitfall is underestimating how specific the gap is relative to the Nx Console attack class.
+PLCY-05 evaluates the `file_path` parameter of `Read`, `Write`, and `Edit` tool calls, plus command targets for `cat`/`type`/`Get-Content` in `Bash` tool calls. This covers direct file access. It does not cover:
 
-eslogger exposes 82 ES events including process exec, file open/read, socket connections, and launch item creation. These events are the correct signals for the Nx Console attack pattern (credential file read + outbound connection from an editor-descended process). eslogger **would** have generated events covering the Nx Console compromise:
+- **Environment variable indirection**: An agent runs `echo $AWS_ACCESS_KEY_ID` or `env | grep AWS` — no file path is inspected, but credential values are now in the tool output.
+- **Shell expansion in Bash commands**: `cat ~/.aws/credentials` — the command string contains the credential path but it is embedded in a Bash command, not a standalone `file_path` parameter. PLCY-05 must parse Bash command strings, not just structured JSON fields.
+- **Python/Node one-liners**: `python -c "import configparser; c = configparser.ConfigParser(); c.read('~/.aws/credentials'); print(dict(c['default']))"` — the credential path appears only as a string literal inside an exec'd script. Command parsing at the PLCY-05 level cannot see inside exec'd scripts.
+- **`type` on Windows**: Windows `type` is the equivalent of `cat`. If the command parser for Bash tool calls only checks for `cat`, `Get-Content`, and `type` but misses `more`, `findstr`, or PowerShell `Get-Content` aliases (`gc`, `cat` on PSAlias), credential files can be read without triggering the check.
+- **Symlinks**: An agent creates a symlink from a non-sensitive path to `~/.aws/credentials` and then reads the symlink target. The `file_path` is the symlink location, not the credential file. `filepath.Abs()` does NOT resolve symlinks (use `filepath.EvalSymlinks()` for that).
 
-- `ES_EVENT_TYPE_NOTIFY_OPEN` for reads of `~/.config/gh/hosts.yml` (GitHub token)
-- `ES_EVENT_TYPE_NOTIFY_CREATE` for the persistence artifacts written to disk
-- Socket-level events for the HTTPS exfiltration connections
-
-However, eslogger has specific gaps that matter for future attack variants:
-
-1. **In-memory access via Cocoa APIs**: Screenshot capture via `NSScreen` or `CGWindowListCreateImage` does not generate file events. A malicious extension doing screen scraping to harvest secrets from other windows is invisible to eslogger.
-2. **Keychain access**: Reading from the macOS Keychain via Security framework APIs does not necessarily generate file events in the locations eslogger monitors. Keychain access events are a separate API surface requiring the `EndpointSecurity` entitlement directly.
-3. **Memory injection**: Code injected into an existing process via `task_for_pid` or similar Mach port exploitation has no distinct ES event. The injected code inherits the parent process identity, so eslogger would attribute reads to the legitimate parent (VS Code extension host) rather than the injected payload.
-4. **Performance**: eslogger outputs complex JSON to stdout; at high event rates, the consumer (Beekeeper Sentry on macOS) must drain stdout faster than events arrive or events are lost. This is the same class of problem as ETW event loss but in the pipe buffer.
-
-The eslogger documentation gap is also a pitfall: "many field names are self-explanatory, but others are not." Building correct event parsers requires significant trial and error on a real macOS system.
+The existing `policy/path.go` `EvaluatePath` handles what it is given correctly. The issue is what the PLCY-05 wiring layer extracts from the tool call and passes to `EvaluatePath`.
 
 **Why it happens:**
 
-eslogger is a diagnostic tool that streams EndpointSecurity events to stdout. It does not expose the full EndpointSecurity framework capability (which requires the `com.apple.developer.endpoint-security.client` entitlement from Apple). The gap is not a bug; it is an intentional scoping of what the entitlement-free path can access.
+A static `file_path` check is the 80% solution. It catches the most common agent patterns: explicit Read tool calls on credential files. The remaining 20% requires either deeper command parsing or output scanning — both are significantly more complex. The pitfall is shipping PLCY-05 as "credential protection is done" when it covers only direct structured tool calls, not Bash-based access patterns.
 
 **How to avoid:**
 
-- In `beekeeper protect status` on macOS, explicitly list the monitoring gaps (Keychain, in-memory, injected code) so users understand the coverage.
-- Handle eslogger's stdout pipe carefully: use a buffered reader with explicit backpressure signaling. If the pipe buffer fills, Beekeeper Sentry should log a warning and increment a coverage-degraded counter.
-- For the Nx Console attack class specifically: eslogger coverage is adequate. The 18-minute window attack would generate `ES_EVENT_TYPE_NOTIFY_OPEN` events on `~/.config/gh/hosts.yml` and socket events for the exfiltration. The correlation rule would fire.
-- Plan the EndpointSecurity entitlement application for v2 with realistic timeline expectations: Apple's developer entitlement review is weeks to months for new applicants, and approval is not guaranteed for OSS tools without commercial backing. Do not block v1 on this.
-- Test the eslogger parser against actual macOS event output (not synthetic JSON) in CI using `macos-latest`. Field names and structures change across macOS versions.
+- Explicitly scope PLCY-05 in its requirements: "covers `file_path` in Read/Write/Edit tool calls AND direct `cat`/`type`/`Get-Content`/PowerShell `Get-Content` (`gc`) patterns in Bash tool call command strings. Does not cover env-var indirection or exec'd script access." Document the uncovered cases in `docs/THREAT-MODEL.md` as known limitations.
+- In the PLCY-05 command parser for Bash tool calls, add patterns for Windows PowerShell variants: `Get-Content`, `gc`, `cat` (PSAlias), `type`, `more`. Test each on a Windows CI matrix.
+- For symlink resolution: call `filepath.EvalSymlinks(resolvedPath)` and re-evaluate the resolved target against the blocklist. If `EvalSymlinks` fails (path does not exist yet, for a Write), evaluate the pre-symlink path only. Log symlink resolution failures as warnings, not errors.
+- The output scanning path (catching env-var exfiltration through tool output) belongs to the LLMF/exfil detection scope, not PLCY-05. Do not conflate the two.
 
 **Warning signs:**
 
-- eslogger integration tests that parse synthetic JSON rather than actual eslogger output
-- Pipe buffer overflow errors in the macOS Sentry implementation under high event rate
-- Parser failures on event types added in newer macOS versions
-- Community reports of Sentry missing events on macOS that were visible in the audit log on Linux
+- PLCY-05 tests only cover `Read` tool calls with explicit `file_path` fields; no tests for `Bash` tool calls containing `cat ~/.aws/credentials`
+- No Windows-specific tests for `type`, `Get-Content`, `gc` patterns
+- Symlink tests absent from the PLCY-05 behavioral test suite
+- Documentation claims "credential file access is blocked" without caveat for indirect access patterns
 
 **Phase to address:**
 
-v0.9.0 (macOS Sentry implementation). Add macOS-specific coverage gap documentation to `beekeeper protect status` output as a release requirement.
+PLCY-05 phase (v1.2.0). Scope the command-string parsing explicitly in the phase plan. Add Windows-specific path and command patterns to the behavioral test suite.
 
 ---
 
-### Pitfall 5: Catalog Corroboration 2-of-N Is Vulnerable to Coordinated Catalog Poisoning via DoS
+### Pitfall 5: PLCY-05 False Positives — Blocking `.env.example` and Other Legitimately-Named Non-Credential Files
 
 **What goes wrong:**
 
-The corroboration model (1 source = warn, 2 sources = enforce, 3 sources = enforce + quarantine) is a well-reasoned defense against a compromised single catalog source. The attack surface it does not address: an attacker who poisons two sources with false-positive entries targeting a legitimate package to trigger enforcement against users of that package.
+The default `SensitivePathConfig` in `policy/path.go` includes the pattern `.env.*` which matches "any basename with prefix `.env.`" via glob simulation. This correctly blocks `.env.production`, `.env.local`. It also matches:
 
-Two realistic attack vectors:
+- `.env.example` — a committed, non-secret file that documents required environment variables. Agents legitimately read and write `.env.example` constantly.
+- `.env.test` — often committed and non-sensitive in test suites.
+- `.env.schema` — JSON schema for environment variable validation tools.
+- `.envrc` — direnv configuration, sensitive if it contains credentials but often just `export PATH=...`.
 
-1. **False-positive poisoning for disruption**: An attacker compromises one catalog source and injects entries for widely-used, legitimate packages (React, Lodash, FastAPI). Single-source = warn. If the same attacker or a separate campaign simultaneously poisons a second source, the threshold crosses to enforce. Users across all Beekeeper deployments are blocked from installing those packages. The attacker doesn't need to compromise the third source for the attack to be disruptive.
+Blocking access to `.env.example` on an `npm install` post-setup hook will confuse agents and developers. If the default blocklist causes false positives on the first day of use, developers will add broad allowlist entries like `"/*.env.*"` that then allow the actual `.env` files too.
 
-2. **Catalog source attrition**: The corroboration model's implicit assumption is that all three active catalog sources (Bumblebee, OSV, Socket) are independently operated. If two of the three can be influenced by the same threat actor, the 2FA metaphor breaks down. This is not hypothetical: TeamPCP compromised Checkmarx, Trivy, and Bitwarden simultaneously — the very pattern of multi-vendor compromise.
-
-The sanity bounds on catalog deltas (from Section 12.3 of the PRD) partially mitigate this by triggering degraded mode on sudden large delta influxes. But a targeted attack injecting a small number of high-impact false entries for specific packages would not trigger the delta bounds.
-
-The PRD's user-configurable thresholds (lower for extensions, higher for Go modules) reduce the blast radius but don't prevent it. A deployment that drops to single-source enforcement for extensions would be vulnerable to a single-source poisoning attack on extensions specifically.
+The `.env` exact-match pattern in the blocklist is correct — `.env` files almost always contain secrets. The `.env.*` glob is overaggressive for certain common names.
 
 **Why it happens:**
 
-The 2-of-N model assumes independent catalog sources are independently operated with independently secured infrastructure. The May 2026 incidents demonstrated that independent vendors can be compromised through shared attack vectors (same threat actor, similar social engineering patterns). The independence assumption is probabilistically valid but not guaranteed.
+The glob `.env.*` was written to catch `.env.production` and `.env.staging` without enumerating every suffix. The failure mode is not visible in the policy engine unit tests, which test blocking, not the agent's workflow. It becomes visible only in live use when an agent tries to scaffold a new project and reads `.env.example` to populate the new `.env` file.
 
 **How to avoid:**
 
-- Implement weighted corroboration for v1.1 where configurable source trust weights are maintained per ecosystem. Bumblebee (maintained by the same community responding to real incidents) has higher baseline trust than an unsigned user-provided catalog.
-- Add a "source health" monitor: if a catalog source's entry velocity suddenly spikes (many new entries in a short window for a single ecosystem), flag those entries as suspect and require a higher corroboration bar for them to trigger enforcement.
-- The `beekeeper-self` pattern (Section 12.6) should include a "beekeeper-catalogs" feed that publishes known-bad catalog entries — a second-order catalog for the catalogs themselves. This creates a revocation mechanism for poisoned catalog entries.
-- For the false-positive DoS case: include a community override mechanism where entries flagged as false positives by multiple independent users can be downgraded to warn-only pending investigation, without requiring a full catalog release.
-- Document explicitly in the threat model which corroboration scenarios Beekeeper does and does not protect against.
+- Add an allowlist default for `.env.example` in `DefaultSensitivePaths()` alongside the `.env.*` block pattern. The allowlist is checked first (existing behavior in `EvaluatePath`), so `.env.example` gets allowlisted before the `.env.*` block fires.
+- Also consider adding `.env.test` and `.env.schema` to the default allowlist. These are low-risk and commonly non-sensitive.
+- Add a test to the PLCY-05 behavioral suite: `EvaluatePath(".env.example", DefaultSensitivePaths())` must return allow, not block.
+- Document the default blocklist behavior in `docs/nudge.md` or a new `docs/policies.md` so users understand what they are getting out of the box and how to add project-specific allowlist entries via `.beekeeper.json`.
 
 **Warning signs:**
 
-- A sudden wave of enforcement blocks for widely-used, low-suspicion packages not previously flagged
-- Catalog delta counts spiking on a source that has historically been stable
-- Multiple users reporting the same package blocked with only 2-source corroboration where one source is a recently-added catalog
+- No test for `.env.example` being allowed while `.env` is blocked
+- `DefaultSensitivePaths()` has no `AllowPatterns` at all (the existing code has `AllowPatterns: nil`)
+- First live use of PLCY-05 blocks agent from reading `.env.example` in a new project scaffold
 
 **Phase to address:**
 
-v0.3.0 (corroboration model implementation): Build source health monitoring and delta sanity bounds from the first corroboration implementation. v0.9.0: Design the catalog-revocation feed concept. v1.0.0: Document the known attack surface against the corroboration model in the public threat model.
+PLCY-05 phase (v1.2.0). Add the default allowlist entries to `DefaultSensitivePaths()` before the PLCY-05 wiring is live.
 
 ---
 
-### Pitfall 6: MCP Proxy Correctness Is Harder Than It Appears
+### Pitfall 6: NUDGE Hard-Mode Command Rewriting Breaks Agent Output Parsing
 
 **What goes wrong:**
 
-The MCP gateway (`beekeeper gateway`) is a long-running proxy between MCP clients (agents) and upstream MCP servers. Writing a correct MCP proxy has specific failure modes beyond generic HTTP proxy correctness:
+In hard mode, NUDGE rewrites `npm install foo` to `pnpm add foo`. The agent issued an npm command expecting npm output. It then parses that output. npm and pnpm output differ:
 
-1. **Request ID correlation across multiplexed calls**: MCP JSON-RPC 2.0 allows batched requests where the response array order is not guaranteed to match the request order. A proxy that assumes sequential request-response pairing and forwards by order will corrupt ID-to-response mappings under concurrent tool calls. The spec requires correlating by `id` field, not position.
+- npm install success: `added 1 package in 0.5s` plus a JSON lockfile update note
+- pnpm add success: `Packages: +1 / Progress: resolved 1, reused 0, downloaded 1, added 1, done`
 
-2. **Capability negotiation forwarding**: The MCP handshake (client `initialize` → server `initialize` response → `initialized` notification) negotiates protocol version and capabilities. A proxy must maintain separate capability sets for the client-facing side and each upstream-server-facing side. Forwarding the upstream server's capabilities verbatim to the client breaks if the proxy itself does not support all advertised features (e.g., if the upstream advertises `streaming: true` but the proxy buffers everything).
+An agent that issues `npm install foo` and then checks the output for `"added 1 package"` to confirm success will silently conclude the install failed. The agent may retry with the same command, creating an install loop. Or the agent may take an error-handling branch designed for npm failures when the install actually succeeded.
 
-3. **SSE/Streamable HTTP transport complexity**: As of MCP protocol 2024-11-05, standalone SSE transport is deprecated in favor of Streamable HTTP. A proxy talking to upstream servers using the older SSE transport and presenting Streamable HTTP to clients (or vice versa) requires active transport bridging, not just message forwarding. This is non-trivial and a common source of "works with one client, fails with another" bugs.
-
-4. **Per-session token enforcement with connection reuse**: The PRD specifies per-session token auth for the gateway. If a client reuses a TCP connection across sessions (which HTTP/1.1 keepalive and HTTP/2 both do), the token validation must be per-request, not per-connection. A proxy that validates the token at connection establishment and then trusts all subsequent requests on that connection is vulnerable to token reuse attacks.
-
-5. **Message size and recursion bounds**: Tool definitions in MCP can include arbitrarily nested JSON schemas. Without explicit recursion depth limits on the JSON-RPC parser, a malicious upstream server (or a compromised agent feeding a malicious tool call response back through the gateway) can trigger stack overflow in the proxy's parser.
+The same class of problem applies to error messages, exit code conventions (pnpm and npm handle some error cases differently), and the shape of `--json` output when agents request machine-readable npm output.
 
 **Why it happens:**
 
-MCP is a relatively new protocol (2024-2025) with active spec changes (the SSE → Streamable HTTP transition being the major one). Proxy implementations written against an earlier spec version quietly break when clients or servers upgrade. The protocol's flexibility (batching, streaming, capability negotiation) makes a correct implementation significantly more work than a naive forward-everything proxy.
+Hard-mode rewriting is transparent to the agent at the decision layer but not at the output layer. The agent generated the original command assuming a specific output format. Rewriting the command changes the program that runs. This is a known footgun in transparent proxy architectures.
 
 **How to avoid:**
 
-- Test the gateway against both stdio-mode upstream servers and HTTP-mode upstream servers from v0.6.0. Do not prototype with only one transport.
-- Implement request ID correlation tables explicitly — never assume response ordering matches request ordering.
-- Handle the capability negotiation as a three-party negotiation: (1) what the upstream server advertises, (2) what Beekeeper's proxy can bridge, (3) what the proxy should advertise to the client. The intersection of (1) and (2), not the raw upstream capabilities.
-- Fuzz the MCP message parser against malformed JSON, deeply nested schemas, oversized payloads, and malformed `id` fields from the first gateway implementation.
-- Pin to the stable MCP spec version (2025-11-25 or later) and add a spec version check in CI: the gateway integration tests should fail if the pinned spec version drifts from what the upstream SDK produces.
+- Soft mode (advise + proceed with original command) is the safe default. PRD §5.1 correctly defaults to `mode: "soft"`. Do not make hard mode the default; do not enable hard mode in any default config shipped with Beekeeper.
+- Document hard mode explicitly as requiring the user to verify that their agent is output-agnostic with respect to npm vs pnpm output. Include this caveat in `docs/nudge.md`.
+- In the audit record for a rewrite decision, log `original_command` and `rewritten_command` both. This enables forensic reconstruction of which rewritten commands may have produced unexpected agent behavior.
+- For the `--json` flag specifically: if `npm install --json` is rewritten to `pnpm add --json`, test that pnpm's JSON output is structurally compatible with what the agent expected. If it is not (field name differences, nesting changes), this is a reason to NOT rewrite commands with `--json` flags — add a rule: "if the npm command contains `--json`, do not hard-rewrite; soft-advise only."
+- Add a behavioral test: issue `npm install foo --json` in hard mode, capture the rewritten command, verify it does NOT strip `--json` without also verifying pnpm's `--json` output is compatible.
 
 **Warning signs:**
 
-- Gateway works with Claude Code but fails with Cursor (different client implementations expose different edge cases)
-- Tool calls work but tool list responses are empty or corrupt after the first request in a session
-- Memory usage growing monotonically in the gateway daemon (leak in the request correlation table)
-- Parser panics in CI fuzz testing before v0.6.0 release
+- Hard mode enabled by default in any config template
+- No test verifying that hard-rewritten commands produce output the agent can parse
+- Agent emit logs showing `npm install` retry loops after NUDGE is enabled in hard mode
+- No `original_command` field in the audit record for rewrite decisions
 
 **Phase to address:**
 
-v0.6.0 (gateway implementation). Fuzz testing is a release gate, not a backlog item.
+NUDGE phase (v1.2.0). The rewrite test (behavioral compatibility with agent output parsing) must be in the NUDGE acceptance criteria, not deferred to a follow-on.
+
+---
+
+### Pitfall 7: NUDGE Monorepo Dual-Lockfile Ambiguity and Docker-Exec PM Detection
+
+**What goes wrong:**
+
+Two specific edge cases from PRD §11 have implementation-level failure modes beyond what the spec describes:
+
+**Dual-lockfile:** PRD §11 says "treat as pnpm project; the npm lockfile is likely stale or a CI artifact." The `detect.go` implementation must find `pnpm-lock.yaml` in the project root to make this determination. But `detect.go` needs a `projectRoot` path — and the NUDGE detect layer runs from the hook handler, where the current working directory context is the cwd of the Beekeeper process, not the agent's project root. The agent's project root is available in tool call context (Claude Code provides `cwd` in the hook stdin JSON for some tool types) but is not reliably present for all hook types. If `detect.go` defaults to `os.Getwd()` as the project root, it may check for `pnpm-lock.yaml` in the Beekeeper installation directory, not the agent's project.
+
+**Docker-exec:** PRD §11 says "Decision is logged with `context: "docker-exec"` and proceeds since the container's PM may be different." Detecting "inside a Docker exec" from the hook handler is non-trivial: the hook runs on the host, but the npm command may be running inside a container. The container's `npm` is not the host's `npm`, and the container's pnpm/bun state is invisible to the host's `exec.LookPath`. The implementation must not attempt host pnpm detection for commands that the hook context identifies as container-scoped — doing so would rewrite a container-targeted `npm install` to use the host's pnpm, which is not installed inside the container, causing the install to fail silently.
+
+**Why it happens:**
+
+Both pitfalls stem from the detect layer running in host context while the commanded tool may be in container context, or from using the wrong working directory for lockfile detection. They are invisible in pure-unit testing (which mocks filesystem state) and only appear in realistic integration scenarios.
+
+**How to avoid:**
+
+For dual-lockfile detection:
+- Extract the project root from the hook input's `cwd` field (Claude Code provides this in `HookInput.WorkingDirectory` or equivalent) rather than from `os.Getwd()`. If the hook input does not provide a cwd, skip lockfile-based detection and rely only on binary detection.
+- Test with a synthetic monorepo fixture (tmpdir with both `pnpm-lock.yaml` and `package-lock.json`) — not with mocked return values.
+
+For docker-exec:
+- Parse the Bash command string for `docker exec` or `docker run` prefixes before dispatching to the npm command parser. If detected, set `Decision.Action = Proceed` with a structured reason `"docker-exec-host-context-mismatch"` and log the audit record — do not detect host PM state or rewrite.
+- Add a test: a Bash tool call containing `docker exec mycontainer npm install foo` must return `Proceed` with the docker reason code, not `Advise` or `Rewrite`.
+
+**Warning signs:**
+
+- Detect tests only use `t.TempDir()` as project root, not a mock of hook-input cwd extraction
+- No test for `docker exec` prefix in the command parser
+- No test verifying `pnpm-lock.yaml` is found in the `cwd`-provided root, not the process working directory
+
+**Phase to address:**
+
+NUDGE phase (v1.2.0). Add docker-exec test and lockfile-root-extraction to the NUDGE acceptance criteria alongside PRD §10.
+
+---
+
+### Pitfall 8: PLCY-07 False Positives from Single-Source Critical Escalation — Severity Inflation
+
+**What goes wrong:**
+
+Lowering `CriticalBlockAt` to 1 means a single catalog source can block a package. This is justified when the source is highly reliable and the severity classification is accurate. The risk is that catalog maintainers (including bumblebee's) have historically experienced **severity inflation**: packages are initially tagged `critical` during incident response (threat is active, time pressure) and later downgraded when the scope is better understood, or when the CVE is assigned a lower CVSS by NVD.
+
+If `CriticalBlockAt:1` is live and a package is mis-tagged `critical` in bumblebee, every developer who tries to install that package is blocked with no warning-only grace period. The only recovery path is: (1) update the catalog entry (requires upstream change to bumblebee), (2) add the package to the allowlist, or (3) reduce `CriticalBlockAt` back to 2. None of these are fast for a developer mid-sprint.
+
+A real-world example of the failure mode: `ua-parser-js` was initially flagged `critical` during the October 2021 compromise. Later analysis confirmed the window of exposure was narrow and many consumers were unaffected. A blanket block of all versions would have broken Node.js projects that didn't use the compromised version range.
+
+**Why it happens:**
+
+Severity is assigned during incident response under time pressure. Catalog maintainers prioritize false negatives (missing a real threat) over false positives (blocking a legitimate package). The user-visible asymmetry: a missed threat results in developer embarrassment later; a blocked legitimate package results in an angry developer right now who disables Beekeeper.
+
+**How to avoid:**
+
+- `CriticalBlockAt:1` should ONLY apply to packages where the catalog entry includes a populated `Versions` list (specific affected version ranges), not to entries with `Versions: []` or `Versions: ["*"]` (all versions). An entry claiming all versions of a major package are critical is a strong signal of mis-tagging. For all-version critical entries with a single source, still require 2-source corroboration.
+- Add a per-entry allow-override escape hatch to the policy file: `"package_allowlist": [{"ecosystem": "npm", "name": "foo", "until": "2026-06-10", "reason": "..."}]`. This already exists in the policyloader; make sure it works for corroboration-triggered blocks, not just rule-based blocks.
+- In the block message surfaced to the agent, include the catalog source, the severity, and the affected versions. A developer who sees "beekeeper blocked foo@1.2.3 (critical, bumblebee, affects 1.2.2-1.2.4)" can make an informed decision. A developer who sees "blocked by policy" cannot.
+- Add a behavioral test: a catalog entry with `severity:"critical"`, `versions:["*"]`, single unsigned source → `CriticalBlockAt:1` config → should still produce warn, not block. The all-versions guard must be enforced.
+
+**Warning signs:**
+
+- `CriticalBlockAt:1` applies equally to version-specific and all-version entries
+- Block messages do not include the version range that triggered the match
+- No per-package allowlist-until-date mechanism in the policy schema
+- No community-facing issue template for "this package was incorrectly blocked"
+
+**Phase to address:**
+
+PLCY-07 phase (v1.2.0). Include the all-versions guard and the block-message enrichment as acceptance criteria.
+
+---
+
+### Pitfall 9: Behavioral Tests That Mock Too Much — The Gap That Caused This Milestone
+
+**What goes wrong:**
+
+The three gaps (F1/F2/F3) that define this milestone were found by **live testing with the agent as the test subject**, not by the unit test suite. This is the defining testing pitfall of the milestone: unit tests that mock `runPollenFn`-style interfaces validate that the code correctly handles the mock's return values — they do not validate that the code correctly handles the real system's output.
+
+The specific failure mode for this milestone:
+
+- `EvaluatePath` has extensive unit tests that pass pre-normalized paths. The wiring in `handler.go` was absent. The unit tests could not catch the gap because they never called through `RunCheck`.
+- The corroboration test for critical CVEs passes the policy engine in isolation. The live system has `Signed:false` from the bumblebee loader — a fact that a mocked `MultiCatalogLookup` may not faithfully represent.
+- The NUDGE cache test (PRD §10.11) passes in a long-lived test process. The one-shot `beekeeper check` process invalidates the cache assumption.
+
+**Why it happens:**
+
+Unit tests are fast and deterministic. The natural tendency is to maximize unit test coverage and treat integration tests as expensive edge cases. For a security enforcement tool, this hierarchy is inverted: the unit tests prove correctness of components; the integration tests prove that the components are connected to the real system correctly.
+
+**How to avoid:**
+
+The BTEST phase is the explicit cross-cutting answer. For this milestone specifically:
+
+- **Every PLCY-05 acceptance criterion** must have a corresponding `check/integration_test.go` test that calls `RunCheck` with real (or realistic) stdin JSON. Not a mock. Not a unit call to `EvaluatePath`. A full stdin→exit-code pipeline.
+- **Every PLCY-07 criterion** must have a test that constructs a real `catalog.MultiIndex` (with the bumblebee `Signed:false` property preserved, not a mock that returns `Signed:true`) and asserts the correct block/warn decision.
+- **Every NUDGE criterion** that involves detection must have a test that verifies the behavior under a one-shot process model (start a test binary, exec it, check file-cache state).
+- **E2E battery**: run the live Beekeeper binary against synthetic tool call JSON, assert exit code. The PRD for the v1.2.0 milestone explicitly calls for "check-handler integration tests (stdin→decision)" and "live-binary E2E battery (catalog-backed)". These are not optional — they are the verification that the three F-gaps are actually closed.
+
+Fuzz testing (already in `policy/fuzz_test.go` and `catalog/fuzz_test.go`) covers edge-case input variation but does not verify wiring. Keep fuzz tests; add integration tests.
+
+**Warning signs:**
+
+- BTEST phase plan contains only unit tests and fuzz tests, no live-binary E2E tests
+- PLCY-05 tests import `policy` directly rather than calling through `check.RunCheck`
+- PLCY-07 tests mock `MultiCatalogLookup` with `Signed:true` rather than using the actual bumblebee catalog loader with `Signed:false` entries
+- No test file that imports `os/exec` to invoke the built binary and assert exit code
+
+**Phase to address:**
+
+BTEST phase (v1.2.0) and embedded in each of PLCY-05, NUDGE, PLCY-07 phases. The E2E battery is a release gate for v1.2.0.
+
+---
+
+### Pitfall 10: NUDGE `bunfig.toml` Parse Failures and Corepack-Shimmed pnpm
+
+**What goes wrong:**
+
+Two implementation-level pitfalls from the NUDGE spec that the test criteria cover but the implementation can still get wrong:
+
+**`bunfig.toml` parse failure (PRD §10.13):** If `bunfig.toml` exists but contains a TOML syntax error (common during developer editing), `BunScannerOK` defaults to `false` and a warning is logged. The pitfall is that a TOML parse error in Go with a naive `toml.Unmarshal` call may panic on some malformed inputs if the TOML library used does not handle all error cases. The detection must wrap the parse in a recover-or-error handler, not just check the error return. Use `github.com/BurntSushi/toml` which has well-tested error handling, not a minimal TOML parser.
+
+A second `bunfig.toml` pitfall: the spec says look for it in "project root and `~/.bunfig.toml`." The project root is subject to the same cwd ambiguity as the lockfile detection in Pitfall 7. Use the hook-input cwd, not `os.Getwd()`.
+
+**Corepack-shimmed pnpm (PRD §11):** The spec says "both detected by `exec.LookPath`. Corepack-shimmed pnpm responds to `--version` identically. No special handling needed." This is **conditionally true** on macOS and Linux. On Windows, Corepack installs shims as `.cmd` files (e.g., `pnpm.cmd`). `exec.LookPath("pnpm")` on Windows finds `pnpm.cmd` if `.CMD` is in `PATHEXT`, which it is by default. The `pnpm --version` exec through the cmd shim works but adds a cmd.exe process in between — increasing the exec latency by 20-40ms on Windows (cmd.exe startup). Under the 2-second timeout, this is fine, but it contributes to the overall detection overhead identified in Pitfall 1.
+
+The real corepack trap: if corepack is enabled but the project's `package.json` specifies a different pnpm version via `"packageManager": "pnpm@10.x"`, corepack will download pnpm 10 on first run, causing the 2-second timeout to expire while a network download is in progress. The version returned would be pnpm 10, not pnpm 11, causing `PnpmHardened:false` even though the user has pnpm 11 system-installed.
+
+**How to avoid:**
+
+- TOML parse: use `BurntSushi/toml` with explicit error checking; wrap in a named recover function; test with a deliberately malformed `bunfig.toml` fixture.
+- Corepack version ambiguity: after getting the version from `pnpm --version`, check if it satisfies the `versionFloors.pnpm` floor. If corepack returned an old version (< 11), log this as a warning: "pnpm detected via corepack may be using a project-pinned version older than the security floor." Do not try to detect corepack directly — that adds complexity. The version check is the right guard.
+- Test: fixture a `package.json` with `"packageManager": "pnpm@10.5.0"` and verify that NUDGE correctly identifies `PnpmHardened:false`.
+
+**Warning signs:**
+
+- `bunfig.toml` parse uses a minimal library without error recovery
+- No fixture test with malformed `bunfig.toml` content
+- No test for corepack-pinned pnpm version below the security floor
+- Detection runs with a 2-second timeout on Windows without accounting for cmd.exe shim startup overhead
+
+**Phase to address:**
+
+NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance criteria.
 
 ---
 
@@ -258,13 +413,13 @@ v0.6.0 (gateway implementation). Fuzz testing is a release gate, not a backlog i
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Load catalog from disk per `beekeeper check` invocation instead of IPC to warm daemon | Simpler v0.1.0 implementation | p99 latency blows out under cold-cache conditions; users disable the hook | Acceptable for v0.1.0 only if p99 is measured and a persistent daemon is on the v0.3.0 roadmap |
-| Build Sentry only for the happy-path kernel (5.8+) | Faster v0.6.0 delivery | Silent Sentry failure on Ubuntu 20.04 LTS (large user base); capability probing much harder to add retroactively | Never acceptable for a published release |
-| Skip per-request MCP token validation, validate only at connection establishment | Simpler gateway implementation | Token reuse attack surface; connection-reuse clients bypass auth for subsequent requests | Never acceptable |
-| Use union-of-bad catalog matching (any source = enforce) instead of corroboration | Simpler catalog engine, faster detection | A single compromised source triggers enforcement against legitimate packages; users disable Beekeeper | Never acceptable; the corroboration model is a core design principle |
-| Treat all catalog sources as equal weight | Simpler corroboration logic | User-provided unsigned catalogs trigger enforcement with equal weight to Bumblebee; easy to exploit | Acceptable for v0.3.0 only if source weights are on the roadmap for v0.6.0 |
-| Audit log without sensitive field redaction | Simpler first implementation | Audit log becomes a credential store; reads of `.env` files capture API key values | Acceptable for v0.1.0 if redaction patterns are added before any remote sink is enabled |
-| Single SLSA provenance workflow that signs everything | Simpler CI | Public Sigstore transparency log exposes repository structure; private modules in go.sum visible | Acceptable for OSS; document the transparency log disclosure explicitly |
+| In-process 60-second nudge cache only (no file cache) | Simpler detect.go implementation | Cache is a no-op in one-shot `beekeeper check` invocations; exec overhead on every hook call; p99 regression | Never acceptable for the check integration path |
+| `critical_block_at:1` applies to `versions:["*"]` entries | No extra logic needed | A single upstream mis-tagging of a major package blocks all installs of it across all Beekeeper users | Never acceptable; the all-versions guard is mandatory |
+| Treat bundled bumblebee as signed-equivalent without Ed25519 verification | Unblocks PLCY-07 immediately | Poisoned bundled catalog can single-handedly block any package | Never acceptable; must use sanity-bound gating or catalog signing |
+| PLCY-05 wiring passes raw `file_path` to `EvaluatePath` without normalization | Less code in handler | Tilde, relative paths, and `..` traversal bypass the blocklist silently | Never acceptable; normalization is documented as caller responsibility |
+| BTEST only contains unit and fuzz tests, no E2E binary invocations | Faster CI | Does not verify wiring gaps — precisely the class of bug that caused this milestone | Never acceptable; E2E tests are a v1.2.0 release gate |
+| NUDGE hard mode enabled as default config | Users immediately get the stronger protection | Breaks agent workflows that parse npm output; increases support burden | Never acceptable; soft mode default is a security product UX non-negotiable |
+| Skip PLCY-05 Windows path tests (forward-slash only) | CI passes without Windows-specific fixtures | Windows-primary dev box (the dogfood environment) has backslash paths; the most used environment is untested | Never acceptable; Windows CI matrix exists for exactly this reason |
 
 ---
 
@@ -272,14 +427,13 @@ v0.6.0 (gateway implementation). Fuzz testing is a release gate, not a backlog i
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Claude Code PreToolUse hooks | Assuming hook stdin is always well-formed JSON; malformed tool calls crash the handler | Validate JSON on entry; fail-closed on parse error; include parse error in audit log |
-| Bumblebee `threat_intel/` catalog | Treating the catalog schema as stable; Bumblebee is actively evolving its schema | Pin to a specific Bumblebee schema version; add schema validation in CI against a fixture catalog |
-| Socket public API | Assuming free-tier rate limits are sufficient for a catalog sync daemon polling hourly | Measure actual request rate under catalog sync; implement exponential backoff; cache aggressively |
-| OSV offline DB | Assuming `osv-scanner`'s offline DB format is stable across OSV-Scanner versions | Pin `osv-scanner` version in CI; validate DB schema in the catalog sync test |
-| fsnotify on Windows | Assuming ReadDirectoryChangesW fires for all file creates in extension directories; symlinks and junction points are not always reported | Test extension directory watcher specifically against VS Code's extension install mechanism on Windows, which uses junction points |
-| LlamaFirewall sidecar via Unix socket | Assuming the socket survives Go's `exec.Command` supervision across macOS and Windows | Named pipes on Windows, Unix sockets on macOS/Linux; the abstraction is not transparent; test both paths |
-| MCP protocol version | Assuming MCP clients all implement the same protocol version; Claude Code and Cursor may differ | Negotiate version per-connection; handle version mismatch gracefully rather than treating it as a fatal error |
-| Sigstore + GitHub Actions OIDC | Referencing the slsa-github-generator action by short tag (`@v2`) instead of full semver (`@v2.0.0`) | The SLSA verifier requires full `@vX.Y.Z` tags; short tags cause verification failures even if the action runs successfully |
+| PLCY-05 wiring in `handler.go` | Extracting `file_path` from tool call JSON and passing directly to `EvaluatePath` | Expand tilde, call `filepath.Abs()`, call `filepath.EvalSymlinks()`, normalize slashes, then call `EvaluatePath` |
+| NUDGE detect in `check` path | Using in-process sync.Once or time.Now()-based cache | Write detection result to `~/.beekeeper/state/nudge-detect.json` with TTL; read it on next invocation |
+| PLCY-07 per-severity threshold | Adding `forceSigned = true` shortcut in `corroborate()` | Add `CriticalBlockAt` field to `CorroborationThresholds`; gate on sanity bounds not exceeded; test with degraded-mode override |
+| NUDGE bun scanner detection | Only looking in project root `bunfig.toml` | Also check `~/.bunfig.toml`; use hook-input cwd as project root, not `os.Getwd()` |
+| NUDGE docker-exec detection | Parsing `npm install foo` inside `docker exec ... npm install foo` as a nudge candidate | Detect `docker exec` / `docker run` prefix first; return Proceed with reason code, skip PM detection |
+| PLCY-05 command parsing for Bash tool calls | Only checking `cat` prefix for credential-file access | Also check `type` (Windows cmd), `Get-Content` (PowerShell), `gc` (PSAlias), `more` (cross-platform) |
+| BTEST integration tests | Calling policy engine functions directly with pre-normalized inputs | Feed raw tool call JSON through `RunCheck`; assert on exit code and audit record |
 
 ---
 
@@ -287,12 +441,10 @@ v0.6.0 (gateway implementation). Fuzz testing is a release gate, not a backlog i
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Per-invocation catalog disk I/O in `beekeeper check` | p99 latency 200ms+ on first call after boot; noticeable agent stutter | Implement warm-daemon IPC pattern by v0.3.0; benchmark with cold OS file cache | From first use on a machine that just booted |
-| Sentry eBPF ring buffer undersized for `npm install` storms | ETW/eBPF event loss counter increments; credential-access events dropped in the noise | Tune ring buffer size based on worst-case `npm install` event rate; measure in v0.6.0 dev | During any `npm install` with many packages |
-| eslogger stdout pipe saturation on macOS | Pipe buffer fills; eslogger drops events silently; Sentry audit log has gaps | Dedicated high-priority goroutine draining eslogger stdout; explicit pipe buffer size | During `npm install` or Bumblebee scan triggering many file events |
-| LlamaFirewall sidecar sample-every-call at high tool call rate | CPU spike; sidecar queue backs up; `beekeeper check` latency grows | Implement configurable sampling rate (default 1.0, reduce for resource-constrained machines); surface sidecar queue depth in `beekeeper diag` | When agent is in a tight tool-call loop (e.g., batch file processing) |
-| Baseline counter file contention | Multiple `beekeeper check` processes racing to update baseline counters simultaneously | Use append-only log for raw events; compact counters asynchronously; do not O_TRUNC on every invocation | At 50+ tool calls/hour concurrent agent sessions |
-| Catalog delta scan triggering full Bumblebee scan on every new `threat_intel/` entry | CPU spike every time a catalog entry is added upstream; adds to battery drain | Batch catalog delta triggers; scan only affected ecosystems; debounce with minimum interval | When upstream catalog is actively updated (post-incident response period) |
+| NUDGE: 3× subprocess exec on every `beekeeper check` invocation | `beekeeper diag` p99 spikes 100ms+ after NUDGE phase merge; agent feels slow | File-based detection cache with 60s TTL in `~/.beekeeper/state/nudge-detect.json` | Every hook invocation on a machine with pnpm/bun installed |
+| PLCY-05: `filepath.EvalSymlinks()` on every Bash command's file targets | Extra stat/readlink syscall per path candidate in every Bash tool call | Only call `EvalSymlinks` for paths that survive the initial blocklist substring check (fail fast on the cheap check first) | Every Bash tool call that reads a file |
+| PLCY-07: `CriticalBlockAt:1` with network-fetched OSV corroboration | Extra OSV HTTP call on critical severity match, adding latency | Critical-severity escalation for bundled bumblebee should not require OSV confirmation — the whole point is to block without needing a second source | Every critical-severity npm install |
+| NUDGE: `pnpm view pnpm version` for weekly drift check on check path | Weekly drift check runs during `beekeeper check` if timer check is done in-process | Drift check belongs in the `beekeeper catalogs sync` daemon or a scheduled task, never in the one-shot check path | First check invocation after the 168h drift interval elapses |
 
 ---
 
@@ -300,41 +452,31 @@ v0.6.0 (gateway implementation). Fuzz testing is a release gate, not a backlog i
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Audit log file permissions set to 0644 instead of 0600 on Unix | Any local process can read the audit log, which contains sensitive path access patterns and partial credential shapes | Set 0600 permissions at file creation; verify in `beekeeper selftest`; re-verify on startup |
-| MCP gateway binding to 0.0.0.0 by default instead of 127.0.0.1 | Gateway becomes a network-accessible proxy; any host on the LAN can submit tool calls | Default bind to 127.0.0.1; require explicit config and acknowledgment flag to expose remotely; this is documented as a PRD requirement but easy to accidentally break during development |
-| IPC socket between Sentry daemon and CLI world-readable | Any local process can send commands to the privileged Sentry daemon | Use `SO_PEERCRED` on Linux; named pipe ACLs on Windows; test IPC authorization in unit tests, not just integration tests |
-| Catalog entries with external URL references executed at match time | Catalog injection escalates from "update JSON" to "execute arbitrary code" | Validate that no catalog field triggers external network requests during matching; whitelist catalog schema fields strictly; reject unknown fields |
-| Per-session gateway token stored in agent config file | Token file readable by any process running as the same user | Store token in memory only; generate fresh token per gateway session; if persistence is needed, use 0600-mode token file |
-| `beekeeper check` accepting arbitrarily large stdin | Memory exhaustion from adversarially large tool call payloads | Hard-cap stdin at 1MB (already in PRD); enforce before allocating the read buffer, not after |
-| Go `os/exec` subprocess in policy engine for catalog actions | Code injection from malicious catalog entry if any exec path is influenced by catalog data | Never use `os/exec` in the policy engine hot path; catalog data is strictly JSON matching, never executed |
-
----
-
-## UX Pitfalls
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Sentry fires on developer's own routine credential access | Alert fatigue within days; user disables Sentry | 7-day baseline mode (already in PRD) is correct; additionally, make the baseline period's audit records visible in the TUI so users can see what's being learned |
-| Block message says "blocked by policy" without actionable context | User doesn't know how to unblock; files a bug assuming Beekeeper is broken | Block messages must include: which rule fired, which catalog source corroborated, what user action resolves it (add to allowlist, wait for release age, etc.) |
-| `beekeeper protect install` requires elevation without explanation | User skips elevation, gets unprivileged tier, wonders why Sentry events don't appear | `beekeeper init` should offer a clear explanation of what elevation adds and what the user gets without it, with a "not now" option that records the choice |
-| Dashboard showing "all green" when a catalog source is stale | User trusts the system is fully armed when it's operating on 3-day-old threat intel | Stale catalog indicator must be visible even when no active threats are detected; color-code by staleness duration |
-| `beekeeper check` failing silently (binary not found, bad PATH) | Agent proceeds without policy evaluation; user doesn't know protection is disabled | Claude Code hook failure (non-zero exit without stdout) should produce a visible warning in the agent's output; document this expected behavior in the integration guide |
-| Extension quarantine removing an extension the developer needs | Workflow disruption; user disables the extension watcher to get work done | Quarantine should move to `~/.beekeeper/quarantine/`, not delete; surface a "restore" action immediately in the TUI; include a "why was this quarantined" explanation with the catalog provenance |
+| PLCY-07: severity-based corroboration escalation without sanity-bound gating | Poisoned catalog entry with `severity:"critical"` blocks any package without second-source corroboration | Gate `CriticalBlockAt:1` on catalog sanity result: if catalog is in `Alert` or `Block` state from `CheckSanity`, revert to unsigned warn-only regardless of severity |
+| NUDGE: recommending `@socketsecurity/bun-security-scanner` without disclosure | User may not realize Beekeeper is adding a third-party npm package to their supply chain trust | PRD §12 requires explicit disclosure text in the recommendation message: "published by Socket Inc." — enforce this as a test against the message string |
+| PLCY-05: not re-evaluating resolved symlink target | Agent creates symlink from `/tmp/safe` to `~/.aws/credentials`; reads `/tmp/safe`; PLCY-05 sees a `/tmp/safe` path and allows | Call `filepath.EvalSymlinks()` before blocklist check; evaluate both the original path and the resolved target |
+| PLCY-07: `critical_block_at` threshold stored in user-editable policy file without validation | User sets `critical_block_at: 0` (which disables all critical blocking) without understanding the implication | Validate `CriticalBlockAt >= 1` in `validateCorroborationThresholds()`; treat `CriticalBlockAt: 0` as unset (use default of 2, not 0) |
+| NUDGE: hard-mode rewriting changes signed vs unsigned npm artifact | pnpm's lockfile format and integrity fields differ from npm's; rewriting may bypass npm's lockfile integrity checks | Document that hard mode changes the lockfile format; users must regenerate lockfiles when switching; do not present hard-mode rewriting as transparent |
+| PLCY-05: normalization converts `../../.env` to a path outside the project | Absolute resolution of `../../.env` from a deep project subdirectory reaches actual `~/.env` | After `filepath.Abs()`, check that the resolved path is under the allowed project root OR evaluate against the blocklist (either hit is correct behavior — blocking is the right outcome here) |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Hook handler latency:** Measure p99 latency under cold-cache conditions, not just warm-cache average — verify with `beekeeper diag` on a freshly-booted machine with a realistic catalog size
-- [ ] **Sentry Linux coverage:** Verify Sentry generates events for mmap-based file access (it won't; fanotify limitation) — document this gap explicitly rather than leaving it implicit
-- [ ] **Sentry macOS eslogger:** Verify the Beekeeper eslogger consumer handles the pipe backpressure case (high-event-rate periods) — test during a full `npm install` invocation
-- [ ] **ETW event loss:** Verify `EventsLost` counter is surfaced in `beekeeper diag` and TUI on Windows — confirm it increments during simulated high-event-rate scenarios
-- [ ] **MCP gateway concurrent requests:** Verify request ID correlation is correct under concurrent tool calls — test with a client that issues multiple calls simultaneously
-- [ ] **Reproducible builds:** Verify binary hashes match between two independent builds from the same commit — do not rely on `trimpath` alone; match the exact Go toolchain version including default GOROOT
-- [ ] **Catalog signature verification:** Verify that Beekeeper refuses to load a catalog with an invalid signature — test with a deliberately corrupted signature, not just an absent one
-- [ ] **Fail-closed default:** Verify that a `beekeeper check` process kill (SIGKILL, not graceful) causes Claude Code to block the tool call, not allow it — test the actual hook exit code behavior
-- [ ] **Audit log permissions:** Verify audit log is created 0600 on first write — check on both Linux and macOS; Windows ACLs need separate verification
-- [ ] **SLSA verification path:** Verify `make verify-release` actually fails when given a tampered binary — test against a binary with a single byte changed
+- [ ] **PLCY-05 tilde expansion:** `RunCheck` with `file_path: "~/.aws/credentials"` exits 1 (block) — verify with an integration test, not just a unit test of `EvaluatePath`
+- [ ] **PLCY-05 `.env.example` allowed:** `EvaluatePath(".env.example", DefaultSensitivePaths())` returns allow — verify default `AllowPatterns` includes this
+- [ ] **PLCY-05 `..` traversal caught:** `RunCheck` with `file_path: "../../.aws/credentials"` exits 1 — requires `filepath.Abs()` in wiring
+- [ ] **PLCY-05 Windows backslash:** `RunCheck` with `file_path: "C:\\Users\\user\\.aws\\credentials"` exits 1 on Windows CI matrix
+- [ ] **PLCY-05 PowerShell `Get-Content`:** Bash tool call with `Get-Content ~/.aws/credentials` exits 1 — not just `cat` coverage
+- [ ] **NUDGE file cache:** After a `beekeeper check` invocation, `~/.beekeeper/state/nudge-detect.json` exists and contains the detected PM state
+- [ ] **NUDGE one-shot cache hit:** A second `beekeeper check` invocation within 60s does NOT exec `pnpm --version` again — verify via file modification timestamp, not in-process mock
+- [ ] **NUDGE docker-exec non-nudge:** Bash tool call containing `docker exec ... npm install foo` returns Proceed with correct reason code — not Advise or Rewrite
+- [ ] **NUDGE hard-mode soft-default:** Default config has `mode: "soft"` — verify by loading default config and asserting mode
+- [ ] **PLCY-07 sanity-bound gate:** `CriticalBlockAt:1` + degraded catalog (>1000 new entries) → warn-only, not block — E2E test with injected large catalog delta
+- [ ] **PLCY-07 all-versions guard:** Single-source `critical` + `versions:["*"]` → warn-only even with `CriticalBlockAt:1`
+- [ ] **PLCY-07 block message:** Block decision includes catalog source name, severity, and affected version range in `Reason` field
+- [ ] **BTEST E2E battery:** A test file execs the compiled Beekeeper binary with synthetic tool call JSON on stdin and asserts exit code — not just `go test ./...`
+- [ ] **BTEST catalog-backed E2E:** At least one E2E test uses a real (or real-format) bumblebee catalog slice with `Signed:false` entries to verify corroboration behavior matches production
 
 ---
 
@@ -342,15 +484,13 @@ v0.6.0 (gateway implementation). Fuzz testing is a release gate, not a backlog i
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Hook handler latency regression discovered post-v0.1.0 | MEDIUM | Implement persistent IPC daemon in v0.3.0; add latency regression gate to CI to prevent recurrence |
-| eBPF kernel incompatibility reported by users on older kernels | MEDIUM | Add capability probing and graceful degradation tiers; requires testing on the affected kernel versions (GitHub Actions `ubuntu-latest` is not sufficient) |
-| ETW event loss discovered in production on Windows | LOW | Tune buffer sizes and expose `EventsLost` counter; configuration change, no code rewrite |
-| MCP gateway message ordering bug corrupting tool call responses | HIGH | Gateway requires protocol-level rewrite of the correlation table; will break existing integrations during fix; add to fuzz test corpus to prevent recurrence |
-| Catalog poisoning false-positive DoS affecting users | MEDIUM | Emergency: publish downgrade entry in `beekeeper-self` catalog for the affected catalog source entries; longer-term: implement source health monitoring |
-| SLSA provenance breaks due to slsa-github-generator version mismatch | LOW | Pin action to full `@vX.Y.Z` semver; re-run workflow; no binary changes required |
-| Beekeeper binary reproducibility fails (different hashes on independent build) | MEDIUM | Identify non-determinism source (Go toolchain version, CGO, build path); fix build flags; re-release; update `BUILDING.md` with exact reproduction steps |
-| Audit log 0644 permissions discovered (credential exposure risk) | LOW | `chmod 0600` the audit file; add permissions check to `beekeeper selftest`; re-release with the fix |
-| LlamaFirewall sidecar supervisor crash loop blocking agent workflow | LOW | Fail-open mode already in PRD; user can disable sidecar temporarily; fix underlying crash; no data loss |
+| NUDGE detection exec overhead discovered post-merge (p99 regression) | MEDIUM | Implement file-based detection cache; add latency regression gate to CI; one-commit fix but requires re-verification of one-shot behavior |
+| PLCY-07 false positive blocks a widely-used package | LOW-MEDIUM | Add to `package_allowlist` in policy file (immediate relief); upstream catalog correction (longer-term); `CriticalBlockAt` → 2 as emergency rollback |
+| PLCY-07 catalog poisoning via single critical entry | MEDIUM | Emergency: set `CriticalBlockAt` back to 2 in shipped config; publish updated Beekeeper with sanity-bound gate reinforced; requires users to update |
+| PLCY-05 `.env.example` false positive discovered in production | LOW | Add to default `AllowPatterns`; release patch; users can add local allowlist immediately as workaround |
+| NUDGE hard-mode rewrite breaks agent output parsing | MEDIUM | Disable hard mode (config change); add `--json` guard to hard-mode rewrite logic; re-enable after testing |
+| BTEST gaps discovered during v1.2.0 milestone audit | HIGH | Cannot close milestone without E2E coverage; add integration tests before closing; may delay release |
+| PLCY-05 `..` traversal bypass discovered post-release | HIGH | SECURITY.md disclosure; patch release with `filepath.Abs()` in handler wiring; advise users to update immediately |
 
 ---
 
@@ -358,45 +498,33 @@ v0.6.0 (gateway implementation). Fuzz testing is a release gate, not a backlog i
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Hook handler cold-start latency | v0.1.0: benchmark baseline; v0.3.0: persistent IPC if needed | `beekeeper diag` shows p99 < 100ms on cold-cache machine with 5,000-entry catalog |
-| eBPF kernel version fragmentation | v0.6.0: capability probing at install | `beekeeper protect status` shows correct tier on kernel 5.4, 5.8, 6.x; Sentry generates expected events or explicit "degraded" notice |
-| ETW event loss on Windows | v0.9.0: buffer tuning + EventsLost surfacing | `beekeeper diag` shows EventsLost = 0 during simulated `npm install`; or surfaces "detection degraded" when loss occurs |
-| eslogger coverage gaps on macOS | v0.9.0: gap documentation + backpressure handling | `beekeeper protect status` lists coverage gaps; eslogger pipe drain survives `npm install` stress test |
-| Catalog corroboration poisoning | v0.3.0: delta sanity bounds; v0.9.0: source health monitoring | Inserting 1,000 false entries into a single catalog source triggers degraded mode, not enforcement |
-| MCP proxy correctness | v0.6.0: fuzz testing as release gate | Gateway fuzz test corpus covers batched requests, oversized messages, malformed IDs; concurrent tool calls return correct ID correlation |
-| Go reproducible builds non-determinism | v0.1.0: `make verify-release` target | Two independent builds from same git commit and same Go toolchain version produce identical SHA-256 hashes |
-| Sentry false positive alert fatigue | v0.6.0: baseline mode implementation; v1.0.0: TUI baseline visibility | 7-day audit-only baseline before rules promote; user can see what baseline has learned |
-| SLSA Level 3 workflow friction | v0.9.0: full SLSA implementation | `make verify-release` passes; slsa-verifier accepts the provenance attestation independently |
-| Single binary shared privilege surface | All phases: IPC authorization | `SO_PEERCRED` check rejects connection from process owned by different UID; test in unit tests |
+| NUDGE detection exec overhead (one-shot cache trap) | NUDGE phase plan — must resolve mitigation path before implementation | `beekeeper diag` p99 does not regress after NUDGE merge; file cache exists on disk after first invocation |
+| PLCY-07 corroboration poisoning (signed-equivalent shortcut) | PLCY-07 phase — sanity-bound gating required before `CriticalBlockAt` goes live | E2E: 1001 new critical entries → degraded mode, not block storm; behavioral test: critical + sanity alert → warn |
+| PLCY-05 path normalization gaps (tilde, `..`, Windows) | PLCY-05 phase — normalization adapter in handler wiring | Integration tests: tilde/relative/backslash paths through `RunCheck` all exit 1 as expected |
+| PLCY-05 false negatives (indirect access via Bash) | PLCY-05 phase — command parser for Bash tool calls | Tests covering `cat`, `type`, `Get-Content`, `gc` patterns in Bash tool call command strings |
+| PLCY-05 false positives (`.env.example`) | PLCY-05 phase — update `DefaultSensitivePaths()` allow list | Unit test: `.env.example` → allow; `.env.production` → block |
+| NUDGE hard-mode agent output breakage | NUDGE phase — rewrite compatibility notes; no hard-mode default | Config assert: default mode is soft; `--json` flag guard in rewrite logic |
+| NUDGE docker-exec PM detection mismatch | NUDGE phase — docker-exec prefix detection in command parser | Test: `docker exec ... npm install` → Proceed with docker reason code |
+| PLCY-07 false positives from severity inflation | PLCY-07 phase — all-versions guard; block message enrichment | Test: `versions:["*"]` critical + single source → warn even with `CriticalBlockAt:1` |
+| Behavioral tests mocking too much | BTEST phase — live-binary E2E battery requirement | BTEST phase plan includes exec-based E2E tests as acceptance criterion; milestone audit checks for these tests |
+| NUDGE TOML parse errors and corepack version trap | NUDGE phase — error handling in `bunfig.toml` parse; corepack version check | Fixture tests with malformed TOML; fixture `package.json` with pnpm@10 corepack pin |
 
 ---
 
 ## Sources
 
-- Claude Code hooks latency real-world data: [Hooks causing ~20s latency · ruvnet/ruflo Issue #1530](https://github.com/ruvnet/ruflo/issues/1530)
-- Claude Code hooks dispatcher pattern: [Claude Code Hooks: Why Each of My 95 Hooks Exists](https://blakecrosley.com/blog/claude-code-hooks)
-- Claude Code hooks official reference: [Hooks reference - Claude Code Docs](https://code.claude.com/docs/en/hooks)
-- eBPF kernel version requirements: [BPF Features by Linux Kernel Version - iovisor/bcc](https://github.com/iovisor/bcc/blob/master/docs/kernel-versions.md)
-- eBPF portability across kernel versions: [Why Does My eBPF Program Work on One Kernel but Fail on Another?](https://labs.iximiuz.com/tutorials/portable-ebpf-programs-46216e54)
-- Ubuntu eBPF unprivileged disable: [Unprivileged eBPF disabled by default - Ubuntu Community Hub](https://discourse.ubuntu.com/t/unprivileged-ebpf-disabled-by-default-for-ubuntu-20-04-lts-18-04-lts-16-04-esm/27047)
-- fanotify mmap limitation: [fanotify(7) Linux manual page](https://www.man7.org/linux/man-pages/man7/fanotify.7.html)
-- fanotify FAN_MARK_FILESYSTEM kernel requirements: [Linux fanotify for Real-Time Filesystem Security Monitoring](https://www.systemshardening.com/articles/linux/linux-fanotify-security-monitoring/)
-- ETW architecture and event loss: [EVENT_TRACE_PROPERTIES - Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_properties)
-- ETW buffer tuning: [Adjusting Buffer Settings for ETW - Microsoft Learn](https://learn.microsoft.com/en-us/archive/blogs/visualizeparallel/adjusting-buffer-settings-for-event-tracing-for-windows-etw)
-- ETW EDR design issues: [Design issues of modern EDRs: bypassing ETW-based solutions - Binarly](https://www.binarly.io/blog/design-issues-of-modern-edrs-bypassing-etw-based-solutions)
-- eslogger analysis: [Blue Teaming on macOS with eslogger - Cybereason](https://www.cybereason.com/blog/blue-teaming-on-macos-with-eslogger)
-- EndpointSecurity framework overview: [Endpoint Security In a macOS World - Huntress](https://www.huntress.com/blog/endpoint-security-in-a-macos-world)
-- Nx Console compromise postmortem: [Postmortem: Nx Console v18.95.0 supply-chain compromise](https://nx.dev/blog/nx-console-v18-95-0-postmortem)
-- False positive security tool adoption failure: [Are Your Security Tools Crying Wolf? - CYDEF](https://cydef.io/resources/are-your-security-tools-crying-wolf/)
-- Falco false positive real-world data: [False positives in GKE · falcosecurity/falco Issue #439](https://github.com/falcosecurity/falco/issues/439)
-- SLSA Level 3 for Go on GitHub Actions: [Achieving SLSA 3 Compliance with GitHub Actions - GitHub Blog](https://github.blog/security/supply-chain-security/slsa-3-compliance-with-github-actions/)
-- SLSA adoption challenges: [SLSA Provenance Part 3: Adoption Challenges - Legit Security](https://www.legitsecurity.com/blog/slsa-provenance-blog-series-part3-challenges-of-adopting-slsa-provenance)
-- Go reproducible builds: [Reproducing Go binaries byte-by-byte - Filippo Valsorda](https://words.filippo.io/reproducing-go-binaries-byte-by-byte/)
-- Go build non-determinism issue: [cmd/go: builds not reproducible · golang/go Issue #36230](https://github.com/golang/go/issues/36230)
-- Privilege separation model: [Examining OpenSSH Sandboxing and Privilege Separation - JFrog](https://jfrog.com/blog/examining-openssh-sandboxing-and-privilege-separation-attack-surface-analysis/)
-- MCP transport failure modes: [MCP Transport: Architecture, Boundaries, and Failure Modes - pgEdge](https://www.pgedge.com/blog/mcp-transport-architecture-boundaries-and-failure-modes)
-- MCP JSON-RPC message structure: [JSON-RPC Message Structure - apxml](https://apxml.com/courses/getting-started-model-context-protocol/chapter-1-architecture-and-fundamentals/json-rpc-message-structure)
+- Live codebase: `internal/policy/path.go` — caller-normalization contract documented in EvaluatePath doc comment; `DefaultSensitivePaths()` has `AllowPatterns: nil`
+- Live codebase: `internal/policy/corroboration.go` — `Signed:false` entries go to unsigned warn-only path; `CriticalBlockAt` field does not yet exist
+- Live codebase: `internal/catalog/verify.go` — `VerifySignatureWithKey` exists and is correct; bundled catalog uses `VerifySignature` (presence-only)
+- Live codebase: `internal/catalog/sanity.go` — `CheckSanity` is pure, correct, and already enforces delta bounds
+- Live codebase: `internal/check/handler.go` — path normalization is absent before `policy.Evaluate`; nudge integration point does not yet exist
+- PROJECT.md — F1/F2/F3 runtime-validation findings that define this milestone; "runtime-validation findings exposed by live testing, not unit tests"
+- NUDGE PRD §4 — 60-second detection cache defined for in-process context; §3.3 lists `internal/check` as first integration point without noting the one-shot contradiction
+- NUDGE PRD §6.1 — 2-second hard timeout on all detection commands; all detection commands exec subprocesses
+- NUDGE PRD §10.11 — "Detection cache prevents re-running `pnpm --version` more than once per 60 seconds in the same session" — the "session" assumption is broken in one-shot check
+- NUDGE PRD §11 — docker-exec and monorepo edge cases; §12 — supply-chain trust disclosure requirement for Socket scanner recommendation
+- CLAUDE.md — "Corroboration sanity bounds + catalog signature verification" listed as Phase 2 self-defense non-negotiables; "Fail closed by default" as architecture constraint; adversarial corpus + fuzz + OS-specific build tag requirements
 
 ---
-*Pitfalls research for: Beekeeper agent runtime safety harness*
-*Researched: 2026-05-26*
+*Pitfalls research for: Beekeeper v1.2.0 "Runtime Behavioral Hardening" — PLCY-05, NUDGE, PLCY-07, BTEST*
+*Researched: 2026-06-03*

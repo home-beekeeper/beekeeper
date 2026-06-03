@@ -481,7 +481,7 @@ type SocketScoreRequest struct {
 | `fsnotify` recursive watching | Not in public API; internal implementation only | Watch each extension directory explicitly with `watcher.Add()` per path |
 | `Mcp-Session-Id` tracking in the MCP gateway | Removed from July 2026 spec; dead code | Stateless per-request proxy with `_meta` context |
 | `cosign sign-blob --output-signature --output-certificate` | cosign v2 format; GoReleaser v2.13+ uses v3 bundle | `cosign sign-blob --bundle artifact.sigstore.json --yes` |
-| `slsa-github-generator` before v1.10.0 | TUF mirror error affects all versions ≤ v1.9.0 | v2.1.0+ |
+| `slsa-github-generator` before v1.10.0 | TUF mirror error affects all versions <= v1.9.0 | v2.1.0+ |
 | Socket score endpoint (`/v0/npm/{pkg}/{ver}/score`) | Marked deprecated | PURL endpoint (`/v0/purl`) |
 | `github.com/charmbracelet/bubbletea` (old import) | v1, maintenance-only; v2 moved to vanity domain | `charm.land/bubbletea/v2` |
 | Bare array in Bumblebee catalog files | Schema validation rejects arrays at top level | Wrap in `{"schema_version": "0.1.0", "entries": [...]}` |
@@ -571,3 +571,213 @@ go install github.com/sigstore/cosign/v2/cmd/cosign@latest
 ---
 *Stack research for: Beekeeper — Go-based agent runtime safety harness*
 *Researched: 2026-05-26*
+
+---
+
+---
+
+# v1.2.0 Runtime Behavioral Hardening — Stack Addendum
+
+**Researched:** 2026-06-03
+**Confidence:** HIGH (all version claims verified against official sources and GitHub releases as of 2026-06-03)
+**Scope:** ONLY the three new features: PLCY-05 (sensitive-path wiring), NUDGE (package manager nudge), PLCY-07 (corroboration hardening). Does not re-research v1.0.0 stack.
+
+---
+
+## New Dependency Required
+
+Exactly one new Go module dependency is needed for this entire milestone:
+
+```bash
+go get golang.org/x/mod@latest
+```
+
+Everything else uses Go stdlib or already-present transitive packages.
+
+---
+
+## Feature Stack Breakdown
+
+### PLCY-05: Sensitive-Path Wiring
+
+**Stack delta: zero.** This feature wires `internal/policy.EvaluatePath` and `DefaultSensitivePaths` into `internal/check/handler.go`. All types exist. No new dependencies.
+
+### PLCY-07: Corroboration Hardening
+
+**Stack delta: zero.** Per-severity escalation logic is a pure change to threshold constants/rules in the existing corroboration package. No new types, no new dependencies.
+
+### NUDGE: `internal/nudge/` — Full Stack Analysis
+
+#### Subprocess Detection (`detect.go`)
+
+Use `os/exec.CommandContext` + `context.WithTimeout(ctx, 2*time.Second)` for `pnpm --version`, `bun --version`, `node --version`. Use `exec.LookPath` before exec to distinguish "not installed" from "installed but broken."
+
+Pattern for `cmd.Output()` is safe for `--version` output (single line, < 1KB): no pipe deadlock risk at this size.
+
+Detection cache: `sync.Mutex`-guarded struct with last `PMState` + `time.Time`. TTL 60 seconds per PRD §4. Pure stdlib — no external caching library.
+
+#### Semver Comparison (`version.go`)
+
+**Use `golang.org/x/mod/semver`.** This is the only new dependency needed.
+
+Critical implementation note — the `"v"` prefix requirement:
+
+| Binary | `--version` output | Needs normalization? |
+|--------|-------------------|---------------------|
+| `pnpm --version` | `11.5.1` (bare) | YES — prepend `"v"` |
+| `bun --version` | `1.3.14` (bare) | YES — prepend `"v"` |
+| `node --version` | `v22.x.y` (already prefixed) | NO |
+
+Required normalizer:
+
+```go
+// normalize prepends "v" if absent. golang.org/x/mod/semver requires it.
+func normalize(v string) string {
+    v = strings.TrimSpace(v)
+    if strings.HasPrefix(v, "v") {
+        return v
+    }
+    return "v" + v
+}
+
+// Example floor check:
+func meetsFloor(version, floor string) bool {
+    return semver.Compare(normalize(version), normalize(floor)) >= 0
+}
+```
+
+Is `golang.org/x/mod` already in the module graph? No. A check of the current `go.sum` confirms it is not a transitive dependency of any existing direct dep (`cilium/ebpf`, `cobra`, `bubbletea` — none pull it). Must be added explicitly.
+
+Why `golang.org/x/mod/semver` over a hand-written comparator: The drift-detection path (PRD §7.1) must handle pre-release versions like `pnpm 12.0.0-rc.1`. A hand-written integer-tuple comparator handles `>=` correctly for stable versions but misorders pre-releases (RC sorts above stable in naive comparators). `golang.org/x/mod/semver` handles pre-release ordering per spec. It has zero transitive deps and is Go-team maintained.
+
+Why not `Masterminds/semver/v3`: Heavier; `x/mod/semver` is sufficient and already vendored in the Go toolchain itself.
+
+#### TOML Parsing for `bunfig.toml` (`detect.go`)
+
+**Do not add a TOML library.** Use a hand-written line scanner.
+
+The nudge module needs exactly one value from `bunfig.toml`:
+
+```toml
+[install.security]
+scanner = "@socketsecurity/bun-security-scanner"
+```
+
+A 20-line scanner that:
+1. Reads the file line by line
+2. Tracks whether it is inside the `[install.security]` section
+3. Returns `true` when it finds `scanner = "@socketsecurity/bun-security-scanner"`
+
+This is simpler, has zero audit surface, and is easier to fuzz than a full TOML decode. `BurntSushi/toml` and `pelletier/go-toml/v2` are both correct choices for general TOML work, but that is not what this problem is.
+
+#### YAML Line Scanning for `pnpm-workspace.yaml` (`detect.go`)
+
+**Do not add a YAML library.** Same rationale. The two keys needed (`minimumReleaseAge:` and `blockExoticSubdeps:`) are simple scalars at the document root. `strings.HasPrefix` + `strings.TrimSpace` on each line is sufficient and fuzzable.
+
+Note: the check from PRD §6.3 is advisory-only (log a warning, do not block) — the parsing failure path is already specified as "log warning, treat as if defaults are in effect." A full YAML parse is not needed for this semantics.
+
+---
+
+## PRD Version Claims — Verification Results
+
+### pnpm >= 11.0 requires Node >= 22
+
+**Claim status: CONFIRMED AND PRECISELY CORRECT.**
+
+- pnpm 11.0.0 released 2026-04-28. Drops support for Node 18, 19, 20, 21. Node 22 is the hard minimum.
+- pnpm is now pure ESM; the Node >=22 requirement is structural (not a soft recommendation).
+- Latest as of 2026-06-03: **pnpm 11.5.1** (released 2026-06-02).
+- Sources: [pnpm GitHub releases](https://github.com/pnpm/pnpm/releases), [pnpm 11.0 blog](https://pnpm.io/blog/releases/11.0)
+
+**PRD `versionFloors.pnpm: "11.0.0"` is correct.** Recommend updated user-facing message to cite "latest 11.x (currently 11.5.1)" rather than just the floor.
+
+**One PRD inaccuracy to fix:** PRD §6.3 says "if explicitly set to a value less than 60, treat as a configuration weakness." The pnpm default for `minimumReleaseAge` is **1440 minutes** (24 hours), not 60 minutes. The "60" threshold in the PRD is an arbitrary conservatism. The Beekeeper warning message in `detect.go` should state "pnpm default is 1440 minutes" not "recommended minimum is 60 minutes" — otherwise users with `minimumReleaseAge: 120` would get a spurious warning. Fix the threshold constant in the implementation or document the deliberate conservatism explicitly.
+
+**`blockExoticSubdeps` and `minimumReleaseAge` are in `pnpm-workspace.yaml` only** — not in `.npmrc`. The scanner must look in the right file. Source: [pnpm settings docs](https://pnpm.io/settings).
+
+### bun >= 1.3, Security Scanner API stable
+
+**Claim status: CONFIRMED.**
+
+- Bun 1.3.0 released **2025-10-10**. Security Scanner API shipped in 1.3.0.
+- Latest as of 2026-06-03: **bun 1.3.14** (May 2026).
+- The API is stable and in active production use (Socket integration publicly deployed).
+- Sources: [bun 1.3 blog](https://bun.com/blog/bun-v1.3), [bun releases](https://github.com/oven-sh/bun/releases)
+
+**PRD `versionFloors.bun: "1.3.0"` is correct.**
+
+### `@socketsecurity/bun-security-scanner` package name
+
+**Claim status: CONFIRMED — exact name, publisher, and config key all verified.**
+
+| Attribute | Value |
+|-----------|-------|
+| npm package name | `@socketsecurity/bun-security-scanner` |
+| Publisher / org | Socket Security (GitHub org: `SocketDev`) |
+| Install command | `bun add -d @socketsecurity/bun-security-scanner` |
+| bunfig.toml section | `[install.security]` |
+| bunfig.toml key | `scanner = "@socketsecurity/bun-security-scanner"` |
+| Auth (optional) | `SOCKET_API_KEY` env var; free mode without it |
+
+The PRD's self-defense note (§12) is accurate: recommend the package by its full name and publisher in all user-facing messages.
+
+Sources: [SocketDev/bun-security-scanner GitHub](https://github.com/SocketDev/bun-security-scanner), [Socket integration blog](https://socket.dev/blog/socket-integrates-with-bun-1-3-security-scanner-api), [bun Security Scanner API docs](https://bun.com/docs/pm/security-scanner-api).
+
+### Node.js 22 "LTS" status
+
+**Claim status: PARTIALLY ACCURATE — requires clarification in user-facing messages.**
+
+- Node 22 is in **Maintenance LTS** as of 2025-10-21 (Active LTS ended). EOL: 2027-04-30. Still supported; not the recommended new-project version.
+- **Node 24** ("Krypton") is the current **Active LTS** (entered 2025-05-06, EOL 2028-04-30).
+- pnpm 11 requires Node >= 22, so the floor in the PRD is correct. But messages should say "Node 22 or later (Node 24 is the current Active LTS)" — not just "Node 22 LTS."
+- Source: [Node.js releases page](https://nodejs.org/en/about/previous-releases), [endoflife.date/nodejs](https://endoflife.date/nodejs)
+
+**PRD `versionFloors.node: "22.0.0"` is correct for the pnpm compatibility check.** The UX copy needs the clarification above.
+
+---
+
+## What NOT to Add (v1.2.0 specific)
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `BurntSushi/toml` | One key from `bunfig.toml` does not justify a full parser | Hand-written 20-line line scanner |
+| `pelletier/go-toml/v2` | Same reason | Hand-written line scanner |
+| `gopkg.in/yaml.v3` | Two scalar keys from `pnpm-workspace.yaml` do not justify a YAML parser | Hand-written `strings.HasPrefix` line scan |
+| `Masterminds/semver/v3` | Heavier than needed; `x/mod/semver` is Go-team maintained with zero transitive deps | `golang.org/x/mod/semver` |
+| Any HTTP client for drift check | PRD §7.1 drift check uses `pnpm view pnpm version` subprocess, not direct registry API | `os/exec.CommandContext` |
+| External cache library (ristretto, etc.) | 60s TTL single-value cache is 5 lines of `sync.Mutex` + `time.Time` | stdlib `sync` + `time` |
+
+---
+
+## v1.2.0 Installation Delta
+
+```bash
+# The only new dep for this entire milestone:
+go get golang.org/x/mod@latest
+```
+
+---
+
+## Yarn `npmMinimalAge` (deferred)
+
+Yarn Berry has an `npmMinimalAge` config key analogous to pnpm's `minimumReleaseAge`. Explicitly out of scope for v1.2.0 per PRD §2.2. No research required. Flag for v1.3.0+ when Yarn nudge patterns are considered.
+
+---
+
+## v1.2.0 Sources
+
+- [pnpm 11.0 blog](https://pnpm.io/blog/releases/11.0) — Node >=22 requirement, `minimumReleaseAge` default 1440, `blockExoticSubdeps` default true. HIGH confidence.
+- [pnpm settings docs](https://pnpm.io/settings) — Both settings in `pnpm-workspace.yaml` only (not `.npmrc`). HIGH confidence.
+- [pnpm GitHub releases](https://github.com/pnpm/pnpm/releases) — Latest 11.5.1 (2026-06-02). HIGH confidence.
+- [Socket blog on pnpm 11](https://socket.dev/blog/pnpm-11-adds-new-supply-chain-protection-defaults) — Independent confirmation of defaults. MEDIUM confidence (secondary source).
+- [bun 1.3 blog](https://bun.com/blog/bun-v1.3) — Bun 1.3.0 released 2025-10-10; Security Scanner API in 1.3.0. HIGH confidence.
+- [bun GitHub releases](https://github.com/oven-sh/bun/releases) — Latest 1.3.14 (May 2026). HIGH confidence.
+- [SocketDev/bun-security-scanner GitHub](https://github.com/SocketDev/bun-security-scanner) — Package name `@socketsecurity/bun-security-scanner`, publisher SocketDev. HIGH confidence.
+- [Socket bun integration blog](https://socket.dev/blog/socket-integrates-with-bun-1-3-security-scanner-api) — bunfig.toml key `[install.security] scanner = "..."`. HIGH confidence.
+- [bun Security Scanner API docs](https://bun.com/docs/pm/security-scanner-api) — Official API docs confirming `[install.security]` section. HIGH confidence.
+- [Node.js releases page](https://nodejs.org/en/about/previous-releases) — Node 22 Maintenance LTS, Node 24 Active LTS. HIGH confidence.
+- [endoflife.date/nodejs](https://endoflife.date/nodejs) — Node 22 EOL 2027-04-30; Node 24 EOL 2028-04-30. HIGH confidence.
+- [pkg.go.dev/golang.org/x/mod/semver](https://pkg.go.dev/golang.org/x/mod/semver) — Requires "v" prefix; `Compare(v, w)` returns -1/0/+1. HIGH confidence.
+
+---
+*v1.2.0 addendum researched: 2026-06-03*

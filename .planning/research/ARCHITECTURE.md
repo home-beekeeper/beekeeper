@@ -1,802 +1,611 @@
-# Architecture Research
+# Architecture Research: v1.2.0 Runtime Behavioral Hardening
 
-**Domain:** Go multi-process security daemon — agent runtime safety harness
-**Researched:** 2026-05-26
-**Confidence:** HIGH (core Go patterns), MEDIUM (platform-specific kernel interfaces), HIGH (IPC authorization)
-
----
-
-## Standard Architecture
-
-### System Overview
-
-```
-+---------------------------------------------------------------------+
-|                     UNPRIVILEGED USER TIER                          |
-|                                                                     |
-|  +------------------+  +-------------------+  +-----------------+  |
-|  | beekeeper check  |  | beekeeper gateway |  | beekeeper watch |  |
-|  | (ephemeral proc) |  | (long-lived MCP   |  | (fsnotify loop, |  |
-|  | stdin JSON in    |  |  proxy daemon)    |  |  extension dirs)|  |
-|  | exit 0/1 out     |  |                   |  |                 |  |
-|  +--------+---------+  +---------+---------+  +--------+--------+  |
-|           |                      |                      |           |
-|           +----------------------+----------------------+           |
-|                                  |                                  |
-|                       +----------v----------+                       |
-|                       |   Policy Engine     |                       |
-|                       |   (in-process lib,  |                       |
-|                       |   no goroutine       |                       |
-|                       |   boundary)          |                       |
-|                       +----------+----------+                       |
-|                                  |                                  |
-|          +-----------------------+-----------------------+          |
-|          |                       |                       |          |
-|  +-------v-------+    +----------v--------+   +---------v------+   |
-|  | Catalog Store |    | Behavioral        |   | Audit Writer   |   |
-|  | (in-memory    |    | Baseline          |   | (NDJSON sink,  |   |
-|  |  hash index,  |    | (per-project      |   |  append-only,  |   |
-|  |  mmap'd JSON) |    |  counters)        |   |  0600 perms)   |   |
-|  +---------------+    +-------------------+   +----------------+   |
-|                                                                     |
-|           Unix socket / Windows named pipe (authorized)            |
-+---------------------------------------------------------------------+
-                              |
-+---------------------------------------------------------------------+
-|                   PRIVILEGED SENTRY TIER                            |
-|                                                                     |
-|  +------------------+  +------------------+  +------------------+  |
-|  | Linux            |  | macOS            |  | Windows          |  |
-|  | fanotify (file)  |  | eslogger stdin   |  | ETW consumer     |  |
-|  | eBPF (proc+net)  |  | JSON decode      |  | (golang-etw,     |  |
-|  | cilium/ebpf      |  |                  |  |  no-CGO variant) |  |
-|  +--------+---------+  +--------+---------+  +--------+---------+  |
-|           |                     |                     |             |
-|           +---------------------+---------------------+             |
-|                                 |                                   |
-|                      +----------v----------+                        |
-|                      | Process Correlation |                        |
-|                      | Engine              |                        |
-|                      | (rule eval, 5 rules |                        |
-|                      |  v1, sliding window)|                        |
-|                      +----------+----------+                        |
-|                                 |                                   |
-|              +------------------+------------------+                |
-|              |                                     |                |
-|    +---------v---------+               +----------v--------+        |
-|    | IPC Server        |               | Audit Writer      |        |
-|    | (Unix sock /      |               | (appends to same  |        |
-|    |  named pipe,      |               |  NDJSON log)      |        |
-|    |  SO_PEERCRED /    |               |                   |        |
-|    |  pipe ACL auth)   |               +-------------------+        |
-|    +-------------------+                                            |
-+---------------------------------------------------------------------+
-                              |
-+---------------------------------------------------------------------+
-|                  OPTIONAL PYTHON SIDECAR                            |
-|                                                                     |
-|  +-------------------+  supervised by beekeeper (unprivileged)      |
-|  | LlamaFirewall     |  length-prefixed JSON over Unix socket /     |
-|  | PromptGuard2      |  named pipe; fail-closed on crash            |
-|  | CodeShield        |                                              |
-|  +-------------------+                                              |
-+---------------------------------------------------------------------+
-```
-
-### Component Responsibilities
-
-| Component | Responsibility | Privilege | Lifetime |
-|-----------|---------------|-----------|----------|
-| `beekeeper check` | Read tool call JSON from stdin, evaluate policy, exit 0/1 | User | Ephemeral (per hook) |
-| Policy Engine | Catalog match, release-age, lifecycle, path, egress, baseline | User | In-process library |
-| Catalog Store | Immutable in-memory index of loaded threat intel; mmap for large catalogs | User | Daemon lifetime or lazy-loaded per check invocation |
-| `beekeeper gateway` | Long-lived MCP proxy; apply policy in hot path per tool call | User | Service/daemon |
-| `beekeeper watch` | fsnotify loop over extension dirs; trigger catalog match on new dirs | User | Service/daemon |
-| `beekeeper catalogs watch` | HTTP fetch + delta detection; trigger scan on new entries | User | Service/daemon |
-| Sentry daemon | Ingest OS kernel event streams; run process correlation rules | Root/System | Service/daemon |
-| IPC server (in Sentry) | Accept commands from unprivileged CLI; authorize via SO_PEERCRED / pipe ACL | Root/System | Service/daemon |
-| LlamaFirewall sidecar | PromptGuard2 + CodeShield inference; length-prefixed JSON IPC | User | Supervised subprocess |
-| Audit Writer | Append NDJSON to `audit/beekeeper.ndjson`; enforce `0600`; optional remote sinks | User/System | Shared component |
+**Domain:** Subsequent milestone integration — three features wired into an existing shipped Go safety harness
+**Researched:** 2026-06-03
+**Confidence:** HIGH (all findings derived from direct inspection of real source files)
 
 ---
 
-## Recommended Project Structure
+## Existing Architecture Constraints (Fixed — Do Not Re-Research)
 
-```
-beekeeper/
-├── cmd/
-│   └── beekeeper/
-│       └── main.go              # Thin entrypoint: cobra root, OS signal wiring
-├── internal/
-│   ├── check/                   # Hook handler logic (beekeeper check)
-│   │   ├── handler.go           # ReadStdin → PolicyEngine → Decision → Exit
-│   │   └── handler_test.go
-│   ├── policy/                  # Policy engine (pure library, no I/O)
-│   │   ├── engine.go            # Evaluate() — catalog + release-age + lifecycle + path + egress
-│   │   ├── catalog.go           # CatalogStore interface + corroboration logic
-│   │   ├── releaseage.go        # Release-age policy
-│   │   ├── lifecycle.go         # Lifecycle script policy
-│   │   ├── paths.go             # Sensitive path blocklist
-│   │   ├── egress.go            # Network egress policy
-│   │   ├── baseline.go          # Behavioral baseline counters
-│   │   └── engine_test.go       # Adversarial fixture corpus
-│   ├── catalog/                 # Catalog loading, indexing, sync
-│   │   ├── loader.go            # JSON parse + index build
-│   │   ├── index.go             # In-memory hash index (map[ecosystem]map[package][]Entry)
-│   │   ├── sync.go              # HTTP fetch, signature verify, delta detect
-│   │   ├── watcher.go           # beekeeper catalogs watch daemon loop
-│   │   └── signature.go         # Catalog signature verification
-│   ├── gateway/                 # MCP proxy daemon
-│   │   ├── server.go            # net.Listener, session lifecycle
-│   │   ├── proxy.go             # Per-connection proxy goroutine
-│   │   ├── policy_middleware.go # Policy evaluation in hot path
-│   │   └── token.go             # Per-session token issuance + verification
-│   ├── sentry/                  # Privileged daemon (build-tag separated)
-│   │   ├── daemon.go            # Main event loop, IPC server
-│   │   ├── rules.go             # Correlation rule evaluation
-│   │   ├── sliding_window.go    # Time-windowed event accumulator
-│   │   ├── linux/               # Linux-specific (build tag: linux)
-│   │   │   ├── fanotify.go      # fanotify event ingestion
-│   │   │   └── ebpf.go          # cilium/ebpf loader + perf reader
-│   │   ├── darwin/              # macOS-specific (build tag: darwin)
-│   │   │   └── eslogger.go      # eslogger subprocess + JSON decode
-│   │   └── windows/             # Windows-specific (build tag: windows)
-│   │       └── etw.go           # ETW session consumer
-│   ├── ipc/                     # IPC client/server (cross-platform)
-│   │   ├── server.go            # Unix socket (Linux/macOS) + named pipe (Windows)
-│   │   ├── client.go            # Symmetric client
-│   │   ├── auth_unix.go         # SO_PEERCRED authorization (build tag: !windows)
-│   │   ├── auth_windows.go      # Named pipe ACL authorization (build tag: windows)
-│   │   └── protocol.go          # Length-prefixed JSON message framing
-│   ├── watch/                   # Extension directory watcher (fsnotify)
-│   │   ├── watcher.go           # fsnotify setup, event fan-out
-│   │   └── extension.go         # Parse extension manifest, trigger catalog match
-│   ├── audit/                   # Audit log writer
-│   │   ├── writer.go            # Append NDJSON, enforce permissions, rotate
-│   │   └── sinks.go             # Syslog, OTLP, HTTPS POST sinks
-│   ├── llamafirewall/           # LlamaFirewall sidecar supervisor
-│   │   ├── supervisor.go        # Process start, crash restart, fail-closed
-│   │   └── client.go            # Length-prefixed JSON IPC client
-│   ├── config/                  # Layered config (system → user → project → env → flags)
-│   │   └── config.go
-│   ├── tui/                     # Bubble Tea TUI (beekeeper dashboard)
-│   │   └── dashboard.go
-│   └── selfdefense/             # beekeeper-self catalog check, reproducible build
-│       └── selfcheck.go
-├── bpf/                         # eBPF C programs (compiled via bpf2go)
-│   ├── process_monitor.bpf.c
-│   └── network_monitor.bpf.c
-├── policies/                    # Default policy files (embedded via go:embed)
-│   ├── lifecycle.json
-│   └── sensitive_paths.json
-├── testdata/                    # Adversarial fixture corpus
-│   ├── toolcalls/               # Real malicious tool call patterns (May 2026 incidents)
-│   └── catalogs/                # Synthetic catalog entries for unit tests
-├── Makefile
-├── go.mod
-├── go.sum
-└── .goreleaser.yaml
-```
+All findings below are derived from reading the actual source. These are not assumptions.
 
-### Structure Rationale
-
-- **`cmd/beekeeper/main.go` is thin:** Cobra root + subcommand wiring only. All business logic lives in `internal/`. This keeps the entry point testable via subprocess tests and makes it possible for `beekeeper check` to run its critical path with zero cobra overhead (cobra is only initialized at startup once).
-- **`internal/policy/` is a pure library:** No I/O, no goroutines, no global state. Takes a `ToolCall` struct, returns a `Decision`. This is the hot path — it must be callable directly without any IPC or process boundary.
-- **`internal/sentry/` uses build tags, not runtime conditionals:** Platform-specific kernel interfaces (`fanotify`, `eslogger`, ETW) are separated at compile time. The daemon binary for Linux does not link Windows ETW code. Build tags `//go:build linux`, `//go:build darwin`, `//go:build windows` on each platform subdirectory.
-- **`bpf/` contains C source:** Compiled by `bpf2go` during `go generate`. Generated Go bindings land in `internal/sentry/linux/`. The C is a build-time dependency; the final binary embeds the eBPF bytecode via `go:embed`.
-- **`policies/` embedded via `go:embed`:** Default policies are compiled into the binary. The catalog store overlays user-configured policies at runtime without modifying the embedded defaults.
+| Constraint | Source | Status |
+|------------|--------|--------|
+| `internal/policy` is a pure function library — no I/O, no goroutines, no globals | `internal/policy/types.go:1-14` | LOCKED |
+| `EvaluatePath` exists, pure, tested in isolation | `internal/policy/path.go:76-107` | EXISTS, UNWIRED |
+| `policyloader.ApplyPolicyOverlay` already processes `sensitive_path` rules from JSON policy files | `internal/policyloader/enforce.go:101-128` | EXISTS |
+| `extractTargetPath` in enforce.go reads only `tc.ToolInput["path"]` — misses `file_path` and Bash targets | `internal/policyloader/enforce.go:279-287` | GAP (PLCY-05) |
+| `corroborate()` counts only SIGNED sources toward block threshold; bumblebee entries have `Signed:false` | `internal/policy/corroboration.go:67-68,98-107` | GAP (PLCY-07) |
+| One-shot process per `beekeeper check` invocation | `internal/check/handler.go:86-88` | FIXED |
+| `runCheck` pipeline: decode stdin → open mmap → build MultiIndex → load policy files → `policy.Evaluate` → `ApplyPolicyOverlay` → `finalizeWithAC` | `internal/check/handler.go:101-272` | EXISTING PIPELINE |
+| Existing audit `record_type` values: `policy_decision`, `tool_result`, `llmf_alert`, `sentry_alert` | `internal/audit/types.go:22-62` | SCHEMA ANCHOR |
+| `FromDecision` maps a `policy.Decision` to `AuditRecord` with `RecordType:"policy_decision"` hardcoded | `internal/audit/types.go:98-150` | DOES NOT COVER nudge/version_drift |
 
 ---
 
-## Architectural Patterns
+## System Overview: v1.2.0 Integration Points
 
-### Pattern 1: Ephemeral Process Hook Handler — No Pre-Warming Needed
+```
+beekeeper check (one-shot process)
+---------------------------------------------------------------------
+stdin JSON
+  |
+  v
+[decode hookInput]                       handler.go:153
+  |
+  v
+[open mmap bbIdx]                        handler.go:177
+  |
+  v
+[build MultiIndex]                       handler.go:194-211
+  |
+  v
+[load policyFiles + derive thresholds]   handler.go:233-246
+  |   thresholds now carry SeverityOverrides (PLCY-07)
+  v
+[policy.Evaluate]                        handler.go:251
+  |   corroborate() applies severity escalation (PLCY-07)
+  v
+[extractPathTargets + EvaluatePath]      NEW -- PLCY-05
+  |   extract file_path / path / Bash targets; tilde-expand in caller
+  |   call EvaluatePath per path; merge most-restrictive-wins
+  v
+[nudge.ParseCommand + nudge.Evaluate]    NEW -- NUDGE (if Bash tool and PM install)
+  |   PMState resolved by caller (no cache needed; one-shot process)
+  |   write separate "nudge" audit record
+  |   only Block action escalates main decision
+  v
+[ApplyPolicyOverlay]                     handler.go:267
+  |   declarative sensitive_path overlay rules on top
+  v
+[finalizeWithAC -> writeAuditWithAC -> w.Write]
+  |   record_type:"policy_decision" unchanged
+  v
+exit 0 (allow) / exit 1 (block)
 
-**What:** `beekeeper check` is a fresh process spawned per agent tool call. It reads stdin, evaluates policy from an in-memory catalog built at startup, writes to the audit log, and exits.
+beekeeper gateway (long-lived MCP proxy)
+---------------------------------------------------------------------
+  Same policy.Evaluate + EvaluatePath + nudge.Evaluate calls
+  PM detection cache (60s TTL) belongs here -- process lives across requests
+  nudgeCacheAdapter on gateway handler struct (not a package-level global)
 
-**Startup budget analysis:**
-- Bare Go binary hello-world: ~11ms measured (Replit benchmark)
-- With real JSON catalog loading: 15-25ms estimated (depends on catalog size; mmap avoids full parse)
-- JSON stdin decode + policy eval: ~1-5ms
-- Audit log append (single write): ~1ms
-- **Total realistic p95:** 20-40ms, well within the 100ms target
+beekeeper shim (npm shim --> beekeeper check as subprocess)
+---------------------------------------------------------------------
+  nudge.Evaluate called before proxying; one-shot like check; no cache needed
+```
 
-**Why pre-warming is not needed:** The 100ms budget is comfortable. Pre-warming (a long-lived daemon serving check requests) would add IPC round-trip complexity for minimal gain. The killer optimization is loading catalogs efficiently at startup — use `json.Decoder` streaming rather than `ioutil.ReadAll` + `json.Unmarshal`, and build the in-memory hash index once.
+---
 
-**When pre-warming would become necessary:** If catalog size grows to 50MB+ and cold parse takes >70ms. The mitigation is to pre-build and persist the hash index to a file (write once on `catalogs sync`, load with mmap on `check`). Flag this as a v0.3 optimization target once real catalog sizes are known.
+## PLCY-05: Wiring EvaluatePath into runCheck
 
-**Example critical path:**
+### Insertion Point
+
+Insert path evaluation **immediately after** `policy.Evaluate` returns (handler.go line ~251) and **before** `ApplyPolicyOverlay` (line 267). Rationale: `ApplyPolicyOverlay` already processes `sensitive_path` overlay rules from JSON policy files (enforce.go:101-128). The merged decision from `EvaluatePath` feeds into `ApplyPolicyOverlay`'s most-restrictive-wins logic correctly. Running path evaluation before the overlay means the overlay can still escalate but cannot silently downgrade a path-block without an explicit `allow` rule.
 
 ```go
-// internal/check/handler.go
-func Run() int {
-    // 1. Load config (< 1ms if previously parsed to binary format)
-    cfg := config.LoadCached()
+// handler.go -- proposed insertion after line 251
+decision := policy.Evaluate(toolCall, multiIdx, thresholds, ac)
 
-    // 2. Open catalog index (mmap or in-process; pre-built by catalogs sync)
-    idx := catalog.OpenIndex(cfg.CatalogPath) // < 5ms with mmap
+// PLCY-05: sensitive-path evaluation
+paths := extractPathTargets(toolCall)  // new helper -- see paths.go
+for _, p := range paths {
+    pathDecision := policy.EvaluatePath(p, sensitivePathConfig(cfg))
+    decision = mergeDecisions(decision, pathDecision)
+}
 
-    // 3. Decode tool call from stdin (bounded: max 1MB)
-    var call toolcall.ToolCall
-    if err := json.NewDecoder(io.LimitReader(os.Stdin, 1<<20)).Decode(&call); err != nil {
-        audit.WriteFailure("stdin_decode_error", err)
-        return 1 // fail-closed
-    }
+// NUDGE: package-manager nudge (see next section)
+// ...
 
-    // 4. Policy eval — pure function, no I/O
-    decision := policy.Evaluate(call, idx, cfg.Policy)
-
-    // 5. Audit
-    audit.Write(decision)
-
-    // 6. LlamaFirewall (only for relevant inputs, async write to pipe)
-    if cfg.LlamaFirewall.Enabled && call.IsRelevantForPromptScan() {
-        llamafirewall.CheckAsync(call, cfg)
-    }
-
-    if decision.Action == policy.Block {
-        fmt.Fprintln(os.Stderr, decision.Reason)
-        return 2
-    }
-    return 0
+if len(policyFiles) > 0 {
+    decision = policyloader.ApplyPolicyOverlay(policyFiles, toolCall, decision)
 }
 ```
 
-### Pattern 2: Catalog Index — Two-Level Hash Map, Not a Trie
+### Path Target Extraction: The Gap
 
-**What:** The threat catalog is indexed as `map[Ecosystem]map[PackageKey][]Entry` where `PackageKey` is `package@version` normalized to lowercase. Lookup is O(1) amortized.
+`extractTargetPath` in `policyloader/enforce.go:279-287` reads only `tc.ToolInput["path"]`. Claude Code tools use different key names:
 
-**Why not a trie or radix tree:** Go's built-in `map` outperforms trie implementations for exact-match lookups even at millions of entries (confirmed by multiple Go performance benchmarks — Go's map uses Robin Hood hashing with excellent cache locality for string keys). Prefix lookups are not needed for exact package-name matching.
+| Tool | Key in ToolInput | Shape |
+|------|-----------------|-------|
+| Read | `file_path` | string |
+| Write | `file_path` | string |
+| Edit | `file_path` | string |
+| MultiEdit | `file_path` | string |
+| Bash | `command` | string containing `cat ~/.aws/credentials` etc. |
+| Legacy overlay path | `path` | string (kept for compat) |
 
-**Version range matching:** Kept in a sorted slice per package, binary-searched. Version ranges are rare enough that linear scan over a small slice (typically <20 versions per CVE) is faster than building a full interval tree.
+The new `extractPathTargets(tc policy.ToolCall) []string` lives in `internal/check/paths.go` (separate file for clarity). It handles:
 
-**Catalog load path:**
+1. `tc.ToolInput["file_path"].(string)` — Read/Write/Edit/MultiEdit
+2. `tc.ToolInput["path"].(string)` — legacy key used by policyloader overlay today; keep for compatibility
+3. Bash command parsing: a conservative allowlist of read-command prefixes (`cat `, `type `, `Get-Content `, `head `, `tail `, `less `, `more `) scanning for recognizable credential-path tokens. Do NOT use regex over the full command string; use the same prefix-matching approach as `extractFromCommand` in engine.go.
+
+**Purity constraint preserved:** `extractPathTargets` is I/O-free (reads from already-decoded `map[string]any`). `EvaluatePath` receives the resolved string. Tilde expansion (`~` → home directory) and OS separator normalization happen in the caller before `EvaluatePath` is called, per the existing `path.go:19-21` docs. This mirrors the established caller-resolves-I/O pattern.
+
+**Multiple paths from one tool call:** `extractPathTargets` returns `[]string`. Call `EvaluatePath` once per path, then take the most-restrictive decision across all results.
+
+### Merge Semantics
 
 ```go
-// internal/catalog/index.go
-type Index struct {
-    // Primary: ecosystem -> package -> entries
-    entries map[string]map[string][]Entry
-
-    // Self-defense catalog (checked at startup)
-    selfEntries []Entry
-
-    mu sync.RWMutex // protects hot-reload on catalog sync
-}
-
-func (idx *Index) Lookup(ecosystem, pkg, version string) []Entry {
-    idx.mu.RLock()
-    defer idx.mu.RUnlock()
-
-    pkgMap, ok := idx.entries[ecosystem]
-    if !ok {
-        return nil
+// internal/check/handler.go (or paths.go)
+func mergeDecisions(base, overlay policy.Decision) policy.Decision {
+    levelRank := map[string]int{"allow": 0, "warn": 1, "block": 2}
+    if levelRank[overlay.Level] > levelRank[base.Level] {
+        return overlay
     }
-    entries, ok := pkgMap[normalizeKey(pkg)]
-    if !ok {
-        return nil
-    }
-    return matchVersions(entries, version) // binary search on sorted versions
+    return base
 }
 ```
 
-**Hot-reload on catalog sync:** The catalog watcher builds a new index in a background goroutine, then atomically swaps the pointer under a `sync.RWMutex`. Readers (check handler subprocesses) always open the pre-built index file; the in-process index is only used by the long-lived gateway daemon.
+This is identical to the existing policyloader merge logic (enforce.go:139-165). Do not invent a new merge strategy; make it consistent.
 
-### Pattern 3: Corroboration Engine — Separate from Matching
+### Interaction with policyloader sensitive_path Overlay
 
-**What:** Catalog matching produces raw `[]Entry` (all hits across sources). Corroboration is a separate aggregation step that counts distinct sources and applies thresholds.
+`ApplyPolicyOverlay` already checks `sensitive_path` rules from JSON files against `extractTargetPath(tc)` (enforce.go:101-128). That function only reads `tc.ToolInput["path"]`, missing `file_path` and Bash targets. PLCY-05 also fixes `extractTargetPath` in `policyloader/enforce.go` to read `file_path`. After PLCY-05, the order of evaluation is:
 
-**Why separate:** Makes the matching logic independently testable and lets corroboration thresholds be configurable without touching the indexing code.
+1. `policy.EvaluatePath` with `DefaultSensitivePaths()` + config-loaded patterns → hardcoded engine block
+2. `ApplyPolicyOverlay sensitive_path` rules from JSON files → declarative operator overlay
+
+A JSON policy file `allow` rule for a sensitive path remains the only legitimate escape hatch. This is intentional and already documented in `docs/THREAT-MODEL.md §1`.
+
+**Files modified for PLCY-05:**
+- `internal/check/handler.go` — insert evaluation block
+- `internal/check/paths.go` — NEW: `extractPathTargets`, tilde expansion, Bash target scanning
+- `internal/policyloader/enforce.go` — fix `extractTargetPath` to also read `file_path`
+
+---
+
+## NUDGE: Package Architecture and the Caching Problem
+
+### Package Boundary
+
+```
+internal/nudge/
+├── nudge.go       # Evaluate(ParsedCommand, PMState, Config) Decision  PURE
+├── detect.go      # DetectPMState() (PMState, error)                   IMPURE
+├── parse.go       # ParseCommand(string) (ParsedCommand, bool)         PURE
+├── rewrite.go     # Rewrite(ParsedCommand, PMState, Config) string     PURE
+├── version.go     # semver comparison helpers                          PURE
+├── reasons.go     # closed reason-code enum (constants)                PURE
+└── *_test.go
+```
+
+`nudge.Evaluate` is pure: it takes an already-resolved `PMState` and returns a `Decision`. Detection I/O (`detect.go`) runs in the calling adapter in `internal/check/`, `internal/gateway/`, or `internal/shim/` — never inside `nudge.Evaluate`. This mirrors `policy.EvaluateReleaseAge(ReleaseAgeInput, cfg)` exactly: the caller resolves I/O, passes a pure input struct, gets a pure Decision.
+
+### The 60-Second Detection Cache: Where It Belongs
+
+The PRD's 60-second cache is meaningful ONLY in long-lived processes. `beekeeper check` is a **one-shot process** — it exits after one tool call evaluation. A 60-second in-memory cache is **dead code** in `beekeeper check` and would leak state between test cases if placed in the package.
+
+| Consumer | Process lifetime | Cache needed? | Cache location |
+|----------|-----------------|---------------|----------------|
+| `beekeeper check` | one-shot, ~3ms | NO | N/A — detect once per invocation (~5ms for subprocess exec, acceptable) |
+| `beekeeper gateway` | long-lived daemon | YES | `internal/gateway/nudge_cache.go` — `nudgeCacheAdapter` struct with `sync.Mutex` + `detectedAt time.Time` TTL |
+| `beekeeper shim` (npm shim → beekeeper check subprocess) | one-shot | NO | N/A |
+
+The `nudge` package's `detect.go` exposes `DetectPMState() (PMState, error)` without any cache or package-level state. Gateway wraps this in a `nudgeCacheAdapter`. One-shot callers call `detect.go` directly.
+
+### nudgeCacheAdapter (gateway only)
 
 ```go
-// internal/policy/catalog.go
-func Corroborate(matches []catalog.Entry, cfg CorroborationConfig) Decision {
-    sources := make(map[string]struct{})
-    for _, m := range matches {
-        sources[m.CatalogSource] = struct{}{}
+// internal/gateway/nudge_cache.go
+type nudgeCacheAdapter struct {
+    mu         sync.Mutex
+    state      nudge.PMState
+    detectedAt time.Time
+    ttl        time.Duration // 60s default
+}
+
+func (a *nudgeCacheAdapter) State() nudge.PMState {
+    a.mu.Lock()
+    defer a.mu.Unlock()
+    if time.Since(a.detectedAt) > a.ttl || a.detectedAt.IsZero() {
+        a.state, _ = nudge.DetectPMState()
+        a.detectedAt = time.Now()
     }
-    switch len(sources) {
-    case 0:
-        return Decision{Action: Allow}
-    case 1:
-        return Decision{Action: Warn, Sources: sources}
-    case 2:
-        return Decision{Action: Block, Sources: sources}
-    default: // 3+
-        return Decision{Action: BlockWithQuarantine, Sources: sources}
-    }
+    return a.state
 }
 ```
 
-### Pattern 4: MCP Gateway — Policy in the Hot Path via Middleware Chain
+`nudgeCacheAdapter` is a field on the gateway handler struct, not a package-level global. This makes it injectable in tests (pass a mock implementing a `PMStateProvider` interface).
 
-**What:** The gateway is a net.Listener accepting connections from MCP clients. Each connection gets a dedicated goroutine. Tool call requests are intercepted, policy-evaluated synchronously, then either forwarded or rejected before the upstream MCP server sees them.
-
-**Connection lifecycle:**
-
-```
-Client connects
-    → Token authentication (per-session token, checked before any other handling)
-    → Handshake proxy (pass through to upstream MCP server)
-    → Tool call intercept loop:
-        read JSON-RPC request
-        if method == "tools/call":
-            policy.Evaluate() → Decision
-            if Block: return error response to client, audit, continue loop
-            else: forward to upstream, read response, audit, return to client
-        else: forward unmodified
-    → Session termination: clean up, audit session-end record
-```
-
-**Backpressure:** Use `context.WithTimeout` on each upstream forward. If the upstream MCP server is slow, the gateway's read deadline fires and the client gets an error. Do not buffer unboundedly — reject new connections when the active connection count exceeds the configured cap (default 10; a single developer machine is unlikely to have more than a handful of concurrent agent sessions).
-
-**Policy evaluation must not block the goroutine loop:** The policy engine is a pure function call. LlamaFirewall calls are async with a configurable timeout; if the timeout fires, apply the `fail_closed` / `fail_open` / `fail_warn` policy. This keeps the goroutine serving other requests even when the Python sidecar is slow.
-
-### Pattern 5: Sentry Event Loop — Platform-Specific Ingestion, Shared Rule Evaluation
-
-**What:** The Sentry daemon has a platform-specific event ingestion layer and a platform-independent correlation engine. Events are normalized to a common `SentryEvent` struct before rule evaluation.
-
-**Linux ingestion:**
-
-```
-fanotify fd (file events) ──► Go channel (buffered, 10k cap)
-                                                               ──► Correlation engine
-eBPF ring buffer (process + network) ──► Go channel (buffered)
-```
-
-The `perf.Reader` or `ringbuf.Reader` from `cilium/ebpf` runs in a dedicated goroutine that decodes kernel events and sends them to the channel. The correlation engine runs in a separate goroutine consuming from both channels via `select`. This keeps ingestion and evaluation decoupled — kernel events are never dropped because the evaluator is busy; the channel buffer absorbs bursts.
-
-**eBPF program loading pattern (cilium/ebpf):**
+### Integration in runCheck (handler.go)
 
 ```go
-// internal/sentry/linux/ebpf.go
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang ProcessMonitor ../../bpf/process_monitor.bpf.c
-
-func LoadAndAttach() (*EventSource, error) {
-    if err := rlimit.RemoveMemlock(); err != nil {
-        return nil, fmt.Errorf("remove memlock: %w", err)
-    }
-    objs := processMonitorObjects{}
-    if err := loadProcessMonitorObjects(&objs, nil); err != nil {
-        return nil, fmt.Errorf("load ebpf objects: %w", err)
-    }
-    // Attach to tracepoints (prefer over kprobes for stability across kernels)
-    tp, err := link.Tracepoint("sched", "sched_process_exec", objs.TraceExec, nil)
-    if err != nil {
-        return nil, fmt.Errorf("attach tracepoint: %w", err)
-    }
-    rd, err := ringbuf.NewReader(objs.Events)
-    if err != nil {
-        return nil, fmt.Errorf("open ringbuf: %w", err)
-    }
-    return &EventSource{tp: tp, rd: rd}, nil
-}
-```
-
-**macOS ingestion (eslogger):**
-
-```go
-// internal/sentry/darwin/eslogger.go
-// eslogger streams EndpointSecurity events as NDJSON to stdout.
-// Beekeeper spawns it as a subprocess and reads from its stdout pipe.
-cmd := exec.CommandContext(ctx, "eslogger", "--format", "json",
-    "exec", "open", "create", "network")
-cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 0}}
-stdout, _ := cmd.StdoutPipe()
-go func() {
-    dec := json.NewDecoder(bufio.NewReaderSize(stdout, 64*1024))
-    for dec.More() {
-        var ev ESEvent
-        if err := dec.Decode(&ev); err != nil { continue }
-        eventCh <- normalizeESEvent(ev)
-    }
-}()
-```
-
-**Windows ingestion (ETW):**
-
-Use `tekert/golang-etw` (no CGO) rather than `bi-zone/etw` (requires CGO). The no-CGO constraint is explicit in the PRD — "no CGO for core." Subscribe to relevant ETW providers: `Microsoft-Windows-Kernel-Process` for process events, `Microsoft-Windows-Security-Auditing` for file access and network.
-
-```go
-// internal/sentry/windows/etw.go
-// tekert/golang-etw consumer pattern (no CGO)
-c := etw.NewConsumer(ctx)
-c.FromProviderGUIDs(
-    kernelProcessGUID,    // process create/exec
-    securityAuditingGUID, // file open, network connect
-)
-c.ProcessEvents(func(e *etw.Event) {
-    ev := normalizeETWEvent(e)
-    if ev != nil {
-        eventCh <- ev
-    }
-})
-```
-
-**ETW limitation to surface:** ETW rate-limits under high event volume. Beekeeper must surface degraded-mode indicators in `beekeeper diag` when the ETW session drops events (detectable via ETW session statistics).
-
-### Pattern 6: IPC Authorization — SO_PEERCRED on Unix, ACL on Windows
-
-**What:** The Unix socket between the unprivileged CLI and the privileged Sentry daemon uses `SO_PEERCRED` to verify that the connecting process is owned by the same UID as the installed Beekeeper user. Windows named pipes use a DACL restricting access to the installing user's SID.
-
-**Unix (Linux + macOS):**
-
-```go
-// internal/ipc/auth_unix.go
-func AuthorizeConn(conn *net.UnixConn, allowedUID uint32) error {
-    raw, err := conn.SyscallConn()
-    if err != nil { return err }
-    var cred *unix.Ucred
-    raw.Control(func(fd uintptr) {
-        cred, err = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-    })
-    if err != nil { return err }
-    if cred.Uid != allowedUID {
-        return fmt.Errorf("unauthorized: peer UID %d, expected %d", cred.Uid, allowedUID)
-    }
-    return nil
-}
-```
-
-macOS does not support `SO_PEERCRED` directly; use `LOCAL_PEERPID` (`unix.GetsockoptInt(fd, unix.SOL_LOCAL, unix.LOCAL_PEERPID)`) to get the peer PID, then verify via `/proc`-equivalent (`kern.proc.pid.<pid>` sysctl).
-
-**Windows:**
-
-Named pipe server created with a DACL that grants `GENERIC_READ | GENERIC_WRITE` only to the installing user's SID. Use `golang.org/x/sys/windows` for the `CreateNamedPipe` call with a security descriptor. The `hectane/go-acl` package provides higher-level ACL manipulation.
-
-**Protocol (both platforms):** Length-prefixed JSON. 4-byte big-endian length prefix, then JSON body. Maximum message size: 64KB (IPC commands are small — "quarantine item X", "reload config", "dump audit tail"). Reject oversized messages immediately.
-
-### Pattern 7: fsnotify for Extension Directory Watching — Defense in Depth, Not Primary Security
-
-**What:** `fsnotify` watches `~/.vscode/extensions/`, `~/.cursor/extensions/`, `~/.windsurf/extensions/` for new directory creation (new extension installs).
-
-**Critical limitation to design around:** fsnotify does NOT currently implement a fanotify backend (as of 2026, the fsnotify roadmap shows fanotify as "Not yet"). It uses inotify on Linux (per-watch, not mount-wide), which has known event-loss scenarios:
-- `inotify.max_user_watches` limit (default 8192) can be hit on machines with many directories
-- Recursive watching is not supported — must explicitly add watches for new subdirectories
-- Atomic file operations (temp file + rename) can cause RENAME events instead of CREATE
-
-**Required pattern for recursive extension dir watching:**
-
-```go
-// internal/watch/watcher.go
-// When a CREATE|RENAME event arrives for a directory path under the watched parent:
-// 1. Immediately add a watch on the new directory
-// 2. Walk the new directory to process any children already present (race window)
-// 3. Trigger catalog match on any package.json found
-
-watcher.Add(extensionRoot)
-for ev := range watcher.Events {
-    if ev.Op&(fsnotify.Create|fsnotify.Rename) != 0 {
-        if isDir(ev.Name) {
-            watcher.Add(ev.Name)          // add watch on new subdir
-            scanExistingChildren(ev.Name) // handle race window
-            go checkExtension(ev.Name)   // async catalog match
+// After EvaluatePath merge, before ApplyPolicyOverlay
+if cfg.Nudge.Enabled {
+    if cmd, ok := toolCall.ToolInput["command"].(string); ok {
+        if parsedCmd, isInstall := nudge.ParseCommand(cmd); isInstall {
+            pmState, _ := nudge.DetectPMState() // one-shot: no cache in check
+            nudgeDecision := nudge.Evaluate(parsedCmd, pmState, cfg.NudgeConfig())
+            writeNudgeAuditRecord(nudgeDecision, toolCall, auditPath, ac) // separate record
+            if nudgeDecision.Action == nudge.Block {
+                decision = policy.Decision{
+                    Allow:   false,
+                    Level:   "block",
+                    Reason:  "nudge: " + nudgeDecision.Reason,
+                    RuleIDs: []string{"nudge-block"},
+                }
+            }
+            // Advise / Rewrite: informational only; main decision unchanged
         }
     }
 }
 ```
 
-**Honest capability assessment:** fsnotify-based watching catches new installations but is not a security boundary. The race window (extension loads before Beekeeper quarantines it) is real and documented. This layer's value is speed of detection for catalog-known threats, not prevention. Sentry's fanotify-based monitoring (when elevated) provides the higher-assurance layer.
+The nudge decision does NOT merge into the main `policy.Decision` flow for Advise/Rewrite actions — those are written to a separate audit record. Only `Block` action escalates the main decision. This preserves the audit trail shape: one `policy_decision` record per tool call, plus zero or one `nudge` record if nudge evaluated.
 
-### Pattern 8: LlamaFirewall Sidecar Supervision
+---
 
-**What:** Beekeeper spawns the Python sidecar via `exec.Cmd`, monitors its health, and restarts on crash (up to 3 times with exponential backoff). Communication is length-prefixed JSON over a Unix domain socket / Windows named pipe.
+## NUDGE: Audit Record Integration
 
-**Fail-closed wiring:** The gateway and check handler have a configurable timeout on LlamaFirewall calls. If the timeout fires or the sidecar is unavailable, the decision falls back to the configured failure mode. The IPC client wraps `net.DialTimeout` with a 200ms default connect timeout.
+### New Record Types in internal/audit/
 
-**Supervision goroutine pattern:**
+Add two new struct types in a new file `internal/audit/nudge_types.go`. Do NOT modify the existing `AuditRecord` / `FromDecision` pair.
 
 ```go
-// internal/llamafirewall/supervisor.go
-func (s *Supervisor) Run(ctx context.Context) {
-    backoff := 1 * time.Second
-    for attempts := 0; attempts < 3; attempts++ {
-        cmd := exec.CommandContext(ctx, "python3", "-m", "llamafirewall.server",
-            "--socket", s.socketPath)
-        if err := cmd.Start(); err != nil {
-            s.markUnavailable()
-            time.Sleep(backoff)
-            backoff *= 2
-            continue
-        }
-        s.markAvailable()
-        attempts = 0 // reset on successful start
-        cmd.Wait()   // blocks until exit
-        s.markUnavailable()
-        time.Sleep(backoff)
-        backoff *= 2
-    }
-    s.markPermanentlyUnavailable() // 3 failures: stop retrying, log critical
+// internal/audit/nudge_types.go
+
+// NudgeRecord is emitted for every nudge evaluation (record_type:"nudge").
+// It is a separate NDJSON record, not a replacement for the policy_decision record.
+type NudgeRecord struct {
+    RecordType      string       `json:"record_type"` // always "nudge"
+    RecordID        string       `json:"record_id"`
+    Timestamp       string       `json:"timestamp"`
+    ScannerName     string       `json:"scanner_name"` // "beekeeper"
+    AgentName       string       `json:"agent_name"`
+    ToolName        string       `json:"tool_name"`
+    OriginalCommand string       `json:"original_command"`
+    Decision        string       `json:"decision"` // proceed|advise|rewrite|block
+    ReasonCode      string       `json:"reason_code"`
+    RewrittenCmd    string       `json:"rewritten_command,omitempty"`
+    PMState         NudgePMState `json:"pm_state"`
+}
+
+// VersionDriftRecord is emitted by the weekly drift check (record_type:"version_drift").
+type VersionDriftRecord struct {
+    RecordType    string `json:"record_type"` // always "version_drift"
+    RecordID      string `json:"record_id"`
+    Timestamp     string `json:"timestamp"`
+    ScannerName   string `json:"scanner_name"`
+    PMName        string `json:"pm_name"`
+    CurrentMajor  string `json:"current_major"`
+    DetectedMajor string `json:"detected_major"`
+    Severity      string `json:"severity"` // always "info"
+}
+
+// NudgePMState mirrors nudge.PMState for the audit schema.
+type NudgePMState struct {
+    NpmVersion   string `json:"npm_version,omitempty"`
+    PnpmVersion  string `json:"pnpm_version,omitempty"`
+    PnpmHardened bool   `json:"pnpm_hardened,omitempty"`
+    BunVersion   string `json:"bun_version,omitempty"`
+    BunScannerOK bool   `json:"bun_scanner_ok,omitempty"`
+    NodeVersion  string `json:"node_version,omitempty"`
 }
 ```
 
----
+**Writer compatibility:** Check `internal/audit/writer.go`'s `Write` method signature. If it is typed to accept only `AuditRecord`, add a `WriteAny(w io.Writer, v any) error` helper or change `Write` to accept `any`. The NDJSON writer itself is `json.Marshal` + append — both `NudgeRecord` and `VersionDriftRecord` marshal cleanly.
 
-## Data Flow
-
-### Hook Handler Flow (Critical Path, ~20-40ms p95)
-
-```
-Agent invokes PreToolUse hook
-    |
-    v
-OS spawns fresh beekeeper process (~5-10ms)
-    |
-    v
-beekeeper check:
-    Load config from disk (< 1ms, small JSON)
-    Open catalog index (mmap, < 5ms)
-    Decode stdin JSON (< 2ms, bounded 1MB)
-    |
-    v
-policy.Evaluate():
-    catalog.Lookup(ecosystem, pkg, version)    -- O(1) hash map
-    corroborate(matches)                       -- O(sources) ~ns
-    releaseAge.Check(publishedAt)              -- O(1) comparison
-    lifecycle.Check(scripts)                  -- O(allowlist) ~ns
-    paths.Check(targetPath)                   -- O(blocklist) ~ns
-    egress.Check(url, size)                   -- O(allowlist) ~ns
-    baseline.Check(tool, target)              -- O(1) counter lookup
-    |
-    v
-Decision (allow / warn / block / block+quarantine)
-    |
-    +----> audit.Write() -- single append syscall
-    |
-    +----> if block: fmt.Fprintln(stderr, reason); exit 2
-           if allow: exit 0
-```
-
-### Gateway MCP Proxy Flow (Per Tool Call)
-
-```
-Agent sends tools/call JSON-RPC
-    |
-    v
-gateway.Proxy.readRequest()
-    |
-    v
-Token verification (per-session, in-memory check)
-    |
-    v
-policy.Evaluate() [same engine as check handler]
-    |
-    +-- if Block: return JSON-RPC error to client
-    |             audit.Write(block record)
-    |             continue loop (connection stays open)
-    |
-    +-- if Allow/Warn:
-        forward to upstream MCP server (context with timeout)
-        await response
-        [if LlamaFirewall enabled: scan response for prompt injection, async with timeout]
-        audit.Write(allow record, response metadata)
-        return response to client
-```
-
-### Sentry Event Processing Flow (Continuous)
-
-```
-OS kernel events (fanotify / eslogger / ETW)
-    |
-    v
-Platform ingestion goroutine
-    normalize to SentryEvent{Pid, ParentPid, ExePath, Files, NetworkDst, Timestamp}
-    |
-    v
-buffered channel (cap 10000) -- absorbs burst during npm install (thousands of events)
-    |
-    v
-Correlation engine goroutine:
-    ProcessTree.Update(event)          -- maintain pid→parent map
-    SlidingWindow.Add(event)           -- 5-minute rolling window per process subtree
-    for each rule:
-        rule.Match(window, bumblebeeInventory) -- O(rules) = O(5) in v1
-        if match: emit SentryAlert
-    |
-    v
-SentryAlert
-    |
-    +----> audit.Write(critical record with full provenance)
-    +----> IPC: notify connected CLI clients (TUI update)
-    +----> optional: desktop notification
-```
-
-### Catalog Sync Flow (Hourly + Delta-Triggered)
-
-```
-Timer fires (default 1h) OR new catalog drop detected
-    |
-    v
-HTTP fetch from upstream sources (Bumblebee threat_intel, OSV, Socket)
-    |
-    v
-Signature verification (reject unsigned, warn on missing sig)
-    |
-    v
-Sanity bounds check (reject deltas > configured max)
-    |
-    v
-Build new catalog.Index in background goroutine
-    |
-    v
-Atomic pointer swap (sync.RWMutex) -- zero-downtime hot reload
-    |
-    v
-Delta analysis: new entries since last sync?
-    if yes, any new entries matching installed packages?
-        trigger beekeeper scan --deep (spawn Bumblebee subprocess)
-```
+**Schema compatibility:** `record_type` is already a string field in the NDJSON schema. The `beekeeper audit query` command (AUDT-02) already filters by `record_type`; new values are ignored by consumers reading for existing types. No migration needed. `beekeeper nudge audit` CLI (PRD §8) adds a dedicated query path for `record_type:"nudge"`.
 
 ---
 
-## Component Boundaries
+## PLCY-07: Corroboration Hardening
 
-| Boundary | Interface | Direction | Authorization |
-|----------|-----------|-----------|---------------|
-| Agent → Hook handler | stdin (JSON) + exit code | Agent writes, handler reads | None (agent is trusted caller) |
-| Agent → Gateway | TCP `127.0.0.1:N` (MCP JSON-RPC) | Bidirectional | Per-session token |
-| CLI → Sentry daemon | Unix socket / named pipe | CLI commands → Sentry; alerts ← Sentry | SO_PEERCRED / pipe ACL |
-| Gateway → Upstream MCP | TCP (MCP JSON-RPC) | Bidirectional | Upstream's own auth |
-| Beekeeper → LlamaFirewall | Unix socket / named pipe | Beekeeper sends, sidecar responds | Socket ownership (same process tree) |
-| All components → Audit log | File append | Write-only | OS file permissions (0600) |
-| Beekeeper → Bumblebee | subprocess exec + stdout pipe | Beekeeper spawns, reads NDJSON output | Process ownership |
-| Catalog sync → Upstream | HTTPS | Fetch only | TLS + catalog signatures |
+### The Gap
 
----
+`corroborate()` (corroboration.go:42-108) escalates based only on `signedCount` vs thresholds `{WarnAt:1, BlockAt:2, QuarantineAt:3}`. Bumblebee entries have `Signed:false` (line 67). Therefore bumblebee+OSV match where bumblebee is unsigned gives `signedCount:1` (only OSV is signed) → warn, not block, even for `severity:"critical"`.
 
-## Scaling Considerations
+Shai-Hulud worm case: bumblebee (`Signed:false`) + OSV (`Signed:true`) = signedCount 1 = warn. The gap is confirmed by reading the escalation table at corroboration.go:98-107.
 
-This is a single-developer tool, not a distributed system. Scaling considerations are about resource efficiency on a single machine, not horizontal scaling.
+### Minimal Safe Change
 
-| Load | Concern | Architecture Adjustment |
-|------|---------|------------------------|
-| 50-200 hook calls/hour (normal dev session) | Process spawn overhead | None needed; cold start is ~20ms, total cost negligible |
-| 500+ hook calls/hour (heavy agent session) | Audit log write contention | Buffered writer with periodic flush (not per-call syscall); already planned |
-| Large catalogs (>10MB threat_intel JSON) | Catalog parse time on `check` startup | Pre-build binary index on `catalogs sync`, mmap on load; target <5ms |
-| npm install (1000s of fs events in seconds) | Sentry event buffer saturation | Buffered channel (10k cap) + event sampling in degraded mode |
-| Multiple concurrent agents (MCP gateway) | Per-connection goroutine memory | Cap at 10 concurrent connections; each goroutine ~8KB stack |
-| LlamaFirewall inference latency | Gateway p99 latency | Async with timeout; configurable sample rate for resource-constrained machines |
+**Recommended: Per-severity escalation via `SeverityOverrides`.** Add to `CorroborationThresholds`:
 
----
+```go
+// internal/policy/types.go additions
 
-## Anti-Patterns
+type CorroborationThresholds struct {
+    WarnAt      int
+    BlockAt     int
+    QuarantineAt int
+    // PLCY-07: per-severity overrides. When ANY match has Severity in this map,
+    // use the override's thresholds instead of the global WarnAt/BlockAt/QuarantineAt
+    // for that evaluation.
+    // Sanity bound: override BlockAt must be >= 1 (zero would block unconditionally).
+    // Sanity bound: override BlockAt must be <= global BlockAt (cannot be looser).
+    SeverityOverrides map[string]SeverityThreshold
+}
 
-### Anti-Pattern 1: Long-Running beekeeper check via Socket
+type SeverityThreshold struct {
+    BlockAt      int // minimum signed-source count for block at this severity
+    QuarantineAt int // minimum signed-source count for quarantine at this severity
+}
+```
 
-**What people do:** Run `beekeeper check` as a long-lived daemon that accepts hook requests over a local socket, to amortize startup cost.
+Default PLCY-07 config: `SeverityOverrides["critical"] = SeverityThreshold{BlockAt:1, QuarantineAt:2}`.
 
-**Why it's wrong for Beekeeper:** It introduces an IPC boundary on the critical path (every hook call), adds a persistent process that must be managed, and creates a new attack surface (the socket). The startup cost (~20ms) doesn't justify the added complexity. If startup cost becomes a real problem (measurable, not theoretical), the right solution is the binary catalog index approach — not a socket daemon.
+With this default, a single OSV signed match on a critical-severity package → block. Non-critical packages still require 2 signed sources. The configuration is auditable via the policy file system.
 
-**Do this instead:** Keep `beekeeper check` ephemeral. Optimize catalog loading (mmap + pre-built binary index). Measure actual p95 latency before adding architecture.
+**Alternative considered (rejected): Treat bundled bumblebee as signed-equivalent** by setting `Signed:true` in the catalog adapter. Rejected because: (1) bumblebee catalog entries genuinely do not carry cryptographic signatures; changing the `Signed` field would mislead consumers and audit logs; (2) it removes the distinction between "catalog has a cryptographic signature" and "catalog is bundled with the beekeeper binary," which matters for the corroboration trust model.
 
-### Anti-Pattern 2: Shared In-Process State Between check Invocations
+### Sanity Bounds Locus
 
-**What people do:** Use init() functions or package-level globals to cache state between `beekeeper check` invocations within the same process (doesn't apply to ephemeral model, but relevant if someone implements the socket daemon anti-pattern above).
+**The sanity-bounds locus is `internal/policy/corroboration.go:validateCorroborationThresholds`.** Extend it to:
 
-**Why it's wrong:** Each hook invocation is a separate process. Package-level state is per-process and does not persist. Attempting to share state across invocations requires a daemon, which brings all the complexity above.
+1. Reject `SeverityOverrides[s].BlockAt < 1` — a zero threshold blocks every tool call for any package in the ecosystem (poisonable by a malicious catalog entry setting severity=critical universally).
+2. Reject `SeverityOverrides[s].BlockAt > globalBlockAt` — an override looser than the global threshold weakens security for a more-dangerous severity class (misconfiguration).
+3. Keep existing: `WarnAt <= BlockAt <= QuarantineAt`.
+4. Keep existing: misconfigured thresholds → fail closed (return `"block"`) as today.
 
-**Do this instead:** Treat each `beekeeper check` invocation as stateless. The catalog index is the only "state" — load it fast from disk on each startup.
+`validateCorroborationThresholds` is called at the START of every `corroborate()` call (line 43). The single locus prevents divergence across the three consumers (check, gateway, Sentry correlation). Do not add bounds checking in policyloader or elsewhere.
 
-### Anti-Pattern 3: Policy Logic in the Gateway Proxy Layer
+### corroborate() Change
 
-**What people do:** Implement policy as middleware specific to the gateway, separate from the hook handler's policy logic.
+```go
+// internal/policy/corroboration.go -- inside corroborate(), after building signedCount
 
-**Why it's wrong:** Policy divergence. The hook handler and gateway must enforce identical policy for the same tool call. Having two policy implementations means they will drift.
+// PLCY-07: check if any matched entry has a severity that triggers an override.
+maxSeverityOverride := findSeverityOverride(matches, t.SeverityOverrides)
+effectiveBlockAt := t.BlockAt
+effectiveQuarantineAt := t.QuarantineAt
+if maxSeverityOverride != nil {
+    effectiveBlockAt = maxSeverityOverride.BlockAt
+    effectiveQuarantineAt = maxSeverityOverride.QuarantineAt
+}
 
-**Do this instead:** `internal/policy` is a pure library. Both `internal/check` and `internal/gateway/policy_middleware.go` import and call `policy.Evaluate()`. One implementation, two consumers.
+switch {
+case signedCount >= effectiveQuarantineAt && hasSignedSource:
+    return "block", true, signedCount, agreedList, dissentList
+case signedCount >= effectiveBlockAt && hasSignedSource:
+    return "block", false, signedCount, agreedList, dissentList
+case signedCount >= t.WarnAt || hasUnsigned:
+    return "warn", false, signedCount, agreedList, dissentList
+default:
+    return "allow", false, signedCount, agreedList, dissentList
+}
+```
 
-### Anti-Pattern 4: Fanotify for Extension Directory Watching
+`findSeverityOverride` is a pure helper that scans `matches` for severity values present in `t.SeverityOverrides` and returns the most-restrictive (lowest `BlockAt`) override found. Pure: only reads from the passed-in slices and map.
 
-**What people do:** Use fanotify (privileged) for the extension directory watcher to avoid fsnotify's inotify limitations.
-
-**Why it's wrong for Beekeeper:** The extension watcher runs unprivileged. fanotify requires `CAP_SYS_ADMIN`. Using it for the watcher would force users to run the watcher as root, which defeats the unprivileged-tier value proposition.
-
-**Do this instead:** fsnotify (inotify) for the unprivileged watcher, accepting its limitations. The Sentry daemon's fanotify monitoring (elevated, opt-in) provides the higher-assurance layer. Document the race window honestly. Implement the recursive watch pattern (watch new subdirectories as they appear) to minimize the gap.
-
-### Anti-Pattern 5: Blocking the Correlation Engine Goroutine on Audit Writes
-
-**What people do:** Call `audit.Write()` synchronously inside the Sentry correlation engine goroutine.
-
-**Why it's wrong:** Audit writes involve disk I/O (fsync on critical events) and optional network I/O (remote sinks). Blocking the correlation engine means events pile up in the channel during slow I/O, eventually saturating the buffer.
-
-**Do this instead:** Audit writes in the Sentry path go through a dedicated audit goroutine with a buffered channel. The correlation engine sends `AuditRecord` structs to the channel and continues immediately. The audit goroutine drains the channel and batches writes. Critical events (severity: critical) bypass batching and force a flush.
-
-### Anti-Pattern 6: TCP localhost for Gateway Authentication
-
-**What people do:** Bind the gateway to `127.0.0.1` and treat localhost as a trust boundary.
-
-**Why it's wrong:** Any process on the machine can connect to a localhost TCP socket. A compromised package's postinstall script can talk to the gateway without a token.
-
-**Do this instead:** Per-session token authentication even on localhost (already in the PRD). The token is issued by `beekeeper` at agent setup time, written to the agent's config, and checked on every new connection. Additionally, consider offering Unix socket mode for the gateway (eliminates the network stack entirely; socket file permissions enforce access control).
-
----
-
-## Build Order Implications
-
-The architecture has clear dependency layers. Build order should follow dependencies, not features:
-
-### Layer 0 — Foundation (must exist before anything else)
-1. `internal/config` — layered config loading
-2. `internal/audit` — NDJSON writer, 0600 permissions, local file sink
-3. `internal/catalog` — JSON loader + two-level hash index (without sync)
-
-### Layer 1 — Core Policy Engine (enables check handler and gateway)
-4. `internal/policy` — pure policy evaluation library (depends on catalog.Index)
-5. `internal/check` — hook handler (depends on policy, catalog, audit)
-6. `cmd/beekeeper` — Cobra root + check subcommand wiring
-
-This is the v0.1.0 deliverable: a working `beekeeper check` with Bumblebee catalog matching and basic audit logging.
-
-### Layer 2 — Extended Policy + Sync (v0.3.0)
-7. `internal/catalog/sync` — HTTP fetch, signature verify, delta detect
-8. `internal/catalog/watcher` — daemon loop for `beekeeper catalogs watch`
-9. `internal/watch` — fsnotify extension directory watcher
-10. Policy extensions in `internal/policy`: release-age, lifecycle, paths, egress, baseline
-
-### Layer 3 — Gateway + Sidecar (v0.6.0)
-11. `internal/ipc` — cross-platform IPC (Unix socket + named pipe, with auth)
-12. `internal/gateway` — MCP proxy daemon (depends on policy, ipc, audit)
-13. `internal/llamafirewall` — sidecar supervisor (depends on ipc)
-14. `internal/sentry/linux` — fanotify + eBPF ingestion (depends on ipc, audit)
-15. `bpf/` — eBPF C programs (compiled via bpf2go as part of layer 3)
-
-### Layer 4 — Cross-Platform Sentry (v0.9.0)
-16. `internal/sentry/darwin` — eslogger-based ingestion
-17. `internal/sentry/windows` — ETW-based ingestion (tekert/golang-etw, no CGO)
-
-### Layer 5 — TUI + Policy as Code (v1.0.0)
-18. `internal/tui` — Bubble Tea dashboard (reads from audit log NDJSON, no privileged channel)
-19. Policy as code testing: `beekeeper policy test`, `beekeeper policy validate`
-20. `internal/selfdefense` — beekeeper-self catalog check
+**Files modified for PLCY-07:**
+- `internal/policy/types.go` — add `SeverityThreshold`, extend `CorroborationThresholds`
+- `internal/policy/corroboration.go` — extend `validateCorroborationThresholds`, add `findSeverityOverride`, extend `corroborate()` escalation table
+- `internal/policyloader/loader.go` — add `severity_overrides` field to `PolicyRule`
+- `internal/policyloader/validate.go` — validate `severity_overrides` entries (BlockAt >= 1, <= globalBlockAt)
 
 ---
 
-## Integration Points
+## Component Inventory: New vs Modified
 
-### External Services
+### NEW Files
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| Bumblebee | subprocess exec; read NDJSON stdout | Pin Bumblebee version in go.mod or verify hash of downloaded binary |
-| OSV database | HTTP fetch of offline DB; cilium/ebpf not relevant here | Use osv-scanner's offline DB mechanism; cache in `~/.beekeeper/catalogs/` |
-| Socket public API | HTTPS GET; rate-limited free tier | Cache responses locally; retry with exponential backoff |
-| MCP servers | TCP JSON-RPC (MCP protocol) | Standard MCP client library; wrap with policy middleware |
-| LlamaFirewall | Unix socket / named pipe; length-prefixed JSON | Beekeeper owns the process lifecycle; sidecar does not outlive Beekeeper |
-| Syslog | RFC 5424 over UDP/TCP | Use `log/syslog` from stdlib (available on Linux/macOS; Windows needs a shim) |
-| OpenTelemetry | OTLP gRPC or HTTP | `go.opentelemetry.io/otel` — add only if audit sink is configured |
+| File | Type | Responsibility |
+|------|------|----------------|
+| `internal/nudge/nudge.go` | NEW | Pure `Evaluate(ParsedCommand, PMState, Config) Decision` |
+| `internal/nudge/detect.go` | NEW | Impure `DetectPMState() (PMState, error)` — exec subprocess with 2s timeout |
+| `internal/nudge/parse.go` | NEW | Pure `ParseCommand(string) (ParsedCommand, bool)` — npm/npx/pnpm/bun/yarn install detection |
+| `internal/nudge/rewrite.go` | NEW | Pure `Rewrite(ParsedCommand, PMState, Config) string` — hard-mode command rewriting |
+| `internal/nudge/version.go` | NEW | Pure semver comparison helpers (pnpm >= 11.0, bun >= 1.3, node >= 22) |
+| `internal/nudge/reasons.go` | NEW | Closed reason-code enum constants (PRD §6) |
+| `internal/nudge/*_test.go` | NEW | Table-driven pure tests for all 17 PRD §10 acceptance criteria |
+| `internal/check/paths.go` | NEW | `extractPathTargets(ToolCall) []string`, tilde expansion, Bash credential-read detection |
+| `internal/audit/nudge_types.go` | NEW | `NudgeRecord`, `VersionDriftRecord`, `NudgePMState` structs |
+| `internal/gateway/nudge_cache.go` | NEW | `nudgeCacheAdapter` with 60s TTL for gateway's long-lived use |
+| `cmd/beekeeper/nudge.go` | NEW | `beekeeper nudge status|check|audit` CLI surface (PRD §8) |
 
-### Internal Boundaries
+### MODIFIED Files
+
+| File | Change | Feature |
+|------|--------|---------|
+| `internal/policy/types.go` | Add `SeverityThreshold` type; add `SeverityOverrides map[string]SeverityThreshold` to `CorroborationThresholds` | PLCY-07 |
+| `internal/policy/corroboration.go` | Extend `validateCorroborationThresholds` sanity bounds; add `findSeverityOverride`; extend `corroborate()` escalation table | PLCY-07 |
+| `internal/check/handler.go` | Insert `extractPathTargets` + `EvaluatePath` block; insert `nudge.ParseCommand` + `nudge.Evaluate` + `writeNudgeAuditRecord` block | PLCY-05, NUDGE |
+| `internal/policyloader/enforce.go` | Fix `extractTargetPath` to also read `file_path` key | PLCY-05 compat |
+| `internal/policyloader/loader.go` | Add `severity_overrides` field to `PolicyRule`; extend `ThresholdsFromPolicyFiles` | PLCY-07 |
+| `internal/policyloader/validate.go` | Validate `severity_overrides` entries (BlockAt bounds) | PLCY-07 |
+| `internal/gateway/` (handler) | Wire same `EvaluatePath` + nudge evaluation; add `nudgeCacheAdapter` field; write nudge audit records | PLCY-05, NUDGE |
+| `internal/shim/shim.go` (or npm shim template) | Wire nudge evaluation in npm shim path before proxy | NUDGE |
+| `internal/config/` | Add `Nudge Config` block matching PRD §5 JSON shape | NUDGE |
+| `internal/audit/writer.go` | Verify `Write` accepts `any`; add `WriteAny` helper if needed | NUDGE |
+
+---
+
+## Data Flow: runCheck Pipeline After v1.2.0
+
+```
+stdin JSON
+  |
+  v
+decode hookInput (handler.go:153)
+  |
+  v
+open mmap bbIdx (handler.go:177)
+  |
+  v
+build MultiIndex (handler.go:194-211)
+  |
+  v
+load policyFiles + derive thresholds (handler.go:233-246)
+  |   thresholds carry SeverityOverrides[critical]={BlockAt:1,QuarantineAt:2} by default
+  v
+policy.Evaluate(toolCall, multiIdx, thresholds, ac) (handler.go:~251)
+  |   corroborate() reads CatalogMatch.Severity, applies severity override (PLCY-07)
+  |   critical + 1 signed source --> block (was: warn with bumblebee unsigned)
+  v
+extractPathTargets(toolCall) --> []resolvedPath         NEW -- PLCY-05
+  |   reads file_path, path, parses Bash command
+  |   tilde-expand + OS separator normalize in caller
+  v
+for each path: policy.EvaluatePath(path, DefaultSensitivePaths+cfg) --> pathDecision
+  |
+  v
+decision = mergeDecisions(decision, pathDecision)
+  |   block > warn > allow; path block beats catalog allow
+  v
+if nudge.Enabled AND ParseCommand(tc.ToolInput["command"]) matches:   NEW -- NUDGE
+  pmState := nudge.DetectPMState()   one-shot; no cache (check is ephemeral)
+  nudgeDecision := nudge.Evaluate(parsedCmd, pmState, cfg.NudgeConfig())
+  writeNudgeAuditRecord(nudgeDecision, ...)   separate record_type:"nudge"
+  if nudgeDecision.Action == Block:
+    decision = blockDecision("nudge-block")
+  [Advise/Rewrite: informational only -- do not merge into main decision]
+  |
+  v
+ApplyPolicyOverlay(policyFiles, toolCall, decision) (handler.go:267)
+  |   sensitive_path overlay rules from JSON files; most-restrictive-wins
+  v
+finalizeWithAC --> writeAuditWithAC --> w.Write(AuditRecord{RecordType:"policy_decision"})
+  |   + separate w.Write(NudgeRecord{RecordType:"nudge"}) written earlier if applicable
+  v
+exit 0 / exit 1
+```
+
+---
+
+## Architectural Patterns Applied
+
+### Pattern: Caller-Resolved I/O, Pure Decision (existing — extended to nudge)
+
+**What:** All I/O (network, subprocess exec, file reads) runs in the caller before the pure decision function is called. The decision function receives only plain value structs.
+
+**Existing implementations:**
+- `policy.EvaluateReleaseAge(ReleaseAgeInput, cfg)` — caller provides `AgeMinutes int64` (HTTP-resolved); `release_age.go:61-109`
+- `policy.Evaluate(ToolCall, MultiCatalogLookup, ...)` — catalog lookup resolved by adapters before call; `engine.go:64`
+- `policy.EvaluatePath(resolvedPath, cfg)` — caller normalizes tilde and OS separators; `path.go:76`
+
+**Applied to nudge:** `nudge.Evaluate(ParsedCommand, PMState, Config)` — caller calls `nudge.DetectPMState()` first. The 60-second cache belongs in the caller adapter (gateway), not in `nudge.Evaluate` or `nudge.DetectPMState`.
+
+### Pattern: Most-Restrictive-Wins Merge
+
+**What:** When multiple evaluators produce decisions, the merge takes the decision with the highest level rank (block > warn > allow).
+
+**Existing:** `ApplyPolicyOverlay` implements this internally (enforce.go:139-165).
+
+**Extension:** A new `mergeDecisions` helper in `internal/check/paths.go` applies the same rule for the path-evaluation merge step before the overlay runs.
+
+### Pattern: Separate Audit Record per Cross-Cutting Concern
+
+**What:** Different concern types emit different `record_type` values. Consumers filter on `record_type`. Each concern owns its own struct, written by the wiring layer (not by the pure decision function).
+
+**Existing:** `policy_decision`, `tool_result`, `llmf_alert`, `sentry_alert` are separate structs, separately written.
+
+**Extension:** `nudge` and `version_drift` records follow the same pattern. `nudge.Evaluate` returns a `Decision` with `AuditFields map[string]any`; the handler maps this to `NudgeRecord` and calls `w.Write(nudgeRec)` separately from the main `policy_decision` write.
+
+---
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Cache in the Nudge Package
+
+**What people do:** Put a `sync.Map` cache with a `time.Time` TTL inside `nudge.DetectPMState` or `nudge.Evaluate`.
+
+**Why it's wrong:** Violates the purity constraint — package-level mutable state is a global side effect. In the one-shot `beekeeper check` process the cache is dead code (the process dies before it would ever be reused). In tests it leaks state between test cases.
+
+**Do this instead:** Cache in the long-lived caller (gateway `nudgeCacheAdapter`). One-shot callers (check, shim) detect once per invocation — one subprocess exec taking ~5ms, acceptable at their call frequency.
+
+### Anti-Pattern 2: Merging Nudge Decision into policy.Decision for Advise/Rewrite
+
+**What people do:** Return a `policy.Decision` from nudge with `Level:"warn"` for Advise and merge it into the main decision, so the main audit record reflects "warn" for an npm install nudge.
+
+**Why it's wrong:** Pollutes the `policy_decision` audit record semantics. Consumers correlating `sources_agreed`, `corroboration_count`, and `catalog_matches` fields receive nonsensical values for a nudge-driven warn. The `decision` field becomes ambiguous between "threat-intel decision" and "package-manager preference."
+
+**Do this instead:** Write a separate `record_type:"nudge"` record. Only a nudge `Block` action (no hardened PM + `requireHardened:true`) escalates the main `policy.Decision` to block.
+
+### Anti-Pattern 3: I/O in corroborate()
+
+**What people do:** To handle PLCY-07, fetch catalog metadata (severity from a registry API) inside `corroborate()`.
+
+**Why it's wrong:** `corroborate()` is called from the pure `policy.Evaluate` path. Any I/O there breaks the purity constraint and makes the function untestable in isolation.
+
+**Do this instead:** Severity is already present on each `CatalogMatch` struct (`Severity string` field, `types.go:43`). `findSeverityOverride` reads `m.Severity` from the already-resolved matches. No additional I/O needed.
+
+### Anti-Pattern 4: SeverityOverride BlockAt = 0
+
+**What people do:** Set `SeverityOverrides["critical"].BlockAt = 0` to "block everything critical regardless of catalog hits."
+
+**Why it's wrong:** `BlockAt:0` means zero signed sources triggers block. Since zero signed sources is the state before any catalog lookup occurs, this blocks every tool call regardless of whether any catalog match occurred.
+
+**Do this instead:** Minimum valid override is `BlockAt:1`. `validateCorroborationThresholds` enforces this bound and fails closed when violated.
+
+### Anti-Pattern 5: Duplicating extractFromCommand / installPrefixes
+
+**What people do:** Add a third copy of the `installPrefixes` table to `internal/nudge/parse.go` because it cannot import `internal/policy` (circular) and `policyloader` already has a duplicate (`installPrefixesOverlay` in enforce.go:240-253).
+
+**Why it's wrong:** Three copies of the same table will diverge (they already diverge — policyloader's copy does not include pnpm/bun/yarn patterns needed by nudge).
+
+**Do this instead:** Extract a shared `internal/pkgparse/` package containing the install-command prefix table and `ParseInstallCommand`. Both `internal/policy/engine.go` (via import), `internal/policyloader/enforce.go`, and `internal/nudge/parse.go` can import it. This is a small, pure package with no I/O. Alternatively, if the policy team decides the duplication is acceptable for scope reasons, at minimum add a comment to each copy pointing to the others.
+
+---
+
+## Build Order (Dependency-Ordered)
+
+### Phase 1: Pure Policy Changes (no I/O, no wiring, testable in isolation)
+
+1. **PLCY-07a:** `internal/policy/types.go` — add `SeverityThreshold`, extend `CorroborationThresholds`. No behavior change; existing tests still pass.
+2. **PLCY-07b:** `internal/policy/corroboration.go` — extend `validateCorroborationThresholds`, add `findSeverityOverride`, extend `corroborate()` escalation table.
+3. **PLCY-07c BTEST:** Pure-policy table tests for corroboration — cover: critical single-signed-source blocks; override looser-than-global rejected (fail-closed); override BlockAt=0 rejected; non-critical still requires 2 signed sources; Shai-Hulud worm fixture (bumblebee unsigned + OSV signed + severity=critical) → block.
+4. **NUDGE-pure:** `internal/nudge/` pure files first (`nudge.go`, `parse.go`, `rewrite.go`, `version.go`, `reasons.go`). Table-driven tests for all PRD §10 criteria that do not require I/O (criteria 1-10, 14, 15, 16, 17).
+
+### Phase 2: I/O Adapters
+
+5. **NUDGE-detect:** `internal/nudge/detect.go` + `detect_test.go` — criteria 11 (cache absence in detect), 12 (2s timeout graceful), 13 (bunfig.toml parse failure safe fallback).
+6. **PLCY-05-extract:** `internal/check/paths.go` — `extractPathTargets`, tilde expansion, Bash credential-read pattern matching. Unit tests with table of tool shapes (Read `file_path`, Write `file_path`, Bash `cat ~/.aws/credentials`).
+7. **NUDGE-audit:** `internal/audit/nudge_types.go` — `NudgeRecord`, `VersionDriftRecord`, `NudgePMState`. Unit tests for JSON marshaling shape.
+
+### Phase 3: Wiring (handler.go, gateway, shim, policyloader)
+
+8. **PLCY-05-wire:** Wire `extractPathTargets` + `policy.EvaluatePath` into `internal/check/handler.go`. Fix `extractTargetPath` in `policyloader/enforce.go` to read `file_path`. Integration test: check-handler stdin fixture `{"tool_name":"Read","tool_input":{"file_path":"~/.aws/credentials"}}` → block decision, `rule_ids:["sensitive-path-policy"]`.
+9. **PLCY-07-policyloader:** Extend `policyloader/loader.go` + `validate.go` for `severity_overrides` in policy files. Tests for `ThresholdsFromPolicyFiles` with severity override entries.
+10. **NUDGE-wire-check:** Wire `nudge.ParseCommand` + `nudge.Evaluate` + `writeNudgeAuditRecord` into `handler.go`. Check-handler integration test: Bash `npm install foo` → nudge `record_type:"nudge"` audit record written + `policy_decision` allow; when `requireHardened:true` + no PM installed → `policy_decision` block.
+11. **NUDGE-wire-gateway:** Add `nudgeCacheAdapter` to gateway. Wire nudge evaluation in gateway handler. Integration test for 60s TTL cache (inject a clock interface or `time.Now` override).
+12. **NUDGE-wire-shim:** Wire nudge evaluation in npm shim path before proxy.
+
+### Phase 4: CLI and E2E
+
+13. **NUDGE-cli:** `cmd/beekeeper/nudge.go` — `nudge status|check|audit` subcommands.
+14. **BTEST-e2e:** Live-binary E2E battery:
+    - `echo '{"tool_name":"Read","tool_input":{"file_path":"~/.aws/credentials"}}' | beekeeper check` → exit 1 (PLCY-05)
+    - `echo '{"tool_name":"Bash","tool_input":{"command":"npm install ai-figure"}}' | beekeeper check` (OSV signed + bumblebee unsigned + severity=critical) → exit 1 (PLCY-07)
+    - `echo '{"tool_name":"Bash","tool_input":{"command":"npm install chalk"}}' | beekeeper check` (no catalog match) → exit 0, nudge audit record written if pnpm/bun installed
+    - `beekeeper nudge check "npm install chalk"` → human-readable dry-run output
+
+---
+
+## Integration Points Summary
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| check ↔ policy | Direct function call (same process) | No channel, no goroutine boundary; must be synchronous |
-| gateway ↔ policy | Direct function call (same goroutine) | Policy eval is on the hot path; must not block on I/O |
-| sentry ↔ correlation engine | Buffered Go channel (cap 10000) | Decouples kernel ingestion rate from rule evaluation rate |
-| correlation engine ↔ audit | Buffered Go channel | Decouples audit I/O from event processing latency |
-| CLI ↔ sentry daemon | Unix socket / named pipe (length-prefixed JSON) | Authorized via SO_PEERCRED / pipe ACL; protocol is strictly command/response |
-| beekeeper ↔ llamafirewall | Unix socket / named pipe (length-prefixed JSON) | Beekeeper is the client; timeout on every call; fail-closed/open/warn configurable |
+| `internal/check` -> `internal/nudge` | Direct Go call: `ParseCommand`, `DetectPMState`, `Evaluate` | No cache in check; one-shot |
+| `internal/gateway` -> `internal/nudge` | Same, via `nudgeCacheAdapter.State()` wrapper | 60s TTL cache in gateway handler struct |
+| `internal/shim` -> `internal/nudge` | Direct Go call | One-shot (shim invoked per command) |
+| `internal/check` -> `internal/policy` (EvaluatePath) | Direct Go call with caller-resolved path | PLCY-05 |
+| `corroborate()` -> severity data | Reads `CatalogMatch.Severity` already in memory | No new I/O (PLCY-07) |
+| `internal/audit.Writer` -> `NudgeRecord` | `w.Write(nudgeRec)` | Verify writer accepts `any` before building |
+| `policyloader.ThresholdsFromPolicyFiles` -> `CorroborationThresholds` | Returns extended struct with `SeverityOverrides` | PLCY-07 policyloader change |
 
 ---
 
 ## Sources
 
-- Go project layout community standard: https://github.com/golang-standards/project-layout (MEDIUM — community convention, not official Go spec)
-- Cobra CLI framework: https://github.com/spf13/cobra (HIGH — official repo, widely used in Kubernetes, GitHub CLI, Hugo)
-- Go binary startup characteristics: https://replit.com/blog/golang-performance — measured ~11ms for bare binary, 277ms for a program with 25MB eager map literal (avoidable); https://eblog.fly.dev/startfast.html — parallelization and lazy init strategies
-- cilium/ebpf library: https://pkg.go.dev/github.com/cilium/ebpf — pure Go, no CGO, ring buffer + perf reader patterns (HIGH)
-- cilium/ebpf usage patterns: https://deepwiki.com/cilium/ebpf/6-examples-and-usage-patterns (MEDIUM)
-- fanotify Go wrapper: https://github.com/opcoder0/fanotify — notification-only in current state, requires CAP_SYS_ADMIN (HIGH — official repo)
-- fsnotify limitations: https://github.com/fsnotify/fsnotify — fanotify backend "Not yet", inotify watch limits, no recursive watching (HIGH — official repo)
-- ETW Go library (CGO, older): https://pkg.go.dev/github.com/bi-zone/etw — requires mingw-w64 + CGO (HIGH)
-- ETW Go library (no CGO): https://pkg.go.dev/github.com/tekert/golang-etw/etw — pure Go, batched consumer pattern (MEDIUM — less widely used)
-- SO_PEERCRED in Go: https://blog.jbowen.dev/2019/09/using-so_peercred-in-go/ and https://github.com/joeshaw/peercred (MEDIUM — pattern is stable, platform coverage varies)
-- Windows named pipe ACLs: https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights (HIGH — official Microsoft docs)
-- Go map vs trie performance: https://jmoiron.net/blog/go-performance-tales/ — Go's built-in map outperforms trie at exact-match lookups (MEDIUM)
-- Cross-platform IPC in Go: https://github.com/james-barrow/golang-ipc — Unix socket + named pipe abstraction (MEDIUM — smaller project)
-- Tetragon architecture overview: https://tetragon.io/ (MEDIUM — limited architectural detail available without source inspection)
-- MCP gateway patterns: https://aigateway.envoyproxy.io/blog/mcp-implementation/ and https://github.com/microsoft/mcp-gateway (MEDIUM — emerging ecosystem, patterns not yet settled)
+All findings derived from direct inspection of real source files at commit state 2026-06-03:
+
+- `internal/policy/engine.go` — `extract()`, `installPrefixes`, `Evaluate()` (lines 64-176)
+- `internal/policy/path.go` — `EvaluatePath()`, `DefaultSensitivePaths()`, caller-resolves-path docs (lines 29-168)
+- `internal/policy/corroboration.go` — `corroborate()`, `validateCorroborationThresholds()`, escalation table (lines 32-108)
+- `internal/policy/types.go` — `ToolCall`, `Decision`, `CorroborationThresholds`, `AgentContext` (lines 17-117)
+- `internal/policy/release_age.go` — `ReleaseAgeInput`, `EvaluateReleaseAge()`, the pure-adapter pattern to mirror (lines 1-110)
+- `internal/check/handler.go` — `runCheck()` pipeline with exact insertion-point line references (lines 101-272)
+- `internal/policyloader/enforce.go` — `ApplyPolicyOverlay()`, `extractTargetPath()` gap, overlay merge logic (lines 39-394)
+- `internal/policyloader/loader.go` — `PolicyFile`, `PolicyRule`, `LoadPolicyDir()` (lines 26-139)
+- `internal/audit/types.go` — `AuditRecord`, `FromDecision()`, existing record types (lines 22-150)
+- `internal/shim/shim.go` — `DefaultTools`, `Install()`, one-shot architecture (lines 1-80)
+- `.planning/specs/NUDGE-PRD.md` — full nudge spec, §3 architecture, §3.3 integration points, §4 decision flow
+- `.planning/PROJECT.md` — milestone context, architecture constraints
+- `CLAUDE.md` — Architecture Constraints, Self-Defense Non-Negotiables, corroboration sanity bounds requirement
 
 ---
 
-*Architecture research for: Beekeeper — Go multi-process agent runtime safety harness*
-*Researched: 2026-05-26*
+*Architecture research for: Beekeeper v1.2.0 Runtime Behavioral Hardening — PLCY-05 + NUDGE + PLCY-07*
+*Researched: 2026-06-03*

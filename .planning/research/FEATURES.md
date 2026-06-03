@@ -1,376 +1,572 @@
 # Feature Research
 
-**Domain:** Agent runtime safety harness / developer workstation security
-**Researched:** 2026-05-26
-**Confidence:** HIGH (most claims verified against multiple live sources from May 2026)
+**Domain:** Agent runtime safety harness / developer workstation security — Milestone v1.2.0 "Runtime Behavioral Hardening"
+**Researched:** 2026-06-03
+**Confidence:** HIGH (command mappings verified against pnpm/bun official docs; severity conventions verified against OSV schema spec + pnpm 11 release notes; sensitive-path blocklist grounded in Claude Code issue tracker and AI agent security literature)
+
+> **Scope note:** This file covers the three v1.2.0 features: PLCY-05 (sensitive-path enforcement wiring), NUDGE (package-manager nudge), and PLCY-07 (corroboration hardening). The v1.0.0 milestone feature landscape is preserved at the bottom of this file. The downstream consumer for this research is `rewrite.go` authors and roadmap planners deriving REQ-IDs and success criteria.
 
 ---
 
-## Competitive Landscape Summary
+## Part I: v1.2.0 Feature Research
 
-Before the feature breakdown, a precise account of what each existing tool actually provides — because the gaps are where Beekeeper lives.
+### 1. npm → pnpm/bun Command Equivalence Mapping
 
-### Bumblebee (Perplexity AI, released May 22, 2026)
+**Confidence:** HIGH. Verified directly against pnpm `pnpm add` docs (pnpm.io/cli/add), bun `bun add` docs (bun.sh/docs/cli/add), and bun `bunx` docs (bun.sh/docs/cli/bunx). Sources agree on all flag mappings below.
 
-Read-only inventory scanner. Single static Go binary. Three scan profiles (baseline, project, deep). Covers npm/pnpm/Yarn/Bun/PyPI/Go/RubyGems/Composer/MCP configs/editor extensions/browser extensions. Exposure catalog: minimal JSON with exact ecosystem/name/version matching. Schema-compatible NDJSON output. Apache 2.0.
+#### 1.1 Install-with-packages (`npm install <pkg>` / `npm i <pkg>` / `npm add <pkg>`)
 
-**What it does not do:** No runtime enforcement. No package install interception. No hook integration with any agent. No network egress monitoring. No process correlation. No prompt injection detection. macOS/Linux only at v0.1.1; no Windows support shipped yet. No lifecycle script policy. No release-age policy. Read-only is the explicit design choice — Bumblebee answers "who has this package right now?" not "block this install."
+| npm command | pnpm equivalent | bun equivalent | Notes |
+|-------------|-----------------|----------------|-------|
+| `npm install <pkg>` | `pnpm add <pkg>` | `bun add <pkg>` | Production dep; both default to production |
+| `npm i <pkg>` | `pnpm add <pkg>` | `bun add <pkg>` | `npm i` is a first-class alias |
+| `npm add <pkg>` | `pnpm add <pkg>` | `bun add <pkg>` | `npm add` is a first-class alias |
+| `npm install --save-dev <pkg>` | `pnpm add --save-dev <pkg>` | `bun add --dev <pkg>` | pnpm: `--save-dev` or `-D`; bun: `--dev`, `-d`, `-D`, `--development` |
+| `npm install -D <pkg>` | `pnpm add -D <pkg>` | `bun add -D <pkg>` | Short flag; `-D` is valid for all three |
+| `npm install --save-optional <pkg>` | `pnpm add --save-optional <pkg>` | `bun add --optional <pkg>` | pnpm: `--save-optional` or `-O`; bun: `--optional` |
+| `npm install -O <pkg>` | `pnpm add -O <pkg>` | `bun add --optional <pkg>` | bun has no `-O` short form; expand to `--optional` |
+| `npm install --global <pkg>` | `pnpm add --global <pkg>` | `bun add --global <pkg>` | Both support `--global` and `-g` |
+| `npm install -g <pkg>` | `pnpm add -g <pkg>` | `bun add -g <pkg>` | Short flag identical |
+| `npm install --save-exact <pkg>` | `pnpm add --save-exact <pkg>` | `bun add --exact <pkg>` | pnpm: `--save-exact` or `-E`; bun: `--exact` or `-E` |
+| `npm install -E <pkg>` | `pnpm add -E <pkg>` | `bun add -E <pkg>` | Short flag identical |
+| `npm install <pkg>@1.2.3` | `pnpm add <pkg>@1.2.3` | `bun add <pkg>@1.2.3` | Version spec syntax identical across all three |
+| `npm install <pkg>@latest` | `pnpm add <pkg>@latest` | `bun add <pkg>@latest` | Tag spec syntax identical; this is the risky unpin case (see §3) |
+| `npm install <pkg>@^1.2.0` | `pnpm add <pkg>@^1.2.0` | `bun add <pkg>@^1.2.0` | Range spec syntax identical; also a risky case |
 
-**Gap Beekeeper fills:** Everything past detection. Beekeeper is the runtime enforcement layer on top of Bumblebee's inventory intelligence.
+**Implementation note for `rewrite.go`:** Flag preservation is straightforward for the flags above. The only flag that requires transformation is `--save-optional`/`-O` (pnpm keeps it as-is; bun must expand to `--optional`). All other flags either pass through identically or have the same short form.
 
-### LlamaFirewall (Meta, May 2025)
+**Flag preservation implementation guidance:**
+- Strip `npm install`, `npm i`, or `npm add` as the command verb. Replace with target PM verb.
+- For pnpm: pass all remaining flags and package args through unchanged (pnpm flag names are very close to npm's).
+- For bun: handle these specific transforms:
+  - `--save-dev` → `--dev` (or keep `-D` unchanged)
+  - `--save-optional` → `--optional`
+  - `--save-exact` → `--exact`
+  - `-O` → `--optional`
+  - `-o` → `--optional`
+  - All other flags that pnpm/bun do not support: drop and log to audit as `flag_dropped`.
 
-Python framework. Three scanners: PromptGuard 2 (86M BERT, 97.5% attack detection in proprietary dataset), AlignmentCheck (chain-of-thought deviation detection, experimental), CodeShield (Semgrep + regex insecure code detection, 8 languages).
+#### 1.2 No-argument install (`npm install` / `npm i`)
 
-**What it does not do:** No supply chain intelligence. No package install enforcement. No file system monitoring. No network egress control. No process correlation. No editor extension protection. No catalog matching. Pure semantic/LLM-layer defense — it does not know what npm packages are malicious. Requires Python + PyTorch (~400–800MB). No integration with agent hooks — users wire it themselves.
+`npm install` with no arguments installs all dependencies from the existing `package.json`, restoring `node_modules` from the lockfile. This is the "lockfile install" pattern used in CI and after git pull.
 
-**Gap Beekeeper fills:** Supply chain enforcement, host-level process monitoring, structured hook integration. LlamaFirewall becomes Beekeeper's sidecar for the semantic layer Beekeeper does not implement.
+| npm command | pnpm equivalent | bun equivalent | Notes |
+|-------------|-----------------|----------------|-------|
+| `npm install` | `pnpm install` | `bun install` | Both restore from lockfile |
+| `npm i` | `pnpm install` | `bun install` | `npm i` maps to `pnpm install` / `bun install` not `pnpm add` / `bun add` |
+| `npm install --production` | `pnpm install --prod` | `bun install --production` | Production-only; pnpm uses `--prod`, bun uses `--production` |
+| `npm install --frozen-lockfile` | `pnpm install --frozen-lockfile` | `bun install --frozen-lockfile` | CI-mode lockfile enforcement; flag identical |
+| `npm ci` | `pnpm install --frozen-lockfile` | `bun ci` | `bun ci` is a first-class alias for `bun install --frozen-lockfile` |
 
-### Socket Firewall Free (Socket, Sept 2025)
+**UX treatment for no-argument form:** The NUDGE-PRD specifies "still nudge candidate, but a softer message because the lockfile already pins versions." This is correct. The no-argument form does not add new packages; it hydrates from a lockfile that was presumably pinned when written. The nudge message should differ:
+- **With packages:** "Agent is installing `chalk@latest` via npm. pnpm with `minimumReleaseAge` enabled provides supply-chain protection. Consider: `pnpm add chalk@latest`"
+- **Without packages (lockfile restore):** "Agent is running `npm install` to restore dependencies. If you migrate this project to pnpm, supply-chain defaults apply on every future install. No action required for this run."
 
-HTTP proxy wrapper around npm/yarn/pnpm/pip/Rust package fetches. Blocks confirmed malware (human-reviewed). Zero configuration. Warns on AI-flagged but unconfirmed packages. Only blocks what Socket has reviewed. Does not support private registries. Not designed for agent-initiated tool calls — designed for human-invoked package manager commands.
+Reason code for no-argument form: `npm-lockfile-restore` (distinct from `npm-install-package`).
 
-**What it does not do:** No MCP gateway integration. No hook integration. No file system or process monitoring. No release-age policy. No lifecycle script control. No editor extension protection. No prompt injection defense. Single-source intel (Socket only). Agent calling `npm install` through a tool call is not guaranteed to route through the proxy.
+#### 1.3 `npx <package>` → pnpm dlx / bun x
 
-**Gap Beekeeper fills:** Agent-layer interception (the hook handler and shim layer). Multi-source corroboration. Release-age enforcement. Cross-ecosystem coverage. Editor extension enforcement.
+`npx` fetches and executes a package binary without permanently installing it. Both pnpm and bun have direct equivalents.
 
-### MCP Gateways (ContextForge/IBM, MCPX/Lunar, Bifrost/Maxim, MintMCP, TrueFoundry)
+| npx command | pnpm equivalent | bun equivalent | Notes |
+|-------------|-----------------|----------------|-------|
+| `npx <pkg>` | `pnpm dlx <pkg>` | `bun x <pkg>` or `bunx <pkg>` | Both auto-fetch from registry if not cached |
+| `npx <pkg>@version` | `pnpm dlx <pkg>@version` | `bun x <pkg>@version` | Version pinning syntax identical |
+| `npx -y <pkg>` | `pnpm dlx <pkg>` | `bun x <pkg>` | `-y` (skip prompt) is the default for pnpm dlx and bun x |
+| `npx --package=<pkg> <cmd>` | `pnpm dlx --package=<pkg> <cmd>` | `bunx --package <pkg> <cmd>` | When binary name differs from package name |
+| `npx create-<x> [args]` | `pnpm dlx create-<x> [args]` | `bun x create-<x> [args]` or `bun create <x> [args]` | Scaffolding pattern |
 
-Access control and audit at the MCP protocol layer. Features shared across the category: OAuth/RBAC for MCP endpoints, audit logging of tool invocations, rate limiting, protocol translation (HTTP/SSE/stdio), telemetry (OpenTelemetry).
+**pnpm dlx security note (HIGH confidence):** pnpm dlx inherits pnpm 11's `minimumReleaseAge` and `trustPolicy` settings (confirmed by pnpm.io/cli/dlx). This means `pnpm dlx some-scaffolder` refuses to execute packages published less than 24 hours ago by default. `npx` has no such gate. This is the concrete security argument for the rewrite.
 
-**What none of them do:** No threat intelligence matching against supply chain catalogs. No package install enforcement. No release-age policy. No lifecycle script control. No editor extension catalog matching. No OS-level process correlation (all enforce at application middleware layer, not kernel). No prompt injection detection (most). No behavioral baseline. No sensitive-path enforcement. IBM ContextForge documentation explicitly states: "AGT enforces governance at the application middleware layer, not at the OS kernel level." Gateway governance and developer workstation supply chain enforcement are entirely separate problems.
+**bun x security note:** `bunx` (alias for `bun x`) auto-installs and caches the package globally. It inherits bun's lifecycle script policy (no scripts by default unless in `trustedDependencies`). This is the security gain over npx.
 
-**Gap Beekeeper fills:** Everything below the MCP protocol layer — the OS, the package managers, the editor extensions, the process tree.
+**pnpm dlx alias:** pnpm also accepts `pnpx` and `pnx` as aliases for `pnpm dlx`. `rewrite.go` should emit `pnpm dlx` (canonical form), not the aliases.
 
-### Microsoft Agent Governance Toolkit (April 2026)
+#### 1.4 Complete rewrite.go decision table
 
-Python-based, MIT license. Sub-0.1ms p99 policy engine. OWASP Agentic Top 10 compliance. Framework adapters for LangChain, CrewAI, Google ADK, OpenAI Agents SDK, LangGraph, PydanticAI. Plugin signing (Ed25519). RL governance for training. Compliance grading (EU AI Act, HIPAA, SOC2).
+The following is the complete parser → rewriter decision table. Implement each row as a case in the command rewriter.
 
-**What it does not do:** No supply chain catalog matching. No package install enforcement. No developer workstation OS-level monitoring. No editor extension protection. No Windows support focus. No Go binary — Python-first. Designed for enterprise agent deployments (containers, cloud), not individual developer workstations. No Bumblebee integration.
+```
+Input pattern                         → pnpm rewrite                    → bun rewrite
+─────────────────────────────────────────────────────────────────────────────────────
+npm install                           → pnpm install                    → bun install
+npm i                                 → pnpm install                    → bun install
+npm install <flags> <pkgs>            → pnpm add <mapped-flags> <pkgs>  → bun add <mapped-flags> <pkgs>
+npm i <flags> <pkgs>                  → pnpm add <mapped-flags> <pkgs>  → bun add <mapped-flags> <pkgs>
+npm add <flags> <pkgs>                → pnpm add <mapped-flags> <pkgs>  → bun add <mapped-flags> <pkgs>
+npx <flags> <pkg>[@ver] [args]        → pnpm dlx <pkg>[@ver] [args]    → bun x <pkg>[@ver] [args]
+```
 
-**Gap Beekeeper fills:** Individual developer workstation focus, supply chain enforcement, editor extension protection, Windows support, Go single binary model.
+Flag mapping (applies to the `<mapped-flags>` column):
 
-### RAMPART + Clarity (Microsoft, May 2026)
+```
+npm flag            → pnpm flag         → bun flag
+────────────────────────────────────────────────────
+--save-dev          → --save-dev        → --dev
+-D                  → -D                → -D
+-d                  → -d                → -d
+--development       → (drop)            → --development
+--save-optional     → --save-optional   → --optional
+-O                  → -O                → --optional
+-o                  → -o                → --optional
+--save-exact        → --save-exact      → --exact
+-E                  → -E                → -E
+--global            → --global          → --global
+-g                  → -g                → -g
+--production        → --prod            → --production
+-P (install only)   → --prod            → --production
+--frozen-lockfile   → --frozen-lockfile → --frozen-lockfile
+--ignore-scripts    → --ignore-scripts  → --ignore-scripts
+--workspace         → --workspace       → (no equiv — drop, log)
+--save-peer         → --save-peer       → --peer
+```
 
-RAMPART: pytest-style safety testing framework for agents (design-time and CI, not runtime). Clarity: design documentation tool. Both are pre-deployment and testing tools. No runtime enforcement.
-
-**Gap Beekeeper fills:** Runtime enforcement. Everything that happens after deployment, during an actual agent session.
+Flags not in this table: preserve for pnpm (likely recognized), drop for bun with `flag_dropped` audit entry.
 
 ---
 
-## Feature Landscape
+### 2. Version Pinning Conventions and the Risky Spec Cases
 
-### Table Stakes (Users Expect These)
+**Confidence:** HIGH. Grounded in the 2026 Axios compromise postmortem (Microsoft Security Blog, April 2026), the Mini Shai-Hulud/TeamPCP wave, and the arxiv paper "Pinning Is Futile" (2502.06662) which documents npm ecosystem pinning failure modes at scale.
 
-Features users assume exist in any credible agent safety harness. Missing these = dismissed as a toy or prototype.
+#### 2.1 Why exact pinning matters for supply-chain safety
+
+The core risk: npm's version resolution algorithm resolves ranges at install time, not at lockfile creation time. When `package.json` contains `"axios": "^1.14.0"` and an attacker publishes `axios@1.14.1` with a backdoor, every developer and CI run that does `npm install` (without a lockfile, or with a stale lockfile) installs the backdoor automatically.
+
+The 2026 Axios compromise is the canonical example. The attacker hijacked the lead maintainer's npm account and published two poisoned versions across both the 1.x and legacy 0.x release branches within 39 minutes. Caret ranges (`^1.14.0`) silently pulled the next minor/patch. The same blast-radius strategy appeared in the Mini Shai-Hulud campaign: publishing across two major version lines simultaneously maximizes coverage across `~9.1.x`, `~9.2.x`, `^9`, `^12`, `~12.0` pinners.
+
+**Version spec risk ranking (for NUDGE to surface):**
+
+| Spec pattern | Risk level | Why |
+|---|---|---|
+| `pkg@latest` | CRITICAL | Resolves to whatever is newest at install time. No pinning whatsoever. One poisoned publish → immediate exposure. |
+| `pkg` (no version) | CRITICAL | npm defaults to `@latest`. Identical risk to explicit `@latest`. |
+| `pkg@^major.minor.patch` | HIGH | Allows any minor or patch bump. The Axios and Mini Shai-Hulud attacks exploited this. |
+| `pkg@~major.minor.patch` | MEDIUM | Allows patch bumps only. Narrower blast radius, but patch-bump attacks exist (e.g., node-ipc 10.1.2 protestware). |
+| `pkg@major.minor.patch` | LOW | Exact pinning. Attacker must overwrite the specific version or attack the lockfile. |
+| `pkg@major.minor.patch` + lockfile committed + `npm ci` | LOWEST | npm ci refuses to install if package.json and lockfile disagree. Integrity verification on every install. |
+
+**NUDGE should flag:** `@latest`, bare package name (no `@version`), and caret ranges (`^`). Tilde ranges are a medium concern — do not block on tilde alone, but include in the advisory message.
+
+#### 2.2 What the nudge message should say for pinning
+
+The message should be:
+1. Specific about what risk was detected (not generic security lecture)
+2. Actionable (exact command to fix)
+3. Non-blocking by default (soft-advise mode)
+
+**Good nudge message pattern (for unpinned spec):**
+```
+[NUDGE] npm install chalk@latest — version @latest is unresolved at install time.
+Supply-chain risk: any package published between now and your next install can be
+resolved automatically. Consider pinning:
+  pnpm add chalk@5.4.0      (resolve current @latest, then pin exact version)
+  bun add chalk@5.4.0 -E    (--exact flag enforces no-range in package.json)
+Proceeding with original npm command.
+```
+
+**Good nudge message pattern for hardened PM not installed:**
+```
+[NUDGE] npm install detected. pnpm 11+ provides structural supply-chain protection
+(minimumReleaseAge=24h, lifecycle script allowlisting). pnpm is not installed.
+To enable protection: install pnpm v11+ (https://pnpm.io/installation), then
+re-run: pnpm add chalk@latest
+Proceeding with npm.
+```
+
+The message must never say "blocked" when the action is `Advise` — it proceeds. The word "blocked" in a soft-advise message trains agents to interpret nudges as failures.
+
+#### 2.3 OSV/CVSS severity alignment for PLCY-07
+
+OSV schema severity field (verified against ossf.github.io/osv-schema):
+
+```json
+"severity": [
+  { "type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" },
+  { "type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N" }
+]
+```
+
+OSV does not define a textual mapping from CVSS score to critical/high/medium/low. Individual databases map in their `database_specific` fields. The industry standard CVSS → severity mapping (FIRST.org, NVD, used by GitHub Advisory Database, Bumblebee):
+
+| CVSS v3.x score | Severity label |
+|-----------------|----------------|
+| 9.0 – 10.0 | Critical |
+| 7.0 – 8.9 | High |
+| 4.0 – 6.9 | Medium |
+| 0.1 – 3.9 | Low |
+
+Bumblebee catalog entries use a direct `"severity": "critical"` / `"high"` / `"medium"` / `"low"` string field (not the CVSS vector). The OSV-sourced advisories carry CVSS vectors; Beekeeper's catalog normalizer must parse the CVSS score and map to the Bumblebee severity enum.
+
+**For PLCY-07 purposes:** a `severity: "critical"` catalog match from ANY catalog source (including Bumblebee with `Signed: false`) must escalate to block. The reasoning: the existing `BlockAt: 2` threshold was designed for the case where we cannot trust any single source. But a `severity: "critical"` designation is a qualitatively different signal — it means the catalog author has assessed the package as actively malicious with maximum impact. In the Shai-Hulud case, the OSV advisory `MAL-2026-4126` carried CVSS 9.8 (Critical, Remote, No Auth). Blocking on a single critical advisory from a trusted-ish source is the industry norm.
+
+---
+
+### 3. Soft-Advise vs Hard-Rewrite UX Norms
+
+**Confidence:** MEDIUM-HIGH. Verified against npq behavior (github.com/lirantal/npq), Socket safe-npm FAQ, and Claude Code hooks documentation.
+
+#### 3.1 The spectrum of interception tools
+
+**npq (lirantal/npq):** Two-tier enforcement:
+- **Errors → Block**: Hard block, install halts until user explicitly proceeds. Used for high-confidence bad signals.
+- **Warnings → 15-second countdown with abort option**: Auto-continue after timeout. Respects developer time while ensuring visibility.
+- `--disable-auto-continue` flag for strict environments.
+
+The 15-second countdown is a key UX insight: it creates a forced pause (visibility) without requiring manual override for every package in a bulk install.
+
+**Socket safe-npm:** Intercepts pre-install via PATH wrapping. For confirmed malware (Socket's human-reviewed set): blocks hard. For AI-flagged but unconfirmed: warns and prompts. The distinction between "confirmed malware (block)" and "suspicious signal (warn + prompt)" is the right mental model for Beekeeper too.
+
+**Claude Code hooks (exit code semantics, verified against code.claude.com/docs/en/agent-sdk/hooks):**
+- Exit 0: allow, agent proceeds
+- Exit 2: block, agent receives structured error message and cannot retry the same tool call
+- Non-zero exit other than 2: block (fail-closed)
+- Stdout from hook handler becomes the message shown to the agent/user
+
+There is **no native "rewrite" exit code** in Claude Code hooks. The hook can block (exit 2) and put the rewritten command in the output, which the agent can then re-issue. This means "hard rewrite" in Beekeeper's model is implemented as: block original command + emit rewritten command in output, trusting the agent to re-issue. This is the practical constraint that makes "Rewrite" a distinct action type even though hooks only have Allow/Block.
+
+**For the NUDGE module, the UX implications are:**
+
+| NUDGE action | Hook exit code | Stdout content | Agent behavior |
+|---|---|---|---|
+| Proceed | 0 | (empty or info-only) | Runs original command |
+| Advise | 0 | Advisory message | Runs original command; agent sees message but proceeds |
+| Rewrite | 2 (block) | Rewritten command text | Agent cannot run original; expected to run rewritten command |
+| Block | 2 (block) | Explanation + install guidance | Agent cannot run npm install at all |
+
+**Advise is the least intrusive.** It respects agent agency completely: the agent runs what it requested, and the human operator sees the advisory in the audit log and TUI. This is the correct default for a tool used in autonomous agent sessions where interruptions are costly.
+
+**Rewrite requires trust.** Rewriting the command means Beekeeper is making a functional change to what the agent does. The agent asked for `npm install chalk`, Beekeeper runs `pnpm add chalk`. The semantics should be equivalent, but edge cases exist (different lockfile format, different `node_modules` layout for bun isolated installs vs npm hoisted). Hard-rewrite must be opt-in.
+
+#### 3.2 Agent-specific UX considerations
+
+In autonomous agent sessions, advisory messages in hook output are visible to the agent's context. A well-formed advisory message can itself guide the agent: "Consider re-issuing as `pnpm add chalk@5.4.0`" functions as a suggestion the agent can act on voluntarily. This is softer than a forced rewrite and more appropriate when the agent has a task to complete.
+
+**Anti-pattern to avoid:** Do not emit a wall of security text on every `npm install`. In a session where an agent installs 50 packages, 50 advisory messages create noise that trains developers to disable the nudge. The advisory message must be concise (3-5 lines max) and appear once per session per package manager (after first advisory, subsequent npm installs in the same session get abbreviated: `[NUDGE] npm detected (advised). See first advisory. Proceeding.`).
+
+---
+
+### 4. Sensitive-Path Detection Norms
+
+**Confidence:** HIGH. Blocklist derived from: the Claude Code issue #46741 community request (credential paths explicitly named); the AI agent security guardrails article (dev.to/maxkrivich); the MCP config path research (mcpplaygroundonline.com); and cross-referenced with pnpm supply-chain security documentation which names the specific files malware targets.
+
+#### 4.1 Canonical sensitive-path blocklist
+
+These paths are credential-bearing across the industry consensus. Every path below appears in at least two independent sources.
+
+**Cloud credentials:**
+- `~/.aws/credentials` — AWS access key ID + secret
+- `~/.aws/config` — AWS profile configuration (may contain credential references)
+- `~/.azure/` — Azure CLI credentials (token cache)
+- `~/.config/gcloud/` — Google Cloud authentication tokens
+- `~/.config/gcloud/application_default_credentials.json` — ADC credentials
+
+**SSH:**
+- `~/.ssh/` (entire directory) — Private keys, authorized_keys, known_hosts
+- `~/.ssh/id_rsa`, `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa` — Private key files
+- `~/.ssh/config` — SSH configuration (may reveal targets)
+
+**GPG:**
+- `~/.gnupg/` — GPG private keys, trustdb
+
+**Container / Kubernetes:**
+- `~/.kube/config` — Kubernetes cluster credentials, bearer tokens
+- `~/.docker/config.json` — Docker registry auth tokens
+
+**Version control / source hosting:**
+- `~/.git-credentials` — git credential store (plaintext tokens)
+- `~/.config/gh/` — GitHub CLI auth tokens (via `gh auth login`)
+- `~/.config/hub` — Hub CLI credentials
+
+**Package registries:**
+- `~/.npmrc` — npm auth token (`//registry.npmjs.org/:_authToken=...`)
+- `~/.pypirc` — PyPI upload credentials
+- `~/.netrc` — Multi-service credential file (username/password pairs)
+
+**Terraform / secrets managers:**
+- `~/.terraform.d/` — Terraform credentials file with token
+- `~/.vault-token` — HashiCorp Vault token
+
+**Project-local (relative path patterns):**
+- `.env` — Root .env file (most common credential store in dev projects)
+- `.env.*` — `.env.local`, `.env.production`, `.env.test`, etc.
+- `*.pem` — PEM-encoded certificates/private keys
+- `*.key` — Private key files (broad pattern)
+- `**/secrets/**` — Any file under a `secrets/` directory
+
+**MCP config files (agent-specific, HIGH priority for Beekeeper's use case):**
+- `~/.claude.json` — Claude Code MCP server configuration (may contain tokens, server URLs)
+- `~/Library/Application Support/Claude/claude_desktop_config.json` — macOS
+- `%APPDATA%\Claude\claude_desktop_config.json` — Windows
+- `~/.config/Claude/claude_desktop_config.json` — Linux
+- `~/.cursor/mcp.json` — Cursor MCP config
+- `.cursor/mcp.json` — Project-level Cursor MCP config
+- `~/.codeium/windsurf/mcp_config.json` — Windsurf MCP config
+- `~/.mcp.json` — Generic MCP config
+
+#### 4.2 Platform-specific path normalization
+
+The blocklist is written in Unix notation. For Windows, Beekeeper's sensitive-path engine must expand:
+- `~` → `%USERPROFILE%` (e.g., `C:\Users\<user>`)
+- `~/.aws/` → `C:\Users\<user>\.aws\` (AWS CLI on Windows uses the same path)
+- `~/Library/...` → not applicable on Windows (skip macOS-specific paths)
+- `%APPDATA%\Claude\...` → add Windows-specific MCP paths
+
+The existing `EvaluatePath`/`DefaultSensitivePaths` engine already does this normalization per the CLAUDE.md architecture. The research confirms the blocklist is correct; the wiring gap is that the engine output is not being used in the live check handler.
+
+#### 4.3 Allowlist patterns
+
+The blocklist must have an allowlist escape hatch for legitimate agent workflows:
+
+**Legitimate accesses that should NOT be blocked:**
+- Reading `~/.kube/config` by a DevOps tool explicitly configured to manage clusters
+- Reading `~/.npmrc` by a task that is publishing a package (npm publish workflow)
+- Reading `.env` to validate env var presence (not to exfiltrate content)
+
+**Allowlist mechanism:** The policy overlay (`~/.beekeeper/policies/`) can override the default blocklist per path and per agent tool. An allowlist entry should require:
+- Specific path (not a broad glob)
+- Optional: specific tool (Read/Write/Edit/Bash)
+- Optional: specific reason (stored in audit record)
+
+**Warn vs block conventions:**
+
+| Scenario | Recommended action | Rationale |
+|---|---|---|
+| Agent reads `~/.ssh/id_rsa` | Block | Private key has no legitimate read use case for an agent. Exfiltration risk is existential. |
+| Agent reads `~/.aws/credentials` | Block | Same. The malware pattern from the Shai-Hulud postmortem is exactly this. |
+| Agent reads `.env` | Warn (first time), then block if no allowlist | `.env` has legitimate uses (validate env vars exist). First access warns; subsequent reads without allowlist escalate to block. |
+| Agent writes to `~/.npmrc` | Block | Writing to npmrc changes package registry auth — almost certainly not a legitimate agent task. |
+| Agent writes to `~/.ssh/authorized_keys` | Block | Backdoor installation. |
+| Agent reads MCP config files | Warn | MCP configs may be legitimate for tooling; warn and audit but do not block by default. |
+
+Default enforcement: Block for SSH/cloud credentials/GPG/git-credentials/netrc/vault-token. Warn for `.env`/MCP configs/package registry configs. This matches the layered severity model in the existing sensitive-path engine.
+
+---
+
+### 5. Severity → Enforcement Mapping Conventions (PLCY-07)
+
+**Confidence:** HIGH. Based on CVSS v3.1/v4.0 specification (FIRST.org), OSV schema spec (ossf.github.io/osv-schema), and Bumblebee catalog schema. Corroborated by industry practice from Socket (human-reviewed malware → hard block) and npq (errors → block, warnings → countdown).
+
+#### 5.1 CVSS severity definitions (authoritative)
+
+CVSS v3.x score ranges (FIRST.org, NVD, GitHub Advisory Database standard):
+
+| Score range | Label | Enforcement implication |
+|---|---|---|
+| 9.0 – 10.0 | **Critical** | Auto-block on single high-confidence source |
+| 7.0 – 8.9 | **High** | Block at corroboration threshold (2+ sources) |
+| 4.0 – 6.9 | **Medium** | Warn at 1 source; block at 2+ sources |
+| 0.1 – 3.9 | **Low** | Audit only; no enforcement default |
+
+The 9.0+ Critical threshold is where OSV `MAL-*` advisories for actively exploited malware consistently land. `MAL-2026-4126` (Shai-Hulud worm, the specific incident that surfaced the PLCY-07 gap) is CVSS 9.8.
+
+#### 5.2 The PLCY-07 problem and fix
+
+**Current state:** Bumblebee catalog entries have `Signed: false` because they are unsigned (the Bumblebee project does not sign individual entries). Beekeeper's corroboration engine treats unsigned sources as weight 1 out of 2 required to block. Result: a single Bumblebee match for a critical-severity package produces `CorroborationCount: 1 < BlockAt: 2` → WARN, not BLOCK. This allowed `npm install ai-figure` (Shai-Hulud, CVSS 9.8) to pass with a warning.
+
+**Fix options and recommendation:**
+
+Option A — Per-severity escalation (recommended):
+- When `severity == "critical"` in the catalog match, set `BlockAt = 1` regardless of source trust.
+- Rationale: The catalog author has made a high-confidence determination. Critical malware should block on a single catalog source. The `Signed` flag addresses impersonation risk, not catalog accuracy risk.
+- Sanity bounds required: add a `MaxCriticalBlockPerSyncCycle` limit (e.g., 20 new critical blocks per sync) to detect a compromised catalog pushing mass false positives.
+- False-positive rigor: document in `docs/threat-model.md` that critical-severity escalation is the tradeoff, and that the sanity bound is the backstop.
+
+Option B — Treat bundled catalog as signed-equivalent:
+- Flip the internal `Signed` flag for the bundled Bumblebee catalog entries.
+- Simpler but changes the trust model more broadly (affects high/medium too).
+- Not recommended: creates the impression that all Bumblebee entries are "trusted" when the goal is per-severity escalation specifically.
+
+Option C — OSV as second source for critical advisories:
+- When severity is critical and Bumblebee matches, auto-query OSV for the same package+version. If OSV also has a record, escalate to block.
+- Adds network call on the hot path. Violates the sub-100ms target for `beekeeper check`. Not recommended for the sync hot path; could work as a background corroboration enrichment.
+
+**Recommended implementation (Option A + sanity bounds):**
+
+```go
+// In internal/policy/policy.go (pseudo-code, keep pure)
+type CorroborationConfig struct {
+    WarnAt                  int  // default: 1
+    BlockAt                 int  // default: 2
+    QuarantineAt            int  // default: 3
+    CriticalBlockAtSingle   bool // default: true (PLCY-07 fix)
+    CriticalSanityBound     int  // default: 20 new critical blocks per sync cycle
+}
+
+func Corroborate(matches []CatalogMatch, cfg CorroborationConfig) Decision {
+    if cfg.CriticalBlockAtSingle {
+        for _, m := range matches {
+            if m.Severity == "critical" {
+                return Decision{Action: Block, Reason: "critical-single-source"}
+            }
+        }
+    }
+    // existing corroboration logic...
+}
+```
+
+#### 5.3 What "critical" means in OSV/Bumblebee context
+
+For the npm/PyPI/cargo ecosystems, `severity: "critical"` in the Bumblebee catalog means actively exploited malware, not theoretical vulnerability. Bumblebee follows the OSV `MAL-*` advisory prefix specifically for malware (as opposed to `GHSA-*` for vulnerabilities). The distinction:
+- `MAL-*`: Malicious package (backdoor, infostealer, cryptominer). CVSS 9.0+ common. Block immediately.
+- `GHSA-*` Critical: Critical CVE in a legitimate package (RCE, auth bypass). Block at 2-source corroboration (the package may have patched versions).
+- `GHSA-*` High: Block at 2-source corroboration per existing policy.
+
+The PLCY-07 fix should target `MAL-*` or `severity: "critical"` specifically, not all high-severity advisories. This keeps the false-positive surface narrow.
+
+---
+
+## Part II: v1.2.0 Feature Landscape
+
+### Table Stakes (Users Expect These for v1.2.0)
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| One-command install and hook wiring | The Nx Console attack proved that friction is the enemy of adoption. If setup takes more than 5 minutes, developers skip it. Every successful security tool in 2026 (Socket Firewall Free, pnpm v11 defaults) succeeds because setup is near-zero. | LOW | `beekeeper init` + `beekeeper hooks install --target claude-code` must Just Work. |
-| Real-time package install enforcement | pnpm v11 ships minimumReleaseAge and allowBuilds by default. Developers using pnpm already have this. Extending it to agents and other package managers is the obvious next step. Without it, Beekeeper cannot claim to be a runtime harness. | MEDIUM | Must cover npm, pip, cargo, gem, composer, go. The shim layer is the fallback for agent shell-out. |
-| Multi-source threat intelligence matching | After the TeamPCP wave hit Checkmarx, Trivy, SAP, TanStack, and Bitwarden simultaneously, developers do not trust single-source intel. Corroboration is table stakes for credibility. | MEDIUM | Bumblebee + OSV + Socket. Single-source warn, two-source enforce. |
-| Audit log of all policy decisions | Every developer who installs a security tool expects to be able to answer "what did Beekeeper block and why?" after an incident. NDJSON local file is the minimum viable output. | LOW | NDJSON, 0600 permissions, auto-rotate. |
-| Sensitive path protection | `.ssh/`, `.aws/`, `.env` protection is expected behavior for any tool that claims to guard against agent misuse. This is documented behavior in the OWASP Agentic Top 10 and in every MCP security checklist published in 2026. | LOW | Blocklist is well-understood. The complexity is in correctly classifying dynamic paths like project-local `.env.*`. |
-| Claude Code hooks integration | As of May 2026, Claude Code is the dominant autonomous coding agent. PreToolUse hooks are the documented integration surface. Any agent safety tool that does not integrate with Claude Code hooks is not credible to the primary target audience. | LOW | `beekeeper hooks install --target claude-code` writes to `~/.claude/settings.json`. |
-| Fail-closed default on crash or timeout | The developer community in 2026 knows about fail-open as a security anti-pattern. Falco, Tetragon, and enterprise EDR all fail-closed or fail-warn. A security tool that fails open is dismissed as insecure by any developer who has read the supply chain postmortems. | LOW | Hard timeout (500ms cap), crash → block. `fail_open` documented as reducing security. |
-| Policy understandable by the developer | JSON policy files are the 2026 standard (OPA Rego, Cedar, YAML rules all appear in Microsoft's toolkit). Policy that cannot be read, tested, and version-controlled is not adopted. `beekeeper policy test` and `beekeeper policy validate` are expected. | MEDIUM | Declarative JSON, dry-run support, layered config (system → user → project → env → CLI). |
-| Catalog freshness visible to the user | After observing that Bumblebee catalog entries are the key signal, users want to know "when was my threat intel last updated?" Stale intel equals false confidence. The TUI or `beekeeper diag` must surface catalog age prominently. | LOW | Per-source timestamps, red indicator on stale threshold. |
-| Release-age policy for package installs | pnpm v11 ships 24h minimumReleaseAge by default. The Mini Shai-Hulud worm (detected in ~12 hours), the debug/chalk attack (resolved in ~2.5 hours), and the TanStack attack (caught within hours) all validate that 24h cooldown blocks the majority of worm campaigns. Developers who have read these postmortems expect this. | LOW | Default 24h, configurable per-ecosystem. The research is clear: this is near-zero false positive for stable packages, high blocking rate for attacks. |
-| Lifecycle script enforcement | pnpm v11's `allowBuilds` model is documented and adopted. The npm CLI has the fewest consumer-side protections. A harness that doesn't enforce lifecycle scripts on npm is leaving the largest attack surface open. | MEDIUM | allowlist-only default. The complexity is cross-ecosystem: `preinstall`, `postinstall`, `install` differ per ecosystem. |
-| SECURITY.md and responsible disclosure from day one | After TeamPCP specifically targeted security tools (Checkmarx, Trivy, Bitwarden), developers evaluate whether a security tool has its own security posture. An empty or missing SECURITY.md is a credibility killer. | LOW | Template exists; the process matters more than the document. |
-| Sigstore-signed releases | The Nx Console payload contained full Sigstore integration and could generate valid provenance for malicious npm packages. Developers who absorbed that postmortem now look for Sigstore verification as proof that a security tool takes its own integrity seriously. | LOW | GitHub Actions OIDC → no long-lived key to steal. Documented in every release. |
+| Sensitive-path engine wired into live check handler | Engine exists and tests pass. Users who read CLAUDE.md see it listed as a requirement. The gap (returns ALLOW for credential reads) is a bug, not a missing feature. | LOW | Pure wiring work: call `EvaluatePath()`/`DefaultSensitivePaths()` from `internal/check/handler.go`. Allowlist + policy-overlay merge already specced. |
+| `npm install` → pnpm/bun nudge (soft-advise mode) | Any tool that claims supply-chain defense and does not intercept `npm install` is visibly incomplete post-2026 Axios/Shai-Hulud. Developers who read pnpm 11 release notes expect this capability. | MEDIUM | `internal/nudge/` new package. Decision is pure function over detected PMState. I/O in `detect.go`. |
+| Critical-severity catalog match blocks (not warns) | After the Shai-Hulud postmortem made it into agent community Discords, the expectation is set: known malware = block, not warn. Any tool that warns on CVSS 9.8 packages is broken by definition. | LOW | Policy engine change: per-severity escalation in `internal/policy/policy.go`. Sanity bound required. |
+| Behavioral test suite (BTEST) | Without tests exercising these new behaviors end-to-end, the fixes are not trustworthy. Integration tests that replay the exact check inputs that exposed F1/F2/F3 are the proof. | MEDIUM | Table-driven pure-policy tests + stdin→decision integration tests + live-binary E2E battery. |
+| Audit records for nudge decisions | The audit log is already established as the source of truth. A new NUDGE action with no audit record is a gap in the forensic trail. | LOW | New `record_type: "nudge"` with the schema from NUDGE-PRD §9. Fits into existing `internal/audit/` without structural change. |
 
-### Differentiators (Competitive Advantage)
-
-Features that set Beekeeper apart. Not universally expected yet, but high-signal differentiators that would drive adoption among security-conscious developers.
+### Differentiators (v1.2.0 Specific)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Corroboration-based catalog matching (2-source enforce, not union-of-bad) | Every competing tool uses union semantics: if any source says bad, block. Corroboration is the 2FA principle for threat intel — a compromised source cannot push a false enforcement rule without also compromising a second independent vendor. No existing tool in this space ships this. Research confidence: HIGH (verified against all competitors above). | MEDIUM | Per-ecosystem threshold configuration. Single source → warn. Two sources → enforce. Three sources → enforce + quarantine recommendation. |
-| Editor extension enforcement across all three layers (agent CLI + file-watcher + scheduled scan) | All MCP gateways and agent frameworks completely miss the editor extension attack surface. Bumblebee catches existing installed extensions on scheduled scan. No tool intercepts agent-initiated `--install-extension` commands, watches extension directories for GUI/auto-update installs, and correlates release-age on new extensions. The Nx Console attack vector (11-18 minutes live, thousands of installs) is categorically unaddressed by every competing tool. | HIGH | Three enforcement layers must all be present to cover the full attack surface. Missing any one leaves a known gap from the Nx Console postmortem. |
-| Sentry daemon: OS-level process correlation for extension-host attacks | Zero competing tools on the developer workstation market (as of May 2026) detect the Nx Console pattern at the process level: extension process descending from editor → reads credential paths → initiates outbound connection, within a 5-minute window. Microsoft's AGT explicitly does not do OS-level monitoring. Bumblebee does not do runtime detection. MCP gateways operate above the OS. This is genuinely novel for this market segment. | HIGH | fanotify + eBPF (Linux), eslogger (macOS, known limitations), ETW (Windows). The 7-day audit-only baseline period is essential to ship this without alarming false positive rates. |
-| MCP gateway with threat intelligence enforcement inline | All existing MCP gateways (ContextForge, MCPX, Bifrost) provide access control and audit but zero threat intelligence matching. None of them know whether the package the agent is about to install was published 15 minutes ago or has two corroborating catalog matches. Beekeeper's gateway applies the full policy engine to every MCP tool call. This is the unique architectural combination: MCP proxy + supply chain intelligence. | HIGH | Requires the gateway to parse and understand tool call semantics for package installs, file access, and network egress. |
-| LlamaFirewall sidecar integration (supervised, fail-closed) | PromptGuard 2 detects 97.5% of prompt injection attacks in Meta's dataset. No competing tool on the developer workstation integrates this at the hook level with automatic fail-closed behavior on sidecar crash. The fail-closed property is critical — a crashed or hung sidecar that fails open is worse than no sidecar (gives false confidence). | HIGH | Python IPC over named pipe or Unix socket. Supervised process lifecycle. Fail-closed default is the differentiating property. |
-| Multi-agent parent-child policy inheritance | As developers chain agents (subagents, orchestrator-worker patterns), the threat model changes: a child agent may attempt operations the parent agent could not. The parent's policy context must propagate to children with explicit inheritance rules. No existing developer workstation tool addresses this. Microsoft's AGT does address it but in a container/cloud context, not on individual workstations. | HIGH | Requires agent identity and session context threading through the hook and gateway layers. |
-| Behavioral baseline per project (counter-based, not ML) | ML-based anomaly detection is either resource-heavy or requires training data. Counter-based baselines with explicit thresholds are auditable, transparent, and require zero training period. Developers can read the baseline file and understand why a deviation fired. This is the right tradeoff for developer tooling in 2026 — not a black box. | MEDIUM | Rolling window frequency counters per (tool, target_pattern). Threshold in policy file. |
-| Windows as first-class platform from day one | Bumblebee shipped macOS/Linux only at v0.1.1. Microsoft's AGT is Python-first and cloud-focused. No existing agent safety tool ships Windows support as a primary target. Given that a large fraction of developers use Windows and VS Code (the primary attack surface from the Nx Console incident), first-class Windows support is a real differentiator. | HIGH | ETW for Sentry. ReadDirectoryChangesW for file watcher. Go cross-compilation makes the binary straightforward; the platform-specific daemons are the complexity. |
-| Self-defense: beekeeper-self catalog (recursive compromise detection) | After TeamPCP specifically compromised security vendors (Checkmarx, Trivy), security-conscious developers will ask "how do I know Beekeeper isn't compromised?" The beekeeper-self catalog — a separately hosted, separately signed feed of known-bad Beekeeper releases — answers this with a verifiable, auditable mechanism. No existing developer security tool ships self-compromise detection at this level. | MEDIUM | Separate hosting, separate signing key, consulted on every startup and catalog sync. Documents the honest limitation: single maintainer = single point of failure until a second maintainer joins. |
-| Shim layer covering all package managers uniformly | Socket Firewall Free uses an HTTP proxy, which covers fetch-based installs but misses shell-out cases. pnpm's protections only apply when using pnpm. Beekeeper's shim layer (PATH symlinks for npm, pnpm, pip, cargo, go, gem, composer, npx, pipx) ensures coverage even when an agent shells out directly to a package manager without going through an MCP tool call. | MEDIUM | The shim is defense-in-depth, not the primary surface. Primary risk: an agent that detects shims and bypasses them (documented threat model item). |
-| Catalog delta-triggered automatic re-scan | When a new threat intel entry lands in Bumblebee's upstream catalog, Beekeeper sweeps the local machine within the sync interval (default 1h), without any manual action. The detection latency for novel supply chain campaigns collapses from "hours after the user notices" to "minutes after catalog publishes." No competing tool ships this automatic catalog-delta-to-scan pipeline. | MEDIUM | Catalog sync daemon watches upstream delta, triggers Bumblebee with newly-cataloged ecosystems. This is the architectural differentiator that makes the continuous catalog sync valuable beyond mere freshness checking. |
-| TUI dashboard (legibility without a web UI) | A security tool that only writes NDJSON is not evaluable at a glance. The TUI makes Beekeeper legible for humans without requiring a browser, a cloud account, or a separate dashboard server. `beekeeper dashboard` over SSH is a concrete workflow that no competing tool supports natively. Bubble Tea is mature and CGO-free. | MEDIUM | Single screen, event-driven refresh from audit log. Read-only by default, --admin for policy toggling. This is also a portfolio-quality deliverable for the solo developer. |
+| Hard-rewrite mode for npm→pnpm/bun (opt-in) | No existing tool rewrites agent package manager commands to hardened alternatives. Socket safe-npm wraps the install but does not change the package manager. pnpm's own `minimumReleaseAge` only applies when pnpm is already used. Beekeeper hard-rewrite is the only mechanism that bridges this gap for `npm`-using agents. | MEDIUM | Requires rewrite.go flag-mapping table (see §1.4). Opt-in via `nudge.mode: "hard"`. Block-then-emit-rewrite pattern for Claude Code hook compatibility. |
+| `beekeeper nudge status` / `nudge check` CLI | Operators need to verify their setup without running a real install. No competing tool provides a dry-run PM nudge inspector. | LOW | New subcommand group. Reads config and detected PMState. Human-readable output. |
+| Node.js 22 compatibility gate for pnpm 11 | Surfacing the pnpm 11 / Node 22 dependency honestly and early avoids silent failures in mixed-version environments. No other tool does this check. | LOW | `detect.go` checks node version; `nudge_node_incompatible_with_pnpm_11` reason code. |
+| Weekly major-version drift check for pnpm/bun | Alerts when pnpm 12 or bun 2 releases, so Beekeeper can validate new defaults and update floors before users hit behavior changes silently. | LOW | Background check via version metadata fetch. Audit record + TUI badge. |
 
-### Anti-Features (Things to Deliberately Not Build or Ship as Defaults)
+### Anti-Features (Explicitly Out of Scope for v1.2.0)
 
-Features that appear valuable but actively harm adoption, security posture, or the project's own integrity.
-
-| Feature | Why Requested | Why Problematic | Better Approach |
-|---------|---------------|-----------------|-----------------|
-| Kernel-mode syscall blocking in v1 | Developers want true prevention, not just detection. Blocking is better than alerting. | Kernel-mode interceptors from a new, solo-maintained open source project are a privilege escalation attack surface on thousands of developer machines. The Sentry daemon is already privileged; adding syscall blocking requires macOS EndpointSecurity entitlement (uncertain for indie OSS) and introduces complexity that a solo developer cannot safely maintain, fuzz, and respond to when a CVE is found. Detection that compresses the breach window from hours to seconds is valuable without the maintenance burden of a kernel-mode enforcer. | Ship detect-and-alert in v1. v3 is the right target for eBPF-based syscall blocking, after the project has external security review, co-maintainers, and production operating experience. Document this explicitly in the threat model. |
-| General-purpose rule engine (Falco-equivalent) | "Let me write my own rules for anything" is a power-user request. | Beekeeper's value is in its narrow, high-confidence, low-false-positive default ruleset. A general-purpose rule engine shifts the burden of rule quality to users, who are not security researchers. The community experience with Falco default rules (high false positive rates in developer environments) is the cautionary data point. False positives kill adoption faster than missing features do. Falco alerts on legitimate config updates; developers learn to ignore it. | Provide a narrow, tuned default ruleset. Allow users to add JSON-schema rules from the same schema. Explicitly do not provide a full expression language or hook system for arbitrary rule logic in v1. |
-| Union-of-bad catalog semantics | "More coverage is better — if any source says bad, block it." | A compromised catalog source can push false enforcement entries. Single-source enforcement means one vendor compromise blocks legitimate packages for all Beekeeper users. The Sonatype 2026 report documented 20,362 false positives from vulnerability intelligence alone. Alert fatigue from over-blocking is the documented root cause of tool abandonment. pnpm's allowBuilds model failed to gain adoption in npm because its false positive rate on legitimate native modules was too high. | Corroboration-based semantics: single source warns, two sources enforce, three sources quarantine-recommend. Per-ecosystem threshold configuration. This is a unique differentiator, not a compromise. |
-| `curl | sh` as the recommended install path | Lowest friction install. Every popular CLI tool offers it. | The Nx Console postmortem explicitly identified that the attacker poisoned the install path of trusted tools. A security tool distributed via an unverified shell script is self-defeating. The documentation should state this honestly with the specific risk. | `go install` with module checksum verification, or download + Sigstore verification. Document both. A `curl | sh` script may exist but must be labeled non-recommended with an explicit risk explanation. |
-| Remote audit log sink enabled by default | "Centralize my audit trail in the cloud" is a legitimate enterprise need. | The audit log captures which files agents access, which tools they call, command fragments. An always-on remote sink leaks sensitive metadata from the developer's machine without explicit awareness. If the remote endpoint is compromised, the attacker has a reconnaissance feed for every developer running Beekeeper. | Remote sinks (syslog, OTLP, HTTPS POST) off by default. Opt-in with explicit configuration and a documented awareness message in the TUI ("audit data will leave this machine"). |
-| Elevation required at first install | Maximum protection from the first run. | New OSS tool from a solo developer asking for admin/root on first install is a trust ask before the user has any basis for trusting the project. The historical pattern: developers either reject the tool or grant elevation while mentally de-trusting it (meaning they won't investigate alerts). Both outcomes are worse than opt-in elevation after the user has evaluated the unprivileged tier. | Unprivileged tier covers 80% of the value. `beekeeper protect install` is the explicit, documented, opt-in elevation path. `beekeeper init` may prompt to consider it after setup, but must not require it. |
-| Sandbox/microVM orchestration in v1 | Running agents in isolated sandboxes is the ultimate defense. | Firecracker and gVisor integration requires significant kernel-version constraints, platform-specific work, and adds startup latency to every agent session. Solo developer, v1 scope. The value of sandboxing is real but the implementation complexity is incompatible with shipping a credible v1. | Document as the v3 roadmap. The policy engine + Sentry covers the practical threat classes without sandboxing overhead. |
-| LlamaFirewall enabled by default | Maximum protection from the first run. | 400–800MB resident memory to hold PromptGuard 2 in RAM. On a developer's laptop with 16GB RAM and other tools running, this is a noticeable cost. Enabling it by default before the user knows its value and has opted into the resource cost will generate negative first impressions. Developers with resource-constrained machines will disable it, and a disabled feature is worse than an opt-in feature (gives false confidence). | Disabled by default. `beekeeper init` presents it as an option with the memory cost stated explicitly. Enable with a single config line. |
-| Desktop GUI or web UI | More familiar to non-CLI users. | A web UI requires a local HTTP server, which is a new attack surface on the developer's machine. A desktop GUI requires Electron or similar, which bloats the single-binary model and adds CGO or cross-language complexity. The TUI via Bubble Tea is single-binary, no CGO required, SSH-accessible. Most developers who would use Beekeeper are comfortable with a TUI. | TUI only in v1. If a web UI becomes a clear adoption driver after v1, add it in v2 with explicit security review of the local HTTP server attack surface. |
-| AI/ML-based anomaly classifier for tool calls | "Detect novel attacks without catalog entries" is the dream. | A local LLM-based anomaly classifier requires either a model large enough to be useful (memory cost) or a remote API call (privacy risk and latency). Counter-based behavioral baselines with explicit thresholds are auditable and have no model inference cost. ML anomaly detection has well-documented false positive problems in security contexts (see: every UEBA product that trained users to ignore alerts). | Counter-based baseline in v1 (transparent, auditable, low resource). Local LLM classifier is the v3 target, after operating experience establishes what the baseline misses. |
-| Allowlisting via broad glob patterns as a default trust model | "Trust everything from publisher X" is convenient. | Broad publisher allowlists are exactly the trust model the TeamPCP attack exploited. `nrwl.*` was a trusted publisher until it wasn't. Allowlists should be specific and version-pinned, not broad. Shipping broad allowlist patterns as the default config trains users into a trust model that the threat landscape has directly invalidated. | Allowlists are specific by default (explicit package + version or explicit package + allowlist flag). Publisher-level allowlists require explicit user acknowledgment of the risk. |
-| Shipping Sentry correlation rules without the 7-day audit-only baseline | Immediate protection from day one. | The Sentry rules fire on process lineage + file access + network connection patterns. On a fresh install, Beekeeper does not know the user's legitimate baseline (e.g., a developer whose workflow genuinely involves reading `~/.aws/credentials` in a known-good tool). False positives in the first week train users to dismiss alerts permanently. Falco's reputation for high false positives in dev environments is the cautionary example. | 7-day audit-only baseline period where all Sentry rules are observation-only. Rules promote to configured severity after baseline. Users can set baseline period to 0 (immediate) or "indefinite" (always audit-only). Ship conservative defaults. |
-| Weighted corroboration (some sources count more than others) | "Bumblebee is more reliable than a user catalog — its match should count for more." | Empirically untested. Weighted systems are harder to reason about and harder to audit. If Source A counts as 1.5 votes and Source B as 0.5 votes, the effective threshold is now opaque. Transparent equal-vote corroboration is auditable: every decision can be traced to exactly which sources agreed. | Ship unweighted equal-vote corroboration in v1. Revisit weighting in v2 based on operating experience and false positive data per source. |
+| Feature | Why Requested | Why Problematic / Out of Scope | Better Approach |
+|---------|---------------|--------------------------------|-----------------|
+| Yarn Berry nudge | Yarn Berry has `npmMinimalAge`. Developers using Yarn might want the same nudge. | "Yarn Berry has different enough install patterns" (NUDGE-PRD §2.2). The command surface (`yarn add` vs `yarn dlx` vs `yarn exec`) is sufficiently different that getting it wrong has a higher risk than deferring. | v1.3.0 consideration after pnpm/bun nudge is validated. |
+| pip/cargo/gem/composer nudge | JavaScript is not the only ecosystem attacked. Supply-chain attacks in PyPI and cargo are documented. | The Nudge feature is JavaScript-first because that is where the 2026 threat data is most active (Shai-Hulud, TeamPCP, Axios). Multi-ecosystem nudge requires per-ecosystem hardened-PM research that does not exist in clean form yet. | v1.3.0 if agent-triggered PyPI/cargo attacks are documented. |
+| Auto-install of pnpm/bun | Reducing friction to zero. If pnpm is better, just install it. | Beekeeper installing additional tools on the user's machine without explicit consent is an overreach that mirrors the attack pattern it defends against. | Document install path in nudge advisory message; do not execute. |
+| Beekeeper editing `pnpm-workspace.yaml` or `bunfig.toml` | Auto-configure the hardened PM on the user's behalf. | Same overreach concern. Users own their PM configuration. Beekeeper detects and reports configuration weaknesses but never edits PM config. | Surface config weakness in `beekeeper nudge status`. |
+| Weighted corroboration for critical advisories | "Bumblebee should count as 1.5 votes if the severity is critical." | Option A (per-severity escalation to block at 1 source) is simpler, auditable, and achieves the same goal without weighted math. Weighted systems are harder to reason about and audit. | Flat per-severity escalation (PLCY-07 fix). |
+| Blocking on `@latest` in soft-advise mode | `@latest` is risky; block it by default. | Blocking `npm install react@latest` in soft-advise mode contradicts the feature's own design principle (soft = advise + proceed). Hard blocking on version spec alone, without a catalog hit, generates false positives on every legitimately maintained package that publishes regularly. | Flag as risky in the advisory message. Block only when `requireHardened: true` AND no hardened PM is installed, not based on version spec alone. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[Catalog sync daemon]
-    └──requires──> [Multi-source catalog matching]
-                       └──enables──> [Corroboration semantics]
-                       └──enables──> [Catalog delta-triggered scan]
+[PLCY-05 sensitive-path wiring]
+    └──requires──> [EvaluatePath() in internal/policy] (already built; pure function)
+    └──requires──> [DefaultSensitivePaths() blocklist] (already built)
+    └──wires-into──> [internal/check/handler.go] (the gap being closed)
+    └──wires-into──> [internal/gateway/] (MCP tool calls that access files)
+    └──enables──> [BTEST: F2 integration tests]
 
-[Hook handler: beekeeper check]
-    └──requires──> [Policy engine]
-                       └──requires──> [Catalog matching]
-                       └──requires──> [Release-age policy]
-                       └──requires──> [Lifecycle script policy]
-                       └──requires──> [Sensitive path policy]
+[NUDGE package-manager nudge]
+    └──requires──> [internal/nudge/detect.go] (binary detection, new)
+    └──requires──> [internal/nudge/parse.go] (command parsing, new)
+    └──requires──> [internal/nudge/rewrite.go] (flag mapping, new)
+    └──requires──> [internal/nudge/nudge.go] (pure Evaluate(), new)
+    └──wires-into──> [internal/check/handler.go] (hook handler)
+    └──wires-into──> [internal/gateway/] (MCP proxy)
+    └──wires-into──> [internal/shim/shim.go] (npm PATH shim)
+    └──writes-to──> [internal/audit/] (record_type: "nudge")
+    └──enables──> [beekeeper nudge status|check|audit CLI]
+    └──enables──> [BTEST: F3 integration tests]
+    └──conflicts-with──> [pnpm/bun not installed] (degrades to Proceed gracefully)
 
-[MCP Gateway daemon]
-    └──requires──> [Policy engine]
-    └──requires──> [Session token auth]
-    └──enables──> [Cursor / Codex / Continue / OpenCode integrations]
+[PLCY-07 corroboration hardening]
+    └──requires──> [internal/policy/policy.go] (CorroborationConfig, pure function)
+    └──requires──> [catalog severity field parsing] (Bumblebee "severity": "critical")
+    └──requires──> [sanity bound: MaxCriticalBlockPerSyncCycle]
+    └──enables──> [BTEST: F1 integration tests]
+    └──documents-in──> [docs/threat-model.md] (critical escalation rationale)
 
-[Sentry daemon]
-    └──requires──> [beekeeper protect install (elevation)]
-    └──requires──> [Behavioral baseline] (to tune false positive rates)
-    └──enables──> [Extension-host credential cluster rule]
-    └──enables──> [Exfil signature fusion rule]
-    └──enhances──> [Editor extension enforcement] (adds process correlation to file-watcher)
-
-[Editor extension enforcement]
-    └──requires──> [File-watcher daemon] (for GUI installs)
-    └──requires──> [Catalog matching] (for catalog hits)
-    └──requires──> [Release-age policy] (for new-extension age check)
-    └──enhances──> [Sentry daemon] (fresh-extension behavior correlation rule)
-
-[LlamaFirewall sidecar]
-    └──requires──> [Hook handler] (to route tool outputs for scanning)
-    └──requires──> [IPC layer: Unix socket / named pipe]
-    └──conflicts──> [Resource-constrained environments] (400-800MB RAM)
-
-[TUI dashboard]
-    └──requires──> [NDJSON audit log] (reads from audit log, no privileged channel)
-    └──requires──> [Policy engine] (for active policies panel)
-    └──enhances──> [Sentry daemon] (Sentry alerts panel)
-    └──enhances──> [Catalog sync] (freshness panel)
-    └──enhances──> [Quarantine workflow] (quarantine panel)
-
-[Shim layer]
-    └──requires──> [Hook handler / beekeeper check] (shims delegate to check)
-    └──conflicts──> [Agents that detect shims and bypass them] (documented gap)
-
-[Quarantine workflow]
-    └──requires──> [Catalog matching] (trigger condition)
-    └──requires──> [File-watcher daemon] (for extension quarantine)
-    └──requires──> [TUI dashboard] (restore/purge UI)
-
-[Behavioral baseline]
-    └──requires──> [Audit log] (baselines read from policy decision history)
-    └──enhances──> [Hook handler] (adds deviation-based warnings)
-    └──enhances──> [Sentry daemon] (reduces false positive rate on fresh install)
-
-[beekeeper-self catalog]
-    └──requires──> [Catalog sync daemon]
-    └──requires──> [Separate hosting + signing key]
-    └──enhances──> [Self-defense posture] (recursive compromise detection)
-
-[Multi-turn exfiltration detection]
-    └──requires──> [Hook handler: PostToolUse]
-    └──requires──> [Rolling output buffer per session]
-    └──enhances──> [Output filtering] (adds statistical signal to pattern matching)
+[BTEST behavioral test suite]
+    └──requires──> [PLCY-05, NUDGE, PLCY-07 implementations] (what to test)
+    └──requires──> [fixture: ai-figure catalog entry] (F1 regression)
+    └──requires──> [fixture: ~/.aws/credentials read attempt] (F2 regression)
+    └──requires──> [fixture: npm install ai-figure command] (F3 regression)
+    └──enhances──> [CI release gate] (fuzz + behavioral tests)
 ```
 
 ### Dependency Notes
 
-- **Sentry requires elevation:** Protected mode is opt-in. The unprivileged tier (hooks, gateway, file-watcher, catalog sync) delivers meaningful coverage without Sentry. Sentry adds the class of threats (extension-host attacks) that bypass the agent loop entirely.
-- **TUI requires audit log but not daemons:** The TUI is a read consumer of the NDJSON audit log. It can display historical data even when daemons are not running. This makes it useful for investigation without requiring all components to be live.
-- **Shim layer conflicts with agents that detect PATH manipulation:** Documented in the threat model. The shim is defense-in-depth, not a primary enforcement surface. If an agent detects and bypasses the shim, the gateway and hooks are the primary surfaces.
-- **LlamaFirewall conflicts with resource-constrained machines:** 400–800MB is a real cost. The optional/disabled-by-default design is a consequence of this conflict.
-- **Corroboration semantics require multiple catalog sources:** Single-source Beekeeper (Bumblebee only) loses the 2FA property. OSV and Socket must be present for the corroboration model to provide its claimed security guarantee. The v0.1.0 milestone ships single-source with this limitation documented; v0.3.0 adds OSV and Socket for full corroboration.
-- **7-day Sentry baseline depends on audit log:** The baseline learns from observing policy decisions over time. Fresh installs have no baseline, which is why audit-only mode for the first 7 days is essential — it collects data without firing false positives.
+- **NUDGE purity constraint (CLAUDE.md):** `internal/policy` must remain a pure function library. Therefore `nudge.Evaluate()` takes a caller-resolved `PMState` as argument; detection I/O lives in `detect.go`. This mirrors the existing `policy.EvaluateReleaseAge(ReleaseAgeInput, …)` pattern. Do not let `Evaluate()` exec subprocesses.
+- **PLCY-05 is pure wiring:** The engine already exists and its tests pass. The scope is `handler.go` + `gateway/` call sites. Risk is low; the main complexity is ensuring the allowlist policy overlay is correctly merged before the call.
+- **PLCY-07 requires sanity bounds:** The critical escalation is a trust expansion. The sanity bound (`MaxCriticalBlockPerSyncCycle`) is the backstop against a compromised catalog pushing mass critical entries. This must be implemented alongside the escalation, not deferred.
+- **BTEST is cross-cutting:** Every phase in v1.2.0 must include the behavioral test that proves the gap is closed. BTEST is not a separate phase; it is a required deliverable within each of F1/F2/F3.
 
 ---
 
-## MVP Definition
+## MVP Definition for v1.2.0
 
-### Launch With (v0.1.0)
+### Ship with v1.2.0 (all three gaps closed, all tested)
 
-The minimum that is personally useful to the developer building it. Dogfoods on a real machine from day one.
+- [ ] PLCY-05: `EvaluatePath()` called from `internal/check/handler.go` for `file_path` fields and `cat`/`type`/`Get-Content` command targets; fail-closed; allowlist + policy-overlay merged. F2 behavioral test passes.
+- [ ] NUDGE: `internal/nudge/` package complete with detect/parse/rewrite/evaluate; soft-advise default; wired into check + gateway + shim; `record_type: "nudge"` audit records; `beekeeper nudge status|check|audit` CLI. F3 acceptance criteria from NUDGE-PRD §10 (all 17 tests) pass.
+- [ ] PLCY-07: Per-severity escalation (`severity: "critical"` → block at 1 source); sanity bound on new critical blocks per sync cycle; documented in threat model. F1 behavioral test (`npm install ai-figure` → BLOCK, not WARN) passes.
+- [ ] BTEST: Table-driven pure-policy unit tests + stdin→decision integration tests + live-binary E2E battery covering all three gaps.
 
-- [x] `beekeeper check` hook handler (reads tool call from stdin, policy eval, exits allow/block, sub-100ms target)
-- [x] `beekeeper hooks install --target claude-code` writes to `~/.claude/settings.json`
-- [x] Bumblebee `threat_intel/` catalog sync and matching (single-source, warn on single match)
-- [x] Release-age policy for npm and PyPI (24h default)
-- [x] Basic NDJSON audit log to local file (0600 permissions)
-- [x] `beekeeper catalogs sync`, `beekeeper audit tail`
-- [x] Reproducible builds, Sigstore signing, pinned deps, SECURITY.md (self-defense minimum)
-- [x] Fail-closed default with documented resource limits
+### Defer to v1.3.0
 
-Why this minimum: protects the builder's machine. Validates the hook integration pattern. Proves the catalog matching architecture works. Generates real audit data. Does not require elevation.
-
-### Add After Validation (v0.3.0–v0.6.0)
-
-- [ ] OSV and Socket catalog sources (enables corroboration semantics) — add when single-source coverage proves insufficient against real threats
-- [ ] Lifecycle script policy for npm, pip, cargo, gem, composer — add when an agent-triggered lifecycle script exploit occurs or is reported
-- [ ] Editor extension CLI parsing + file-watcher daemon — add after v0.1.0 validates hook architecture; this is the next highest-risk surface post-Nx Console
-- [ ] Cursor and Codex CLI hook integration — add when user demand confirms multi-agent coverage matters
-- [ ] Sensitive path policy (blocklist for ~/.ssh/, ~/.aws/, .env) — add in v0.3.0; low complexity, high visibility
-- [ ] MCP gateway daemon — add when users report agents that cannot be covered by hook integration alone
-- [ ] Sentry daemon (Linux fanotify + eBPF) — add in v0.6.0 after hook architecture is proven; requires 7-day baseline period before enabling rules
-- [ ] TUI dashboard — add in v1.0.0; the legibility that makes Beekeeper evaluable at a glance
-
-### Future Consideration (v2+)
-
-- [ ] SARIF export for security team workflows — defer until enterprise/team use cases are confirmed
-- [ ] Cross-host correlation for team deployments — defer until solo developer use case is proven
-- [ ] macOS EndpointSecurity entitlement — defer; Apple entitlement process is uncertain for indie OSS; eslogger covers v1
-- [ ] Local LLM-based anomaly classifier — defer to v3; counter-based baseline is sufficient for v1
-- [ ] Sandbox/microVM orchestration — defer to v3; threat model shows hooks + Sentry cover the practical threat classes
-- [ ] eBPF-based syscall blocking (true prevention) — defer to v3; detection with 5-minute window compression is the v1 value proposition
-- [ ] SLSA Level 3 provenance — v0.9.0 target per the phasing plan; Sigstore covers v0.1.0
+- [ ] Hard-rewrite mode (`nudge.mode: "hard"`) — soft-advise must be validated in production before enabling command rewrites. Ship after v1.2.0 has run against real agent sessions.
+- [ ] Yarn Berry nudge — defer pending pattern research.
+- [ ] Pip/cargo/gem nudge — defer pending threat data.
+- [ ] OSV as second source for auto-corroboration of critical advisories (Option C) — defer; adds network latency on hot path. Evaluate after PLCY-07 Option A is in production.
 
 ---
 
-## Feature Prioritization Matrix
+## Feature Prioritization Matrix (v1.2.0)
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| `beekeeper check` hook handler | HIGH | LOW | P1 |
-| Claude Code hooks integration | HIGH | LOW | P1 |
-| Bumblebee catalog matching | HIGH | LOW | P1 |
-| Release-age policy (npm, PyPI) | HIGH | LOW | P1 |
-| NDJSON audit log | HIGH | LOW | P1 |
-| Fail-closed default | HIGH | LOW | P1 |
-| Sigstore signing + reproducible builds | HIGH | LOW | P1 |
-| SECURITY.md + disclosure process | HIGH | LOW | P1 |
-| OSV + Socket catalog sources | HIGH | MEDIUM | P1 |
-| Corroboration semantics | HIGH | MEDIUM | P1 |
-| Sensitive path policy | HIGH | LOW | P1 |
-| Lifecycle script policy (cross-ecosystem) | HIGH | MEDIUM | P1 |
-| Editor extension CLI enforcement | HIGH | MEDIUM | P1 |
-| File-watcher daemon (extension dirs) | HIGH | MEDIUM | P1 |
-| Shim layer (PATH wrappers) | MEDIUM | MEDIUM | P2 |
-| MCP gateway daemon | HIGH | HIGH | P2 |
-| Behavioral baseline (counter-based) | MEDIUM | MEDIUM | P2 |
-| Catalog delta-triggered re-scan | HIGH | MEDIUM | P2 |
-| Sentry daemon (Linux) | HIGH | HIGH | P2 |
-| Sentry daemon (macOS, eslogger) | HIGH | HIGH | P2 |
-| Sentry daemon (Windows, ETW) | HIGH | HIGH | P2 |
-| LlamaFirewall sidecar integration | MEDIUM | HIGH | P2 |
-| TUI dashboard | HIGH | MEDIUM | P2 |
-| Policy as code (test + validate) | HIGH | MEDIUM | P2 |
-| Multi-agent parent-child policy | MEDIUM | HIGH | P2 |
-| beekeeper-self catalog | HIGH | MEDIUM | P2 |
-| Output filtering + multi-turn exfil detection | MEDIUM | MEDIUM | P2 |
-| ContextForge/MCPGuard policy-plugin mode | LOW | HIGH | P3 |
-| SARIF export | LOW | LOW | P3 |
-| Cross-host team correlation | LOW | HIGH | P3 |
-| Local LLM anomaly classifier | LOW | HIGH | P3 |
-| Sandbox/microVM orchestration | LOW | HIGH | P3 |
-
-**Priority key:**
-- P1: Must have, ship in v0.1.0–v0.3.0
-- P2: Should have, ship in v0.3.0–v1.0.0
-- P3: Nice to have, v2+ consideration
-
----
-
-## Competitor Feature Analysis
-
-| Feature | Bumblebee | LlamaFirewall | Socket Firewall Free | MCP Gateways (ContextForge/MCPX/Bifrost) | Microsoft AGT | Beekeeper |
-|---------|-----------|---------------|----------------------|-------------------------------------------|---------------|-----------|
-| Supply chain catalog matching | Yes (read-only) | No | Yes (Socket only, human-reviewed) | No | Partial (plugin signing only) | Yes (multi-source, corroboration) |
-| Runtime enforcement (block, not just detect) | No | No | Yes (package fetch layer) | Partial (MCP protocol layer only) | Partial (app middleware layer) | Yes (hook + gateway + shim) |
-| Agent hook integration | No | No | No | Yes (MCP only) | Yes (framework adapters) | Yes (PreToolUse + PostToolUse) |
-| Release-age policy | No | No | No | No | No | Yes (24h default, all ecosystems) |
-| Lifecycle script enforcement | No | No | No | No | No | Yes (allowlist-only, cross-ecosystem) |
-| Editor extension enforcement | Scan (post-install) | No | No | No | No | Yes (3 layers: CLI + file-watcher + scan) |
-| OS-level process correlation | No | No | No | No | No (app layer only) | Yes (Sentry, opt-in) |
-| Prompt injection detection | No | Yes (PromptGuard 2) | No | No | Yes (semantic classifier) | Yes (LlamaFirewall sidecar) |
-| Sensitive path policy | No | No | No | Partial (RBAC on tools) | Partial | Yes |
-| Behavioral baseline | No | No | No | No | No | Yes (counter-based) |
-| Multi-source corroboration | No (single source) | N/A | No (single source) | No | No | Yes (2FA for threat intel) |
-| Windows support | No (macOS/Linux only) | Yes | Yes | Varies (mostly cloud) | Yes (Azure-focused) | Yes (primary dev platform) |
-| Single static binary | Yes | No (Python) | No (Node.js proxy) | Varies | No (Python) | Yes (Go) |
-| TUI dashboard | No | No | No | No (web UI) | No | Yes (Bubble Tea) |
-| Policy as code (testable) | No | No | No | Partial (YAML/OPA in AGT) | Yes (YAML/OPA/Cedar) | Yes (declarative JSON) |
-| Self-compromise detection | No | No | No | No | No | Yes (beekeeper-self catalog) |
-| Audit log (NDJSON, local) | Yes | No | No | Partial (varies by gateway) | No | Yes (schema-compatible with Bumblebee) |
-
----
-
-## Sentry Process Correlation Rules: Documentation Quality Assessment
-
-This section answers Question 5 from the research brief: what's well-documented vs. novel vs. risky to ship as defaults.
-
-### Well-Documented (HIGH confidence, safe to ship as defaults)
-
-**Extension-host credential cluster rule.** Process descended from editor reads 2+ sensitive-path files in 60 seconds. This is essentially the Nx Console attack signature. The Nx postmortem provides direct empirical validation. ARMO's eBPF detection research confirms process lineage analysis for parent-child relationships is the correct technique. False positive risk: LOW when the sensitive-path watchlist is specific. A legitimate developer tool (e.g., 1Password CLI reading `~/.config/op/`) should be allowlisted, not suppressed by rule tuning.
-
-**Exfil signature fusion rule.** Sensitive path read + outbound network connection + same process descending from recently-installed extension, within 5 minutes. This is the exact Nx Console attack pattern in structured form. The attack executed within seconds of the developer opening a workspace. The 5-minute correlation window is conservative — the actual attack occurred in seconds. Well-documented source material. Safe to ship as default.
-
-### Novel (MEDIUM confidence, requires baseline period before promoting to enforcement)
-
-**Extension-host phone-home rule.** Process descended from editor initiates outbound connection to domain not in allowlist within 10 minutes of extension activation. The concept is sound; the implementation challenge is the allowlist. Legitimate extensions make network calls (telemetry, update checks, API calls). The allowlist must be pre-populated with known-good domains or the false positive rate will be unacceptable. Falco's experience with similar "new outbound connection" rules in production environments shows high noise until environment-specific tuning is applied. Ship with 7-day audit-only baseline. Do not promote to enforcement without an initial allowlist of common legitimate extension domains.
-
-**Extension-host credential CLI burst rule.** Process descended from editor spawns 2+ known credential CLIs within 60 seconds. The attack behavior is documented in the Nx Console postmortem (the payload specifically targeted `gh auth`, AWS credentials, npm tokens, 1Password). The challenge: a developer running a setup script legitimately might invoke multiple credential CLIs in rapid succession. The 60-second window and 2-occurrence threshold are tunable starting points, not validated ground truth. Ship as audit-only default, promote to warn after baseline.
-
-**Fresh-extension behavior correlation rule.** Any of the above fire AND a Bumblebee-tracked extension was installed/updated within 30 minutes. This is the highest-confidence compound rule because it requires two independent signals to fire. The cross-correlation with Bumblebee inventory is the differentiating element. Risk: Bumblebee inventory must be current for the correlation to be meaningful. If the catalog sync is stale, the rule degrades gracefully (it still fires on the process pattern; it just loses the catalog attribution). Safe to ship as default with the compound condition.
-
-### Risky (LOW confidence, do NOT ship as enforcement defaults in v1)
-
-**Network egress allowlist enforcement at the Sentry level.** Blocking outbound connections from editor processes based on domain allowlists requires either a very permissive allowlist (low value) or aggressive tuning (high false positive rate that breaks legitimate editor features). VS Code extensions legitimately call dozens of domains: Marketplace APIs, telemetry, language server updates, extension-specific APIs. Any approach narrower than "alert on unexpected new domains" requires per-developer baseline learning that is not feasible at v1 ship. Ship as audit-only, never as enforcement default.
-
-**Agent process identity via process lineage only.** Inferring that a process is "the agent" from process lineage is reliable when the agent is a known binary (Claude Code, Cursor). It becomes unreliable when agents are invoked from scripts, CI, or non-standard paths. Misidentifying a non-agent process as an agent means applying agent-specific rules incorrectly. The safe approach: identify agents by path allowlist (documented agent binary locations), not purely by lineage.
-
-**Multi-turn exfiltration detection via entropy scoring.** Rolling entropy on output buffers sounds good but generates significant false positives on legitimate high-entropy content: base64-encoded images, compressed payloads, cryptographic outputs from legitimate tools. Entropy scoring alone is not a sufficient signal. This should be paired with pattern matching (known API key prefixes, JWT format, private key headers) rather than used standalone. Ship the pattern matching; don't ship raw entropy thresholds as enforcement defaults.
+| PLCY-05 sensitive-path wiring | HIGH | LOW | P1 |
+| PLCY-07 critical-severity block | HIGH | LOW | P1 |
+| NUDGE detect + parse + evaluate (soft mode) | HIGH | MEDIUM | P1 |
+| BTEST per-feature behavioral tests | HIGH | MEDIUM | P1 |
+| NUDGE audit records | HIGH | LOW | P1 |
+| NUDGE hard-rewrite mode (opt-in) | MEDIUM | MEDIUM | P2 |
+| `beekeeper nudge status|check|audit` CLI | MEDIUM | LOW | P2 |
+| Node 22 compatibility gate surfacing | MEDIUM | LOW | P2 |
+| Weekly major-version drift check | LOW | LOW | P2 |
+| Yarn/pip/cargo nudge | LOW | HIGH | P3 |
+| OSV auto-corroboration for critical | MEDIUM | HIGH | P3 |
 
 ---
 
 ## Sources
 
-- Perplexity Bumblebee GitHub: https://github.com/perplexityai/bumblebee
-- LlamaFirewall official docs: https://meta-llama.github.io/PurpleLlama/LlamaFirewall/
-- LlamaFirewall paper: https://arxiv.org/abs/2505.03574
-- Socket Firewall Free docs: https://docs.socket.dev/docs/socket-firewall-free
-- TrueFoundry MCP security tools overview: https://www.truefoundry.com/blog/best-mcp-security-tools
-- Integrate.io MCP gateways comparison: https://www.integrate.io/blog/best-mcp-gateways-and-ai-agent-security-tools/
-- Lunar.dev open source MCP gateways: https://www.lunar.dev/post/the-best-open-source-mcp-gateways-in-2026
-- DX Heroes MCP governance landscape: https://dxheroes.io/insights/mcp-governance-landscape-early-2026
-- IBM ContextForge GitHub: https://github.com/IBM/mcp-context-forge
-- Microsoft Agent Governance Toolkit GitHub: https://github.com/microsoft/agent-governance-toolkit
-- Microsoft AGT announcement: https://opensource.microsoft.com/blog/2026/04/02/introducing-the-agent-governance-toolkit-open-source-runtime-security-for-ai-agents/
-- Microsoft RAMPART + Clarity: https://www.microsoft.com/en-us/security/blog/2026/05/20/introducing-rampart-and-clarity-open-source-tools-to-bring-safety-into-agent-development-workflow/
-- Nx Console compromise (StepSecurity): https://www.stepsecurity.io/blog/nx-console-vs-code-extension-compromised
-- Nx Console compromise (Hacker News): https://thehackernews.com/2026/05/compromised-nx-console-18950-targeted.html
-- Nx Console postmortem (Nx Blog): https://nx.dev/blog/nx-console-v18-95-0-postmortem
-- Nx Console GHSA advisory: https://github.com/nrwl/nx-console/security/advisories/GHSA-c9j4-9m59-847w
-- Aikido: GitHub breached via VS Code extension: https://www.aikido.dev/blog/github-breached-vs-code-extension
+**pnpm command reference (verified June 2026):**
+- pnpm add: https://pnpm.io/cli/add
+- pnpm install: https://pnpm.io/cli/install
+- pnpm dlx: https://pnpm.io/cli/dlx
+- pnpm 11.0 release notes: https://pnpm.io/blog/releases/11.0
 - pnpm supply chain security: https://pnpm.io/supply-chain-security
-- pnpm 11 minimumReleaseAge announcement: https://cybersecuritynews.com/pnpm-11-turns-on-minimum-release-age/
-- Mondoo npm supply chain 2026: https://mondoo.com/blog/npm-supply-chain-security-package-manager-defenses-2026
-- Sonatype 2026 Software Supply Chain Report: https://www.sonatype.com/state-of-the-software-supply-chain/2026/vulnerability-management
-- MCP security supply chain crisis: https://cyberstrategyinstitute.com/mcp-security-supply-chain-crisis/
-- ARMO AI agent escape detection: https://www.armosec.io/blog/ai-agent-escape-detection/
-- Palo Alto eBPF AI security: https://www.paloaltonetworks.com/blog/network-security/beginners-guide-to-ai-security-with-ebpf/
+- pnpm 11 security analysis (Socket): https://socket.dev/blog/pnpm-11-adds-new-supply-chain-protection-defaults
+
+**bun command reference (verified June 2026):**
+- bun add: https://bun.sh/docs/cli/add
+- bun install: https://bun.sh/docs/cli/install
+- bunx: https://bun.sh/docs/cli/bunx
+
+**Version pinning and supply chain incidents:**
+- 2026 Axios supply chain compromise (Microsoft Security Blog): https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/
+- Mini Shai-Hulud / TeamPCP analysis: https://safeheron.com/blog/npm-supply-chain-news-lessons-from-attacks-2026/
+- Microsoft typosquatting campaign (May 2026): https://www.microsoft.com/en-us/security/blog/2026/05/28/typosquatted-npm-packages-used-steal-cloud-ci-cd-secrets/
+- Dependency pinning for npm: https://exploitr.com/articles/dependency-pinning-npm-supply-chain-attacks/
+- "Pinning Is Futile" paper: https://arxiv.org/pdf/2502.06662
+
+**Sensitive path blocklist sources:**
+- Claude Code issue #46741 (credential paths community request): https://github.com/anthropics/claude-code/issues/46741
+- AI coding agent security guardrails: https://dev.to/maxkrivich/ai-coding-agent-security-practical-guardrails-for-claude-code-copilot-and-codex-och
+- MCP config file paths guide: https://mcpplaygroundonline.com/blog/complete-guide-mcp-config-files-claude-desktop-cursor-lovable
+
+**Severity and enforcement conventions:**
+- OSV schema specification: https://ossf.github.io/osv-schema/
+- CVSS v4.0 specification (FIRST.org): https://www.first.org/cvss/specification-document
+- npq behavior reference: https://github.com/lirantal/npq
+- Socket safe-npm FAQ: https://docs.socket.dev/docs/safe-npm-faq
 - Claude Code hooks documentation: https://code.claude.com/docs/en/agent-sdk/hooks
-- eslogger macOS documentation: https://keith.github.io/xcode-man-pages/eslogger.1.html
-- Cybereason blue teaming with eslogger: https://www.cybereason.com/blog/blue-teaming-on-macos-with-eslogger
-- OpenClaw agent attack surface (VentureBeat): https://venturebeat.com/security/one-command-open-source-repo-ai-agent-backdoor-openclaw-supply-chain-scanner
-- OWASP Agentic Top 10 compliance (Microsoft): https://github.com/microsoft/agent-governance-toolkit/blob/main/docs/OWASP-COMPLIANCE.md
-- 2026 OSSRA Report (Black Duck): https://www.blackduck.com/blog/open-source-trends-ossra-report.html
 
 ---
-*Feature research for: agent runtime safety harness (Beekeeper)*
-*Researched: 2026-05-26*
+*Feature research for: Beekeeper v1.2.0 Runtime Behavioral Hardening (PLCY-05, NUDGE, PLCY-07)*
+*Researched: 2026-06-03*
