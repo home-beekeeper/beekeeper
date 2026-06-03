@@ -29,9 +29,19 @@ func TestCorroborationZeroMatches(t *testing.T) {
 
 // TestCorroborationOneSignedSource: one signed source → level "warn", quarantine false,
 // CorroborationCount 1, SourcesAgreed ["bumblebee"].
+//
+// WR-03: Explicitly use Severity "high" (not "critical" and not the zero value "")
+// to verify the GLOBAL threshold path, NOT the SeverityOverrides["critical"] override
+// path. DefaultCorroborationThresholds() includes SeverityOverrides["critical"]{BlockAt:1},
+// so a match with Severity "critical" would take the override path and produce "block"
+// at signedCount=1. Using "high" keeps this test on the global path (effectiveBlockAt=2)
+// where signedCount=1 correctly yields "warn". A future developer adding Severity
+// "critical" here should recognise this test would then exercise a different code path.
 func TestCorroborationOneSignedSource(t *testing.T) {
 	matches := []CatalogMatch{
-		{CatalogSource: "bumblebee", Signed: true},
+		// Severity "high" is intentional: exercises the global-threshold path,
+		// not the SeverityOverrides["critical"] override path (WR-03).
+		{CatalogSource: "bumblebee", Severity: "high", Signed: true},
 	}
 	level, quarantine, count, agreed, dissented := corroborate(matches, DefaultCorroborationThresholds())
 	if level != "warn" {
