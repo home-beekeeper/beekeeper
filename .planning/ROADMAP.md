@@ -122,7 +122,7 @@
 - [x] 05-01-PLAN.md — Wave 1 (beekeeper): PTEST-05 — fix isSensitivePath (filepath.ToSlash, Windows backslash bug) + Windows honeypot E2E (TestHoneypotExfilFusion fires SENTRY-005)
 - [x] 05-02-PLAN.md — Wave 1 (beekeeper): SDEF-01 — pollen-self entries in the unified beekeeper-self catalog + selftest fixture (non-production version)
 - [x] 05-03-PLAN.md — Wave 1 (pollen): SYNC-01 UPSTREAM.md sync workflow + version history; SYNC-02 contribution-back-deferred rationale (D-2); pollen.5 VERSION/CHANGES prep
-- [ ] 05-04-PLAN.md — Wave 2 (beekeeper): BKINT-02 — CI go install Pollen pin (v0.1.1-pollen.4) + PinnedPollenVersion const + D-5 release runbook
+- [x] 05-04-PLAN.md — Wave 2 (beekeeper): BKINT-02 — CI go install Pollen pin (v0.1.1-pollen.4) + PinnedPollenVersion const + D-5 release runbook
 - [ ] 05-05-PLAN.md — Wave 3 (CHECKPOINT, autonomous:false): maintainer pushes both repos + cuts four signed tags (pollen.2/.3/.4/.5) + cosign verify; CI-green confirmation; milestone close
 
 > **SC2 relaxed (D-2):** No upstream contribution-back PRs against perplexityai/bumblebee this milestone (upstream Windows-support path unviable; PRs #3/#4 ignored). SYNC-02 is satisfied-by-documented-deferral in UPSTREAM.md (05-03). The verifier MUST NOT flag the absence of an upstream PR as a Phase-5 gap.
@@ -135,7 +135,7 @@
 | 2. Policy Engine + Multi-Source Catalogs | v1.0.0 | 3/4 | In Progress|  |
 | 3. Editor Extension Defense | v1.0.0 | 5/5 | Complete | 2026-05-26 |
 | 4. Integration Surfaces | v1.0.0 | 2/3 | In Progress|  |
-| 5. Linux Sentry | v1.0.0 | 3/5 | In Progress|  |
+| 5. Linux Sentry | v1.0.0 | 4/5 | In Progress|  |
 | 6. LlamaFirewall + Audit Sinks | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 7. Cross-Platform Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | v1.0.0 | 9/9 | Complete | 2026-05-29 |

@@ -43,7 +43,7 @@ Requirements for milestone v1.1.0. Each maps to exactly one roadmap phase. Spans
 ### Beekeeper Integration (BKINT)
 
 - [x] **BKINT-01**: Beekeeper consumes Pollen across the `internal/inventory/` boundary — invokes `pollen scan`, parses NDJSON, applies beekeeper rules; the `bumblebee` subprocess call in `internal/scan` (`runBumblebeeFn`) is swapped for `pollen` behind a mockable interface so beekeeper unit tests don't require Pollen to run
-- [ ] **BKINT-02**: Beekeeper's `go.mod` pins Pollen at an explicit version (no auto-update; bumps require explicit beekeeper PRs); beekeeper CI installs Pollen and runs the compatibility + honeypot tests, flipping Windows CI from "skipped Bumblebee tests" to fully green
+- [x] **BKINT-02**: Beekeeper's `go.mod` pins Pollen at an explicit version (no auto-update; bumps require explicit beekeeper PRs); beekeeper CI installs Pollen and runs the compatibility + honeypot tests, flipping Windows CI from "skipped Bumblebee tests" to fully green
 
 ### Upstream Sync & Contribution-Back (SYNC)
 
@@ -106,7 +106,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PTEST-04 | Phase 4 | Complete |
 | SYNC-01 | Phase 5 | Complete |
 | SYNC-02 | Phase 5 | Complete |
-| BKINT-02 | Phase 5 | Pending |
+| BKINT-02 | Phase 5 | Complete |
 | PTEST-05 | Phase 5 | Complete |
 | SDEF-01 | Phase 5 | Complete |
 
