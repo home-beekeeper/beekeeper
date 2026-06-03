@@ -635,7 +635,9 @@ matches := adapter.LookupAll("beekeeper", "pollen")
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three resolved in planning — inline recommendations adopted; plans 05-01/05-02/05-04 implement the answers.
 
 1. **`isSensitivePath` production fix scope**
    - What we know: the function uses forward-slash sensitive path strings; Windows ETW paths use backslashes.
