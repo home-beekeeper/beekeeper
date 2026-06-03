@@ -25,17 +25,35 @@ findings:
   warning: 4
   info: 3
   total: 9
-status: criticals_resolved
+status: all_resolved
 resolution:
   resolved_commit: e8bdf8a
   critical_resolved: 2
-  warnings_deferred: 4
-  note: "CR-01 (ANY→ALL wildcard guard) and CR-02 (QuarantineAt recompute + strict validation) fixed with regression tests in commit e8bdf8a. The 4 warnings (resolveCatalogHealthy 4x duplication, no validate-time upper-bound, weak TestCorroborationOneSignedSource, undocumented fail-safe) are lower priority — tracked for a later hardening pass."
+  warning_resolved: 4
+  warnings_deferred: 0
+  warning_commits:
+    WR-01: "15a9378"
+    WR-02: "431cc7d"
+    WR-03: "41004af"
+    WR-04: "15a9378"
+  note: >
+    CR-01 (ANY→ALL wildcard guard) and CR-02 (QuarantineAt recompute + strict
+    validation) fixed with regression tests in commit e8bdf8a.
+    WR-01+WR-04 (resolveCatalogHealthy 4x duplication + undocumented fail-safe):
+    extracted to catalog.ResolveHealthy in internal/catalog/health.go with full
+    security rationale comment; four per-package copies replaced with one-line
+    delegates (commit 15a9378).
+    WR-02 (no validate-time upper-bound): ValidateSchema now rejects
+    critical_block_at > block_at when both appear in the same rule;
+    TestValidateSchema_CriticalBlockAtUpperBound added (commit 431cc7d).
+    WR-03 (weak TestCorroborationOneSignedSource): added explicit Severity "high"
+    and comment clarifying this tests the global-threshold path, not the
+    SeverityOverrides["critical"] override path (commit 41004af).
 ---
 
 # Phase 6: Code Review Report
 
-> ✅ **Both CRITICAL findings resolved in commit `e8bdf8a`** (CR-01 escalation-downgrade vector; CR-02 tier-collapse) with regression tests. The 4 WARNINGS remain as tracked lower-priority follow-ups.
+> ✅ **All findings resolved.** CR-01 + CR-02 fixed in `e8bdf8a`. WR-01+WR-04 fixed in `15a9378` (catalog.ResolveHealthy consolidation + security comment). WR-02 fixed in `431cc7d` (load-time upper-bound validation). WR-03 fixed in `41004af` (explicit Severity "high" + comment in test).
 
 **Reviewed:** 2026-06-03
 **Depth:** deep
