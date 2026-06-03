@@ -217,6 +217,103 @@ func TestCorroborationDissentDoesNotAffectDecision(t *testing.T) {
 	}
 }
 
+// TestCorroborationShaiHuludCriticalBlock: bumblebee (unsigned, critical) +
+// OSV (signed, severity "unknown") → single signed source + critical severity override →
+// effectiveBlockAt=1 → block.
+func TestCorroborationShaiHuludCriticalBlock(t *testing.T) {
+	matches := []CatalogMatch{
+		{CatalogSource: "bumblebee", Severity: "critical", Signed: false},
+		{CatalogSource: "osv", Severity: "unknown", Signed: true},
+	}
+	thresholds := DefaultCorroborationThresholds() // includes CatalogHealthy:true + SeverityOverrides
+	level, quarantine, count, agreed, _ := corroborate(matches, thresholds)
+	if level != "block" {
+		t.Errorf("level = %q, want %q (critical single-signed-source must block)", level, "block")
+	}
+	if quarantine {
+		t.Error("quarantine should be false (signedCount=1 < QuarantineAt=2)")
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1 (only OSV is signed)", count)
+	}
+	if len(agreed) != 2 {
+		t.Errorf("agreed = %v, want [bumblebee osv] (both matched)", agreed)
+	}
+}
+
+// TestCorroborationDegradedCatalogNoEscalation: CatalogHealthy=false suppresses
+// critical-severity override → same fixture as Shai-Hulud → warn-only.
+func TestCorroborationDegradedCatalogNoEscalation(t *testing.T) {
+	matches := []CatalogMatch{
+		{CatalogSource: "bumblebee", Severity: "critical", Signed: false},
+		{CatalogSource: "osv", Severity: "unknown", Signed: true},
+	}
+	thresholds := DefaultCorroborationThresholds()
+	thresholds.CatalogHealthy = false // simulate >1000 delta entries injected
+	level, _, _, _, _ := corroborate(matches, thresholds)
+	if level != "warn" {
+		t.Errorf("level = %q, want warn (degraded catalog must not escalate)", level)
+	}
+}
+
+// TestCorroborationAllVersionsCriticalWildcardStaysWarn: versions:["*"] critical
+// entry with one signed source must NOT block even with SeverityOverrides active.
+func TestCorroborationAllVersionsCriticalWildcardStaysWarn(t *testing.T) {
+	matches := []CatalogMatch{
+		{CatalogSource: "bumblebee", Severity: "critical", Version: "*", Signed: false},
+		{CatalogSource: "osv", Severity: "unknown", Version: "*", Signed: true},
+	}
+	thresholds := DefaultCorroborationThresholds() // CatalogHealthy:true
+	level, _, _, _, _ := corroborate(matches, thresholds)
+	if level != "warn" {
+		t.Errorf("level = %q, want warn (all-versions wildcard must require 2 sources)", level)
+	}
+}
+
+// TestValidateCorroborationThresholdsRejectsBlockAtZero: BlockAt<1 override fails closed.
+func TestValidateCorroborationThresholdsRejectsBlockAtZero(t *testing.T) {
+	thresholds := DefaultCorroborationThresholds()
+	thresholds.SeverityOverrides["critical"] = SeverityThreshold{BlockAt: 0, QuarantineAt: 1}
+	// validateCorroborationThresholds should return non-nil error.
+	if err := validateCorroborationThresholds(thresholds); err == nil {
+		t.Error("want error for BlockAt=0, got nil")
+	}
+	// And corroborate should fail closed (block) not silently allow.
+	matches := []CatalogMatch{{CatalogSource: "bumblebee", Severity: "critical", Signed: false}}
+	level, _, _, _, _ := corroborate(matches, thresholds)
+	if level != "block" {
+		t.Errorf("level = %q, want block (misconfigured thresholds → fail closed)", level)
+	}
+}
+
+// TestValidateCorroborationThresholdsRejectsLooserOverride: override BlockAt > global BlockAt → error.
+func TestValidateCorroborationThresholdsRejectsLooserOverride(t *testing.T) {
+	thresholds := DefaultCorroborationThresholds() // global BlockAt=2
+	thresholds.SeverityOverrides["critical"] = SeverityThreshold{BlockAt: 3, QuarantineAt: 4}
+	if err := validateCorroborationThresholds(thresholds); err == nil {
+		t.Error("want error for override BlockAt(3) > global BlockAt(2), got nil")
+	}
+}
+
+// TestDefaultThresholdsIncludeSeverityOverrides: DefaultCorroborationThresholds() has
+// CatalogHealthy==true and SeverityOverrides["critical"].BlockAt==1.
+func TestDefaultThresholdsIncludeSeverityOverrides(t *testing.T) {
+	thresholds := DefaultCorroborationThresholds()
+	if !thresholds.CatalogHealthy {
+		t.Error("CatalogHealthy = false, want true (default must be healthy)")
+	}
+	if thresholds.SeverityOverrides == nil {
+		t.Fatal("SeverityOverrides is nil, want non-nil map with critical entry")
+	}
+	ov, ok := thresholds.SeverityOverrides["critical"]
+	if !ok {
+		t.Fatal("SeverityOverrides[\"critical\"] not present in defaults")
+	}
+	if ov.BlockAt != 1 {
+		t.Errorf("SeverityOverrides[\"critical\"].BlockAt = %d, want 1", ov.BlockAt)
+	}
+}
+
 // TestCorroborationImportsArePure enforces the purity contract: corroboration.go
 // must not import any package that performs I/O, concurrency, or wall-clock
 // access. Replicates the pattern from TestEngineImportsArePure.
