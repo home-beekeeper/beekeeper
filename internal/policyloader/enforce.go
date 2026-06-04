@@ -288,7 +288,7 @@ func extractTargetPath(tc policy.ToolCall) string {
 		return p
 	}
 	// path: legacy key; keep for backward compatibility
-	if p, ok := tc.ToolInput["path"].(string); ok {
+	if p, ok := tc.ToolInput["path"].(string); ok && p != "" {
 		return p
 	}
 	return ""
