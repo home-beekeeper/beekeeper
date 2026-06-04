@@ -59,6 +59,29 @@ type AuditRecord struct {
 	LLMFResult     string  `json:"llmf_result,omitempty"`      // clean|injection|unsafe|hijacked
 	LLMFConfidence float64 `json:"llmf_confidence,omitempty"`
 	LLMFLatencyMS  int64   `json:"llmf_latency_ms,omitempty"`
+	// Phase 8 additions (NUDGE-06): package-manager nudge provenance.
+	//
+	// These fields carry the nudge decision provenance required by PRD §9.
+	// The existing Decision field (json:"decision") retains the repo's
+	// allow|warn|block vocabulary and MUST NOT be changed — it is the catalog
+	// and policy decision level used by all existing consumers.
+	//
+	// NudgeAction carries the PRD §9 "decision" vocabulary (advise|proceed|
+	// rewrite|block), which is distinct from the repo Level enum. A soft
+	// advisory therefore has Decision:"warn" (Level) AND NudgeAction:"advise"
+	// (§9), resolving the §9 vs repo enum mismatch without disturbing existing
+	// consumers.
+	//
+	// record_type "nudge" and "version_drift" join the existing set
+	// ("policy_decision", "tool_result", "llmf_alert", "sentry_alert").
+	// Callers set RecordType explicitly — FromDecision is a pure mapping that
+	// continues to produce "policy_decision" records; callers set RecordType
+	// and the nudge fields after, as handler.go does at the tool_result site.
+	OriginalCommand  string `json:"original_command,omitempty"`
+	RewrittenCommand string `json:"rewritten_command,omitempty"`
+	ReasonCode       string `json:"reason_code,omitempty"`
+	PMState          string `json:"pm_state,omitempty"` // flattened JSON-string view per §9
+	NudgeAction      string `json:"nudge_action,omitempty"` // closed §9 enum: advise|proceed|rewrite|block
 }
 
 // CatalogProvenance is the audit-record view of a single catalog hit. It mirrors

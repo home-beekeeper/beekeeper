@@ -8,6 +8,201 @@ import (
 	"github.com/bantuson/beekeeper/internal/policy"
 )
 
+// TestNudgeFieldsRoundTrip verifies that all five Phase 8 nudge provenance
+// fields (including NudgeAction) marshal and unmarshal correctly on an
+// AuditRecord with record_type "nudge".
+func TestNudgeFieldsRoundTrip(t *testing.T) {
+	rec := AuditRecord{
+		RecordType:       "nudge",
+		RecordID:         "nudge-test-001",
+		Timestamp:        "2026-06-04T10:00:00Z",
+		ScannerName:      "beekeeper",
+		ToolName:         "Bash",
+		Decision:         "warn",
+		OriginalCommand:  "npm install chalk@5.4.0",
+		RewrittenCommand: "pnpm add chalk@5.4.0",
+		ReasonCode:       "pnpm-available-soft",
+		PMState:          `{"pnpm_version":"11.3.0","pnpm_hardened":true}`,
+		NudgeAction:      "advise",
+	}
+
+	data, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	jsonStr := string(data)
+
+	for _, want := range []string{
+		`"record_type":"nudge"`,
+		`"original_command":"npm install chalk@5.4.0"`,
+		`"rewritten_command":"pnpm add chalk@5.4.0"`,
+		`"reason_code":"pnpm-available-soft"`,
+		`"pm_state":`,
+		`"nudge_action":"advise"`,
+	} {
+		if !strings.Contains(jsonStr, want) {
+			t.Errorf("JSON missing %q\nGot: %s", want, jsonStr)
+		}
+	}
+
+	// Unmarshal and verify round-trip fidelity.
+	var got AuditRecord
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if got.RecordType != "nudge" {
+		t.Errorf("RecordType = %q, want nudge", got.RecordType)
+	}
+	if got.OriginalCommand != rec.OriginalCommand {
+		t.Errorf("OriginalCommand = %q, want %q", got.OriginalCommand, rec.OriginalCommand)
+	}
+	if got.RewrittenCommand != rec.RewrittenCommand {
+		t.Errorf("RewrittenCommand = %q, want %q", got.RewrittenCommand, rec.RewrittenCommand)
+	}
+	if got.ReasonCode != rec.ReasonCode {
+		t.Errorf("ReasonCode = %q, want %q", got.ReasonCode, rec.ReasonCode)
+	}
+	if got.PMState != rec.PMState {
+		t.Errorf("PMState = %q, want %q", got.PMState, rec.PMState)
+	}
+	if got.NudgeAction != rec.NudgeAction {
+		t.Errorf("NudgeAction = %q, want %q", got.NudgeAction, rec.NudgeAction)
+	}
+}
+
+// TestNudgeRecordConformsToPRDSection9 is the BTEST-01 §10-14 conformance test.
+// It constructs a representative "nudge" AuditRecord, marshals it to JSON, and
+// asserts that EVERY field required by PRD §9 is present and that the closed
+// enum fields contain legal values.
+//
+// Closed sets are defined as test-local literals here because internal/audit
+// MUST NOT import internal/nudge (that would create an import cycle). The sets
+// mirror reasons.go and the §9 schema.
+func TestNudgeRecordConformsToPRDSection9(t *testing.T) {
+	// Closed enums — audit must not import internal/nudge so we define them locally.
+	legalDecisions := map[string]bool{
+		"allow": true,
+		"warn":  true,
+		"block": true,
+	}
+	legalNudgeActions := map[string]bool{
+		"advise":  true,
+		"proceed": true,
+		"rewrite": true,
+		"block":   true,
+	}
+	// Closed reason enum mirroring internal/nudge/reasons.go.
+	legalReasonCodes := map[string]bool{
+		"pnpm-available-soft":            true,
+		"pnpm-available-hard":            true,
+		"bun-available-soft":             true,
+		"bun-available-hard":             true,
+		"bun-available-no-scanner":       true,
+		"no-hardened-pm":                 true,
+		"no-hardened-pm-block":           true,
+		"node-incompatible-with-pnpm-11": true,
+		"sudo-passthrough":               true,
+		"not-applicable":                 true,
+	}
+
+	// Construct a representative §9 nudge record.
+	rec := AuditRecord{
+		RecordType:       "nudge",
+		RecordID:         "conformance-test-001",
+		Timestamp:        "2026-06-04T14:22:07Z",
+		ScannerName:      "beekeeper",
+		AgentName:        "claude-code",
+		ToolName:         "Bash",
+		Decision:         "warn",      // repo enum: allow|warn|block
+		NudgeAction:      "advise",    // §9 enum: advise|proceed|rewrite|block
+		ReasonCode:       "pnpm-available-soft",
+		OriginalCommand:  "npm install chalk@5.4.0",
+		RewrittenCommand: "",          // empty for advise (not rewrite)
+		PMState:          `{"pnpm_version":"11.3.0","pnpm_hardened":true,"bun_version":"","bun_scanner_ok":false,"node_version":"22.5.0"}`,
+	}
+
+	data, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	jsonStr := string(data)
+
+	// Assert the COMPLETE §9 field set is present in the JSON output.
+	// Fields from the §9 schema that map to AuditRecord fields:
+	requiredFields := []string{
+		`"record_type"`,
+		`"timestamp"`,
+		`"scanner_name"`,
+		`"tool_name"`,
+		`"original_command"`,
+		`"decision"`,
+		`"reason_code"`,
+		`"pm_state"`,
+		`"nudge_action"`,
+	}
+	for _, field := range requiredFields {
+		if !strings.Contains(jsonStr, field) {
+			t.Errorf("§9 required field %s is missing from nudge record JSON\nGot: %s", field, jsonStr)
+		}
+	}
+
+	// Assert record_type is "nudge" or "version_drift".
+	if rec.RecordType != "nudge" && rec.RecordType != "version_drift" {
+		t.Errorf("record_type %q: must be \"nudge\" or \"version_drift\"", rec.RecordType)
+	}
+
+	// Assert Decision ∈ {allow, warn, block} (repo enum).
+	if !legalDecisions[rec.Decision] {
+		t.Errorf("Decision %q is outside the closed enum {allow,warn,block}", rec.Decision)
+	}
+
+	// Assert NudgeAction ∈ {advise, proceed, rewrite, block} (§9 enum).
+	if !legalNudgeActions[rec.NudgeAction] {
+		t.Errorf("NudgeAction %q is outside the closed §9 enum {advise,proceed,rewrite,block}", rec.NudgeAction)
+	}
+
+	// Assert ReasonCode is non-empty and from the closed enum.
+	if rec.ReasonCode == "" {
+		t.Error("ReasonCode must be non-empty on a nudge record")
+	}
+	if !legalReasonCodes[rec.ReasonCode] {
+		t.Errorf("ReasonCode %q is not in the closed reason enum", rec.ReasonCode)
+	}
+
+	// Assert that a NudgeAction outside the closed set fails the check.
+	bad := AuditRecord{
+		RecordType:  "nudge",
+		RecordID:    "bad-001",
+		Timestamp:   "2026-06-04T14:22:07Z",
+		ScannerName: "beekeeper",
+		ToolName:    "Bash",
+		Decision:    "warn",
+		NudgeAction: "unknown-action", // illegal
+		ReasonCode:  "pnpm-available-soft",
+	}
+	if legalNudgeActions[bad.NudgeAction] {
+		t.Errorf("NudgeAction %q should NOT be in the closed §9 enum", bad.NudgeAction)
+	}
+
+	// Assert version_drift record type also marshals correctly.
+	driftRec := AuditRecord{
+		RecordType:  "version_drift",
+		RecordID:    "drift-001",
+		Timestamp:   "2026-06-04T14:22:07Z",
+		ScannerName: "beekeeper",
+		Decision:    "allow",
+		NudgeAction: "proceed",
+		ReasonCode:  "not-applicable",
+	}
+	driftData, err := json.Marshal(driftRec)
+	if err != nil {
+		t.Fatalf("json.Marshal version_drift: %v", err)
+	}
+	if !strings.Contains(string(driftData), `"record_type":"version_drift"`) {
+		t.Errorf("version_drift record type did not marshal correctly: %s", string(driftData))
+	}
+}
+
 // TestFromDecisionMapsProvenance verifies that a Decision with CorroborationCount,
 // SourcesAgreed, and CatalogMatches with Corroborated=true is fully mapped to an
 // AuditRecord, and the JSON representation carries all CTLG-09 fields.
