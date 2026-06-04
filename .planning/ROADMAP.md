@@ -204,7 +204,7 @@
 - [ ] 08-03-PLAN.md — Wave 2: pure nudge core — evaluate.go (Advise/Rewrite/Proceed/Block) + ActionString §9 enum + reasons/config/rewrite/version + purity test; PRD §10 1-10 table tests (NUDGE-02..06, BTEST-01)
 - [ ] 08-04-PLAN.md — Wave 3: impure detect.go (2s-timeout exec, fail-open) + gateway-only 60s Cache + hand-written bunfig/pnpm-workspace scanners + FuzzBunfig/FuzzPnpmWorkspace (NUDGE-02, BTEST-03)
 - [ ] 08-06-PLAN.md — Wave 4: wire nudge into check (fresh detect) + gateway (cache + per-session advisory cap) + shim + gateway version_drift weekly check §10-15 (NUDGE-03,04,06,08)
-- [ ] 08-08-PLAN.md — Wave 4: beekeeper nudge status|check|audit CLI + config set nudge.* audit logging §10-17 (NUDGE-07,08, BTEST-01)
+- [ ] 08-08-PLAN.md — Wave 5: beekeeper nudge status|check|audit CLI + config set nudge.* audit logging §10-17 + docs/nudge.md (PRD §13) (NUDGE-07,08, BTEST-01)
 - [ ] 08-07-PLAN.md — Wave 5: BTEST-02 RunCheck integration (pnpm install F3 end-to-end + soft advisory) + BTEST-03 live-binary E2E release gate (SPATH+CORR+NUDGE) (BTEST-01,02,03, NUDGE-01,08)
 **UI hint**: no
 
@@ -230,4 +230,4 @@
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
-| **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/7** | **Planned** | **—** |
+| **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/8** | **Planned** | **—** |

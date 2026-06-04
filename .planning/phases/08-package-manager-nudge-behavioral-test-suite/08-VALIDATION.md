@@ -1,8 +1,8 @@
 ---
 phase: 8
 slug: package-manager-nudge-behavioral-test-suite
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-06-04
 ---

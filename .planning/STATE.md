@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: Phase 7 complete & verified (9/9 must-haves; code-review 2 criticals + 4 warnings fixed); ready for Phase 8.
-last_updated: "2026-06-04T00:30:00.000Z"
-last_activity: 2026-06-04 -- Phase 07 complete & verified
+stopped_at: Phase 8 planned — 8 plans in 5 waves; plan-checker PASSED after revision convergence (7→6→4→1→0 issues). Ready to execute.
+last_updated: "2026-06-04T12:00:00.000Z"
+last_activity: 2026-06-04 -- Phase 08 planned (8 plans, 5 waves) — plan-checker PASSED
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 6
+  total_plans: 14
   completed_plans: 6
   percent: 67
 ---
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 ## Current Position
 
-Phase: 7 of 8 — ✅ COMPLETE & verified (next: Phase 8 — NUDGE + Behavioral Test Suite)
-Plan: 3 of 3 complete (07-01, 07-02, 07-03)
-Status: Phase 7 complete — verifier 9/9 must-haves; code-review 2 criticals + 4 warnings fixed; build + full repo tests green
-Last activity: 2026-06-04 -- Phase 07 complete & verified
+Phase: 8 of 8 — 📋 PLANNED, ready to execute (NUDGE + Behavioral Test Suite; v1.2.0 release gate)
+Plan: 0 of 8 complete — 8 plans in 5 waves (08-01..08-08)
+Status: Phase 8 planned & verified — RESEARCH (Flag 2/4/5 resolved) → PATTERNS → 8 plans → plan-checker PASSED after revision convergence (7→6→4→1→0 issues). discuss-phase intentionally skipped; the Flag 2/4/5 decisions are locked in 08-RESEARCH.md instead of CONTEXT.md.
+Last activity: 2026-06-04 -- Phase 08 planned (8 plans, 5 waves)
 
-Progress (v1.2.0): [██████░░░░] 67% (2 of 3 phases)
+Progress (v1.2.0): [██████░░░░] 67% (2 of 3 phases; Phase 8 planned, not yet executed)
 
 ## Phase Summary (v1.1.0)
 
@@ -50,7 +50,7 @@ Progress (v1.2.0): [██████░░░░] 67% (2 of 3 phases)
 |-------|------|--------------|--------|
 | 6 | Corroboration Severity Hardening | CORR-01, CORR-02 | ✅ Complete (3/3 plans; +2 code-review fixes) |
 | 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | ✅ Complete (3/3 plans; +6 code-review fixes) |
-| 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | Not started |
+| 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | 📋 Planned (8 plans, 5 waves; plan-checker PASSED) |
 
 ## Performance Metrics
 
@@ -117,13 +117,13 @@ Recent decisions from Phase 07 (v1.2.0 — Sensitive-Path Runtime Enforcement):
 
 ### Open Research Flags (v1.2.0)
 
-- **Before Phase 8 plan:** commit Flag 2 (NUDGE detection cache: Position A file-cache vs Position B gateway/shim-only) and Flag 4 (installPrefixes: extract `internal/pkgparse/` vs accept third copy with cross-reference comments). Both decisions determine `detect.go` signature, test strategy, and BTEST E2E fixtures — must be resolved in `/gsd-discuss-phase 8`.
+- **[RESOLVED in 08-RESEARCH.md, 2026-06-04]** Flag 2 → **Position B** (60s detection cache lives ONLY in the long-lived gateway/shim; the one-shot `beekeeper check` hook runs `nudge.DetectStateFn` fresh with a 2s timeout, no file-cache/hot-path I/O). Flag 4 → **EXTRACT** a new pure `internal/pkgparse/` collapsing the two existing install-parse copies (engine.go `installPrefixes` + enforce.go `installPrefixesOverlay`); pnpm/bun/yarn install verbs map to ecosystem "npm" (closes F3). discuss-phase was intentionally skipped (maintainer chose to plan directly); research committed both decisions so they did not leak into implementation.
 - **During Phase 8:** Windows corepack-shimmed pnpm `cmd.exe` startup time under the 2s detection timeout — live CI timing needed.
 - **Flag 5 (PRD corrections):** `minimumReleaseAge` default is 1440 minutes (not 60); Node 22 is Maintenance LTS (Node 24 is Active LTS) — apply before implementation in Phase 8.
 
 ### Blockers/Concerns
 
-- Phase 8 (NUDGE): two unresolved architectural decisions (Flag 2 + Flag 4) must be settled in discuss/plan before `detect.go` is written — surfaced in Phase 8 success criteria and must not be deferred to implementation
+- [RESOLVED 2026-06-04] Phase 8 (NUDGE): Flag 2 + Flag 4 settled in 08-RESEARCH.md and encoded in the plans (Flag 5 PRD corrections — minimumReleaseAge weakness baseline 1440, Node 24 recommended / floor 22 — also baked in). detect.go signature locked (cache-free `DetectStateFn` seam + gateway-only Cache wrapper). No longer a blocker.
 - PLCY-07 (Phase 6) self-defense: [RESOLVED in 06-01] escalation + sanity gate shipped atomically; all-versions guard + SeverityOverrides in one commit
 
 ## Deferred Items
@@ -153,6 +153,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- **v1.2.0 (current):** Phase 7 ✅ complete & verified (F2 closed — credential reads now block in live `beekeeper check`). Next: **Phase 8** (NUDGE + Behavioral Test Suite) — start with `/gsd-discuss-phase 8` to resolve Flag 2 (detect cache) + Flag 4 (installPrefixes extraction) BEFORE planning, then `/gsd-plan-phase 8`. NOTE: the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, and soon 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not.
+- **v1.2.0 (current):** Phase 8 📋 **planned & verified** — 8 plans in 5 waves (08-01..08-08), plan-checker PASSED after revision convergence (7→6→4→1→0 issues); RESEARCH/PATTERNS/VALIDATION written; Flag 2/4/5 locked in 08-RESEARCH.md (discuss-phase intentionally skipped). Next: **execute** with `/gsd-execute-phase 8` (the v1.2.0 release gate — closes F3 + ships the behavioral test suite + live-binary E2E). NOTE (still applies to execute): the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not. CONFIRMED this session: `init.plan-phase 8` → `.planning/milestones/v1.0.0-phases/08-tui-dashboard` (wrong); plan-phase was driven with explicit live paths instead.
 - **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: `HANDOFF.json` + 05-05 `.continue-here.md`. Do NOT close v1.1.0 before this runs.
 - **Still pending (from v1.0.0 close):** the beekeeper GitHub remote is created as part of the v1.1.0 runbook (Step 1: `gh repo create bantuson/beekeeper`).
