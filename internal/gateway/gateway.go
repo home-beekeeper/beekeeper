@@ -132,6 +132,10 @@ func Start(ctx context.Context, cfg Config) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Start the periodic drift check scheduler (§10-15, Open Q2 resolved).
+	// NEVER on the request path — runs in a dedicated goroutine.
+	startDriftScheduler(ctx, handler)
+
 	// Step 6: graceful shutdown goroutine listening for context cancellation.
 	go func() {
 		<-ctx.Done()
