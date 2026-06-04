@@ -49,55 +49,64 @@ func expandHome(dir string) string {
 // Deferred bypasses: nested variable expansion, computed variable names, and
 // cmd.exe delayed expansion (%%) are out of scope for Phase 7.
 func expandWinEnvVars(raw string) string {
-	// Walk the string looking for %...% sequences.
-	// We do not use os.ExpandEnv (handles $VAR/${}VAR only, not %VAR%).
-	result := raw
+	// Single left-to-right pass: scan for %...% sequences and append resolved
+	// values (or the original %VAR% literal for unresolved vars) to a Builder.
+	// Because we advance the cursor past each emitted value, substituted content
+	// is NEVER re-scanned — no re-expansion, no in-band sentinel needed (WR-01/WR-02).
+	// We do not use os.ExpandEnv (handles $VAR/${VAR} only, not %VAR%).
+	var b strings.Builder
+	rest := raw
 	for {
-		start := strings.Index(result, "%")
+		start := strings.Index(rest, "%")
 		if start == -1 {
+			b.WriteString(rest)
 			break
 		}
-		end := strings.Index(result[start+1:], "%")
-		if end == -1 {
-			break
-		}
-		end = start + 1 + end // absolute index of the closing %
+		// Append everything before the opening %.
+		b.WriteString(rest[:start])
+		rest = rest[start+1:] // rest now starts after the opening %
 
-		varName := result[start+1 : end]
+		end := strings.Index(rest, "%")
+		if end == -1 {
+			// No closing % — treat the trailing % as a literal and stop.
+			b.WriteByte('%')
+			b.WriteString(rest)
+			break
+		}
+
+		varName := rest[:end]
+		rest = rest[end+1:] // advance past the closing %
+
 		if varName == "" {
-			// "%%" — literal percent escape; skip to avoid infinite loop
-			result = result[:start] + "%" + result[end+1:]
+			// "%%" — write a single literal percent.
+			b.WriteByte('%')
 			continue
 		}
 
 		val := os.Getenv(varName)
 		if val == "" {
-			// Also try upper-cased version to handle case-insensitive var names
-			// (Windows env var names are conventionally UPPER_CASE).
+			// Also try upper-cased version: Windows env var names are
+			// conventionally UPPER_CASE but user input may be mixed-case.
 			val = os.Getenv(strings.ToUpper(varName))
 		}
 
 		if val == "" {
-			// Fail-closed: unresolved var — keep the raw %VAR% token.
-			// Advance past this pair so we don't re-process it endlessly.
-			result = result[:start] + "\x00UNEXPANDED\x00" + varName + "\x00" + result[end+1:]
+			// Fail-closed: unresolved var — preserve the raw %VAR% token so
+			// that a real credential path substring can still be detected.
+			// The literal %VAR% is appended to the builder and the cursor has
+			// already moved past it, so it is treated as an opaque literal and
+			// never re-scanned.
+			b.WriteByte('%')
+			b.WriteString(varName)
+			b.WriteByte('%')
 			continue
 		}
 
-		result = result[:start] + val + result[end+1:]
+		// Resolved: append the value. The cursor is already past the closing %
+		// so the value content is never re-scanned.
+		b.WriteString(val)
 	}
-	// Restore any fail-closed unexpanded placeholders to their original %VAR% form.
-	for strings.Contains(result, "\x00UNEXPANDED\x00") {
-		s := strings.Index(result, "\x00UNEXPANDED\x00")
-		e := strings.Index(result[s+len("\x00UNEXPANDED\x00"):], "\x00")
-		if e == -1 {
-			break
-		}
-		e = s + len("\x00UNEXPANDED\x00") + e
-		varName := result[s+len("\x00UNEXPANDED\x00") : e]
-		result = result[:s] + "%" + varName + "%" + result[e+1:]
-	}
-	return result
+	return b.String()
 }
 
 // canonicalizePath resolves a raw path string into a normalized, absolute,

@@ -62,6 +62,20 @@ func TestExpandWinEnvVars(t *testing.T) {
 			t.Errorf("should not expand dollar-sign vars, got %q", result)
 		}
 	})
+
+	t.Run("substituted value containing % is not re-expanded (WR-01 single-pass)", func(t *testing.T) {
+		// If A expands to a value containing %, the old multi-pass loop could
+		// treat that stray % as the start of a new variable reference. The
+		// single-pass Builder rewrite must not re-scan already-emitted content.
+		t.Setenv("MYVAR_WR01_TEST", "val%with%percent")
+		result := expandWinEnvVars("%MYVAR_WR01_TEST%\\rest")
+		// The value must appear verbatim; the "%" characters in it must not
+		// trigger further expansion (e.g. pairing with the trailing \ to form
+		// a new %VAR% pattern).
+		if !strings.Contains(result, "val%with%percent") {
+			t.Errorf("expected substituted value verbatim in result, got %q", result)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
