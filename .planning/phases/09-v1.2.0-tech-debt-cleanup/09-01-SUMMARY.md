@@ -121,6 +121,12 @@ _Note: `go test -race` is CGO-gated / CI-only on this Windows box; plain `go tes
 - The three helpers are delivered and unit-proven. **Plan 03** (handler-wiring) must replace the single `canonicalizePath` call in `handler.go`'s two SPATH loops (and `integration_test.go`) with a loop over `canonicalizePathForms`, blocking on any returned form, to land the HARDEN-01 dual-form fix end-to-end at the call sites. HARDEN-02/03 are already effective wherever the existing `EvaluatePath` / `extractBashCredentialPaths` paths run.
 - No blockers.
 
+## Self-Check: PASSED
+
+- `09-01-SUMMARY.md` exists in the live phase dir.
+- All task commits reachable: `30abe32` (HARDEN-01), `6deba4f` (HARDEN-02), `e868431` (HARDEN-03), `c8e0350` (SUMMARY).
+- All four modified source files present.
+
 ---
 *Phase: 09-v1.2.0-tech-debt-cleanup*
 *Completed: 2026-06-04*
