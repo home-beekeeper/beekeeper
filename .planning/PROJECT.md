@@ -22,6 +22,8 @@ Shipped: single static Go binary; pure corroboration policy engine; editor-exten
 
 **Goal:** Close the three runtime-enforcement gaps that live `beekeeper check` validation exposed (with the agent itself as the test subject), so a hijacked agent cannot read credential files, slip malware past via `pnpm`/`bun`, or install a *critical*-severity package on a warn-only pass — each locked in by a behavioral test suite.
 
+**Progress (2026-06-04):** Phase 6 (corroboration severity hardening, CORR-01/02 — F1) ✅ complete & verified. Phase 7 (PLCY-05/SPATH-01..04 — F2) ✅ complete & verified — `EvaluatePath`/`DefaultSensitivePaths` is now wired live into `runCheck`: credential reads (`~/.aws/credentials`, `~/.ssh/id_rsa`, `.env`, MCP configs) and `cat`/`type %USERPROFILE%`/`Get-Content` shell targets block fail-closed, traversal/tilde/Windows-env-var bypasses canonicalized away, `.env.example/.test/.schema` allowlisted; overlay can escalate but never downgrade a path block. Next: **Phase 8** (NUDGE + BTEST — F3 + the behavioral test suite / live-binary E2E release gate).
+
 **Target features:**
 - **PLCY-05** (sensitive-path enforcement, F2) — wire the already-built `EvaluatePath`/`DefaultSensitivePaths` engine into the live `beekeeper check` path: evaluate `file_path` (Read/Write/Edit) **and** command targets (`cat`/`type`/`Get-Content` of credential files) against the sensitive-path policy; fail-closed; allowlist + policy-overlay merged. Today that engine is referenced only by its own test, so credential reads (`~/.aws/credentials`, `~/.ssh/id_rsa`, `~/.npmrc`, `.env`) return ALLOW.
 - **NUDGE** package-manager nudge (F3) — full spec in [`.planning/specs/NUDGE-PRD.md`](specs/NUDGE-PRD.md). New `internal/nudge/` package: detect local pnpm(>=11)/bun(>=1.3)/node(>=22), recognize npm/pnpm/bun/yarn/npx install patterns, soft-advise by default / hard-rewrite on opt-in / block when `requireHardened` and no hardened PM is present; `record_type:"nudge"` audit; `beekeeper nudge status|check|audit` CLI; wired into check + gateway + shim. Also closes the F3 gap that `pnpm`/`bun` installs are currently unparsed and bypass catalog matching.
@@ -203,4 +205,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-03 — Milestone v1.2.0 "Runtime Behavioral Hardening" started (PLCY-05 sensitive-path wiring, NUDGE package-manager nudge, PLCY-07 corroboration hardening, BTEST). v1.1.0 Pollen parked at its maintainer release checkpoint (not closed).*
+*Last updated: 2026-06-04 — v1.2.0 Phase 7 (PLCY-05/SPATH sensitive-path enforcement, F2) complete & verified; Phase 6 (CORR, F1) complete. Next: Phase 8 (NUDGE + BTEST, F3 + behavioral test suite). v1.1.0 Pollen parked at its maintainer release checkpoint (not closed).*
