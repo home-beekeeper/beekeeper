@@ -287,6 +287,27 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		decision = mergeDecisions(decision, pathDecision)
 	}
 
+	// NUDGE-03/04/08: package-manager nudge evaluation.
+	// This block runs AFTER ApplyPolicyOverlay (above) and AFTER the SPATH block so
+	// a package_allowlist allow rule CANNOT downgrade a nudge Block (CR-02 ordering,
+	// T-08-17). mergeDecisions is most-restrictive-wins.
+	//
+	// Detection runs ONLY when parsed.IsInstall (non-install commands like npm ls/run
+	// never trigger exec — T-08-18, Pitfall 2). PMState is resolved FRESH via the
+	// EXPORTED nudge.DetectStateFn seam (NOT nudge.DetectState directly) so a
+	// behavioral test in package check (Plan 07) can inject a synthetic PMState across
+	// the package boundary (Flag 2 Position B — no cache in the one-shot hook).
+	// Resolve nudge config: use loaded config if present, else DefaultNudgeConfig.
+	nudgeCfgValue := config.DefaultNudgeConfig()
+	if cfg.Nudge != nil {
+		nudgeCfgValue = *cfg.Nudge
+	}
+	if nudgeDecision, nudgeRec, nudgeOK := evaluateNudge(ctx, toolCall, nudgeCfgValue); nudgeOK {
+		decision = mergeDecisions(decision, nudgeDecision)
+		// Write the §9 audit record best-effort; a write failure NEVER changes decision.
+		writeNudgeAuditRecord(auditPath, nudgeRec)
+	}
+
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
 	if ctx.Err() != nil {

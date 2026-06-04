@@ -209,16 +209,29 @@ func TestAuditRecordWrittenOnEveryPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit log not written: %v", err)
 	}
-	line := strings.TrimSpace(string(data))
-	if line == "" {
-		t.Fatal("audit log is empty, want one record")
+	// The audit file may contain multiple NDJSON records (e.g. a nudge record
+	// followed by the policy_decision record). Scan line-by-line and look for
+	// the policy_decision record — it must always be present.
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+		t.Fatal("audit log is empty, want at least one record")
 	}
-	var rec map[string]any
-	if err := json.Unmarshal([]byte(line), &rec); err != nil {
-		t.Fatalf("audit record not valid JSON: %v", err)
+	var foundPolicyDecision bool
+	for _, rawLine := range lines {
+		rawLine = strings.TrimSpace(rawLine)
+		if rawLine == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(rawLine), &rec); err != nil {
+			t.Fatalf("audit record not valid JSON: %v\nline: %s", err, rawLine)
+		}
+		if rec["record_type"] == "policy_decision" {
+			foundPolicyDecision = true
+		}
 	}
-	if rec["record_type"] != "policy_decision" {
-		t.Fatalf("record_type = %v, want policy_decision", rec["record_type"])
+	if !foundPolicyDecision {
+		t.Fatalf("no policy_decision record found in audit log; got:\n%s", string(data))
 	}
 }
 
