@@ -256,6 +256,22 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// Policy-file-derived thresholds are passed here so live check matches policy test.
 	decision := policy.Evaluate(toolCall, multiIdx, thresholds, ac)
 
+	// SPATH-01/02/03: sensitive-path evaluation (D-03: beekeeper check only).
+	// extractPathTargets reads file_path, path, and Bash command targets;
+	// canonicalizePath resolves tilde, %VAR%, Abs, EvalSymlinks, and slash normalization.
+	// EvaluatePath is pure (no I/O) and receives only already-resolved strings.
+	// This block runs BEFORE ApplyPolicyOverlay so that a JSON policy-file
+	// sensitive_path rule can escalate (but not silently downgrade) a path block.
+	spathCfg := policy.DefaultSensitivePaths()
+	for _, rawPath := range extractPathTargets(toolCall) {
+		resolved := canonicalizePath(rawPath)
+		if resolved == "" {
+			continue
+		}
+		pathDecision := policy.EvaluatePath(resolved, spathCfg)
+		decision = mergeDecisions(decision, pathDecision)
+	}
+
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
 	if ctx.Err() != nil {

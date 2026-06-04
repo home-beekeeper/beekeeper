@@ -65,6 +65,20 @@ func runCheckWithIndex(ctx context.Context, stdin io.Reader, cfg config.Config, 
 
 	decision := policy.Evaluate(toolCall, idx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 
+	// SPATH-01/02/03: mirror the production runCheck path block so that path-based
+	// blocks fire even when the catalog index returns no match (D-03 scope: check only).
+	// This ensures credential-file blocks are exercised hermetically in integration tests
+	// without requiring a real catalog entry for the tested package.
+	spathCfg := policy.DefaultSensitivePaths()
+	for _, rawPath := range extractPathTargets(toolCall) {
+		resolved := canonicalizePath(rawPath)
+		if resolved == "" {
+			continue
+		}
+		pathDecision := policy.EvaluatePath(resolved, spathCfg)
+		decision = mergeDecisions(decision, pathDecision)
+	}
+
 	if ctx.Err() != nil {
 		return finalize(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath)
 	}
