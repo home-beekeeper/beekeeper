@@ -8,8 +8,9 @@
   Summary: [`MILESTONES.md`](MILESTONES.md).
 - 🔄 **v1.1.0 — "Pollen"** — Phases 1–5 (in progress)
   Goal: Own Windows inventory compatibility via a bounded Apache-2.0 Bumblebee derivative so the Windows CI matrix goes fully green.
-- 📋 **v1.2.0 — "Runtime Behavioral Hardening"** — Phases 6–8 (planned)
+- 🔄 **v1.2.0 — "Runtime Behavioral Hardening"** — Phases 6–9 (Phases 6–8 complete & verified; Phase 9 tech-debt cleanup in progress)
   Goal: Close three runtime-enforcement gaps (credential reads, critical-malware warn-only, pnpm/bun bypass) locked in by a behavioral test suite.
+  Phase 9 inserted 2026-06-04 from the milestone audit (`v1.2.0-MILESTONE-AUDIT.md`, status `tech_debt`) to clear surfaced debt before close.
 
 ## Phases
 
@@ -44,6 +45,7 @@
  (completed 2026-06-03)
 - [x] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses (completed 2026-06-04)
 - [x] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/evaluate/rewrite/CLI); PRD §10 acceptance tests; live-binary E2E release gate
+- [ ] **Phase 9: v1.2.0 Tech-Debt Cleanup** — Hermetic CORR E2E gate + LoadLayered Nudge merge + Phase-6 Nyquist reconcile + SPATH evasion hardening (IN-01/02/03) + live version_drift registry query (inserted from milestone audit)
 
 ## Phase Details
 
@@ -148,6 +150,7 @@
  (completed 2026-06-03)
 - [x] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses; integration tests prove check wiring is live (completed 2026-06-04)
 - [x] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/parse/evaluate/rewrite/CLI); PRD §10 acceptance tests; complete table-driven test suite; live-binary E2E release gate
+- [ ] **Phase 9: v1.2.0 Tech-Debt Cleanup** — Clear the debt surfaced by the milestone audit before close: hermetic CORR E2E release gate, `LoadLayered` Nudge-pointer merge, Phase-6 Nyquist reconcile, SPATH evasion hardening (symlink-ancestor / Windows ADS / verb word-boundary), and a live `version_drift` registry query (inserted 2026-06-04)
 
 ### Phase 6: Corroboration Severity Hardening
 **Goal**: A critical-severity catalog match blocks at a single trusted source — so `ai-figure` (Shai-Hulud / OSV `MAL-2026-4126`) is blocked, not warned — with an anti-poisoning sanity gate that prevents a degraded or flooded catalog from triggering false escalations.
@@ -208,6 +211,29 @@
 - [x] 08-07-PLAN.md — Wave 5: BTEST-02 RunCheck integration (pnpm install F3 end-to-end + soft advisory) + BTEST-03 live-binary E2E release gate (SPATH+CORR+NUDGE) (BTEST-01,02,03, NUDGE-01,08)
 **UI hint**: no
 
+### Phase 9: v1.2.0 Tech-Debt Cleanup (INSERTED)
+**Goal**: Clear the tech debt surfaced by the v1.2.0 milestone audit (`v1.2.0-MILESTONE-AUDIT.md`, status `tech_debt`) before closing the milestone — so the release gate is network-independent, layered config is correct at its root, the SPATH credential block resists known evasion edges, and the version-drift path emits live records — without regressing the F1/F2/F3 enforcement proven in Phases 6–8.
+**Depends on**: Phase 8 (and Phases 6–7 — touches their code/tests)
+**Requirements**: CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04, HARDEN-01, HARDEN-02, HARDEN-03, DRIFT-01
+**Scope source**: `.planning/v1.2.0-MILESTONE-AUDIT.md` + `09-CONTEXT.md` (maintainer scope choice "Everything", 2026-06-04)
+**Success Criteria** (what must be TRUE):
+  1. **CLEAN-01** — `TestE2ELiveBinary/CORR_aifigure_critical_block` blocks with OSV unreachable: a signed, non-wildcard local `ai-figure` fixture makes the release gate network-independent (`-tags e2e` green offline)
+  2. **CLEAN-02** — `config.LoadLayered` merges the `Nudge *NudgeConfig` pointer at its root; consumer-layer workarounds removed (or documented as defense-in-depth); a layered-config test proves defaulting + project-override without a consumer helper
+  3. **CLEAN-03** — `06-VALIDATION.md` is reconciled to COMPLIANT, consistent with its passed `06-VERIFICATION.md` (via `/gsd-validate-phase 6` with explicit live path, or evidence-backed frontmatter update)
+  4. **CLEAN-04** — `internal/check/handler.go` decision-merge comment corrected to reflect the real order (overlay → SPATH → NUDGE)
+  5. **HARDEN-01** — an ancestor-symlink credential path still blocks (match on both pre/post-`EvalSymlinks` forms); regression test fails on pre-fix code
+  6. **HARDEN-02** — Windows ADS (`id_rsa:stream`) and trailing-dot/space basenames block; Windows-gated regression tests
+  7. **HARDEN-03** — read-verb extraction is word-boundary-anchored: verb-substring tokens don't false-trigger, real `more ~/.ssh/id_rsa` still flags
+  8. **DRIFT-01** — production `realMetadataFetch` performs a real registry query so the gateway weekly drift check emits live `version_drift` records; fail-open preserved; floors never auto-bumped (auto-update stays Out-of-Scope)
+  9. Full v1.2.0 suite + fuzz (`-tags fuzz`) + live-binary E2E (`-tags e2e`) remain green; purity tests green; no F1/F2/F3 regression
+**Plans**: 5 plans
+  - [ ] 09-01-PLAN.md — SPATH evasion hardening (HARDEN-01/02/03): ancestor-symlink double-form helper, Windows ADS/trailing-dot basename normalization (pure), word-boundary read-verb matching
+  - [ ] 09-02-PLAN.md — Hermetic CORR E2E release gate (CLEAN-01): signed non-wildcard ai-figure fixture so the block fires offline
+  - [ ] 09-03-PLAN.md — LoadLayered Nudge-pointer merge + consumer cleanup (CLEAN-02), handler merge-order comment fix (CLEAN-04), wire HARDEN-01 dual-form SPATH into runCheck
+  - [ ] 09-04-PLAN.md — Live version_drift registry query (DRIFT-01): real npm dist-tags fetch behind the metadataFetchFn seam, fail-open, floors never bumped
+  - [ ] 09-05-PLAN.md — Phase-6 Nyquist reconcile (CLEAN-03): evidence-backed 06-VALIDATION.md frontmatter update to COMPLIANT
+**UI hint**: no
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -231,3 +257,4 @@
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **8/8** | **Complete** | **2026-06-04** |
+| **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **0/TBD** | **Planned (inserted from audit)** | **—** |
