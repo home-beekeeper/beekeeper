@@ -560,6 +560,54 @@ func TestExtractBashCredentialPaths(t *testing.T) {
 		got := extractBashCredentialPaths("cat -n ~/.ssh/id_rsa")
 		assertContains(t, got, "~/.ssh/id_rsa")
 	})
+
+	// --- HARDEN-03 / IN-03: left word-boundary anchoring ---
+
+	t.Run("standalone more still flags (HARDEN-03 real verb)", func(t *testing.T) {
+		got := extractBashCredentialPaths("more ~/.ssh/id_rsa")
+		assertContains(t, got, "~/.ssh/id_rsa")
+	})
+
+	t.Run("embedded 'cat' in catalog.sh does NOT extract (HARDEN-03)", func(t *testing.T) {
+		// "./catalog.sh ~/.ssh/id_rsa": the "cat " substring inside "catalog.sh "
+		// must NOT trigger extraction (no left shell boundary before "cat").
+		got := extractBashCredentialPaths("./catalog.sh ~/.ssh/id_rsa")
+		assertNotContains(t, got, "~/.ssh/id_rsa")
+	})
+
+	t.Run("embedded 'cat' in scatter does NOT extract (HARDEN-03)", func(t *testing.T) {
+		// "scatter ~/.ssh/id_rsa": the "cat" inside "scatter" lacks a left
+		// boundary; note bashReadVerbs uses "cat " (trailing space), and the only
+		// "cat " substring here would be at "...scat...ter " — there is no "cat "
+		// at a boundary, so nothing extracts.
+		got := extractBashCredentialPaths("scatter ~/.ssh/id_rsa")
+		assertNotContains(t, got, "~/.ssh/id_rsa")
+	})
+
+	t.Run("chained reads still extract both after boundary anchoring (CR-01 preserved)", func(t *testing.T) {
+		got := extractBashCredentialPaths("cat a && cat ~/.ssh/id_rsa")
+		assertContains(t, got, "a")
+		assertContains(t, got, "~/.ssh/id_rsa")
+	})
+
+	t.Run("verb after pipe separator extracts (boundary byte '|')", func(t *testing.T) {
+		got := extractBashCredentialPaths("echo x |cat ~/.aws/credentials")
+		assertContains(t, got, "~/.aws/credentials")
+	})
+
+	t.Run("verb after semicolon extracts (boundary byte ';')", func(t *testing.T) {
+		got := extractBashCredentialPaths("ls;cat ~/.aws/credentials")
+		assertContains(t, got, "~/.aws/credentials")
+	})
+
+	t.Run("verb after subshell open extracts (boundary byte '(')", func(t *testing.T) {
+		// The verb after "(" is boundary-anchored and extracts. firstShellToken
+		// only stops at whitespace (not ")"), so the token carries the trailing
+		// paren — that is pre-existing tokenizer behavior, unrelated to HARDEN-03.
+		// The point here is that the boundary byte "(" lets the verb match at all.
+		got := extractBashCredentialPaths("(cat ~/.aws/credentials extra)")
+		assertContains(t, got, "~/.aws/credentials")
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -636,4 +684,14 @@ func assertContains(t *testing.T, paths []string, want string) {
 		}
 	}
 	t.Errorf("expected %q in %v", want, paths)
+}
+
+func assertNotContains(t *testing.T, paths []string, notWant string) {
+	t.Helper()
+	for _, p := range paths {
+		if p == notWant {
+			t.Errorf("did NOT expect %q in %v", notWant, paths)
+			return
+		}
+	}
 }

@@ -227,8 +227,17 @@ func canonicalizePathForms(raw string) []string {
 }
 
 // bashReadVerbs is the conservative allowlist of read-command prefixes that
-// indicate a file-path argument follows. Space is included in each verb so that
-// "type" inside prose is not accidentally matched.
+// indicate a file-path argument follows. A trailing space is included in each
+// verb so that the RIGHT-hand boundary is enforced (the verb must be followed by
+// whitespace).
+//
+// HARDEN-03 (IN-03): the trailing space alone does NOT enforce a LEFT boundary,
+// so a substring like "cat " inside "catalog.sh " or "cat" inside "scatter" could
+// be mis-matched. extractBashCredentialPaths now anchors each verb to a left
+// shell-token boundary via isShellBoundary: a verb matches only at start-of-string
+// or immediately after a shell separator byte. So "./catalog.sh ~/.ssh/id_rsa"
+// and "scatter ~/.ssh/id_rsa" no longer false-trigger, while real standalone
+// reads (`cat`, `more`, ...) at a boundary still flag.
 //
 // Deferred bypasses (07-CONTEXT.md Deferred Ideas): nested shells ("zsh -c ..."),
 // base64-encoded commands, here-strings, and compound redirections are NOT in scope
@@ -243,6 +252,23 @@ var bashReadVerbs = []string{
 	"type ",        // Windows CMD read verb (SPATH-03, SC2)
 	"Get-Content ", // PowerShell (SPATH-03)
 	"gc ",          // PowerShell alias for Get-Content (SPATH-03)
+}
+
+// isShellBoundary reports whether b is a shell token-boundary byte: a verb
+// matched immediately after such a byte (or at start-of-string) is a standalone
+// command, not a substring embedded inside a larger token (HARDEN-03 / IN-03).
+//
+// Boundary bytes: whitespace (space, tab, '\n', '\r') and the shell command
+// separators ';', '|', '&', '('. A '&&' / '||' chain ends in '&' / '|', and a
+// subshell opens with '(', so the byte immediately before a standalone verb in
+// those forms is already covered.
+func isShellBoundary(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', ';', '|', '&', '(':
+		return true
+	default:
+		return false
+	}
 }
 
 // firstShellToken extracts the first non-whitespace token from rest.
@@ -307,6 +333,19 @@ func extractBashCredentialPaths(cmd string) []string {
 				break
 			}
 			idx := from + rel
+
+			// HARDEN-03: require a LEFT word boundary. The verb matches only at
+			// start-of-string or immediately after a shell-separator byte, so an
+			// embedded substring ("cat " inside "catalog.sh ", "cat" inside
+			// "scatter ") does NOT trigger extraction. The trailing space baked
+			// into each verb already enforces the right-hand boundary.
+			if idx != 0 && !isShellBoundary(cmd[idx-1]) {
+				// Not a standalone verb here — advance one byte past this match
+				// start and keep scanning for a later, boundary-anchored match.
+				from = idx + 1
+				continue
+			}
+
 			rest := strings.TrimSpace(cmd[idx+len(verb):])
 
 			// Skip leading flag tokens (e.g. "-n", "-c 100") so that
