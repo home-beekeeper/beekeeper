@@ -40,6 +40,19 @@ Requirements for milestone v1.2.0. Each maps to exactly one roadmap phase. All w
 - [x] **BTEST-02**: Check-handler integration tests drive `RunCheck` with raw stdin JSON and assert decision + exit code for credential reads, catalog-critical blocks, and pnpm/bun installs (proves wiring is live, not just that component functions return correct values).
 - [x] **BTEST-03**: A live-binary E2E battery invokes the compiled `beekeeper` against the real catalog (mirroring the validation run that surfaced F1/F2/F3), asserting exit codes + audit records — a release gate; hand-written config scanners (`bunfig.toml`, `pnpm-workspace.yaml`) carry fuzz targets per the CI fuzz gate.
 
+### v1.2.0 Tech-Debt Cleanup (CLEAN / HARDEN / DRIFT) — Phase 9
+
+> Inserted 2026-06-04 from the milestone audit (`.planning/v1.2.0-MILESTONE-AUDIT.md`, status `tech_debt`). Scope choice "Everything" (maintainer, 2026-06-04). These remediate audit findings; none reopen a failed v1 requirement (all 17 above are satisfied) — they harden the gate, fix a config root cause, close SPATH evasion edges, and complete the drift path. See `09-CONTEXT.md`.
+
+- [x] **CLEAN-01**: The CORR live-binary E2E release gate is hermetic — `TestE2ELiveBinary/CORR_aifigure_critical_block` blocks with OSV unreachable via a signed, non-wildcard local `ai-figure` fixture (today it blocks only because the binary reaches live OSV; offline CI would flake exit 0 vs 1).
+- [x] **CLEAN-02**: `config.LoadLayered` merges the `Config.Nudge *NudgeConfig` pointer at its root; the consumer-layer nil-workarounds (`defaultNudgeConfigHelper`, `handler.go` guard) are removed or documented as defense-in-depth; a layered-config test proves defaulting + project override without a consumer helper.
+- [x] **CLEAN-03**: Phase 6 Nyquist is reconciled — `06-VALIDATION.md` is COMPLIANT, consistent with its passed `06-VERIFICATION.md` (stale `draft`/`nyquist_compliant:false` frontmatter corrected via `/gsd-validate-phase 6` or evidence-backed update).
+- [x] **CLEAN-04**: The stale `internal/check/handler.go` decision-merge comment ("sensitive-path block is merged LAST") is corrected to the real order (overlay → SPATH → NUDGE).
+- [x] **HARDEN-01**: An ancestor-symlink credential path still blocks — the sensitive-path match evaluates both pre- and post-`EvalSymlinks` forms so an ancestor symlink cannot strip a `/.aws/` or `/.ssh/` fragment (IN-01); regression test fails on pre-fix code.
+- [x] **HARDEN-02**: Windows ADS (`id_rsa:stream`) and trailing-dot/space basenames (`credentials.`) are normalized before blocklist evaluation and block fail-closed (IN-02); Windows-gated regression tests.
+- [x] **HARDEN-03**: Bash read-verb extraction is word-boundary-anchored — verb-substring tokens don't false-trigger while real `more ~/.ssh/id_rsa` still flags (IN-03).
+- [x] **DRIFT-01**: Production `realMetadataFetch` performs a real registry query so the gateway weekly drift check emits live `record_type:"version_drift"` records; fail-open on fetch error preserved; pnpm/bun/node floors are never auto-bumped (auto-update stays Out-of-Scope).
+
 ## Future Requirements
 
 Deferred to a later release (v1.3.0+). Tracked but not in this roadmap.
@@ -84,10 +97,19 @@ Which phases cover which requirements. Populated during roadmap creation.
 | BTEST-01 | Phase 8 | Complete |
 | BTEST-02 | Phase 8 | Complete |
 | BTEST-03 | Phase 8 | Complete |
+| CLEAN-01 | Phase 9 | Complete |
+| CLEAN-02 | Phase 9 | Complete |
+| CLEAN-03 | Phase 9 | Complete |
+| CLEAN-04 | Phase 9 | Complete |
+| HARDEN-01 | Phase 9 | Complete |
+| HARDEN-02 | Phase 9 | Complete |
+| HARDEN-03 | Phase 9 | Complete |
+| DRIFT-01 | Phase 9 | Complete |
 
 **Coverage:**
-- v1 requirements: 17 total (SPATH x4, NUDGE x8, CORR x2, BTEST x3)
-- Mapped to phases: 17
+- v1 requirements: 17 total satisfied (SPATH x4, NUDGE x8, CORR x2, BTEST x3) — all Complete
+- Phase 9 cleanup requirements: 8 (CLEAN x4, HARDEN x3, DRIFT x1) — inserted from milestone audit, all Complete & verified (2026-06-04; Phase 9 status passed 9/9)
+- Mapped to phases: 25 (17 + 8)
 - Unmapped: 0
 
 ---

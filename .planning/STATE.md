@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: Phase 8 complete & verified (8/8 plans; verifier 5/5 SCs + 11/11 reqs; release gates green — full suite + fuzz + live-binary E2E). v1.2.0 all 3 phases done — milestone ready for close.
-last_updated: "2026-06-04T16:30:00.000Z"
-last_activity: 2026-06-04 -- Phase 08 complete & verified (NUDGE + Behavioral Test Suite; v1.2.0 release gate green)
+stopped_at: ALL v1.2.0 phases (6,7,8,9) complete & verified. Phase 9 tech-debt cleanup executed (5/5 plans, sequential on main) + verified PASSED 9/9 — CORR E2E now hermetic (signed non-wildcard fixture blocks offline), LoadLayered Nudge-pointer merge root-fixed, Phase-6 Nyquist COMPLIANT, SPATH evasion edges closed (ancestor-symlink dual-form + Windows ADS/trailing-dot + verb word-boundary), live version_drift npm registry query (fail-open, floors never bumped, no new deps), +1 pre-existing internal/policy fuzz-build fix (ef4ea97, surfaced by SC9). go build + full unit suite + -tags e2e + -tags fuzz + purity + CR-02 all GREEN. Milestone READY FOR CLOSE — re-run /gsd-complete-milestone v1.2.0 (the audit's tech_debt findings are now all resolved; fold v1.2.0-MILESTONE-AUDIT.md + 09-VERIFICATION.md into the archive).
+last_updated: "2026-06-04T19:52:31.000Z"
+last_activity: 2026-06-04 -- Phase 9 executed + verified (9/9); v1.2.0 ready for close
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 19
+  completed_plans: 19
   percent: 100
 ---
 
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 8 — Package-Manager Nudge + Behavioral Test Suite (next; Phase 7 ✅ complete & verified)
+**Current focus:** Milestone close — all 4 v1.2.0 phases (6, 7, 8, 9) ✅ complete & verified. Re-run `/gsd-complete-milestone v1.2.0` (audit tech_debt findings resolved by Phase 9).
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 8 of 8 — ✅ COMPLETE & verified (NUDGE + Behavioral Test Suite; v1.2.0 release gate green)
-Plan: 8 of 8 complete (08-01..08-08)
-Status: Phase 8 complete & verified — verifier 5/5 success criteria + 11/11 requirements; full test suite + fuzz seeds + live-binary E2E (BTEST-03 release gate) all green. F3 closed (pnpm/bun/yarn installs now catalog-matched via pkgparse → ecosystem "npm"); nudge soft-advise-default / hard-rewrite-opt-in live in check (fresh detect) + gateway (60s cache) + shim; `beekeeper nudge status|check|audit` CLI shipped. v1.2.0 all 3 phases done.
-Last activity: 2026-06-04 -- Phase 08 complete & verified
+Phase: 9 of 9 — ✅ COMPLETE & verified (v1.2.0 Tech-Debt Cleanup; status passed 9/9). All 4 v1.2.0 phases done.
+Plan: 5 of 5 complete (09-01..09-05, executed sequentially on main; +1 fix `ef4ea97`). Verifier: 9/9 must-haves; all 8 reqs (CLEAN-01..04 / HARDEN-01..03 / DRIFT-01) SATISFIED.
+Status: Phase 9 executed + verified PASSED. CORR E2E now hermetic (signed non-wildcard fixture → blocks offline); LoadLayered Nudge-pointer merge root-fixed; Phase-6 Nyquist COMPLIANT; SPATH evasion edges closed (ancestor-symlink dual-form `canonicalizePathForms` wired into runCheck + integration mirror, Windows ADS/trailing-dot `normalizeBasename`, verb word-boundary `isShellBoundary`); live `version_drift` npm registry query (fail-open, floors never bumped, no new deps); +1 pre-existing `internal/policy` fuzz-build fix surfaced by SC9. Release gates GREEN: go build + full unit suite + `-tags e2e` (15.4s) + `-tags fuzz` (incl. policy post-fix) + TestPathImportsArePure + TestOverlayAllowCannotDowngradePathBlock. **Milestone v1.2.0 READY FOR CLOSE** — re-run `/gsd-complete-milestone v1.2.0`; the audit's tech_debt findings are all resolved. Fold `v1.2.0-MILESTONE-AUDIT.md` + `09-VERIFICATION.md` into the archive.
+Last activity: 2026-06-04 -- Phase 9 executed + verified (9/9); v1.2.0 ready for close
 
-Progress (v1.2.0): [██████████] 100% (3 of 3 phases complete — milestone ready for close)
+Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete & verified — milestone ready for close)
 
 ## Phase Summary (v1.1.0)
 
@@ -51,6 +51,7 @@ Progress (v1.2.0): [██████████] 100% (3 of 3 phases complete
 | 6 | Corroboration Severity Hardening | CORR-01, CORR-02 | ✅ Complete (3/3 plans; +2 code-review fixes) |
 | 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | ✅ Complete (3/3 plans; +6 code-review fixes) |
 | 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | ✅ Complete & verified (8/8 plans; 5/5 SCs, 11/11 reqs; full suite + fuzz + live-binary E2E green) |
+| 9 | v1.2.0 Tech-Debt Cleanup (inserted from audit) | CLEAN-01–04, HARDEN-01–03, DRIFT-01 | ✅ Complete & verified (5/5 plans + 1 fix; 9/9 must-haves; full suite + e2e + fuzz green) |
 
 ## Performance Metrics
 
@@ -153,6 +154,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- **v1.2.0 (current):** Phase 8 ✅ **complete & verified** — all 8 plans executed (08-01..08-08; the 08-05 executor hit a mid-run session limit AFTER committing its 3 task commits — closed out manually by writing its SUMMARY, no re-execution), verifier 5/5 SCs + 11/11 reqs, release gates green (full suite + fuzz seeds + live-binary E2E). **All 3 v1.2.0 phases (6,7,8) complete — milestone ready for close** (`/gsd-audit-milestone` then `/gsd-complete-milestone`). Known INFO (deferred): gateway `realMetadataFetch` (drift.go) is a production stub returning empty, so `version_drift` emits nothing live until a real registry query is added (floor auto-update is Out-of-Scope; drift is informational-only). Also confirmed broken this session: `phase-plan-index 8` flattens all 8 plans into "wave 1" (ignores the `wave:` frontmatter) — execution used the authoritative PLAN-frontmatter wave order W1{01,05} W2{02,03} W3{04} W4{06} W5{07,08}. Code review done (08-REVIEW.md): 0 critical, 4 warning — ALL FIXED (WR-01 redact nudge command fields in audit log, WR-02 parseInt overflow guard, WR-03 parallelize PM probes so detection stays ~2s within the hook budget, WR-04 bound drift goroutine) + re-confirmed (build + tests + live E2E green); 5 Info deferred. Caveat: `go test -race` is CI-only (CGO disabled locally) — the CI race pass on internal/nudge is the authoritative confirmation for WR-03's concurrency change. NOTE (still applies to execute): the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not. CONFIRMED this session: `init.plan-phase 8` → `.planning/milestones/v1.0.0-phases/08-tui-dashboard` (wrong); plan-phase was driven with explicit live paths instead.
+- **v1.2.0 (current):** ALL phases (6,7,8,9) ✅ **complete & verified**. Milestone audit (`v1.2.0-MILESTONE-AUDIT.md`, `tech_debt` — NO blockers) → maintainer scope "Everything" → **Phase 9 "v1.2.0 Tech-Debt Cleanup" EXECUTED (5/5 plans + fix `ef4ea97`) + VERIFIED passed 9/9** (`09-VERIFICATION.md`). All audit findings resolved: CLEAN-01 hermetic CORR E2E (signed non-wildcard fixture, blocks offline), CLEAN-02 LoadLayered Nudge-pointer merge (root fix), CLEAN-03 Phase-6 Nyquist COMPLIANT, CLEAN-04 handler comment, HARDEN-01/02/03 SPATH evasion edges (ancestor-symlink dual-form + Windows ADS/trailing-dot + verb word-boundary), DRIFT-01 live version_drift npm registry query (fail-open, floors never bumped). Release gates GREEN (go build + full unit suite + `-tags e2e` 15.4s + `-tags fuzz` incl. policy post-fix + TestPathImportsArePure + TestOverlayAllowCannotDowngradePathBlock). Phase 9 ran SEQUENTIALLY on main (`use_worktrees=false`); executors were told NOT to do phase-number-keyed SDK tracking writes — orchestrator updated STATE/ROADMAP/REQUIREMENTS MANUALLY. **NEXT:** re-run `/gsd-complete-milestone v1.2.0` — fold `v1.2.0-MILESTONE-AUDIT.md` + `09-VERIFICATION.md` into the archive (optionally `/gsd-verify-work 9` for conversational UAT first). (Phase 8's 08-05 executor had hit a mid-run session limit AFTER committing its 3 task commits — closed out manually by writing its SUMMARY, no re-execution.) Known INFO (now folded into Phase 9): gateway `realMetadataFetch` (drift.go) is a production stub returning empty, so `version_drift` emits nothing live until a real registry query is added (floor auto-update is Out-of-Scope; drift is informational-only). Also confirmed broken this session: `phase-plan-index 8` flattens all 8 plans into "wave 1" (ignores the `wave:` frontmatter) — execution used the authoritative PLAN-frontmatter wave order W1{01,05} W2{02,03} W3{04} W4{06} W5{07,08}. Code review done (08-REVIEW.md): 0 critical, 4 warning — ALL FIXED (WR-01 redact nudge command fields in audit log, WR-02 parseInt overflow guard, WR-03 parallelize PM probes so detection stays ~2s within the hook budget, WR-04 bound drift goroutine) + re-confirmed (build + tests + live E2E green); 5 Info deferred. Caveat: `go test -race` is CI-only (CGO disabled locally) — the CI race pass on internal/nudge is the authoritative confirmation for WR-03's concurrency change. NOTE (still applies to execute): the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not. CONFIRMED this session: `init.plan-phase 8` → `.planning/milestones/v1.0.0-phases/08-tui-dashboard` (wrong); plan-phase was driven with explicit live paths instead.
 - **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: `HANDOFF.json` + 05-05 `.continue-here.md`. Do NOT close v1.1.0 before this runs.
 - **Still pending (from v1.0.0 close):** the beekeeper GitHub remote is created as part of the v1.1.0 runbook (Step 1: `gh repo create bantuson/beekeeper`).
