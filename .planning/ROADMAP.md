@@ -195,7 +195,14 @@
   3. PRD §10 acceptance criteria 1–10 and 14–17 pass as table-driven tests against `nudge.Evaluate` — covering Advise/Rewrite/Proceed/Block decisions, reason codes, sudo passthrough, detection timeout graceful fallback, `bunfig.toml` parse failure safety, audit record schema, and config-change audit logging
   4. A live-binary E2E test executes the compiled `beekeeper` binary against the real catalog with raw stdin JSON for credential reads (SPATH), the `ai-figure` critical install (CORR), and a `pnpm add` / `bun add` install (NUDGE); all three assert the correct exit code and a well-formed `decision` audit record — this test is the v1.2.0 release gate and must pass before any release tag is cut
   5. `beekeeper nudge status` outputs human-readable current PM state and config; `beekeeper nudge check "npm install chalk"` dry-runs the nudge decision; `beekeeper nudge audit --since=1h` queries nudge records from the audit log
-**Plans**: TBD
+**Plans**: 7 plans (5 waves)
+- [ ] 08-01-PLAN.md — Wave 1: new pure internal/pkgparse package (Flag 4 extraction; pnpm/bun/yarn → ecosystem npm closes F3) + table/purity tests + FuzzParse (NUDGE-01, NUDGE-05, BTEST-03)
+- [ ] 08-05-PLAN.md — Wave 1: BEEKEEPER_HOME state-dir override (Wave 0 E2E blocker A2) + audit nudge fields/record types + config NudgeConfig layered defaulting (NUDGE-06, NUDGE-08, BTEST-03)
+- [ ] 08-02-PLAN.md — Wave 2: route policy/engine.go + policyloader/enforce.go through pkgparse (drop both duplicate copies; F3 catalog match end-to-end) (NUDGE-01)
+- [ ] 08-03-PLAN.md — Wave 2: pure nudge core — evaluate.go (Advise/Rewrite/Proceed/Block) + reasons/config/rewrite/version + purity test; PRD §10 1-10 table tests (NUDGE-02..06, BTEST-01)
+- [ ] 08-04-PLAN.md — Wave 3: impure detect.go (2s-timeout exec, fail-open) + gateway-only 60s Cache + hand-written bunfig/pnpm-workspace scanners + FuzzBunfig/FuzzPnpmWorkspace (NUDGE-02, BTEST-03)
+- [ ] 08-06-PLAN.md — Wave 4: wire nudge into check (fresh detect) + gateway (cache) + shim + beekeeper nudge status|check|audit CLI (NUDGE-03,04,06,07,08)
+- [ ] 08-07-PLAN.md — Wave 5: BTEST-02 RunCheck integration (pnpm install F3 end-to-end + soft advisory) + BTEST-03 live-binary E2E release gate (SPATH+CORR+NUDGE) (BTEST-01,02,03, NUDGE-01,08)
 **UI hint**: no
 
 ## Progress
@@ -220,4 +227,4 @@
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
-| **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
+| **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/7** | **Planned** | **—** |
