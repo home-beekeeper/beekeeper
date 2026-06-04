@@ -542,6 +542,10 @@ func (h *gatewayHandler) writeNudgeAudit(rec audit.AuditRecord) {
 		return
 	}
 	defer w.Close()
+	// WR-01: redact sensitive command fields before writing, consistent with the
+	// main gateway audit path (writeAudit). OriginalCommand/RewrittenCommand carry
+	// the verbatim agent-supplied Bash command, which may embed a token/secret.
+	rec = audit.RedactRecord(rec, audit.DefaultRedactPatterns())
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper gateway: nudge audit write error: %v\n", err)
 	}

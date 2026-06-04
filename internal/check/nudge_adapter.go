@@ -157,6 +157,10 @@ func writeNudgeAuditRecord(auditPath string, rec audit.AuditRecord) {
 		return
 	}
 	defer w.Close()
+	// WR-01: redact sensitive command fields before writing, consistent with the
+	// main audit path (writeAuditWithAC). OriginalCommand/RewrittenCommand carry
+	// the verbatim agent-supplied Bash command, which may embed a token/secret.
+	rec = audit.RedactRecord(rec, audit.DefaultRedactPatterns())
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper: nudge audit write error: %v\n", err)
 	}

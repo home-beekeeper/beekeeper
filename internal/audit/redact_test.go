@@ -235,6 +235,62 @@ func TestRedactRecordReason(t *testing.T) {
 	}
 }
 
+// TestRedactRecordNudgeCommandFields verifies WR-01: the Phase-8 nudge command
+// fields (OriginalCommand, RewrittenCommand, PMState) are run through the same
+// credential redaction as Reason, so a token embedded in an agent-supplied
+// install command never reaches the forensic NDJSON log verbatim.
+func TestRedactRecordNudgeCommandFields(t *testing.T) {
+	patterns := DefaultRedactPatterns()
+
+	original := AuditRecord{
+		RecordType:       "nudge",
+		RecordID:         "nudge-id-1",
+		Timestamp:        "2026-06-04T00:00:00Z",
+		ScannerName:      "beekeeper",
+		Decision:         "warn",
+		NudgeAction:      "advise",
+		OriginalCommand:  "npm install --registry=https://x:Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.sig@host/ pkg",
+		RewrittenCommand: "pnpm add pkg --registry=https://x?token=ghp_1234567890abcdef",
+		PMState:          "pnpm installed; token sk-ant-api03-leakedkey present",
+	}
+
+	redacted := RedactRecord(original, patterns)
+
+	// Original must be unchanged (RedactRecord returns a copy).
+	if !strings.Contains(original.OriginalCommand, "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.sig") {
+		t.Fatalf("RedactRecord mutated original.OriginalCommand: %q", original.OriginalCommand)
+	}
+
+	// OriginalCommand: JWT must be redacted.
+	if strings.Contains(redacted.OriginalCommand, "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.sig") {
+		t.Errorf("OriginalCommand JWT not redacted: %q", redacted.OriginalCommand)
+	}
+	if !strings.Contains(redacted.OriginalCommand, "[JWT_REDACTED]") {
+		t.Errorf("OriginalCommand missing [JWT_REDACTED]: %q", redacted.OriginalCommand)
+	}
+
+	// RewrittenCommand: GitHub PAT must be redacted.
+	if strings.Contains(redacted.RewrittenCommand, "ghp_1234567890abcdef") {
+		t.Errorf("RewrittenCommand PAT not redacted: %q", redacted.RewrittenCommand)
+	}
+	if !strings.Contains(redacted.RewrittenCommand, "ghp_[REDACTED]") {
+		t.Errorf("RewrittenCommand missing ghp_[REDACTED]: %q", redacted.RewrittenCommand)
+	}
+
+	// PMState: Anthropic key must be redacted.
+	if strings.Contains(redacted.PMState, "sk-ant-api03-leakedkey") {
+		t.Errorf("PMState key not redacted: %q", redacted.PMState)
+	}
+	if !strings.Contains(redacted.PMState, "sk-ant-[REDACTED]") {
+		t.Errorf("PMState missing sk-ant-[REDACTED]: %q", redacted.PMState)
+	}
+
+	// Reason redaction must still work alongside the new fields.
+	if redacted.Decision != original.Decision {
+		t.Errorf("RedactRecord changed Decision: got %q want %q", redacted.Decision, original.Decision)
+	}
+}
+
 // TestRedactRecordNoPatterns verifies that RedactRecord with no patterns returns the record unchanged.
 func TestRedactRecordNoPatterns(t *testing.T) {
 	rec := AuditRecord{

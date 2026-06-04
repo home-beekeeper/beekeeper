@@ -96,11 +96,17 @@ func applyRedaction(s string, patterns []redactPattern) string {
 // redaction placeholders. The following fields are redacted:
 //
 //   - Reason: may contain credential snippets from policy engine messages
+//   - OriginalCommand: the verbatim agent-supplied Bash command (Phase 8 nudge,
+//     WR-01) — may carry a token/secret embedded in an install argument such as
+//     `npm install --registry=https://x:Bearer ...@host/`.
+//   - RewrittenCommand: the nudge-rewritten command (Phase 8) — derived from the
+//     original and may inherit the same secrets.
+//   - PMState: the flattened §9 PM-state string (Phase 8). It is structured
+//     detection metadata today, but it is redacted defensively so that no
+//     attacker-influenced data path bypasses redaction (WR-01).
 //
 // ToolInput is a map[string]any in policy.ToolCall (not in AuditRecord directly);
 // string values would be redacted at the ToolCall layer if exposed here.
-// For Phase 4, Reason is the only AuditRecord string field that may carry
-// raw tool-output data (T-04-05-02).
 //
 // RedactRecord always returns a new AuditRecord — it never mutates the receiver.
 func RedactRecord(rec AuditRecord, patterns []redactPattern) AuditRecord {
@@ -111,6 +117,12 @@ func RedactRecord(rec AuditRecord, patterns []redactPattern) AuditRecord {
 	// modified by redaction since we only redact string fields).
 	out := rec
 	out.Reason = applyRedaction(rec.Reason, patterns)
+	// WR-01: the Phase-8 nudge fields carry attacker-influenced raw command
+	// input. Apply the same credential redaction used for Reason so a forensic
+	// log cannot become a credential-exfil target.
+	out.OriginalCommand = applyRedaction(rec.OriginalCommand, patterns)
+	out.RewrittenCommand = applyRedaction(rec.RewrittenCommand, patterns)
+	out.PMState = applyRedaction(rec.PMState, patterns)
 	return out
 }
 
