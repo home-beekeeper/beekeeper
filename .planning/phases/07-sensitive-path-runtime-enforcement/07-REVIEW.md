@@ -18,7 +18,10 @@ findings:
   warning: 4
   info: 3
   total: 9
-status: issues_found
+status: resolved
+resolved_at: 2026-06-04T00:00:00Z
+resolved_findings: [CR-01, CR-02, WR-01, WR-02, WR-03, WR-04]
+deferred_findings: [IN-01, IN-02, IN-03]
 ---
 
 # Phase 7: Code Review Report
