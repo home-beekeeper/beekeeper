@@ -23,7 +23,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"sync/atomic"
 	"time"
@@ -32,34 +35,104 @@ import (
 	"github.com/bantuson/beekeeper/internal/nudge"
 )
 
+// npmDriftRegistryBase is the npm registry base URL used by realMetadataFetch to
+// query dist-tags for pnpm and bun. It is a package-level variable so tests can
+// redirect requests to an httptest server without real network access.
+//
+// NOTE: This is intentionally NOT imported from internal/catalog to keep packages
+// decoupled. The two vars serve different consumers (registry.go serves the
+// lifecycle/publish-time adapters; this var serves the drift check adapter).
+var npmDriftRegistryBase = "https://registry.npmjs.org"
+
 // metadataFetchFn is the injectable package-level variable for the drift check's
-// metadata lookup. The real implementation fetches the latest published versions
-// for "pnpm" and "bun" from the respective registries / CLI commands. Tests
-// substitute a fake returning a controlled map.
+// metadata lookup. Tests substitute a fake returning a controlled map; production
+// uses realMetadataFetch which queries the npm registry dist-tags endpoint.
 //
 // Returns a map of PM name → latest version string, e.g.:
 //
 //	{"pnpm": "12.0.0", "bun": "1.3.14"}
 //
-// Any error aborts the drift check entirely (fail-open, non-blocking).
+// realMetadataFetch returns nil error even when individual PM fetches fail
+// (per-PM fail-open); only a completely unrecoverable error triggers non-nil.
+// checkDrift treats any non-nil error as fail-open (no record, no panic).
 var metadataFetchFn = realMetadataFetch
 
-// realMetadataFetch is the production metadata fetch. It calls `pnpm --version`
-// to get the locally-installed version as a proxy for "latest available in the
-// npm registry" — a proper registry query is future work (Open Q2 placeholder).
-// When the command is unavailable or errors, the PM is omitted from the result
-// (fail-open, non-blocking — T-08-24).
+// driftDistTagsResponse is the JSON shape returned by the npm dist-tags endpoint:
 //
-// NOTE: This is intentionally minimal — the real drift check architecture would
-// query the npm registry for the latest pnpm/bun version. For now the function
-// provides the correct wiring; the metadata query can be enriched later without
-// changing the checkDrift contract.
+//	GET https://registry.npmjs.org/-/package/<pm>/dist-tags
+//	→ {"latest":"12.0.0","next":"..."}
+type driftDistTagsResponse struct {
+	Latest string `json:"latest"`
+}
+
+// realMetadataFetch queries the npm registry dist-tags endpoint for "pnpm" and
+// "bun" and returns a map of PM name → latest version string (DRIFT-01).
+//
+// Design decisions:
+//   - Per-PM fail-open: if one PM's fetch fails (non-200, network error, parse
+//     error, or empty latest), that PM is OMITTED from the returned map and
+//     the function continues to the next PM. The function returns nil error
+//     (even when some PMs were skipped) because checkDrift uses an empty/partial
+//     map gracefully — it simply has no drift to report for the missing PM.
+//     This is correct: a transient registry outage for one PM must not suppress
+//     drift detection for the other.
+//   - 5s HTTP client timeout (smaller than the scheduler's 30s per-check ctx)
+//     so a slow response doesn't consume the full check budget.
+//   - 256KB io.LimitReader: dist-tags responses are tiny (~100 bytes); the cap
+//     defends against a runaway/malicious response (T-09-10).
+//   - npmDriftRegistryBase is overridable so tests redirect to httptest (T-09-11:
+//     the base URL is a hardcoded constant, never derived from agent input).
+//   - Floors are NEVER auto-bumped (PRD §7.1, Out-of-Scope — T-09-12).
 func realMetadataFetch(ctx context.Context) (map[string]string, error) {
-	// For the initial implementation: return an empty map to avoid any network
-	// calls in production until the registry query is implemented. The injected
-	// test fn provides the actual test coverage. This satisfies the structural
-	// requirement (§10-15 wiring) without introducing live network calls.
-	return map[string]string{}, nil
+	client := &http.Client{Timeout: 5 * time.Second}
+	pms := []string{"pnpm", "bun"}
+	result := make(map[string]string, len(pms))
+
+	for _, pm := range pms {
+		url := npmDriftRegistryBase + "/-/package/" + pm + "/dist-tags"
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: drift fetch build request %s: %v\n", pm, err)
+			continue // per-PM fail-open: omit this PM, continue to next
+		}
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: drift fetch %s: %v\n", pm, err)
+			continue // per-PM fail-open: omit this PM (T-09-10, T-09-13)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: drift fetch %s: HTTP %d\n", pm, resp.StatusCode)
+			continue // per-PM fail-open: omit this PM
+		}
+
+		// Cap to 256KB — dist-tags payload is ~100 bytes; this defends against
+		// runaway responses without allocating the full cap upfront (T-09-10).
+		limited := io.LimitReader(resp.Body, 256<<10)
+		var tags driftDistTagsResponse
+		decodeErr := json.NewDecoder(limited).Decode(&tags)
+		resp.Body.Close()
+		if decodeErr != nil {
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: drift fetch %s parse: %v\n", pm, decodeErr)
+			continue // per-PM fail-open: omit this PM
+		}
+
+		if tags.Latest == "" {
+			fmt.Fprintf(os.Stderr, "beekeeper gateway: drift fetch %s: empty latest field\n", pm)
+			continue // per-PM fail-open: omit this PM
+		}
+
+		result[pm] = tags.Latest
+	}
+
+	// Return nil error even when some PMs were omitted. checkDrift handles a
+	// partial map correctly (it only iterates keys that exist). The per-PM
+	// stderr logs above are the only signal; no fatal error is raised.
+	return result, nil
 }
 
 // checkDrift evaluates whether a new major version has been released for pnpm
