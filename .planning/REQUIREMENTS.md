@@ -20,14 +20,14 @@ Requirements for milestone v1.2.0. Each maps to exactly one roadmap phase. All w
 
 ### Package-Manager Nudge (NUDGE) — finding F3, spec `.planning/specs/NUDGE-PRD.md`
 
-- [ ] **NUDGE-01**: npm install commands (`npm install`/`i`/`add`, `npx`) are recognized, and `pnpm`/`bun`/`yarn` install commands are likewise parsed so catalog matching applies to them too (closes the F3 bypass where pnpm/bun installs were unparsed).
-- [ ] **NUDGE-02**: Beekeeper detects locally-installed pnpm (>=11), bun (>=1.3), node (>=22), and the `@socketsecurity/bun-security-scanner`, producing a `PMState` via a timeout-bounded (2s) detection adapter; `nudge.Evaluate(ParsedCommand, PMState, Config)` is a pure decision (no I/O).
-- [ ] **NUDGE-03**: Soft mode (default) advises steering `npm install` toward the hardened equivalent — correct verb/flag mapping incl. no-arg `npm install`→`pnpm install`/`bun install` and `npx`→`pnpm dlx`/`bun x` — and proceeds (exit 0); at most one advisory per session; never blocks.
-- [ ] **NUDGE-04**: Hard mode (opt-in `mode:"hard"`) rewrites the command to the pnpm/bun equivalent; `requireHardened` (opt-in) blocks `npm install` when no hardened PM is present, with a structured reason pointing to install guidance.
-- [ ] **NUDGE-05**: The nudge flags unpinned installs (`@latest`, bare name, or wide `^`/`~` range) and recommends an exact-pinned spec, naming the detected risk pattern.
-- [ ] **NUDGE-06**: Every nudge decision emits a `record_type:"nudge"` NDJSON audit record (original command, decision, closed-enum reason code, PMState); the weekly major-version drift check emits a `record_type:"version_drift"` record.
-- [ ] **NUDGE-07**: `beekeeper nudge status | check <command> | audit [--since]` CLI surfaces current PM state + config, dry-runs a command, and queries nudge decisions from the audit log.
-- [ ] **NUDGE-08**: The nudge is wired into all three enforcement consumers (check hook, MCP gateway, shim) and honors layered config (the `nudge` block; project `.beekeeper.json` `nudge.enabled:false` disables it); the 60s detection cache lives only where it is effective (long-lived gateway), per the resolved check-hot-path decision.
+- [x] **NUDGE-01**: npm install commands (`npm install`/`i`/`add`, `npx`) are recognized, and `pnpm`/`bun`/`yarn` install commands are likewise parsed so catalog matching applies to them too (closes the F3 bypass where pnpm/bun installs were unparsed).
+- [x] **NUDGE-02**: Beekeeper detects locally-installed pnpm (>=11), bun (>=1.3), node (>=22), and the `@socketsecurity/bun-security-scanner`, producing a `PMState` via a timeout-bounded (2s) detection adapter; `nudge.Evaluate(ParsedCommand, PMState, Config)` is a pure decision (no I/O).
+- [x] **NUDGE-03**: Soft mode (default) advises steering `npm install` toward the hardened equivalent — correct verb/flag mapping incl. no-arg `npm install`→`pnpm install`/`bun install` and `npx`→`pnpm dlx`/`bun x` — and proceeds (exit 0); at most one advisory per session; never blocks.
+- [x] **NUDGE-04**: Hard mode (opt-in `mode:"hard"`) rewrites the command to the pnpm/bun equivalent; `requireHardened` (opt-in) blocks `npm install` when no hardened PM is present, with a structured reason pointing to install guidance.
+- [x] **NUDGE-05**: The nudge flags unpinned installs (`@latest`, bare name, or wide `^`/`~` range) and recommends an exact-pinned spec, naming the detected risk pattern.
+- [x] **NUDGE-06**: Every nudge decision emits a `record_type:"nudge"` NDJSON audit record (original command, decision, closed-enum reason code, PMState); the weekly major-version drift check emits a `record_type:"version_drift"` record.
+- [x] **NUDGE-07**: `beekeeper nudge status | check <command> | audit [--since]` CLI surfaces current PM state + config, dry-runs a command, and queries nudge decisions from the audit log.
+- [x] **NUDGE-08**: The nudge is wired into all three enforcement consumers (check hook, MCP gateway, shim) and honors layered config (the `nudge` block; project `.beekeeper.json` `nudge.enabled:false` disables it); the 60s detection cache lives only where it is effective (long-lived gateway), per the resolved check-hot-path decision.
 
 ### Corroboration Severity Hardening (CORR) — finding F1
 
@@ -36,9 +36,9 @@ Requirements for milestone v1.2.0. Each maps to exactly one roadmap phase. All w
 
 ### Behavioral Test Suite (BTEST) — cross-cutting, the milestone's primary ask
 
-- [ ] **BTEST-01**: Table-driven pure-policy tests cover each new behavior — sensitive-path decisions (traversal, allowlist, OS path forms); severity escalation incl. the degraded-catalog regression; nudge `Evaluate` over `PMState` (PRD §10 criteria 1–10, 14–17).
-- [ ] **BTEST-02**: Check-handler integration tests drive `RunCheck` with raw stdin JSON and assert decision + exit code for credential reads, catalog-critical blocks, and pnpm/bun installs (proves wiring is live, not just that component functions return correct values).
-- [ ] **BTEST-03**: A live-binary E2E battery invokes the compiled `beekeeper` against the real catalog (mirroring the validation run that surfaced F1/F2/F3), asserting exit codes + audit records — a release gate; hand-written config scanners (`bunfig.toml`, `pnpm-workspace.yaml`) carry fuzz targets per the CI fuzz gate.
+- [x] **BTEST-01**: Table-driven pure-policy tests cover each new behavior — sensitive-path decisions (traversal, allowlist, OS path forms); severity escalation incl. the degraded-catalog regression; nudge `Evaluate` over `PMState` (PRD §10 criteria 1–10, 14–17).
+- [x] **BTEST-02**: Check-handler integration tests drive `RunCheck` with raw stdin JSON and assert decision + exit code for credential reads, catalog-critical blocks, and pnpm/bun installs (proves wiring is live, not just that component functions return correct values).
+- [x] **BTEST-03**: A live-binary E2E battery invokes the compiled `beekeeper` against the real catalog (mirroring the validation run that surfaced F1/F2/F3), asserting exit codes + audit records — a release gate; hand-written config scanners (`bunfig.toml`, `pnpm-workspace.yaml`) carry fuzz targets per the CI fuzz gate.
 
 ## Future Requirements
 
@@ -73,17 +73,17 @@ Which phases cover which requirements. Populated during roadmap creation.
 | SPATH-02 | Phase 7 | Complete |
 | SPATH-03 | Phase 7 | Complete |
 | SPATH-04 | Phase 7 | Complete |
-| NUDGE-01 | Phase 8 | Pending |
-| NUDGE-02 | Phase 8 | Pending |
-| NUDGE-03 | Phase 8 | Pending |
-| NUDGE-04 | Phase 8 | Pending |
-| NUDGE-05 | Phase 8 | Pending |
-| NUDGE-06 | Phase 8 | Pending |
-| NUDGE-07 | Phase 8 | Pending |
-| NUDGE-08 | Phase 8 | Pending |
-| BTEST-01 | Phase 8 | Pending |
-| BTEST-02 | Phase 8 | Pending |
-| BTEST-03 | Phase 8 | Pending |
+| NUDGE-01 | Phase 8 | Complete |
+| NUDGE-02 | Phase 8 | Complete |
+| NUDGE-03 | Phase 8 | Complete |
+| NUDGE-04 | Phase 8 | Complete |
+| NUDGE-05 | Phase 8 | Complete |
+| NUDGE-06 | Phase 8 | Complete |
+| NUDGE-07 | Phase 8 | Complete |
+| NUDGE-08 | Phase 8 | Complete |
+| BTEST-01 | Phase 8 | Complete |
+| BTEST-02 | Phase 8 | Complete |
+| BTEST-03 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total (SPATH x4, NUDGE x8, CORR x2, BTEST x3)

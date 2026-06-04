@@ -43,7 +43,7 @@
 - [x] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate
  (completed 2026-06-03)
 - [x] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses (completed 2026-06-04)
-- [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/evaluate/rewrite/CLI); PRD §10 acceptance tests; live-binary E2E release gate
+- [x] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/evaluate/rewrite/CLI); PRD §10 acceptance tests; live-binary E2E release gate
 
 ## Phase Details
 
@@ -147,7 +147,7 @@
 - [x] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate
  (completed 2026-06-03)
 - [x] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses; integration tests prove check wiring is live (completed 2026-06-04)
-- [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/parse/evaluate/rewrite/CLI); PRD §10 acceptance tests; complete table-driven test suite; live-binary E2E release gate
+- [x] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/parse/evaluate/rewrite/CLI); PRD §10 acceptance tests; complete table-driven test suite; live-binary E2E release gate
 
 ### Phase 6: Corroboration Severity Hardening
 **Goal**: A critical-severity catalog match blocks at a single trusted source — so `ai-figure` (Shai-Hulud / OSV `MAL-2026-4126`) is blocked, not warned — with an anti-poisoning sanity gate that prevents a degraded or flooded catalog from triggering false escalations.
@@ -198,14 +198,14 @@
   4. A live-binary E2E test executes the compiled `beekeeper` binary against the real catalog with raw stdin JSON for credential reads (SPATH), the `ai-figure` critical install (CORR), and a `pnpm add` / `bun add` install (NUDGE); all three assert the correct exit code and a well-formed `decision` audit record — this test is the v1.2.0 release gate and must pass before any release tag is cut
   5. `beekeeper nudge status` outputs human-readable current PM state and config; `beekeeper nudge check "npm install chalk"` dry-runs the nudge decision; `beekeeper nudge audit --since=1h` queries nudge records from the audit log
 **Plans**: 8 plans (5 waves)
-- [ ] 08-01-PLAN.md — Wave 1: new pure internal/pkgparse package (Flag 4 extraction; pnpm/bun/yarn + npm add → ecosystem npm closes F3) + table/purity tests + FuzzParse (NUDGE-01, NUDGE-05, BTEST-03)
-- [ ] 08-05-PLAN.md — Wave 1: BEEKEEPER_HOME state-dir override (Wave 0 E2E blocker A2) + audit nudge fields incl. nudge_action §9 enum + §10-14 conformance test + config NudgeConfig layered defaulting + validateNudgeConfig fail-closed bounds (NUDGE-06, NUDGE-08, BTEST-01, BTEST-03)
-- [ ] 08-02-PLAN.md — Wave 2: route policy/engine.go + policyloader/enforce.go through pkgparse (drop both duplicate copies; F3 catalog match end-to-end) (NUDGE-01)
-- [ ] 08-03-PLAN.md — Wave 2: pure nudge core — evaluate.go (Advise/Rewrite/Proceed/Block) + ActionString §9 enum + reasons/config/rewrite/version + purity test; PRD §10 1-10 table tests (NUDGE-02..06, BTEST-01)
-- [ ] 08-04-PLAN.md — Wave 3: impure detect.go (2s-timeout exec, fail-open) + gateway-only 60s Cache + hand-written bunfig/pnpm-workspace scanners + FuzzBunfig/FuzzPnpmWorkspace (NUDGE-02, BTEST-03)
-- [ ] 08-06-PLAN.md — Wave 4: wire nudge into check (fresh detect) + gateway (cache + per-session advisory cap) + shim + gateway version_drift weekly check §10-15 (NUDGE-03,04,06,08)
-- [ ] 08-08-PLAN.md — Wave 5: beekeeper nudge status|check|audit CLI + config set nudge.* audit logging §10-17 + docs/nudge.md (PRD §13) (NUDGE-07,08, BTEST-01)
-- [ ] 08-07-PLAN.md — Wave 5: BTEST-02 RunCheck integration (pnpm install F3 end-to-end + soft advisory) + BTEST-03 live-binary E2E release gate (SPATH+CORR+NUDGE) (BTEST-01,02,03, NUDGE-01,08)
+- [x] 08-01-PLAN.md — Wave 1: new pure internal/pkgparse package (Flag 4 extraction; pnpm/bun/yarn + npm add → ecosystem npm closes F3) + table/purity tests + FuzzParse (NUDGE-01, NUDGE-05, BTEST-03)
+- [x] 08-05-PLAN.md — Wave 1: BEEKEEPER_HOME state-dir override (Wave 0 E2E blocker A2) + audit nudge fields incl. nudge_action §9 enum + §10-14 conformance test + config NudgeConfig layered defaulting + validateNudgeConfig fail-closed bounds (NUDGE-06, NUDGE-08, BTEST-01, BTEST-03)
+- [x] 08-02-PLAN.md — Wave 2: route policy/engine.go + policyloader/enforce.go through pkgparse (drop both duplicate copies; F3 catalog match end-to-end) (NUDGE-01)
+- [x] 08-03-PLAN.md — Wave 2: pure nudge core — evaluate.go (Advise/Rewrite/Proceed/Block) + ActionString §9 enum + reasons/config/rewrite/version + purity test; PRD §10 1-10 table tests (NUDGE-02..06, BTEST-01)
+- [x] 08-04-PLAN.md — Wave 3: impure detect.go (2s-timeout exec, fail-open) + gateway-only 60s Cache + hand-written bunfig/pnpm-workspace scanners + FuzzBunfig/FuzzPnpmWorkspace (NUDGE-02, BTEST-03)
+- [x] 08-06-PLAN.md — Wave 4: wire nudge into check (fresh detect) + gateway (cache + per-session advisory cap) + shim + gateway version_drift weekly check §10-15 (NUDGE-03,04,06,08)
+- [x] 08-08-PLAN.md — Wave 5: beekeeper nudge status|check|audit CLI + config set nudge.* audit logging §10-17 + docs/nudge.md (PRD §13) (NUDGE-07,08, BTEST-01)
+- [x] 08-07-PLAN.md — Wave 5: BTEST-02 RunCheck integration (pnpm install F3 end-to-end + soft advisory) + BTEST-03 live-binary E2E release gate (SPATH+CORR+NUDGE) (BTEST-01,02,03, NUDGE-01,08)
 **UI hint**: no
 
 ## Progress
@@ -230,4 +230,4 @@
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
-| **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/8** | **Planned** | **—** |
+| **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **8/8** | **Complete** | **2026-06-04** |

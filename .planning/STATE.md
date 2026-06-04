@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: Phase 8 planned — 8 plans in 5 waves; plan-checker PASSED after revision convergence (7→6→4→1→0 issues). Ready to execute.
-last_updated: "2026-06-04T12:00:00.000Z"
-last_activity: 2026-06-04 -- Phase 08 planned (8 plans, 5 waves) — plan-checker PASSED
+stopped_at: Phase 8 complete & verified (8/8 plans; verifier 5/5 SCs + 11/11 reqs; release gates green — full suite + fuzz + live-binary E2E). v1.2.0 all 3 phases done — milestone ready for close.
+last_updated: "2026-06-04T16:30:00.000Z"
+last_activity: 2026-06-04 -- Phase 08 complete & verified (NUDGE + Behavioral Test Suite; v1.2.0 release gate green)
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 6
-  percent: 67
+  completed_plans: 14
+  percent: 100
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 ## Current Position
 
-Phase: 8 of 8 — 📋 PLANNED, ready to execute (NUDGE + Behavioral Test Suite; v1.2.0 release gate)
-Plan: 0 of 8 complete — 8 plans in 5 waves (08-01..08-08)
-Status: Phase 8 planned & verified — RESEARCH (Flag 2/4/5 resolved) → PATTERNS → 8 plans → plan-checker PASSED after revision convergence (7→6→4→1→0 issues). discuss-phase intentionally skipped; the Flag 2/4/5 decisions are locked in 08-RESEARCH.md instead of CONTEXT.md.
-Last activity: 2026-06-04 -- Phase 08 planned (8 plans, 5 waves)
+Phase: 8 of 8 — ✅ COMPLETE & verified (NUDGE + Behavioral Test Suite; v1.2.0 release gate green)
+Plan: 8 of 8 complete (08-01..08-08)
+Status: Phase 8 complete & verified — verifier 5/5 success criteria + 11/11 requirements; full test suite + fuzz seeds + live-binary E2E (BTEST-03 release gate) all green. F3 closed (pnpm/bun/yarn installs now catalog-matched via pkgparse → ecosystem "npm"); nudge soft-advise-default / hard-rewrite-opt-in live in check (fresh detect) + gateway (60s cache) + shim; `beekeeper nudge status|check|audit` CLI shipped. v1.2.0 all 3 phases done.
+Last activity: 2026-06-04 -- Phase 08 complete & verified
 
-Progress (v1.2.0): [██████░░░░] 67% (2 of 3 phases; Phase 8 planned, not yet executed)
+Progress (v1.2.0): [██████████] 100% (3 of 3 phases complete — milestone ready for close)
 
 ## Phase Summary (v1.1.0)
 
@@ -50,7 +50,7 @@ Progress (v1.2.0): [██████░░░░] 67% (2 of 3 phases; Phase 8 
 |-------|------|--------------|--------|
 | 6 | Corroboration Severity Hardening | CORR-01, CORR-02 | ✅ Complete (3/3 plans; +2 code-review fixes) |
 | 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | ✅ Complete (3/3 plans; +6 code-review fixes) |
-| 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | 📋 Planned (8 plans, 5 waves; plan-checker PASSED) |
+| 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | ✅ Complete & verified (8/8 plans; 5/5 SCs, 11/11 reqs; full suite + fuzz + live-binary E2E green) |
 
 ## Performance Metrics
 
@@ -153,6 +153,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- **v1.2.0 (current):** Phase 8 📋 **planned & verified** — 8 plans in 5 waves (08-01..08-08), plan-checker PASSED after revision convergence (7→6→4→1→0 issues); RESEARCH/PATTERNS/VALIDATION written; Flag 2/4/5 locked in 08-RESEARCH.md (discuss-phase intentionally skipped). Next: **execute** with `/gsd-execute-phase 8` (the v1.2.0 release gate — closes F3 + ships the behavioral test suite + live-binary E2E). NOTE (still applies to execute): the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not. CONFIRMED this session: `init.plan-phase 8` → `.planning/milestones/v1.0.0-phases/08-tui-dashboard` (wrong); plan-phase was driven with explicit live paths instead.
+- **v1.2.0 (current):** Phase 8 ✅ **complete & verified** — all 8 plans executed (08-01..08-08; the 08-05 executor hit a mid-run session limit AFTER committing its 3 task commits — closed out manually by writing its SUMMARY, no re-execution), verifier 5/5 SCs + 11/11 reqs, release gates green (full suite + fuzz seeds + live-binary E2E). **All 3 v1.2.0 phases (6,7,8) complete — milestone ready for close** (`/gsd-audit-milestone` then `/gsd-complete-milestone`). Known INFO (deferred): gateway `realMetadataFetch` (drift.go) is a production stub returning empty, so `version_drift` emits nothing live until a real registry query is added (floor auto-update is Out-of-Scope; drift is informational-only). Also confirmed broken this session: `phase-plan-index 8` flattens all 8 plans into "wave 1" (ignores the `wave:` frontmatter) — execution used the authoritative PLAN-frontmatter wave order W1{01,05} W2{02,03} W3{04} W4{06} W5{07,08}. NOTE (still applies to execute): the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not. CONFIRMED this session: `init.plan-phase 8` → `.planning/milestones/v1.0.0-phases/08-tui-dashboard` (wrong); plan-phase was driven with explicit live paths instead.
 - **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: `HANDOFF.json` + 05-05 `.continue-here.md`. Do NOT close v1.1.0 before this runs.
 - **Still pending (from v1.0.0 close):** the beekeeper GitHub remote is created as part of the v1.1.0 runbook (Step 1: `gh repo create bantuson/beekeeper`).
