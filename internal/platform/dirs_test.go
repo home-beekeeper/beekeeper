@@ -7,6 +7,53 @@ import (
 	"testing"
 )
 
+// TestStateDirHonorsBeekeeperHomeOverride verifies the Wave 0 / BTEST-03
+// hermetic E2E requirement: when BEEKEEPER_HOME is set, StateDir and all
+// derived dirs resolve under it rather than the OS default.
+func TestStateDirHonorsBeekeeperHomeOverride(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("BEEKEEPER_HOME", base)
+
+	stateDir, err := StateDir()
+	if err != nil {
+		t.Fatalf("StateDir() returned error: %v", err)
+	}
+	wantState := filepath.Join(base, "beekeeper")
+	if stateDir != wantState {
+		t.Fatalf("StateDir() = %q, want %q", stateDir, wantState)
+	}
+
+	// AuditDir must resolve under the overridden state dir.
+	auditDir, err := AuditDir()
+	if err != nil {
+		t.Fatalf("AuditDir() returned error: %v", err)
+	}
+	wantAudit := filepath.Join(base, "beekeeper", "audit")
+	if auditDir != wantAudit {
+		t.Fatalf("AuditDir() = %q, want %q", auditDir, wantAudit)
+	}
+
+	// CatalogDir must also resolve under the overridden state dir.
+	catalogDir, err := CatalogDir()
+	if err != nil {
+		t.Fatalf("CatalogDir() returned error: %v", err)
+	}
+	wantCatalog := filepath.Join(base, "beekeeper", "catalogs")
+	if catalogDir != wantCatalog {
+		t.Fatalf("CatalogDir() = %q, want %q", catalogDir, wantCatalog)
+	}
+
+	// ConfigPath must also resolve under the overridden state dir.
+	cfgPath, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath() returned error: %v", err)
+	}
+	wantConfig := filepath.Join(base, "beekeeper", "config.json")
+	if cfgPath != wantConfig {
+		t.Fatalf("ConfigPath() = %q, want %q", cfgPath, wantConfig)
+	}
+}
+
 func TestStateDirReturnsExpectedSuffix(t *testing.T) {
 	dir, err := StateDir()
 	if err != nil {
