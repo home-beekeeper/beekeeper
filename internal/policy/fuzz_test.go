@@ -33,7 +33,7 @@ func FuzzEvaluate(f *testing.F) {
 		// ToolCall which the engine must handle without panicking.
 		_ = json.Unmarshal([]byte(data), &tc)
 
-		d := Evaluate(tc, fakeMultiCatalog{}, DefaultCorroborationThresholds())
+		d := Evaluate(tc, fakeMultiCatalog{}, DefaultCorroborationThresholds(), AgentContext{})
 
 		switch d.Level {
 		case "allow", "warn", "block":
