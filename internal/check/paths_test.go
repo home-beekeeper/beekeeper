@@ -1,6 +1,8 @@
 package check
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -148,6 +150,115 @@ func TestCanonicalizePath(t *testing.T) {
 			t.Errorf("expected forward slashes only, got %q", got)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// TestCanonicalizePathForms (HARDEN-01 / IN-01)
+// ---------------------------------------------------------------------------
+
+func TestCanonicalizePathForms(t *testing.T) {
+	t.Run("empty returns nil", func(t *testing.T) {
+		if got := canonicalizePathForms(""); got != nil {
+			t.Errorf("canonicalizePathForms(\"\") = %v, want nil", got)
+		}
+	})
+
+	t.Run("non-existent credential path yields a /.aws/ form (Pitfall 3 fallback preserved)", func(t *testing.T) {
+		forms := canonicalizePathForms("~/.aws/credentials")
+		if len(forms) == 0 {
+			t.Fatal("canonicalizePathForms returned no forms for tilde credential path")
+		}
+		if !anyFormContains(forms, "/.aws/") {
+			t.Errorf("expected at least one form containing /.aws/, got %v", forms)
+		}
+	})
+
+	t.Run("ancestor symlink: sensitive fragment survives in at least one form (HARDEN-01)", func(t *testing.T) {
+		// Plant an ancestor symlink: real dir T (t.TempDir), symlink L -> T.
+		// Request canonicalizePathForms(L + "/.aws/credentials").
+		// The pre-fix single-form canonicalizePath would EvalSymlinks the L
+		// ancestor and produce a path under T — but because the /.aws/ subdir
+		// does not exist under T, EvalSymlinks of the FULL path errors and the
+		// fallback Abs path is the *symlink* path (L/.aws/credentials), which
+		// happens to retain /.aws/. To make the regression bite even when the
+		// fragment dir DOES exist (EvalSymlinks succeeds end-to-end), we create
+		// the .aws/credentials structure under T so EvalSymlinks fully resolves
+		// L -> T; the resolved form then carries T's real path. The LEXICAL form
+		// (no EvalSymlinks) keeps the L/.aws/ shape. We assert at least one form
+		// carries /.aws/ regardless — which is the whole point of dual-form.
+		realDir := t.TempDir()
+		awsDir := filepath.Join(realDir, ".aws")
+		if err := os.MkdirAll(awsDir, 0o755); err != nil {
+			t.Fatalf("mkdir .aws: %v", err)
+		}
+		credFile := filepath.Join(awsDir, "credentials")
+		if err := os.WriteFile(credFile, []byte("[default]\n"), 0o600); err != nil {
+			t.Fatalf("write credentials: %v", err)
+		}
+
+		linkPath := filepath.Join(t.TempDir(), "link")
+		if err := os.Symlink(realDir, linkPath); err != nil {
+			// os.Symlink fails on Windows without the SeCreateSymbolicLink
+			// privilege (Developer Mode off). Skip cleanly so the unprivileged
+			// Windows dev box stays green; CI Linux/macOS exercise this path.
+			if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "privilege") {
+				t.Skipf("os.Symlink requires privilege on this host, skipping: %v", err)
+			}
+			t.Fatalf("os.Symlink: %v", err)
+		}
+
+		// Request the credential read THROUGH the ancestor symlink.
+		target := linkPath + "/.aws/credentials"
+		forms := canonicalizePathForms(target)
+		if len(forms) == 0 {
+			t.Fatal("canonicalizePathForms returned no forms for symlink-ancestor path")
+		}
+
+		// The crux of HARDEN-01: at least one returned form must still carry the
+		// /.aws/ fragment so a downstream block matches. The lexical form (no
+		// EvalSymlinks) guarantees this even when EvalSymlinks rewrites the
+		// ancestor away.
+		if !anyFormContains(forms, "/.aws/") {
+			t.Errorf("HARDEN-01: no returned form carries /.aws/ — ancestor symlink dodged the blocklist; forms=%v", forms)
+		}
+
+		// Sanity: a downstream policy.EvaluatePath on the surviving form blocks.
+		cfg := policy.DefaultSensitivePaths()
+		blocked := false
+		for _, f := range forms {
+			if d := policy.EvaluatePath(f, cfg); d.Level == "block" {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			t.Errorf("HARDEN-01: no form blocked by EvaluatePath; forms=%v", forms)
+		}
+	})
+
+	t.Run("de-duplicates identical forms", func(t *testing.T) { //nolint:thelper
+		// An absolute, non-symlink, existing path: lexical and resolved forms are
+		// identical and must be collapsed to a single entry.
+		dir := t.TempDir()
+		f := filepath.Join(dir, "plain.txt")
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		forms := canonicalizePathForms(f)
+		if len(forms) != 1 {
+			t.Errorf("expected 1 de-duplicated form for a non-symlink existing path, got %d: %v", len(forms), forms)
+		}
+	})
+}
+
+// anyFormContains reports whether any string in forms contains sub.
+func anyFormContains(forms []string, sub string) bool {
+	for _, f := range forms {
+		if strings.Contains(f, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 // filepath_has_prefix returns true if the path looks absolute (forward-slash or

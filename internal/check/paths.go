@@ -162,6 +162,70 @@ func canonicalizePath(raw string) string {
 	return filepath.ToSlash(resolved)
 }
 
+// canonicalizePathForms returns BOTH path forms that downstream SPATH matching
+// must consider, de-duplicated (empty strings dropped, exact duplicates dropped):
+//
+//  1. The lexically-cleaned form: expandWinEnvVars -> expandHome -> filepath.Abs
+//     -> filepath.ToSlash, WITHOUT EvalSymlinks. This preserves the textual
+//     sensitive fragment (e.g. /.aws/, /.ssh/) even when an ANCESTOR directory
+//     is a symlink.
+//  2. The EvalSymlinks-resolved form: the current canonicalizePath output.
+//
+// HARDEN-01 (IN-01): canonicalizePath alone applies filepath.EvalSymlinks, which
+// resolves ancestor-directory symlinks. An attacker can plant a symlink ancestor
+// (link -> /tmp/realdir) and request link/.aws/credentials; EvalSymlinks rewrites
+// the path to /tmp/realdir/.aws/credentials — which may no longer carry a /.aws/
+// fragment in a matchable shape if the real layout differs, dodging the blocklist.
+// Returning the lexically-cleaned form too means a downstream block on EITHER form
+// blocks: the sensitive fragment survives normalization on the lexical form.
+//
+// Fail-closed is preserved: the EvalSymlinks fallback-to-Abs behavior inside
+// canonicalizePath (Pitfall 3) is unchanged, so a non-existent credential path
+// still yields a form containing the credential fragment.
+//
+// CONSUMER WIRING: the handler.go and integration_test.go SPATH loops are owned
+// by Plan 03, which replaces their single canonicalizePath call with a loop over
+// canonicalizePathForms (block on any form). This plan delivers and unit-proves
+// the helper; canonicalizePath stays unchanged for existing callers.
+func canonicalizePathForms(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+
+	// Lexically-cleaned form: same prefix as canonicalizePath but WITHOUT
+	// EvalSymlinks, so an ancestor symlink cannot strip the sensitive fragment.
+	p := expandWinEnvVars(raw)
+	p = expandHome(p)
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		abs = p
+	}
+	lexical := filepath.ToSlash(abs)
+
+	// Symlink-resolved form: the current canonicalizePath output (unchanged).
+	resolved := canonicalizePath(raw)
+
+	// De-duplicate: drop empties and exact duplicates while preserving order
+	// (lexical first, then resolved).
+	var forms []string
+	for _, f := range []string{lexical, resolved} {
+		if f == "" {
+			continue
+		}
+		dup := false
+		for _, existing := range forms {
+			if existing == f {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			forms = append(forms, f)
+		}
+	}
+	return forms
+}
+
 // bashReadVerbs is the conservative allowlist of read-command prefixes that
 // indicate a file-path argument follows. Space is included in each verb so that
 // "type" inside prose is not accidentally matched.
