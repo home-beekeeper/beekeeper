@@ -13,6 +13,7 @@ import (
 	"github.com/bantuson/beekeeper/internal/audit"
 	"github.com/bantuson/beekeeper/internal/config"
 	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policyloader"
 )
 
 // mapMultiIndex implements catalogIndex for hermetic integration tests. It
@@ -65,10 +66,14 @@ func runCheckWithIndex(ctx context.Context, stdin io.Reader, cfg config.Config, 
 
 	decision := policy.Evaluate(toolCall, idx, policy.DefaultCorroborationThresholds(), policy.AgentContext{})
 
-	// SPATH-01/02/03: mirror the production runCheck path block so that path-based
-	// blocks fire even when the catalog index returns no match (D-03 scope: check only).
-	// This ensures credential-file blocks are exercised hermetically in integration tests
-	// without requiring a real catalog entry for the tested package.
+	// Apply overlay with empty policyFiles (no-op here; mirrors production ordering
+	// from runCheck so that runCheckWithIndex runs overlay before path evaluation,
+	// preventing a package_allowlist allow from downgrading a later path block).
+	// Tests that need a real overlay use RunCheck directly (CR-02 regression).
+	decision = policyloader.ApplyPolicyOverlay(nil, toolCall, decision)
+
+	// SPATH-01/02/03: sensitive-path evaluation — LAST, after overlay,
+	// so a path block is the final word (CR-02 fix mirrors production runCheck).
 	spathCfg := policy.DefaultSensitivePaths()
 	for _, rawPath := range extractPathTargets(toolCall) {
 		resolved := canonicalizePath(rawPath)

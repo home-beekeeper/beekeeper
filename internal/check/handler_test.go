@@ -1094,3 +1094,74 @@ func TestRunCheckEnvProductionBlocked(t *testing.T) {
 		t.Errorf("audit Decision = %q, want block", rec.Decision)
 	}
 }
+
+// TestOverlayAllowCannotDowngradePathBlock is the CR-02/WR-03 regression test:
+// a Bash command that BOTH matches a package_allowlist allow rule AND reads a
+// credential file MUST still block. The package_allowlist allow escape-hatch
+// (T-09-31) is intentionally limited to package/catalog decisions; it must
+// never silently downgrade a sensitive-path block.
+//
+// Implementation invariant: ApplyPolicyOverlay runs on the engine decision
+// BEFORE the sensitive-path evaluation, so a package allow rule cannot reach
+// the path block (CR-02 fix in handler.go).
+func TestOverlayAllowCannotDowngradePathBlock(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+
+	// cacheDir with a sibling policies/ dir containing a package_allowlist allow
+	// rule for "react" (npm). This allow rule should NOT override a credential read.
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	policiesDir := filepath.Join(dir, "policies")
+	if err := os.MkdirAll(policiesDir, 0700); err != nil {
+		t.Fatalf("MkdirAll policiesDir: %v", err)
+	}
+
+	// Allow rule for react@npm. This is the exact pattern from CR-02: an attacker
+	// or misconfigured policy that allowlists a package must not let a Bash
+	// command that installs that package AND reads credentials slip through.
+	policyJSON := `{
+		"schema_version": "1",
+		"name": "test-allow-react",
+		"rules": [
+			{
+				"id": "allow-react-npm",
+				"rule_type": "package_allowlist",
+				"ecosystem": "npm",
+				"packages": ["react"],
+				"action": "allow"
+			}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(policiesDir, "allow-react.json"), []byte(policyJSON), 0600); err != nil {
+		t.Fatalf("WriteFile allow-react.json: %v", err)
+	}
+
+	// The Bash command installs react (allowlisted) AND reads ~/.ssh/id_rsa
+	// (credential file — must block). The package_allowlist allow rule must
+	// NOT downgrade the path block to allow.
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install react && cat ~/.ssh/id_rsa"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, cacheDir)
+
+	// Must still block: the credential read overrides the package allow.
+	if res.Decision.Allow {
+		t.Errorf("Allow = true, want false — overlay allow must not downgrade a credential path block (CR-02)")
+	}
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block — package_allowlist allow must not override sensitive-path block (CR-02)", res.Decision.Level)
+	}
+	if res.ExitCode == exitAllow {
+		t.Errorf("ExitCode = %d (allow), want non-zero (block must exit 1, CR-02)", res.ExitCode)
+	}
+	// SC4: the rule_id in the audit log must show sensitive-path-policy, not the allow rule.
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block (CR-02 regression)", rec.Decision)
+	}
+	if !hasRuleID(rec.RuleIDs, "sensitive-path-policy") {
+		t.Errorf("audit RuleIDs = %v, want sensitive-path-policy (CR-02 regression)", rec.RuleIDs)
+	}
+}

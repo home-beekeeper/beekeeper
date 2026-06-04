@@ -256,12 +256,27 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// Policy-file-derived thresholds are passed here so live check matches policy test.
 	decision := policy.Evaluate(toolCall, multiIdx, thresholds, ac)
 
+	// Apply the declarative policy overlay (CODE-01) to the engine decision FIRST
+	// so that the overlay's package_allowlist allow escape-hatch (T-09-31) only
+	// acts on the engine/catalog result. The sensitive-path block is merged LAST
+	// (below) so that a package_allowlist allow rule CANNOT downgrade a path block
+	// — overlays may escalate but must never silently downgrade a credential read
+	// (CR-02 fix). corroboration_threshold rules are NOT re-applied here — they
+	// were already passed to policy.Evaluate as thresholds above.
+	//
+	// policyFiles was already loaded above before Evaluate; re-use it here.
+	if len(policyFiles) > 0 {
+		decision = policyloader.ApplyPolicyOverlay(policyFiles, toolCall, decision)
+	}
+
 	// SPATH-01/02/03: sensitive-path evaluation (D-03: beekeeper check only).
 	// extractPathTargets reads file_path, path, and Bash command targets;
 	// canonicalizePath resolves tilde, %VAR%, Abs, EvalSymlinks, and slash normalization.
 	// EvaluatePath is pure (no I/O) and receives only already-resolved strings.
-	// This block runs BEFORE ApplyPolicyOverlay so that a JSON policy-file
-	// sensitive_path rule can escalate (but not silently downgrade) a path block.
+	// This block runs AFTER ApplyPolicyOverlay (above) so that a path block is
+	// the final word: the overlay may escalate via sensitive_path block rules
+	// but can never downgrade a credential read via the package_allowlist allow
+	// escape-hatch (CR-02). mergeDecisions is most-restrictive-wins.
 	spathCfg := policy.DefaultSensitivePaths()
 	for _, rawPath := range extractPathTargets(toolCall) {
 		resolved := canonicalizePath(rawPath)
@@ -276,17 +291,6 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// rather than emit a possibly-stale allow.
 	if ctx.Err() != nil {
 		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
-	}
-
-	// Apply the declarative policy overlay (CODE-01): load package_allowlist and
-	// sensitive_path rules from ~/.beekeeper/policies/*.json and combine with the
-	// engine decision by most-restrictive-wins (with the allowlist allow escape hatch).
-	// corroboration_threshold rules in policy files are NOT re-applied here —
-	// they were already passed to policy.Evaluate as thresholds above.
-	//
-	// policyFiles was already loaded above before Evaluate; re-use it here.
-	if len(policyFiles) > 0 {
-		decision = policyloader.ApplyPolicyOverlay(policyFiles, toolCall, decision)
 	}
 
 	// Successful evaluation results are NOT subject to fail-mode overrides —
