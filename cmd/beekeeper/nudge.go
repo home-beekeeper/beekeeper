@@ -74,8 +74,12 @@ This is not NDJSON — it is plain-text operator output (PRD §13).`,
 			}
 
 			// Build nudge.Config from layered cfg.Nudge via the single mapper.
-			// When the layered resolver returns a nil Nudge (no user config file),
-			// fall back to DefaultNudgeConfig — mirrors Load's defaulting behaviour.
+			// CLEAN-02: LoadLayered now always populates a non-nil, validated
+			// cfg.Nudge (mergeNudge + the LoadLayered defaulting guard), so the
+			// nil branch below is no longer load-bearing for the resolveConfig path.
+			// It is retained as DEFENSE-IN-DEPTH: a direct zero-Config construction
+			// (e.g. in a future test or caller that bypasses LoadLayered) still gets
+			// defaults rather than a nil-pointer deref. Mirrors Load's defaulting.
 			nc := cfg.Nudge
 			if nc == nil {
 				d := defaultNudgeConfigHelper()
@@ -175,6 +179,10 @@ Output mirrors 'beekeeper policy test':
 				return fmt.Errorf("nudge check: load config: %w", err)
 			}
 
+			// CLEAN-02: LoadLayered now always populates a non-nil, validated
+			// cfg.Nudge, so this nil branch is DEFENSE-IN-DEPTH (belt-and-suspenders
+			// for a direct zero-Config construction that bypasses LoadLayered), not
+			// the load-bearing defaulting it once was.
 			nc := cfg.Nudge
 			if nc == nil {
 				d := defaultNudgeConfigHelper()
@@ -278,9 +286,12 @@ RFC3339 timestamp. When omitted all nudge records in the log are returned.`,
 	return cmd
 }
 
-// defaultNudgeConfigHelper returns the default NudgeConfig when the layered
-// resolver returns a nil Nudge pointer (no user config file). Mirrors what
-// config.Load does when the config file is absent.
+// defaultNudgeConfigHelper returns the default NudgeConfig for the defense-in-depth
+// nil-guards above. As of CLEAN-02, config.LoadLayered always returns a non-nil,
+// validated cfg.Nudge (mergeNudge + the LoadLayered defaulting/validation guard),
+// so this helper is no longer reached on the normal resolveConfig path. It is kept
+// as belt-and-suspenders for any caller that constructs a zero Config directly and
+// bypasses LoadLayered. Mirrors config.Load's defaulting when the config file is absent.
 func defaultNudgeConfigHelper() config.NudgeConfig {
 	return config.DefaultNudgeConfig()
 }

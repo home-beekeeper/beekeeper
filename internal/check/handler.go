@@ -298,6 +298,11 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// behavioral test in package check (Plan 07) can inject a synthetic PMState across
 	// the package boundary (Flag 2 Position B — no cache in the one-shot hook).
 	// Resolve nudge config: use loaded config if present, else DefaultNudgeConfig.
+	// CLEAN-02: config.LoadLayered now always populates a non-nil, validated
+	// cfg.Nudge at its root (mergeNudge + the LoadLayered defaulting guard), so the
+	// nil branch is DEFENSE-IN-DEPTH (T-09-07), not load-bearing: it protects a
+	// direct zero-Config construction (e.g. tests that build config.Config{} without
+	// going through LoadLayered) from a nil-pointer deref / silently-disabled nudge.
 	nudgeCfgValue := config.DefaultNudgeConfig()
 	if cfg.Nudge != nil {
 		nudgeCfgValue = *cfg.Nudge

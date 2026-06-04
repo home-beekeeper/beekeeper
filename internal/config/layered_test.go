@@ -241,6 +241,84 @@ func TestMerge_NudgeInvalidRejected(t *testing.T) {
 	}
 }
 
+// ---- CLEAN-02: layered-config Nudge assertions against LoadLayered output ----
+//
+// These three tests assert DIRECTLY on the LoadLayered return value with NO
+// call to defaultNudgeConfigHelper or any consumer-side nil fix — proving the
+// root-cause merge fix (mergeNudge, above) populates cfg.Nudge so consumer
+// nil-guards are defense-in-depth, not load-bearing (CLEAN-02 / T-09-07).
+
+// TestLoadLayeredNudgeDefaulting (Test A): LoadLayered with a user file that has
+// NO nudge block and no project layer → cfg.Nudge deep-equals DefaultNudgeConfig().
+func TestLoadLayeredNudgeDefaulting(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil defaults from LoadLayered (no consumer helper)")
+	}
+	if want := DefaultNudgeConfig(); *cfg.Nudge != want {
+		t.Errorf("cfg.Nudge = %+v, want DefaultNudgeConfig() %+v", *cfg.Nudge, want)
+	}
+}
+
+// TestLoadLayeredProjectNudgeOverrideWins (Test B): a project file containing
+// {"nudge":{"enabled":false}} over a defaulting user layer → Enabled false AND
+// the other nudge fields equal the defaults (Mode "soft", Preferred "pnpm",
+// floors intact).
+func TestLoadLayeredProjectNudgeOverrideWins(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"enabled":false}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil block")
+	}
+	def := DefaultNudgeConfig()
+	if cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = true, want false (project disable wins, §11)")
+	}
+	if cfg.Nudge.Mode != def.Mode {
+		t.Errorf("cfg.Nudge.Mode = %q, want %q (default intact)", cfg.Nudge.Mode, def.Mode)
+	}
+	if cfg.Nudge.Preferred != def.Preferred {
+		t.Errorf("cfg.Nudge.Preferred = %q, want %q (default intact)", cfg.Nudge.Preferred, def.Preferred)
+	}
+	if cfg.Nudge.VersionFloors != def.VersionFloors {
+		t.Errorf("cfg.Nudge.VersionFloors = %+v, want %+v (floors intact)", cfg.Nudge.VersionFloors, def.VersionFloors)
+	}
+}
+
+// TestLoadLayeredProjectNudgeModeOverride (Test C): a project file
+// {"nudge":{"mode":"hard"}} → Mode "hard" and Enabled stays true (inherited).
+func TestLoadLayeredProjectNudgeModeOverride(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"mode":"hard"}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil block")
+	}
+	if cfg.Nudge.Mode != "hard" {
+		t.Errorf("cfg.Nudge.Mode = %q, want %q (project override)", cfg.Nudge.Mode, "hard")
+	}
+	if !cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = false, want true (inherited; mode-only override must not disable)")
+	}
+}
+
 // ---- Task 2: TDD tests for applyEnvVars + applyFlagOverrides ----
 
 // TestLoadLayered_EnvVarOverride verifies that BEEKEEPER_FAIL_MODE=open in
