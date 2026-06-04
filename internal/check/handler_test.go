@@ -815,3 +815,282 @@ func TestRunCheckCriticalBlockWithHealthyCatalog(t *testing.T) {
 		t.Error("Allow = true, want false for block decision")
 	}
 }
+
+// ─── Phase 7 Plan 03: SPATH RunCheck integration tests (SC1–SC4) ─────────────
+//
+// Each test drives the full stdin→RunCheck→exit-code→audit-record path to prove
+// the SPATH wiring is live (Pitfall 5): wiring proven in the pipeline, not just
+// EvaluatePath in isolation.  The catalog index used in every test is buildTestIndex
+// (the Nx Console index, never containing the credential paths tested here), so
+// any block is caused solely by the sensitive-path policy block — not catalog matching.
+
+// hasRuleID reports whether ruleID appears in ids.
+func hasRuleID(ids []string, ruleID string) bool {
+	for _, id := range ids {
+		if id == ruleID {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRunCheckCredentialFileBlocks proves SC1+SC4: a Read tool call targeting
+// ~/.aws/credentials exits 1 (block) and records decision:"block" + rule_id
+// "sensitive-path-policy" in the NDJSON audit log (SPATH-01/02, T-07-11).
+func TestRunCheckCredentialFileBlocks(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	auditPath := auditPathIn(t)
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Read","tool_input":{"file_path":"~/.aws/credentials"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, cacheDir)
+
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (credential read must block, SPATH-01)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d (block must exit non-zero)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow {
+		t.Error("Allow = true, want false for block decision")
+	}
+	// SC4: assert audit record carries decision:"block" and rule_ids sensitive-path-policy.
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block (SC4 — wiring proven live, not just EvaluatePath)", rec.Decision)
+	}
+	if !hasRuleID(rec.RuleIDs, "sensitive-path-policy") {
+		t.Errorf("audit RuleIDs = %v, want to contain sensitive-path-policy", rec.RuleIDs)
+	}
+}
+
+// TestRunCheckTraversalBlocks proves SC1 for path traversal: a Read with
+// file_path "../../.aws/credentials" exits 1 after canonicalization resolves
+// the traversal to an absolute path containing "/.aws/" (SPATH-02, T-07-05).
+func TestRunCheckTraversalBlocks(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	auditPath := auditPathIn(t)
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Read","tool_input":{"file_path":"../../.aws/credentials"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, cacheDir)
+
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (traversal path must block after Abs resolution, SPATH-02)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d", res.ExitCode, exitBlock)
+	}
+	// SC4: audit record.
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block", rec.Decision)
+	}
+}
+
+// TestRunCheckWindowsCredentialBlocks proves SC1 for Windows absolute paths:
+// a Read with file_path "C:\\Users\\u\\.aws\\credentials" exits 1.
+// canonicalizePath normalizes the backslash path to forward slashes; the
+// "/.aws/" fragment then matches the block pattern (SPATH-02, T-07-09).
+func TestRunCheckWindowsCredentialBlocks(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	auditPath := auditPathIn(t)
+
+	// Windows-form absolute path with backslashes.
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Read","tool_input":{"file_path":"C:\\Users\\u\\.aws\\credentials"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, cacheDir)
+
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (Windows credential path must block, SPATH-02)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d", res.ExitCode, exitBlock)
+	}
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block", rec.Decision)
+	}
+}
+
+// TestRunCheckBashCatCredentialBlocks proves SC2: a Bash tool call with
+// "cat ~/.ssh/id_rsa" exits 1. extractBashCredentialPaths extracts the tilde
+// path; canonicalizePath resolves it to an absolute path containing "/.ssh/";
+// EvaluatePath blocks (SPATH-03, T-07-08).
+func TestRunCheckBashCatCredentialBlocks(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	auditPath := auditPathIn(t)
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"cat ~/.ssh/id_rsa"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, cacheDir)
+
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (cat credential via Bash must block, SPATH-03)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow {
+		t.Error("Allow = true, want false")
+	}
+	// SC4 + SC2 rule-id assertion.
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block", rec.Decision)
+	}
+	if !hasRuleID(rec.RuleIDs, "sensitive-path-policy") {
+		t.Errorf("audit RuleIDs = %v, want to contain sensitive-path-policy", rec.RuleIDs)
+	}
+}
+
+// TestRunCheckBashTypeUserProfileBlocks proves SC2 end-to-end (D-01):
+// a Bash tool call with "type %USERPROFILE%\.ssh\id_rsa" exits 1.
+// t.Setenv("USERPROFILE", ...) ensures expandWinEnvVars resolves the token to a
+// path whose canonicalized form contains "/.ssh/", completing the full
+// extractBashCredentialPaths → canonicalizePath → expandWinEnvVars → EvaluatePath
+// chain (D-01, SPATH-03, T-07-08).  On non-Windows, USERPROFILE is normally
+// absent; setting it here makes the test platform-independent.
+func TestRunCheckBashTypeUserProfileBlocks(t *testing.T) {
+	// t.Setenv so the D-01 expansion chain is exercised with a known value.
+	// Use a value whose path, after ToSlash, will contain "/.ssh/" when joined.
+	t.Setenv("USERPROFILE", `C:\Users\testuser`)
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	auditPath := auditPathIn(t)
+
+	// The "type " verb is in bashReadVerbs; extractBashCredentialPaths returns the
+	// raw token "%USERPROFILE%\.ssh\id_rsa"; canonicalizePath calls expandWinEnvVars
+	// which resolves %USERPROFILE% to "C:\Users\testuser", yielding a path containing
+	// "/.ssh/" after filepath.ToSlash — EvaluatePath then blocks it.
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"type %USERPROFILE%\\.ssh\\id_rsa"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, cacheDir)
+
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (type %%USERPROFILE%%\\.ssh\\id_rsa must block via D-01 expansion)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow {
+		t.Error("Allow = true, want false")
+	}
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block", rec.Decision)
+	}
+	if !hasRuleID(rec.RuleIDs, "sensitive-path-policy") {
+		t.Errorf("audit RuleIDs = %v, want to contain sensitive-path-policy", rec.RuleIDs)
+	}
+}
+
+// TestRunCheckEnvExampleAllowed proves SC3: reading .env.example exits 0.
+// The .env.example basename is in DefaultSensitivePaths().AllowPatterns; the
+// isAllowedPath basename branch (SPATH-04, Pitfall 2 fix) overrides the
+// .env.* glob block and allows the read (SPATH-04).
+func TestRunCheckEnvExampleAllowed(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Read","tool_input":{"file_path":"/home/u/project/.env.example"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	if res.ExitCode != exitAllow {
+		t.Errorf("ExitCode = %d, want %d (.env.example must be allowed, SPATH-04)", res.ExitCode, exitAllow)
+	}
+	if res.Decision.Level != "allow" {
+		t.Errorf("Level = %q, want allow", res.Decision.Level)
+	}
+}
+
+// TestRunCheckEnvTestAllowed proves SC3: reading .env.test exits 0 (SPATH-04).
+func TestRunCheckEnvTestAllowed(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Read","tool_input":{"file_path":"/home/u/project/.env.test"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	if res.ExitCode != exitAllow {
+		t.Errorf("ExitCode = %d, want %d (.env.test must be allowed, SPATH-04)", res.ExitCode, exitAllow)
+	}
+	if res.Decision.Level != "allow" {
+		t.Errorf("Level = %q, want allow", res.Decision.Level)
+	}
+}
+
+// TestRunCheckEnvSchemaAllowed proves SC3: reading .env.schema exits 0 (SPATH-04).
+func TestRunCheckEnvSchemaAllowed(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Read","tool_input":{"file_path":"/home/u/project/.env.schema"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	if res.ExitCode != exitAllow {
+		t.Errorf("ExitCode = %d, want %d (.env.schema must be allowed, SPATH-04)", res.ExitCode, exitAllow)
+	}
+	if res.Decision.Level != "allow" {
+		t.Errorf("Level = %q, want allow", res.Decision.Level)
+	}
+}
+
+// TestRunCheckEnvProductionBlocked proves SC3 negative case: reading .env.production
+// exits 1. The .env.* glob in BlockPatterns covers .env.production; it is NOT in
+// AllowPatterns — the block pattern applies (SPATH-04, PLCY-04).
+func TestRunCheckEnvProductionBlocked(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	auditPath := auditPathIn(t)
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Read","tool_input":{"file_path":"/home/u/project/.env.production"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, cacheDir)
+
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block (.env.production must block, .env.* glob, SPATH-04)", res.Decision.Level)
+	}
+	if res.ExitCode != exitBlock {
+		t.Errorf("ExitCode = %d, want %d", res.ExitCode, exitBlock)
+	}
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block", rec.Decision)
+	}
+}
