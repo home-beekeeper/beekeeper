@@ -1,15 +1,30 @@
 ---
 phase: 6
 slug: corroboration-severity-hardening
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-03
+reconciled: 2026-06-04
 ---
 
 # Phase 6 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution. Derived from `06-RESEARCH.md` § Validation Architecture.
+
+---
+
+## Reconciliation Note
+
+This frontmatter was drafted pre-execution and was never flipped from its initial `draft` / `nyquist_compliant: false` / `wave_0_complete: false` state. It is now reconciled to **COMPLIANT** (2026-06-04) consistent with `06-VERIFICATION.md`:
+
+- **Verification status:** `passed` — verified 2026-06-03T00:00:00Z
+- **Score:** 5/5 must-haves verified (all five Observable Truths in `06-VERIFICATION.md` confirmed with evidence)
+- **All Wave-0 tests delivered and passing:** `TestCorroborationShaiHuludCriticalBlock`, `TestCorroborationDegradedCatalogNoEscalation`, `TestCorroborationAllVersionsCriticalWildcardStaysWarn`, `TestValidateCorroborationThresholdsRejectsBlockAtZero`, `TestValidateCorroborationThresholdsRejectsLooserOverride`, `TestDefaultThresholdsIncludeSeverityOverrides`, `TestThresholdsFromPolicyFilesCriticalBlockAt`, `TestRunCheckAiFigureBlocks`, `TestRunCheckCriticalDegradedCatalogWarn`, `TestRunCheckCriticalBlockWithHealthyCatalog`
+- **Milestone audit finding:** `v1.2.0-MILESTONE-AUDIT.md` noted this as a stale-frontmatter artifact ("drafted pre-execution, never flipped to compliant though the phase verified passed") — explicitly flagged as a discovery, not a coverage gap.
+- **Requirement:** CLEAN-03 (v1.2.0 tech-debt cleanup, plan 09-05)
+
+No validation content, test map, or source/test files were altered — only the frontmatter fields and this note.
 
 ---
 
@@ -75,11 +90,11 @@ New test functions to stub before/with implementation (no new framework — `go 
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 40s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 40s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-06-03 (reconciled 2026-06-04 via CLEAN-03)
