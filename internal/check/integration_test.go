@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -73,16 +74,20 @@ func runCheckWithIndex(ctx context.Context, stdin io.Reader, cfg config.Config, 
 	// Tests that need a real overlay use RunCheck directly (CR-02 regression).
 	decision = policyloader.ApplyPolicyOverlay(nil, toolCall, decision)
 
-	// SPATH-01/02/03: sensitive-path evaluation — LAST, after overlay,
-	// so a path block is the final word (CR-02 fix mirrors production runCheck).
+	// SPATH-01/02/03 + HARDEN-01: sensitive-path evaluation — after overlay and
+	// before NUDGE, so a path block is never downgraded by the overlay
+	// (CR-02 ordering mirrors production runCheck). Iterates BOTH canonical forms
+	// via canonicalizePathForms (HARDEN-01) and blocks on any form, in lockstep
+	// with the handler.go SPATH loop so the test mirror stays faithful to production.
 	spathCfg := policy.DefaultSensitivePaths()
 	for _, rawPath := range extractPathTargets(toolCall) {
-		resolved := canonicalizePath(rawPath)
-		if resolved == "" {
-			continue
+		for _, resolved := range canonicalizePathForms(rawPath) {
+			if resolved == "" {
+				continue
+			}
+			pathDecision := policy.EvaluatePath(resolved, spathCfg)
+			decision = mergeDecisions(decision, pathDecision)
 		}
-		pathDecision := policy.EvaluatePath(resolved, spathCfg)
-		decision = mergeDecisions(decision, pathDecision)
 	}
 
 	// NUDGE-03/04/08: package-manager nudge evaluation — mirrors the production
@@ -402,5 +407,67 @@ func TestIntegrationNudgeNonInstallSkipped(t *testing.T) {
 	rec := readAuditRecordByType(t, auditPath, "nudge")
 	if rec.RecordType == "nudge" {
 		t.Errorf("unexpected record_type=nudge record found for non-install command (§10-7 violation)")
+	}
+}
+
+// TestIntegrationAncestorSymlinkCredentialBlocks is the HARDEN-01 end-to-end
+// regression: a credential read THROUGH an ancestor-directory symlink must block
+// through the live check pipeline (runCheckWithIndex), proving the dual-form
+// canonicalizePathForms wiring landed at the call site (Plan 03 / HARDEN-01).
+//
+// Attack shape: plant a symlink L -> realDir, then `cat L/.aws/credentials`.
+// With the pre-fix single-form canonicalizePath, EvalSymlinks resolves the L
+// ancestor and can rewrite the path under realDir (stripping the matchable
+// /.aws/ shape); the lexical form preserves /.aws/ so a block on EITHER form
+// blocks. This test asserts the BLOCK reaches the Result/exit code, not just the
+// helper (which is unit-tested in paths_test.go).
+//
+// Empty catalog index → no catalog match; the block must come SOLELY from the
+// SPATH dual-form evaluation. Skips cleanly when os.Symlink is unprivileged
+// (unprivileged Windows dev box); CI Linux/macOS exercise it.
+func TestIntegrationAncestorSymlinkCredentialBlocks(t *testing.T) {
+	// Real target directory with a real .aws/credentials so EvalSymlinks can fully
+	// resolve the ancestor symlink (making the single-form path lose /.aws/ shape).
+	realDir := t.TempDir()
+	awsDir := filepath.Join(realDir, ".aws")
+	if err := os.MkdirAll(awsDir, 0o755); err != nil {
+		t.Fatalf("mkdir .aws: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(awsDir, "credentials"), []byte("[default]\n"), 0o600); err != nil {
+		t.Fatalf("write credentials: %v", err)
+	}
+
+	linkPath := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(realDir, linkPath); err != nil {
+		if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "privilege") {
+			t.Skipf("os.Symlink requires privilege on this host, skipping: %v", err)
+		}
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	// Read the credential file THROUGH the ancestor symlink via a Bash read verb.
+	target := filepath.ToSlash(linkPath) + "/.aws/credentials"
+	toolCallJSON := `{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"cat ` + target + `"}}`
+
+	// Empty index — the block must come from the SPATH dual-form evaluation alone.
+	idx := &mapMultiIndex{matchesByKey: map[string][]policy.CatalogMatch{}}
+	auditPath := auditPathIn(t)
+
+	res := runCheckWithIndex(context.Background(), strings.NewReader(toolCallJSON), closedConfig(), idx, auditPath)
+
+	if res.Decision.Allow {
+		t.Errorf("Allow = true, want false — ancestor-symlink credential read must block end-to-end (HARDEN-01)")
+	}
+	if res.Decision.Level != "block" {
+		t.Errorf("Level = %q, want block — dual-form SPATH must block the symlink-ancestor credential read (HARDEN-01)", res.Decision.Level)
+	}
+	if res.ExitCode == exitAllow {
+		t.Errorf("ExitCode = %d (allow), want non-zero (HARDEN-01 block must exit 1)", res.ExitCode)
+	}
+
+	// The final audit record must reflect the block.
+	rec := readLastAuditRecord(t, auditPath)
+	if rec.Decision != "block" {
+		t.Errorf("audit Decision = %q, want block (HARDEN-01 end-to-end regression)", rec.Decision)
 	}
 }

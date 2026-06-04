@@ -256,35 +256,47 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// Policy-file-derived thresholds are passed here so live check matches policy test.
 	decision := policy.Evaluate(toolCall, multiIdx, thresholds, ac)
 
-	// Apply the declarative policy overlay (CODE-01) to the engine decision FIRST
-	// so that the overlay's package_allowlist allow escape-hatch (T-09-31) only
-	// acts on the engine/catalog result. The sensitive-path block is merged LAST
-	// (below) so that a package_allowlist allow rule CANNOT downgrade a path block
-	// — overlays may escalate but must never silently downgrade a credential read
-	// (CR-02 fix). corroboration_threshold rules are NOT re-applied here — they
-	// were already passed to policy.Evaluate as thresholds above.
+	// Decision-merge order (CLEAN-04 — most-restrictive-wins via mergeDecisions):
+	//
+	//   1. ApplyPolicyOverlay  (FIRST — on the engine/catalog result, below)
+	//   2. SPATH block         (sensitive-path evaluation)
+	//   3. NUDGE block         (LAST — package-manager nudge)
+	//
+	// The overlay runs FIRST so its package_allowlist allow escape-hatch (T-09-31)
+	// only acts on the engine/catalog result. Because the SPATH and NUDGE blocks
+	// are merged AFTER it (most-restrictive-wins), a package_allowlist allow can
+	// NEVER downgrade a sensitive-path block or a nudge block — overlays may
+	// escalate but must never silently downgrade a credential read (CR-02). NUDGE
+	// is the actual final merge, not SPATH (the pre-CLEAN-04 comment said SPATH was
+	// "merged LAST" — accurate at Phase 7, stale once the NUDGE block landed).
+	// corroboration_threshold rules are NOT re-applied here — they were already
+	// passed to policy.Evaluate as thresholds above.
 	//
 	// policyFiles was already loaded above before Evaluate; re-use it here.
 	if len(policyFiles) > 0 {
 		decision = policyloader.ApplyPolicyOverlay(policyFiles, toolCall, decision)
 	}
 
-	// SPATH-01/02/03: sensitive-path evaluation (D-03: beekeeper check only).
-	// extractPathTargets reads file_path, path, and Bash command targets;
-	// canonicalizePath resolves tilde, %VAR%, Abs, EvalSymlinks, and slash normalization.
-	// EvaluatePath is pure (no I/O) and receives only already-resolved strings.
-	// This block runs AFTER ApplyPolicyOverlay (above) so that a path block is
-	// the final word: the overlay may escalate via sensitive_path block rules
-	// but can never downgrade a credential read via the package_allowlist allow
+	// SPATH-01/02/03 + HARDEN-01: sensitive-path evaluation (D-03: beekeeper check only).
+	// extractPathTargets reads file_path, path, and Bash command targets.
+	// canonicalizePathForms (HARDEN-01) returns BOTH the lexically-cleaned form and
+	// the EvalSymlinks-resolved form (de-duplicated). We EvaluatePath on EACH form
+	// and merge most-restrictive-wins, so a block on ANY form blocks: an ancestor
+	// directory symlink can no longer resolve a /.aws/ or /.ssh/ fragment out of the
+	// path and dodge the blocklist (fail-CLOSED). EvaluatePath is pure (no I/O) and
+	// receives only already-resolved strings.
+	// This block runs AFTER ApplyPolicyOverlay (above) and BEFORE the NUDGE block so
+	// a path block is never downgraded by the overlay's package_allowlist allow
 	// escape-hatch (CR-02). mergeDecisions is most-restrictive-wins.
 	spathCfg := policy.DefaultSensitivePaths()
 	for _, rawPath := range extractPathTargets(toolCall) {
-		resolved := canonicalizePath(rawPath)
-		if resolved == "" {
-			continue
+		for _, resolved := range canonicalizePathForms(rawPath) {
+			if resolved == "" {
+				continue
+			}
+			pathDecision := policy.EvaluatePath(resolved, spathCfg)
+			decision = mergeDecisions(decision, pathDecision)
 		}
-		pathDecision := policy.EvaluatePath(resolved, spathCfg)
-		decision = mergeDecisions(decision, pathDecision)
 	}
 
 	// NUDGE-03/04/08: package-manager nudge evaluation.
