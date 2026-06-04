@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bantuson/beekeeper/internal/pkgparse"
 	"github.com/bantuson/beekeeper/internal/policy"
 )
 
@@ -234,42 +235,13 @@ func extractEcoPackage(tc policy.ToolCall) (eco, pkg string) {
 	return eco, pkg
 }
 
-// installPrefixesOverlay is the same prefix table as in engine.go — duplicated
-// here to keep internal/policy untouched (the overlay must not import engine
-// internals, and internal/policy is not allowed to export this table).
-var installPrefixesOverlay = []struct {
-	prefix    string
-	ecosystem string
-}{
-	{"npm install", "npm"},
-	{"npm i ", "npm"},
-	{"pip install", "pypi"},
-	{"pip3 install", "pypi"},
-	{"go get", "go"},
-	{"gem install", "rubygems"},
-	{"cargo add", "cargo"},
-	{"cargo install", "cargo"},
-	{"composer require", "packagist"},
-}
-
-// extractEcoPackageFromCommand parses an install command into (ecosystem, pkg).
+// extractEcoPackageFromCommand parses an install command into (ecosystem, pkg)
+// using the canonical pkgparse package. pkgparse maps pnpm/bun/yarn installs to
+// ecosystem "npm" so LookupAll("npm", pkg) matches those installs (F3/SC1).
+// ok=false for non-install verbs (npm ls, npm run, etc.).
 func extractEcoPackageFromCommand(cmd string) (eco, pkg string) {
-	lower := strings.ToLower(strings.TrimSpace(cmd))
-	for _, p := range installPrefixesOverlay {
-		if !strings.HasPrefix(lower, p.prefix) {
-			continue
-		}
-		rest := strings.TrimSpace(cmd[len(p.prefix):])
-		token := firstNonFlagToken(rest)
-		if token == "" {
-			return "", ""
-		}
-		// Strip version suffix (last "@").
-		name := stripVersionSuffix(token)
-		if name == "" {
-			return "", ""
-		}
-		return p.ecosystem, strings.ToLower(strings.TrimSpace(name))
+	if parsed, ok := pkgparse.Parse(cmd); ok && parsed.IsInstall {
+		return parsed.Ecosystem, parsed.Package
 	}
 	return "", ""
 }
@@ -379,23 +351,3 @@ func normalizePathSlashes(p string) string {
 	return strings.ReplaceAll(p, "\\", "/")
 }
 
-// firstNonFlagToken returns the first whitespace-delimited token in s that
-// does not start with "-". Returns "" if none.
-func firstNonFlagToken(s string) string {
-	for _, tok := range strings.Fields(s) {
-		if !strings.HasPrefix(tok, "-") {
-			return tok
-		}
-	}
-	return ""
-}
-
-// stripVersionSuffix removes a trailing "@version" from a package token.
-// Scoped npm packages start with "@" so we look for the LAST "@".
-func stripVersionSuffix(token string) string {
-	at := strings.LastIndex(token, "@")
-	if at <= 0 {
-		return token
-	}
-	return token[:at]
-}

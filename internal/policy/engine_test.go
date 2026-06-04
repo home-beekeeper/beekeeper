@@ -658,6 +658,72 @@ func TestAgentContextDepthNormalize(t *testing.T) {
 	}
 }
 
+// TestPnpmAddCatalogMatch proves F3/SC1 closure: a "pnpm add <pkg>" command now
+// resolves ecosystem "npm" via pkgparse and hits the catalog under key
+// "npm::<pkg>". Before Plan 02, pnpm was absent from installPrefixes so pnpm
+// installs silently bypassed catalog corroboration. This is the regression case
+// that locks the SC1 fix end-to-end (NUDGE-01).
+func TestPnpmAddCatalogMatch(t *testing.T) {
+	idx := newFakeMulti(map[string][]CatalogMatch{
+		// Key is "npm::evil-pkg" because pkgparse maps pnpm → Ecosystem "npm".
+		"npm::evil-pkg": {
+			{CatalogSource: "bumblebee", EntryID: "advisory-2026-pnpm-f3", Ecosystem: "npm", Package: "evil-pkg", Signed: true, Severity: "high"},
+			{CatalogSource: "osv", EntryID: "osv-2026-pnpm-f3", Ecosystem: "npm", Package: "evil-pkg", Signed: true, Severity: "high"},
+		},
+	})
+	tc := ToolCall{
+		ToolName:  "Bash",
+		ToolInput: map[string]any{"command": "pnpm add evil-pkg"},
+	}
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
+
+	// Two signed sources → block (corroboration threshold met).
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q — pnpm add must hit npm catalog (F3/SC1)", d.Level, "block")
+	}
+	if d.Allow {
+		t.Errorf("Allow = true, want false — pnpm add of evil-pkg must be blocked")
+	}
+	if d.CorroborationCount != 2 {
+		t.Errorf("CorroborationCount = %d, want 2", d.CorroborationCount)
+	}
+	// Reason must not mention "no package identified" or "no catalog match".
+	if d.Reason == "no package identified" {
+		t.Errorf("Reason = %q: pnpm was not recognised as an install verb (pkgparse routing broken)", d.Reason)
+	}
+	if d.Reason == "no catalog match" {
+		t.Errorf("Reason = %q: pnpm add ecosystem was not mapped to \"npm\" (F3 bypass still present)", d.Reason)
+	}
+}
+
+// TestBunAddCatalogMatch proves F3/SC1 closure for bun: same as pnpm case above.
+func TestBunAddCatalogMatch(t *testing.T) {
+	idx := newFakeMulti(map[string][]CatalogMatch{
+		"npm::evil-pkg": {
+			{CatalogSource: "bumblebee", EntryID: "advisory-2026-bun-f3", Ecosystem: "npm", Package: "evil-pkg", Signed: true, Severity: "high"},
+			{CatalogSource: "osv", EntryID: "osv-2026-bun-f3", Ecosystem: "npm", Package: "evil-pkg", Signed: true, Severity: "high"},
+		},
+	})
+	tc := ToolCall{
+		ToolName:  "Bash",
+		ToolInput: map[string]any{"command": "bun add evil-pkg"},
+	}
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
+
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q — bun add must hit npm catalog (F3/SC1)", d.Level, "block")
+	}
+	if d.Allow {
+		t.Errorf("Allow = true, want false — bun add of evil-pkg must be blocked")
+	}
+	if d.Reason == "no package identified" {
+		t.Errorf("Reason = %q: bun was not recognised as an install verb (pkgparse routing broken)", d.Reason)
+	}
+	if d.Reason == "no catalog match" {
+		t.Errorf("Reason = %q: bun add ecosystem was not mapped to \"npm\" (F3 bypass still present)", d.Reason)
+	}
+}
+
 // TestEngineImportsArePure enforces the purity contract: engine.go must not
 // import any package that performs I/O, concurrency, or wall-clock access.
 func TestEngineImportsArePure(t *testing.T) {
