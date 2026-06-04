@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,7 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bantuson/beekeeper/internal/audit"
 	"github.com/bantuson/beekeeper/internal/llamafirewall"
+	"github.com/bantuson/beekeeper/internal/nudge"
+	"github.com/bantuson/beekeeper/internal/pkgparse"
 	"github.com/bantuson/beekeeper/internal/policy"
 	"github.com/bantuson/beekeeper/internal/policyloader"
 )
@@ -56,6 +61,15 @@ type Config struct {
 	// When non-nil, the gateway proxy calls ScanProxiedResponse on each upstream
 	// response for warn and allow decisions.
 	Scanner GatewayScanner
+
+	// Nudge holds the resolved nudge.Config for the gateway (WARNING 3 fix).
+	// newGatewayHandler defaults a zero-value Nudge to nudge.DefaultConfig() so
+	// the gateway always evaluates against secure version floors, even before the
+	// daemon literal sets this field (T-08-25b: fail toward secure defaults).
+	// The daemon population (gatewayCfg.Nudge = nudge.ConfigFrom(...)) is performed
+	// in cmd/beekeeper/main.go newGatewayCmd — Plan 08 owns that file (zero Wave-4
+	// overlap between plans 06 and 08).
+	Nudge nudge.Config
 }
 
 // toolCallParams is the JSON-RPC 2.0 params shape for a tools/call request.
@@ -128,6 +142,53 @@ func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, cfg Config, 
 	}
 
 	return decision
+}
+
+// nudgeDecisionFor evaluates a nudge decision for a parsed install command given
+// an already-resolved PMState and nudge Config. It returns (policy.Decision,
+// audit.AuditRecord, true) on a nudge-applicable install command, or
+// (_, _, false) when the command is not install-class.
+//
+// This helper is pure w.r.t. caching: it takes the already-resolved PMState
+// (caller is responsible for cache lookup or fresh detection). It is separate
+// from the cache-backed call site in proxy.go so applyPolicy stays a FREE
+// function (WARNING 2 closed).
+//
+// Mirrors the evaluateNudge/nudgeLevelToDecision mapping in internal/check.
+func nudgeDecisionFor(parsed pkgparse.ParsedCommand, state nudge.PMState, nc nudge.Config) (policy.Decision, audit.AuditRecord, bool) {
+	if !parsed.IsInstall {
+		return policy.Decision{}, audit.AuditRecord{}, false
+	}
+	d := nudge.Evaluate(parsed, state, nc)
+	allow := d.Level != "block"
+	policyDec := policy.Decision{
+		Allow:  allow,
+		Level:  d.Level,
+		Reason: fmt.Sprintf("nudge(%s): %s", nudge.ActionString(d.Action), d.Reason),
+		RuleIDs: []string{"NUDGE-03"},
+	}
+	var raw [16]byte
+	_, _ = rand.Read(raw[:])
+	recordID := hex.EncodeToString(raw[:])
+	rec := audit.AuditRecord{
+		RecordType:      "nudge",
+		RecordID:        recordID,
+		Timestamp:       time.Now().UTC().Format(time.RFC3339),
+		ScannerName:     "beekeeper",
+		Decision:        d.Level,
+		Reason:          d.Reason,
+		Endpoint:        "gateway",
+		OriginalCommand: d.Original,
+		ReasonCode:      d.Reason,
+		NudgeAction:     nudge.ActionString(d.Action),
+	}
+	if d.Rewritten != "" {
+		rec.RewrittenCommand = d.Rewritten
+	}
+	if ps, ok := d.AuditFields["pm_state"].(string); ok {
+		rec.PMState = ps
+	}
+	return policyDec, rec, true
 }
 
 // GatewayScanner is satisfied by *llamafirewall.Supervisor.

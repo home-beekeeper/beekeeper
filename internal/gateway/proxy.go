@@ -14,13 +14,21 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/nudge"
+	"github.com/bantuson/beekeeper/internal/pkgparse"
 	"github.com/bantuson/beekeeper/internal/policy"
 )
 
-const bearerPrefix = "Bearer "
+const (
+	bearerPrefix = "Bearer "
+	// advisoryGlobalKey is the fallback key for the per-session advisory cap
+	// when no agent-id header is present on the request (Open Q3 resolution).
+	advisoryGlobalKey = "__global__"
+)
 
 // gatewayHandler is the per-request HTTP handler for the MCP gateway. It
 // enforces token authentication on every request and routes tools/call methods
@@ -38,12 +46,39 @@ type gatewayHandler struct {
 	// scanner is the optional LlamaFirewall scanner for post-response scanning.
 	// Nil when LlamaFirewall is disabled (default). Populated from cfg.Scanner.
 	scanner GatewayScanner
+
+	// nudgeCache wraps nudge.DetectStateFn with a 60s TTL (Flag 2 Position B):
+	// the ONLY place the cache is constructed — gateway-only, long-lived process.
+	// Constructed once in newGatewayHandler; never nil after construction.
+	// Comment: "Flag 2 Position B: the 60s cache lives ONLY in the long-lived
+	// gateway and wraps nudge.DetectStateFn (the exported seam)."
+	nudgeCache *nudge.Cache
+
+	// advSeenMu guards advSeen for concurrent requests.
+	advSeenMu sync.Mutex
+	// advSeen is the per-session advisory-seen set for the at-most-one-advisory
+	// cap (NUDGE-03). Keyed by agent-id when present on the request; else by the
+	// process-global sentinel key advisoryGlobalKey. A session key present in
+	// this map means an Advise has already been delivered; duplicate advisories
+	// are suppressed (still audited) — resolves Open Q3.
+	advSeen map[string]bool
 }
 
 // newGatewayHandler constructs a gatewayHandler for the given upstream URL.
 // Uses Rewrite (deprecated httputil proxy API not used; T-04-03-12 mitigation)
 // to set the upstream target.
+//
+// WARNING 3 fix: when cfg.Nudge is a zero-value Config (empty Mode), default it
+// to nudge.DefaultConfig() so the gateway always evaluates against secure version
+// floors even before the daemon literal sets this field (T-08-25b). The daemon
+// literal population is performed in cmd/beekeeper/main.go newGatewayCmd (Plan 08).
 func newGatewayHandler(cfg Config, token string, idx policy.MultiCatalogLookup) *gatewayHandler {
+	// Default a zero-value cfg.Nudge to the secure defaults (WARNING 3 fix).
+	// An empty Mode is the reliable zero-value signal (DefaultConfig has Mode:"soft").
+	if cfg.Nudge.Mode == "" {
+		cfg.Nudge = nudge.DefaultConfig()
+	}
+
 	upstream, _ := url.Parse(cfg.UpstreamURL)
 
 	rp := &httputil.ReverseProxy{
@@ -56,12 +91,18 @@ func newGatewayHandler(cfg Config, token string, idx policy.MultiCatalogLookup) 
 		},
 	}
 
+	// Construct the 60s nudge.Cache ONCE, wrapping the EXPORTED nudge.DetectStateFn
+	// seam (Flag 2 Position B — cache is gateway-only; check hook detects fresh).
+	nc := nudge.NewCache(nudge.DetectStateFn, 60*time.Second)
+
 	return &gatewayHandler{
 		token:        token,
 		reverseProxy: rp,
 		cfg:          cfg,
 		idx:          idx,
 		scanner:      cfg.Scanner,
+		nudgeCache:   nc,
+		advSeen:      make(map[string]bool),
 	}
 }
 
@@ -197,11 +238,59 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Write audit record regardless of decision level (never errors the request).
-	// Also extract the tool name here for use in scanner call sites below.
+	// Also extract the tool call here for use in nudge merge and scanner call sites below.
 	tc := policy.ToolCall{}
 	var toolName string
 	if err := extractToolCallFromMsg(msg, &tc); err == nil {
 		toolName = tc.ToolName
+
+		// NUDGE-03/04/08: cache-backed nudge merge at the applyPolicy CALL SITE
+		// (proxy.go — WARNING 2 closed). applyPolicy is a FREE function with no
+		// *gatewayHandler; the nudge.Cache + advisory-seen set on h are reachable
+		// only here. CR-02 ordering: nudge merge runs AFTER applyPolicy returns its
+		// overlay-applied decision — an allow overlay cannot downgrade a nudge Block
+		// (T-08-17). mergeDecisions is most-restrictive-wins.
+		//
+		// PMState is resolved via h.nudgeCache.State (the 60s TTL cache wrapping
+		// nudge.DetectStateFn — Flag 2 Position B: the cache is gateway-only and
+		// produces hits for the long-lived process; the check hook detects fresh).
+		if tc.ToolName == "Bash" {
+			if bashCmd, ok := tc.ToolInput["command"].(string); ok && bashCmd != "" {
+				if parsed, parseOK := pkgparse.Parse(bashCmd); parseOK && parsed.IsInstall {
+					pmState := h.nudgeCache.State(r.Context(), h.cfg.Nudge)
+					if nudgeDec, nudgeRec, nudgeOK := nudgeDecisionFor(parsed, pmState, h.cfg.Nudge); nudgeOK {
+						// At-most-one-advisory-per-session cap (NUDGE-03).
+						// Keyed by agent-id when present, else process-global sentinel.
+						agentKey := ac.AgentID
+						if agentKey == "" {
+							agentKey = advisoryGlobalKey
+						}
+						suppressAdvisory := false
+						if nudgeDec.Level == "warn" {
+							h.advSeenMu.Lock()
+							if h.advSeen[agentKey] {
+								suppressAdvisory = true
+							} else {
+								h.advSeen[agentKey] = true
+							}
+							h.advSeenMu.Unlock()
+						}
+						// Merge the nudge decision into the policy decision regardless
+						// of the cap — the cap only suppresses the advisory message, not
+						// the audit record or the block decision.
+						if !suppressAdvisory {
+							decision = mergeGatewayDecisions(decision, nudgeDec)
+						} else if nudgeDec.Level == "block" {
+							// A Block is never suppressed — only advisory (warn) messages are capped.
+							decision = mergeGatewayDecisions(decision, nudgeDec)
+						}
+						// Write nudge audit record best-effort (T-08-19).
+						h.writeNudgeAudit(nudgeRec)
+					}
+				}
+			}
+		}
+
 		h.writeAudit(tc, decision)
 	}
 
@@ -426,6 +515,35 @@ func (h *gatewayHandler) writeAudit(tc policy.ToolCall, d policy.Decision) {
 	rec = audit.RedactRecord(rec, patterns)
 	if err := aw.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper gateway: audit write failed: %v\n", err)
+	}
+}
+
+// mergeGatewayDecisions returns the most restrictive of base and overlay.
+// Rank: block(2) > warn(1) > allow(0). Same logic as mergeDecisions in
+// internal/check/paths.go — duplicated here to keep internal/check untouched
+// and avoid a cross-package import of the check helper.
+func mergeGatewayDecisions(base, overlay policy.Decision) policy.Decision {
+	rank := map[string]int{"allow": 0, "warn": 1, "block": 2}
+	if rank[overlay.Level] > rank[base.Level] {
+		return overlay
+	}
+	return base
+}
+
+// writeNudgeAudit appends a nudge audit record best-effort.
+// A write failure is logged to stderr but NEVER fails the request.
+func (h *gatewayHandler) writeNudgeAudit(rec audit.AuditRecord) {
+	if h.cfg.AuditPath == "" {
+		return
+	}
+	w, err := audit.NewWriter(h.cfg.AuditPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper gateway: nudge audit write failed: %v\n", err)
+		return
+	}
+	defer w.Close()
+	if err := w.Write(rec); err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper gateway: nudge audit write error: %v\n", err)
 	}
 }
 
