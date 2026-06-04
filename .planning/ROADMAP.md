@@ -174,8 +174,8 @@
 **Plans**: 3 plans (2 waves)
 
 **Wave 1** *(parallel — no inter-plan `files_modified` overlap: `internal/policy`+`internal/policyloader` vs new `internal/check/paths.go`)*
-- [ ] 07-01-PLAN.md — Pure policy + policyloader fixes (DefaultSensitivePaths block/allow entries, isAllowedPath basename match, extractTargetPath file_path key)
-- [ ] 07-02-PLAN.md — Impure canonicalization adapter (internal/check/paths.go: extract / canonicalize / %USERPROFILE% expand / Bash credential detection / mergeDecisions)
+- [x] 07-01-PLAN.md — Pure policy + policyloader fixes (DefaultSensitivePaths block/allow entries, isAllowedPath basename match, extractTargetPath file_path key)
+- [x] 07-02-PLAN.md — Impure canonicalization adapter (internal/check/paths.go: extract / canonicalize / %USERPROFILE% expand / Bash credential detection / mergeDecisions)
 
 **Wave 2** *(blocked on Wave 1 — imports the 07-02 adapter and depends on the 07-01 allowlist/basename fix)*
 - [ ] 07-03-PLAN.md — Wire path block into runCheck + runCheckWithIndex; RunCheck integration tests for SC1-SC4 with audit-record assertions
@@ -219,5 +219,5 @@
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
-| **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **0/3** | **Planned** | **—** |
+| **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **2/3** | **In Progress** | **—** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/TBD** | **Not started** | **—** |

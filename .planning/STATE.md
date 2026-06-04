@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: Phase 7 planned (3 plans, 2 waves; checker PASSED iter-2); ready to execute Phase 7.
-last_updated: "2026-06-03T23:35:00.000Z"
-last_activity: 2026-06-03
+stopped_at: Phase 7 Wave 1 complete (07-01, 07-02); next Wave 2 (07-03).
+last_updated: "2026-06-04T00:05:00.000Z"
+last_activity: 2026-06-04 -- Phase 07 Wave 1 complete
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 5
   percent: 33
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 7 — Sensitive-Path Runtime Enforcement (✅ planned — 3 plans, ready to execute)
+**Current focus:** Phase 07 — Sensitive-Path Runtime Enforcement
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 7 of 8 — PLANNED (Phase 6 ✅ complete & verified); ready to execute Phase 7
-Plan: 07-01, 07-02 (Wave 1, parallel) → 07-03 (Wave 2)
-Status: Phase 7 planned — 3 plans / 2 waves; plan-checker VERIFICATION PASSED (iter 2, 12/12 dimensions); Nyquist VALIDATION approved
-Last activity: 2026-06-03 — Phase 7 researched + planned + verified (commits b449324, 6379044, + checker-fix revision)
+Phase: 07 (Sensitive-Path Runtime Enforcement) — EXECUTING
+Plan: 2 of 3 complete (Wave 1 ✅ 07-01 + 07-02) — next: Wave 2 (07-03)
+Status: Executing Phase 07 — Wave 1 complete (build + tests green); Wave 2 pending
+Last activity: 2026-06-04 -- Phase 07 Wave 1 complete (07-01, 07-02)
 
 Progress (v1.2.0): [███░░░░░░░] 33% (1 of 3 phases)
 
