@@ -3,6 +3,8 @@ package policy
 import (
 	"fmt"
 	"strings"
+
+	"github.com/bantuson/beekeeper/internal/pkgparse"
 )
 
 // Rule ID constants for catalog-match policy rules.
@@ -26,24 +28,6 @@ var editorInstallPatterns = []string{
 	"code-insiders --install-extension ",
 	"cursor --install-extension ",
 	"windsurf --install-extension ",
-}
-
-// installPrefixes maps an install-command prefix to its package ecosystem.
-// Longest/most-specific prefixes are listed so the first match wins; "cargo
-// install" and "cargo add" both resolve to cargo.
-var installPrefixes = []struct {
-	prefix    string
-	ecosystem string
-}{
-	{"npm install", "npm"},
-	{"npm i ", "npm"},
-	{"pip install", "pypi"},
-	{"pip3 install", "pypi"},
-	{"go get", "go"},
-	{"gem install", "rubygems"},
-	{"cargo add", "cargo"},
-	{"cargo install", "cargo"},
-	{"composer require", "packagist"},
 }
 
 // Evaluate is the pure policy entry point. Given a tool call, a MultiCatalogLookup
@@ -241,7 +225,13 @@ func extract(input map[string]any) (ecosystem, pkg, version string, ok bool) {
 		if eco, p, v, ok3 := extractExtensionInstall(cmd); ok3 {
 			return eco, p, v, true
 		}
-		return extractFromCommand(cmd)
+		// Route generic install-command parsing through the canonical pkgparse package.
+		// pkgparse maps pnpm/bun/yarn → ecosystem "npm" so LookupAll("npm", pkg) matches
+		// those installs (F3/SC1). ok=false for non-install verbs (npm ls, npm run, etc.).
+		if parsed, ok3 := pkgparse.Parse(cmd); ok3 && parsed.IsInstall {
+			return parsed.Ecosystem, parsed.Package, parsed.Version, true
+		}
+		return "", "", "", false
 	}
 
 	return "", "", "", false
@@ -319,32 +309,6 @@ func extractAllExtensionInstalls(cmd string) []string {
 		offset = abs
 	}
 	return result
-}
-
-// extractFromCommand parses an install command into (ecosystem, package,
-// version). The package token is the first non-flag argument after the install
-// prefix; a trailing "@version" is split off.
-func extractFromCommand(cmd string) (ecosystem, pkg, version string, ok bool) {
-	trimmed := strings.TrimSpace(cmd)
-	lower := strings.ToLower(trimmed)
-
-	for _, p := range installPrefixes {
-		if !strings.HasPrefix(lower, p.prefix) {
-			continue
-		}
-		rest := strings.TrimSpace(trimmed[len(p.prefix):])
-		token := firstPackageToken(rest)
-		if token == "" {
-			return "", "", "", false
-		}
-		name, ver := splitVersion(token)
-		if name == "" {
-			return "", "", "", false
-		}
-		return p.ecosystem, normalize(name), strings.TrimSpace(ver), true
-	}
-
-	return "", "", "", false
 }
 
 // firstPackageToken returns the first whitespace-delimited token in rest that
