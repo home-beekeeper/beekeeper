@@ -135,7 +135,11 @@ func matchesBlockPattern(resolvedPath, pattern string) bool {
 	}
 
 	// Basename pattern — extract the last segment and match.
-	seg := lastSegment(resolvedPath)
+	// Normalize the segment (strip NTFS ADS suffix + trailing dots/spaces) so
+	// "id_rsa:stream", "credentials.", and "credentials " match their canonical
+	// basename (HARDEN-02 / IN-02). Patterns never carry ADS/trailing-dot forms,
+	// so we normalize only the seg side.
+	seg := normalizeBasename(lastSegment(resolvedPath))
 
 	// Handle glob: ".env.*" matches any segment with prefix ".env."
 	if strings.HasSuffix(pattern, ".*") {
@@ -145,6 +149,31 @@ func matchesBlockPattern(resolvedPath, pattern string) bool {
 
 	// Exact basename match.
 	return seg == pattern
+}
+
+// normalizeBasename canonicalizes a path's LAST segment for match purposes only
+// (it never mutates the stored/returned path). It closes two Windows evasion
+// edges (HARDEN-02 / IN-02):
+//
+//  1. NTFS Alternate Data Streams: reading "id_rsa:hidden" opens a named stream
+//     on the file "id_rsa". The seg has no path separators (it is already a
+//     last segment), so ANY ':' is an ADS separator — cut from the first ':'.
+//     A bare drive letter like "C:" never reaches here because lastSegment
+//     returns the component after the final '/' or '\'.
+//  2. Trailing dots/spaces: Windows silently strips trailing '.' and ' ' from
+//     filenames, so "credentials." and "credentials " resolve to "credentials"
+//     on disk. strings.TrimRight(seg, ". ") removes them for matching.
+//
+// Pure: imports only "strings", no I/O. Applied identically on the blocklist and
+// allowlist basename branches so an attacker cannot un-allowlist a safe file nor
+// smuggle a blocked file past the allow check.
+func normalizeBasename(seg string) string {
+	// Strip a trailing :streamname ADS suffix (cut from the first colon).
+	if i := strings.IndexByte(seg, ':'); i >= 0 {
+		seg = seg[:i]
+	}
+	// Trim trailing dots and spaces (Windows treats these as absent).
+	return strings.TrimRight(seg, ". ")
 }
 
 // isAllowedPath reports whether resolvedPath matches an allow pattern exactly or
@@ -160,8 +189,14 @@ func isAllowedPath(resolvedPath, allow string) bool {
 	// Basename pattern: no separator → match against the last path segment.
 	// This enables AllowPatterns like ".env.example" to match any absolute path
 	// whose final component is ".env.example" (Pitfall 2 fix, SPATH-04).
+	//
+	// Normalize the segment with the SAME normalizeBasename used on the blocklist
+	// side (HARDEN-02 / IN-02): ".env.example:stream" and ".env.example." must
+	// stay ALLOWED, and an attacker must not be able to use an ADS/trailing-dot
+	// form to either un-allowlist a safe file or smuggle a blocked file past the
+	// allow check. Mirroring the normalization on both sides keeps them aligned.
 	if !strings.Contains(allow, "/") && !strings.Contains(allow, "\\") {
-		seg := lastSegment(resolvedPath)
+		seg := normalizeBasename(lastSegment(resolvedPath))
 		// Handle glob: ".env.*" style allow patterns.
 		if strings.HasSuffix(allow, ".*") {
 			prefix := allow[:len(allow)-1] // strip trailing "*", keep "."

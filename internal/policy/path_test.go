@@ -122,6 +122,44 @@ func TestEvaluatePath(t *testing.T) {
 			wantAllow:   false,
 			wantPattern: "/.config/Claude/",
 		},
+		// HARDEN-02 / IN-02: Windows ADS + trailing-dot/space basename evasion.
+		// These exercise the BASENAME branch of matchesBlockPattern via the pure
+		// normalizeBasename helper (OS-agnostic — no //go:build windows needed).
+		{
+			name:        ".env ADS stream blocked (basename branch)",
+			path:        "/home/u/project/.env:stream",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".env",
+		},
+		{
+			name:        ".env trailing dot blocked",
+			path:        "/home/u/project/.env.",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".env",
+		},
+		{
+			name:        ".env trailing space blocked",
+			path:        "/home/u/project/.env ",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".env",
+		},
+		{
+			name:        "netrc ADS stream blocked (basename branch)",
+			path:        "/home/u/.netrc:hidden",
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".netrc",
+		},
+		{
+			name:        "npmrc trailing dot blocked",
+			path:        `C:\Users\u\.npmrc.`,
+			wantLevel:   "block",
+			wantAllow:   false,
+			wantPattern: ".npmrc",
+		},
 	}
 
 	for _, tt := range tests {
@@ -281,6 +319,93 @@ func TestEvaluatePathBasenameAllowlist(t *testing.T) {
 			}
 			if d.Level != tt.wantLevel {
 				t.Errorf("Level = %q, want %q", d.Level, tt.wantLevel)
+			}
+		})
+	}
+}
+
+// TestNormalizeBasename unit-tests the pure ADS/trailing-dot normalizer
+// (HARDEN-02 / IN-02). It strips a trailing :streamname ADS suffix and trims
+// trailing dots/spaces; it must leave a clean basename untouched.
+func TestNormalizeBasename(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"id_rsa", "id_rsa"},
+		{"id_rsa:fakestream", "id_rsa"},
+		{"id_rsa:$DATA", "id_rsa"},
+		{".env:stream", ".env"},
+		{"credentials.", "credentials"},
+		{"credentials ", "credentials"},
+		{"credentials.  ", "credentials"},
+		{".env.example:stream", ".env.example"},
+		{".env.example.", ".env.example"},
+		{"", ""},
+		{":onlystream", ""},
+		// First-colon cut: any ':' is an ADS separator at the segment level.
+		{"a:b:c", "a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := normalizeBasename(tt.in); got != tt.want {
+				t.Errorf("normalizeBasename(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEvaluatePathBasenameADSBlock proves that an ADS-suffixed or trailing-dot
+// basename matches a custom basename BlockPattern exactly as the clean basename
+// would (the basename branch, e.g. "id_rsa", which is not a default pattern but
+// represents the general HARDEN-02 case). IN-02.
+func TestEvaluatePathBasenameADSBlock(t *testing.T) {
+	cfg := SensitivePathConfig{BlockPatterns: []string{"id_rsa"}}
+
+	for _, p := range []string{
+		"/home/u/.ssh/id_rsa",
+		"/home/u/.ssh/id_rsa:fakestream",
+		`C:\Users\u\.ssh\id_rsa:$DATA`,
+		"/home/u/.ssh/id_rsa.",
+		"/home/u/.ssh/id_rsa ",
+	} {
+		t.Run(p, func(t *testing.T) {
+			d := EvaluatePath(p, cfg)
+			if d.Level != "block" {
+				t.Errorf("EvaluatePath(%q).Level = %q, want block (HARDEN-02 basename branch)", p, d.Level)
+			}
+		})
+	}
+}
+
+// TestEvaluatePathAllowlistNormalizationAligned verifies that the allowlist
+// normalization mirrors the blocklist: ".env.example:stream" and ".env.example."
+// stay ALLOWED (the ADS/trailing-dot form of a safe lookalike must not be
+// un-allowlisted), while ".env:stream" and ".env." (block lookalikes) stay
+// BLOCKED. IN-02 / HARDEN-02.
+func TestEvaluatePathAllowlistNormalizationAligned(t *testing.T) {
+	cfg := DefaultSensitivePaths()
+
+	tests := []struct {
+		name      string
+		path      string
+		wantAllow bool
+		wantLevel string
+	}{
+		{".env.example:stream stays allowed", "/home/u/project/.env.example:stream", true, "allow"},
+		{".env.example. stays allowed", "/home/u/project/.env.example.", true, "allow"},
+		{".env.example space stays allowed", "/home/u/project/.env.example ", true, "allow"},
+		{".env:stream stays blocked", "/home/u/project/.env:stream", false, "block"},
+		{".env. stays blocked", "/home/u/project/.env.", false, "block"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := EvaluatePath(tt.path, cfg)
+			if d.Allow != tt.wantAllow {
+				t.Errorf("EvaluatePath(%q).Allow = %v, want %v", tt.path, d.Allow, tt.wantAllow)
+			}
+			if d.Level != tt.wantLevel {
+				t.Errorf("EvaluatePath(%q).Level = %q, want %q", tt.path, d.Level, tt.wantLevel)
 			}
 		})
 	}

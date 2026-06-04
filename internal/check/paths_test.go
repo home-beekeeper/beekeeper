@@ -3,6 +3,7 @@ package check
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -249,6 +250,53 @@ func TestCanonicalizePathForms(t *testing.T) {
 			t.Errorf("expected 1 de-duplicated form for a non-symlink existing path, got %d: %v", len(forms), forms)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// TestCanonicalizeEvaluateADS (HARDEN-02 / IN-02) — Windows-gated adapter test
+// ---------------------------------------------------------------------------
+
+// TestCanonicalizeEvaluateADS exercises the END-TO-END adapter path
+// (canonicalize -> EvaluatePath) for Windows ADS and trailing-dot basename
+// evasion forms. It is Windows-gated: %USERPROFILE% expansion + backslash
+// separators are Windows-shaped, so non-Windows hosts skip. The pure layer is
+// covered OS-agnostically in internal/policy/path_test.go.
+func TestCanonicalizeEvaluateADS(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-shaped ADS/trailing-dot adapter test; pure coverage lives in internal/policy")
+	}
+
+	t.Setenv("USERPROFILE", `C:\Users\testuser`)
+	cfg := policy.DefaultSensitivePaths()
+
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"ssh ADS stream blocks", `%USERPROFILE%\.ssh\id_rsa:fakestream`},
+		{"credentials trailing dot blocks", `%USERPROFILE%\.ssh\credentials.`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use the dual-form helper (HARDEN-01) and block on ANY form, mirroring
+			// the wiring Plan 03 lands in handler.go.
+			forms := canonicalizePathForms(tc.raw)
+			if len(forms) == 0 {
+				t.Fatalf("no forms for %q", tc.raw)
+			}
+			blocked := false
+			for _, f := range forms {
+				if d := policy.EvaluatePath(f, cfg); d.Level == "block" {
+					blocked = true
+					break
+				}
+			}
+			if !blocked {
+				t.Errorf("HARDEN-02: %q (%q) was not blocked; forms=%v", tc.name, tc.raw, forms)
+			}
+		})
+	}
 }
 
 // anyFormContains reports whether any string in forms contains sub.
