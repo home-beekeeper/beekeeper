@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -233,5 +236,151 @@ func TestCheckDriftFetchError(t *testing.T) {
 		if rec.RecordType == "version_drift" {
 			t.Errorf("version_drift record emitted on fetch error (should be suppressed): %+v", rec)
 		}
+	}
+}
+
+// newDistTagsServer returns an httptest.Server that routes by URL path:
+//   - paths containing "/pnpm/" return the pnpm dist-tags JSON
+//   - paths containing "/bun/"  return the bun dist-tags JSON
+//   - if pnpmStatus != 200, the pnpm path returns that status with no body
+//
+// Used by TestRealMetadataFetchParsesDistTags and TestRealMetadataFetchFailOpenOnError.
+func newDistTagsServer(t *testing.T, pnpmLatest, bunLatest string, pnpmStatus int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/pnpm/"):
+			if pnpmStatus != http.StatusOK {
+				w.WriteHeader(pnpmStatus)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"latest":"` + pnpmLatest + `"}`))
+		case strings.Contains(r.URL.Path, "/bun/"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"latest":"` + bunLatest + `"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+}
+
+// TestRealMetadataFetchParsesDistTags verifies DRIFT-01 (parse path):
+// realMetadataFetch against a controlled httptest server returns the correct
+// latest versions for both pnpm and bun (T-09-11: URL overridable for hermetic test).
+func TestRealMetadataFetchParsesDistTags(t *testing.T) {
+	srv := newDistTagsServer(t, "12.0.0", "1.4.0", http.StatusOK)
+	defer srv.Close()
+
+	// Override the registry base URL to point at the httptest server.
+	orig := npmDriftRegistryBase
+	npmDriftRegistryBase = srv.URL
+	defer func() { npmDriftRegistryBase = orig }()
+
+	versions, err := realMetadataFetch(context.Background())
+	if err != nil {
+		t.Fatalf("realMetadataFetch returned unexpected error: %v", err)
+	}
+
+	if got := versions["pnpm"]; got != "12.0.0" {
+		t.Errorf("pnpm latest = %q, want %q", got, "12.0.0")
+	}
+	if got := versions["bun"]; got != "1.4.0" {
+		t.Errorf("bun latest = %q, want %q", got, "1.4.0")
+	}
+}
+
+// TestRealMetadataFetchFailOpenOnError verifies DRIFT-01 (per-PM fail-open, T-09-13):
+// when pnpm returns HTTP 500 but bun returns 200, realMetadataFetch returns a
+// partial map with bun present, pnpm absent, and nil error. It must not panic.
+func TestRealMetadataFetchFailOpenOnError(t *testing.T) {
+	srv := newDistTagsServer(t, "", "1.4.0", http.StatusInternalServerError)
+	defer srv.Close()
+
+	orig := npmDriftRegistryBase
+	npmDriftRegistryBase = srv.URL
+	defer func() { npmDriftRegistryBase = orig }()
+
+	versions, err := realMetadataFetch(context.Background())
+	if err != nil {
+		t.Fatalf("realMetadataFetch returned unexpected error on partial failure: %v", err)
+	}
+
+	// pnpm must be absent (failed fetch omitted, not a zero-value entry).
+	if _, hasPnpm := versions["pnpm"]; hasPnpm {
+		t.Errorf("pnpm should be absent from result after 500 error, but was present with value %q", versions["pnpm"])
+	}
+
+	// bun must be present with the correct version.
+	if got := versions["bun"]; got != "1.4.0" {
+		t.Errorf("bun latest = %q, want %q", got, "1.4.0")
+	}
+}
+
+// TestCheckDriftEndToEndRealFetch verifies DRIFT-01 end-to-end (no seam override):
+// with npmDriftRegistryBase pointing at an httptest server that returns a pnpm
+// major above the configured floor, checkDrift emits a record_type:"version_drift"
+// record without overriding metadataFetchFn — so the real realMetadataFetch path
+// is exercised entirely.
+func TestCheckDriftEndToEndRealFetch(t *testing.T) {
+	h, auditPath := newDriftTestHandler(t)
+	// Default floor from nudge.DefaultConfig() is 11.0.0 for pnpm; server returns 12.0.0 → drift.
+	srv := newDistTagsServer(t, "12.0.0", "1.3.0", http.StatusOK)
+	defer srv.Close()
+
+	origBase := npmDriftRegistryBase
+	npmDriftRegistryBase = srv.URL
+	defer func() { npmDriftRegistryBase = origBase }()
+
+	// Call checkDrift WITHOUT overriding metadataFetchFn — the real realMetadataFetch is used.
+	h.checkDrift(context.Background())
+
+	records := readAllAuditRecords(t, auditPath)
+	var driftRec *audit.AuditRecord
+	for i := range records {
+		if records[i].RecordType == "version_drift" {
+			driftRec = &records[i]
+			break
+		}
+	}
+	if driftRec == nil {
+		t.Fatal("expected a version_drift audit record from end-to-end real fetch, got none")
+	}
+	if driftRec.RecordID == "" {
+		t.Error("version_drift record has empty record_id")
+	}
+	if driftRec.Timestamp == "" {
+		t.Error("version_drift record has empty timestamp")
+	}
+	if driftRec.ScannerName != "beekeeper" {
+		t.Errorf("scanner_name = %q, want beekeeper", driftRec.ScannerName)
+	}
+	// Verify pnpm is mentioned in the drift reason.
+	if !strings.Contains(driftRec.Reason, "pnpm") {
+		t.Errorf("version_drift reason does not mention pnpm: %q", driftRec.Reason)
+	}
+}
+
+// TestCheckDriftFloorsNeverBumped asserts that VersionFloors.Pnpm is unchanged
+// after checkDrift runs — drift is informational only (PRD §7.1, T-09-12).
+// A malicious registry response claiming a huge major must NEVER mutate the floor.
+func TestCheckDriftFloorsNeverBumped(t *testing.T) {
+	h, _ := newDriftTestHandler(t)
+	// Server returns a version far ahead of the floor.
+	srv := newDistTagsServer(t, "999.0.0", "999.0.0", http.StatusOK)
+	defer srv.Close()
+
+	origBase := npmDriftRegistryBase
+	npmDriftRegistryBase = srv.URL
+	defer func() { npmDriftRegistryBase = origBase }()
+
+	// Record the floor before the check.
+	floorBefore := h.cfg.Nudge.VersionFloors.Pnpm
+
+	h.checkDrift(context.Background())
+
+	// Floor must be unchanged after checkDrift, regardless of what the registry returned.
+	if h.cfg.Nudge.VersionFloors.Pnpm != floorBefore {
+		t.Errorf("VersionFloors.Pnpm was mutated by checkDrift: before=%q after=%q (floors must never be auto-bumped, PRD §7.1)", floorBefore, h.cfg.Nudge.VersionFloors.Pnpm)
 	}
 }
