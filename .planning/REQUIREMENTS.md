@@ -13,10 +13,10 @@ Requirements for milestone v1.2.0. Each maps to exactly one roadmap phase. All w
 
 ### Sensitive-Path Runtime Enforcement (SPATH) — finding F2
 
-- [ ] **SPATH-01**: `beekeeper check` blocks (fail-closed) an agent tool call whose `file_path` target (Read/Write/Edit) is a sensitive credential path — `~/.ssh/*`, `~/.aws/*`, `~/.gnupg/*`, `~/.npmrc`, `~/.pypirc`, `~/.cargo/credentials*`, `.env`/`.env.*`, and MCP host-config files — by wiring the existing `policy.EvaluatePath`/`DefaultSensitivePaths` engine into the live check pipeline (currently referenced only by its own test).
-- [ ] **SPATH-02**: Path targets are canonicalized before evaluation (tilde expansion, `filepath.Abs`, `EvalSymlinks`, slash normalization) so `..`-traversal (`../../.aws/credentials`), relative paths, `~`, and Windows backslash/drive forms cannot bypass the blocklist.
-- [ ] **SPATH-03**: Credential access via shell-command targets (`cat`/`type`/`Get-Content`/`gc` of a sensitive path inside a `Bash` tool call) is detected and flagged, not just direct `file_path` reads.
-- [ ] **SPATH-04**: A default allowlist prevents false positives on safe lookalikes (`.env.example`, `.env.test`, `.env.schema`); built-in defaults merge with project/user policy-file `sensitive_path` rules and allowlist by most-restrictive-wins with an allowlist escape hatch.
+- [x] **SPATH-01**: `beekeeper check` blocks (fail-closed) an agent tool call whose `file_path` target (Read/Write/Edit) is a sensitive credential path — `~/.ssh/*`, `~/.aws/*`, `~/.gnupg/*`, `~/.npmrc`, `~/.pypirc`, `~/.cargo/credentials*`, `.env`/`.env.*`, and MCP host-config files — by wiring the existing `policy.EvaluatePath`/`DefaultSensitivePaths` engine into the live check pipeline (currently referenced only by its own test).
+- [x] **SPATH-02**: Path targets are canonicalized before evaluation (tilde expansion, `filepath.Abs`, `EvalSymlinks`, slash normalization) so `..`-traversal (`../../.aws/credentials`), relative paths, `~`, and Windows backslash/drive forms cannot bypass the blocklist.
+- [x] **SPATH-03**: Credential access via shell-command targets (`cat`/`type`/`Get-Content`/`gc` of a sensitive path inside a `Bash` tool call) is detected and flagged, not just direct `file_path` reads.
+- [x] **SPATH-04**: A default allowlist prevents false positives on safe lookalikes (`.env.example`, `.env.test`, `.env.schema`); built-in defaults merge with project/user policy-file `sensitive_path` rules and allowlist by most-restrictive-wins with an allowlist escape hatch.
 
 ### Package-Manager Nudge (NUDGE) — finding F3, spec `.planning/specs/NUDGE-PRD.md`
 
@@ -69,10 +69,10 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | CORR-01 | Phase 6 | Complete |
 | CORR-02 | Phase 6 | Complete |
-| SPATH-01 | Phase 7 | Pending |
-| SPATH-02 | Phase 7 | Pending |
-| SPATH-03 | Phase 7 | Pending |
-| SPATH-04 | Phase 7 | Pending |
+| SPATH-01 | Phase 7 | Complete |
+| SPATH-02 | Phase 7 | Complete |
+| SPATH-03 | Phase 7 | Complete |
+| SPATH-04 | Phase 7 | Complete |
 | NUDGE-01 | Phase 8 | Pending |
 | NUDGE-02 | Phase 8 | Pending |
 | NUDGE-03 | Phase 8 | Pending |

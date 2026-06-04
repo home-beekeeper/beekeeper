@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
 status: executing
-stopped_at: Phase 7 Wave 1 complete (07-01, 07-02); next Wave 2 (07-03).
-last_updated: "2026-06-04T00:05:00.000Z"
-last_activity: 2026-06-04 -- Phase 07 Wave 1 complete
+stopped_at: Phase 7 complete & verified (9/9 must-haves; code-review 2 criticals + 4 warnings fixed); ready for Phase 8.
+last_updated: "2026-06-04T00:30:00.000Z"
+last_activity: 2026-06-04 -- Phase 07 complete & verified
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 33
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 07 — Sensitive-Path Runtime Enforcement
+**Current focus:** Phase 8 — Package-Manager Nudge + Behavioral Test Suite (next; Phase 7 ✅ complete & verified)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 07 (Sensitive-Path Runtime Enforcement) — EXECUTING
-Plan: 2 of 3 complete (Wave 1 ✅ 07-01 + 07-02) — next: Wave 2 (07-03)
-Status: Executing Phase 07 — Wave 1 complete (build + tests green); Wave 2 pending
-Last activity: 2026-06-04 -- Phase 07 Wave 1 complete (07-01, 07-02)
+Phase: 7 of 8 — ✅ COMPLETE & verified (next: Phase 8 — NUDGE + Behavioral Test Suite)
+Plan: 3 of 3 complete (07-01, 07-02, 07-03)
+Status: Phase 7 complete — verifier 9/9 must-haves; code-review 2 criticals + 4 warnings fixed; build + full repo tests green
+Last activity: 2026-06-04 -- Phase 07 complete & verified
 
-Progress (v1.2.0): [███░░░░░░░] 33% (1 of 3 phases)
+Progress (v1.2.0): [██████░░░░] 67% (2 of 3 phases)
 
 ## Phase Summary (v1.1.0)
 
@@ -49,7 +49,7 @@ Progress (v1.2.0): [███░░░░░░░] 33% (1 of 3 phases)
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 6 | Corroboration Severity Hardening | CORR-01, CORR-02 | ✅ Complete (3/3 plans; +2 code-review fixes) |
-| 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | ✅ Planned (3 plans, 2 waves) — ready to execute |
+| 7 | Sensitive-Path Runtime Enforcement | SPATH-01–04 | ✅ Complete (3/3 plans; +6 code-review fixes) |
 | 8 | Package-Manager Nudge + Behavioral Test Suite | NUDGE-01–08, BTEST-01–03 | Not started |
 
 ## Performance Metrics
@@ -106,6 +106,15 @@ Recent decisions from Phase 6:
 - Phase 06-01 (CORR-01/02): escalation + sanity gate shipped atomically in one commit (STATE.md Blockers/Concerns constraint satisfied)
 - [Phase ?]: critical_block_at operator configurability added to policyloader
 
+Recent decisions from Phase 07 (v1.2.0 — Sensitive-Path Runtime Enforcement):
+
+- runCheck ordering (CR-02 fix): ApplyPolicyOverlay runs BEFORE the sensitive-path block; the path block is merged LAST via mergeDecisions (most-restrictive-wins) so a package_allowlist allow can never downgrade a credential-read block. runCheckWithIndex (integration_test.go) mirrors the same block so tests prove wiring without a catalog match.
+- canonicalizePath (internal/check/paths.go, impure adapter) order: expandWinEnvVars → expandHome → filepath.Abs → EvalSymlinks(fallback to Abs result on error so non-existent credential files still evaluate) → ToSlash. internal/policy stays pure (TestPathImportsArePure green).
+- expandWinEnvVars: single-pass strings.Builder, targeted %VAR%→os.Getenv (NOT os.ExpandEnv), fail-closed on unresolved var (literal %VAR% kept, never empty). Satisfies SC2 `type %USERPROFILE%\.ssh\id_rsa` (D-01).
+- extractBashCredentialPaths scans ALL read-verb occurrences (moving-offset loop, CR-01 fix) and firstShellToken skips leading flag tokens (handles `cat -n …` and `a && cat ~/.ssh/id_rsa`).
+- isAllowedPath gained a basename branch (no-separator patterns match lastSegment) — required for AllowPatterns (.env.example/.test/.schema) to take effect (Pitfall 2). extractTargetPath (policyloader) reads file_path primary, path fallback (both `!= ""` guarded).
+- DefaultSensitivePaths added /.cursor/, /.windsurf/, bare /.cargo/credentials (D-02). D-03: SPATH wired into `beekeeper check` ONLY (no gateway/watch/scan).
+
 ### Open Research Flags (v1.2.0)
 
 - **Before Phase 8 plan:** commit Flag 2 (NUDGE detection cache: Position A file-cache vs Position B gateway/shim-only) and Flag 4 (installPrefixes: extract `internal/pkgparse/` vs accept third copy with cross-reference comments). Both decisions determine `detect.go` signature, test strategy, and BTEST E2E fixtures — must be resolved in `/gsd-discuss-phase 8`.
@@ -144,6 +153,6 @@ Resume file: None
 
 ## Operator Next Steps
 
-- **v1.2.0 (current):** Phase 7 is planned & checker-verified (3 plans, 2 waves) — run `/gsd-execute-phase 7` to execute (Wave 1: 07-01 + 07-02 in parallel; Wave 2: 07-03). Then Phase 8 (NUDGE — resolve Flag 2 + Flag 4 in discuss/plan before planning). NOTE: the `gsd-sdk` init resolver maps bare phase number `7` to the ARCHIVED v1.0.0 `07-cross-platform-sentry` dir; the live v1.2.0 phase is `.planning/phases/07-sensitive-path-runtime-enforcement/` — pass explicit paths / verify dir when running phase-numbered SDK commands.
+- **v1.2.0 (current):** Phase 7 ✅ complete & verified (F2 closed — credential reads now block in live `beekeeper check`). Next: **Phase 8** (NUDGE + Behavioral Test Suite) — start with `/gsd-discuss-phase 8` to resolve Flag 2 (detect cache) + Flag 4 (installPrefixes extraction) BEFORE planning, then `/gsd-plan-phase 8`. NOTE: the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, and soon 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not.
 - **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: `HANDOFF.json` + 05-05 `.continue-here.md`. Do NOT close v1.1.0 before this runs.
 - **Still pending (from v1.0.0 close):** the beekeeper GitHub remote is created as part of the v1.1.0 runbook (Step 1: `gh repo create bantuson/beekeeper`).

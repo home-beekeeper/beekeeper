@@ -41,7 +41,7 @@
 ### v1.2.0 "Runtime Behavioral Hardening"
 
 - [x] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate (completed 2026-06-03)
-- [ ] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses
+- [x] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses (completed 2026-06-04)
 - [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/evaluate/rewrite/CLI); PRD §10 acceptance tests; live-binary E2E release gate
 
 ## Phase Details
@@ -144,7 +144,7 @@
 **Phases (continuing numbering from v1.1.0):**
 
 - [x] **Phase 6: Corroboration Severity Hardening** — Per-severity escalation so critical malware blocks at one trusted source; anti-poisoning sanity gate (completed 2026-06-03)
-- [ ] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses; integration tests prove check wiring is live
+- [x] **Phase 7: Sensitive-Path Runtime Enforcement** — Wire existing path engine into live `beekeeper check`; canonicalization adapter closes traversal bypasses; integration tests prove check wiring is live (completed 2026-06-04)
 - [ ] **Phase 8: Package-Manager Nudge + Behavioral Test Suite** — Full nudge feature (detect/parse/evaluate/rewrite/CLI); PRD §10 acceptance tests; complete table-driven test suite; live-binary E2E release gate
 
 ### Phase 6: Corroboration Severity Hardening
@@ -178,7 +178,7 @@
 - [x] 07-02-PLAN.md — Impure canonicalization adapter (internal/check/paths.go: extract / canonicalize / %USERPROFILE% expand / Bash credential detection / mergeDecisions)
 
 **Wave 2** *(blocked on Wave 1 — imports the 07-02 adapter and depends on the 07-01 allowlist/basename fix)*
-- [ ] 07-03-PLAN.md — Wire path block into runCheck + runCheckWithIndex; RunCheck integration tests for SC1-SC4 with audit-record assertions
+- [x] 07-03-PLAN.md — Wire path block into runCheck + runCheckWithIndex; RunCheck integration tests for SC1-SC4 with audit-record assertions
 
 **Cross-cutting constraints** *(truths appearing in ≥2 plans):*
 - `internal/policy/path.go` stays pure (no I/O imports — `TestPathImportsArePure`); all FS/env I/O confined to `internal/check/paths.go` (07-01, 07-02)
@@ -219,5 +219,5 @@
 | **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
 | **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
-| **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **2/3** | **In Progress** | **—** |
+| **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **0/TBD** | **Not started** | **—** |
