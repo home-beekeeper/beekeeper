@@ -54,7 +54,16 @@ findings:
   warning: 4
   info: 5
   total: 9
-status: issues_found
+status: warnings_resolved
+resolution:
+  resolved_at: 2026-06-04
+  warnings_resolved: [WR-01, WR-02, WR-03, WR-04]
+  info_deferred: [IN-01, IN-02, IN-03, IN-04, IN-05]
+  commits:
+    WR-01: bfd868c
+    WR-02: 488557a
+    WR-03: 525510f
+    WR-04: 6ffa2ce
 ---
 
 # Phase 8: Code Review Report
@@ -100,6 +109,14 @@ nudge audit records bypasses redaction).
 
 ### WR-01: Nudge audit records persist the raw command unredacted (forensic-log credential leak)
 
+**Status:** RESOLVED (commit bfd868c). Extended `audit.RedactRecord` to scrub
+`OriginalCommand`, `RewrittenCommand`, and `PMState` with the same credential
+patterns previously applied only to `Reason`, and added a `RedactRecord` pass
+before `w.Write(rec)` on both nudge write paths (`writeNudgeAuditRecord` in
+`check/nudge_adapter.go` and `writeNudgeAudit` in `gateway/proxy.go`). New test
+`TestRedactRecordNudgeCommandFields` proves a Bearer/JWT/PAT/sk-ant token in the
+command fields is redacted before write.
+
 **File:** `internal/check/nudge_adapter.go:150-163`, `internal/gateway/proxy.go:535-548`, `internal/gateway/policy.go:173-191`
 **Issue:** The nudge audit record sets `OriginalCommand: d.Original` (= `cmd.Raw`,
 the verbatim agent-supplied Bash command) and `RewrittenCommand`. Unlike the main
@@ -133,6 +150,14 @@ out.PMState = applyRedaction(rec.PMState, patterns)
 
 ### WR-02: `parseInt` silently overflows on large `minimumReleaseAge` values
 
+**Status:** RESOLVED (commit 488557a). Added a `maxAge = 1<<31` ceiling to the
+`parseInt` accumulation loop; a running total past the ceiling returns `errNotInt`
+(before the int can wrap), which `scanPnpmWorkspace` already maps to `ok=false` →
+safe default in `DetectPnpmHardening`. New tests `TestParseIntOverflow` and
+`TestScanPnpmWorkspaceOverflowIsParseTrouble` cover the 35-digit fuzz seed,
+negative overflow, and the end-to-end "wrapped value must not flip WeaknessLogged"
+guarantee.
+
 **File:** `internal/nudge/scanners.go:260-285`
 **Issue:** `parseInt` accumulates with `n = n*10 + int(c-'0')` and has no overflow
 guard. A `pnpm-workspace.yaml` containing
@@ -162,6 +187,17 @@ for i := start; i < len(s); i++ {
 
 ### WR-03: `detect.go` ignores the caller's outer deadline — each PM exec can run a full 2s
 
+**Status:** RESOLVED (commit 525510f). The pnpm/bun/node `--version` probes now
+run concurrently under a `sync.WaitGroup` instead of sequentially, so worst-case
+detection latency is bounded by the single slowest probe (~2s) rather than the
+sum (~6s) and can no longer consume the ~5s check-hook budget into a fail-CLOSED
+block. Fail-open semantics are preserved unchanged (probe error/timeout → PM "not
+installed"); a panicking probe is now additionally contained via `recover` →
+"not installed". `detect.go` remains the only impure nudge file and the dependent
+file scans still run after the probes, so the resulting `PMState` is identical to
+the prior sequential code. New tests `TestDetectStateParallelProbes` (timing) and
+`TestDetectStateProbePanicFailOpen` cover this.
+
 **File:** `internal/nudge/detect.go:56-84, 98-141`
 **Issue:** Each version fn does `context.WithTimeout(ctx, detectionTimeout)` (2s),
 and `DetectState` runs pnpm, then bun, then node sequentially. In the one-shot
@@ -182,6 +218,15 @@ budget detection against the remaining outer deadline rather than a fixed per-ca
 ```
 
 ### WR-04: Drift scheduler spawns an unbounded goroutine per tick (slow-fetch pile-up)
+
+**Status:** RESOLVED (commit 6ffa2ce). Added an `atomic.Bool` in-flight guard in
+`startDriftScheduler`: a tick is dropped (`CompareAndSwap` fails) while a previous
+`checkDrift` is still running, and the flag is cleared via `defer running.Store(false)`
+when the check completes. At most one drift check runs at a time regardless of how
+short the operator sets the interval. New test
+`TestStartDriftSchedulerBoundedConcurrency` drives a 5ms interval against a 60ms
+slow fetch and asserts peak concurrency never exceeds 1;
+`TestStartDriftSchedulerDisabled` confirms the disabled path runs nothing.
 
 **File:** `internal/gateway/drift.go:162-178`
 **Issue:** On every ticker tick the scheduler launches a *new* goroutine
