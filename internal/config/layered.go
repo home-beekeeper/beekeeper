@@ -99,6 +99,20 @@ func LoadLayered(opts LayerOpts) (Config, error) {
 	// Layer 5: CLI flag overrides (highest precedence).
 	cfg = applyFlagOverrides(cfg, opts.FlagOverrides)
 
+	// CLEAN-02: guarantee a non-nil, validated Nudge at the layered root, mirroring
+	// Load's single-file contract. After all layers merge, an absent nudge across
+	// every layer resolves to DefaultNudgeConfig(); a present (merged) block is
+	// validated fail-closed via the EXPORTED ValidateNudgeConfig so an invalid
+	// project nudge (e.g. mode:"aggressive") is rejected here rather than silently
+	// degrading. This makes the consumer-side nil-guards defense-in-depth, not
+	// load-bearing (T-09-07).
+	if cfg.Nudge == nil {
+		d := DefaultNudgeConfig()
+		cfg.Nudge = &d
+	} else if err := ValidateNudgeConfig(*cfg.Nudge); err != nil {
+		return Config{}, fmt.Errorf("invalid merged nudge config: %w", err)
+	}
+
 	// Final validation: reject an invalid merged FailMode rather than silently
 	// using an insecure default (mitigates T-09-08).
 	return validate(cfg)
@@ -195,7 +209,112 @@ func merge(dst, src Config) Config {
 		dst.SelfCatalog.PubKey = src.SelfCatalog.PubKey
 	}
 
+	// NudgeConfig — pointer field (CLEAN-02). Without this, a project-layer
+	// nudge.* override was silently dropped and any LoadLayered consumer reading
+	// cfg.Nudge without a nil-check got nil. mergeNudge carries the block through.
+	dst.Nudge = mergeNudge(dst.Nudge, src.Nudge)
+
 	return dst
+}
+
+// mergeNudge merges the src Nudge pointer over dst following the layered "src
+// wins if set" discipline, and is the CLEAN-02 root-cause fix for the dropped
+// Nudge pointer in merge().
+//
+// Semantics:
+//   - src == nil: lower layer (dst) is authoritative — an ABSENT nudge key in a
+//     higher layer never zeroes a lower-layer block. Returns dst unchanged.
+//     (loadIfPresent does NOT default-fill, so a project file WITHOUT a "nudge"
+//     key yields src==nil and the lower layer survives intact — Pitfall 5.)
+//   - dst == nil, src != nil: start from a copy of *src (no lower layer to merge).
+//   - both non-nil: field-level override, src wins where set (non-empty / non-zero).
+//
+// Bool fields (Enabled, RequireHardened, CheckSocketScanner) share the
+// "encoding/json cannot distinguish absent from false" limitation already
+// documented on mergeLlamaFirewall. We resolve it to satisfy BOTH the
+// NUDGE-08 / PRD §11 project-disable (`nudge.enabled:false` must win) and the
+// partial-override case (a `mode`-only project layer must NOT silently disable
+// the nudge):
+//
+//   - srcHasOtherSignal == false (a disable-only / bare object such as
+//     `{"nudge":{"enabled":false}}` — the ONLY way Enabled is the meaningful
+//     field): the project object IS the Enabled assertion → src.Enabled wins.
+//     This lands the §11 project-disable.
+//   - srcHasOtherSignal == true (e.g. `{"nudge":{"mode":"hard"}}`): the project
+//     configured some OTHER field; its absent `enabled` (Go zero false) must NOT
+//     clobber the lower-layer Enabled. So src.Enabled is applied only when it is
+//     explicitly true (an explicit enable still wins); otherwise Enabled is
+//     inherited. A project that has other nudge fields AND wants to disable must
+//     set `enabled:false` explicitly together with them — the same accepted
+//     limitation as LlamaFirewall.Enabled, documented here.
+//
+// RequireHardened / CheckSocketScanner follow the LlamaFirewall convention:
+// applied only when src carries some other non-zero nudge signal.
+//
+// Strings (Mode, Preferred) and the nested VersionFloors / MajorDriftCheck
+// fields are src-wins-if-non-empty / non-zero, so a partial project override
+// never clobbers lower-layer non-zero values.
+func mergeNudge(dst, src *NudgeConfig) *NudgeConfig {
+	if src == nil {
+		// Absent in this layer → do not touch the lower layer.
+		return dst
+	}
+	if dst == nil {
+		// No lower layer to merge against — adopt a copy of src.
+		cp := *src
+		return &cp
+	}
+
+	out := *dst // copy so we never mutate the caller's struct
+
+	srcHasOtherSignal := src.Mode != "" || src.Preferred != "" ||
+		src.RequireHardened || src.CheckSocketScanner ||
+		src.MajorDriftCheck != (NudgeMajorDriftCheck{}) ||
+		src.VersionFloors != (NudgeVersionFloors{})
+
+	// Enabled resolution (see doc comment): a disable-only object is the Enabled
+	// assertion (§11 project-disable wins); when other fields are present, only an
+	// explicit enable applies so a partial override never silently disables.
+	if !srcHasOtherSignal || src.Enabled {
+		out.Enabled = src.Enabled
+	}
+
+	// The other bools follow the LlamaFirewall convention: apply only when src
+	// carries another non-zero nudge signal (so a bare project disable object
+	// cannot silently flip them).
+	if srcHasOtherSignal {
+		out.RequireHardened = src.RequireHardened
+		out.CheckSocketScanner = src.CheckSocketScanner
+	}
+
+	// Strings: src wins if non-empty.
+	if src.Mode != "" {
+		out.Mode = src.Mode
+	}
+	if src.Preferred != "" {
+		out.Preferred = src.Preferred
+	}
+
+	// MajorDriftCheck — field-level src-wins-if-set.
+	if src.MajorDriftCheck.Enabled {
+		out.MajorDriftCheck.Enabled = true
+	}
+	if src.MajorDriftCheck.Interval != "" {
+		out.MajorDriftCheck.Interval = src.MajorDriftCheck.Interval
+	}
+
+	// VersionFloors — field-level src-wins-if-non-empty (no zeroing).
+	if src.VersionFloors.Pnpm != "" {
+		out.VersionFloors.Pnpm = src.VersionFloors.Pnpm
+	}
+	if src.VersionFloors.Bun != "" {
+		out.VersionFloors.Bun = src.VersionFloors.Bun
+	}
+	if src.VersionFloors.Node != "" {
+		out.VersionFloors.Node = src.VersionFloors.Node
+	}
+
+	return &out
 }
 
 func mergeAudit(dst, src AuditConfig) AuditConfig {

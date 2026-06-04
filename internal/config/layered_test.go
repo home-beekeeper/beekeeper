@@ -150,6 +150,97 @@ func TestMerge_ZeroValuePreservation(t *testing.T) {
 	}
 }
 
+// ---- CLEAN-02: Nudge pointer merge in LoadLayered.merge() ----
+
+// TestMerge_NudgeDefaultedAtLayeredRoot verifies that LoadLayered guarantees a
+// non-nil, default-populated cfg.Nudge even when NO layer sets a nudge block.
+// The user layer (Load) supplies defaults, but this asserts the merge carries
+// the Nudge pointer through so it reaches the returned Config (CLEAN-02).
+func TestMerge_NudgeDefaultedAtLayeredRoot(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil default-populated block (CLEAN-02)")
+	}
+	want := DefaultNudgeConfig()
+	if *cfg.Nudge != want {
+		t.Errorf("cfg.Nudge = %+v, want DefaultNudgeConfig() %+v", *cfg.Nudge, want)
+	}
+}
+
+// TestMerge_NudgeProjectDisableWins verifies the NUDGE-08/§11 project-disable
+// rule: a project layer that sets ONLY nudge.enabled:false wins over the
+// defaulting user layer, and the other nudge sub-fields inherit the defaults
+// (the partial project layer must NOT zero them — Pitfall 5).
+func TestMerge_NudgeProjectDisableWins(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"enabled":false}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil block")
+	}
+	if cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = true, want false — project nudge.enabled:false must win (§11)")
+	}
+	// Other fields must inherit defaults, not be zeroed by the partial project layer.
+	def := DefaultNudgeConfig()
+	if cfg.Nudge.Mode != def.Mode {
+		t.Errorf("cfg.Nudge.Mode = %q, want %q (inherited default, not zeroed)", cfg.Nudge.Mode, def.Mode)
+	}
+	if cfg.Nudge.Preferred != def.Preferred {
+		t.Errorf("cfg.Nudge.Preferred = %q, want %q (inherited default)", cfg.Nudge.Preferred, def.Preferred)
+	}
+	if cfg.Nudge.VersionFloors != def.VersionFloors {
+		t.Errorf("cfg.Nudge.VersionFloors = %+v, want %+v (floors must not be zeroed)", cfg.Nudge.VersionFloors, def.VersionFloors)
+	}
+}
+
+// TestMerge_NudgeProjectModeOverride verifies a project nudge.mode override wins
+// while Enabled stays true (inherited from the lower layer's default).
+func TestMerge_NudgeProjectModeOverride(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"mode":"hard"}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil block")
+	}
+	if cfg.Nudge.Mode != "hard" {
+		t.Errorf("cfg.Nudge.Mode = %q, want %q (project override)", cfg.Nudge.Mode, "hard")
+	}
+	if !cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = false, want true (inherited default — mode-only override must not disable)")
+	}
+}
+
+// TestMerge_NudgeInvalidRejected verifies LoadLayered fails closed on an invalid
+// merged nudge block (project nudge.mode:"aggressive"), mirroring how Load
+// validates a non-nil Nudge.
+func TestMerge_NudgeInvalidRejected(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"mode":"aggressive"}}`)
+
+	_, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err == nil {
+		t.Fatal("LoadLayered returned nil error for invalid merged nudge.mode:\"aggressive\"; want fail-closed rejection")
+	}
+}
+
 // ---- Task 2: TDD tests for applyEnvVars + applyFlagOverrides ----
 
 // TestLoadLayered_EnvVarOverride verifies that BEEKEEPER_FAIL_MODE=open in
