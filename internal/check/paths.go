@@ -216,29 +216,51 @@ func firstShellToken(rest string) string {
 }
 
 // extractBashCredentialPaths scans a Bash command string for read-verb prefixes
-// and returns the path token that follows each match.
+// and returns the path tokens that follow each match.
 //
 // This is conservative verb-prefix matching, NOT a full shell tokenizer.
-// Each matched verb may appear anywhere in cmd (e.g., after "&&" or ";"), so
-// command chaining (ls && cat ~/.aws/credentials) is partially handled.
+// All occurrences of each verb are found (not just the first), so chained
+// commands like "cat /tmp/banner.txt && cat ~/.ssh/id_rsa" extract BOTH
+// paths (CR-01 fix). Leading flag tokens (starting with "-") are skipped
+// so "cat -n ~/.ssh/id_rsa" still extracts "~/.ssh/id_rsa" (CR-01 fix).
 //
-// The extracted path tokens are returned verbatim — %USERPROFILE% or other env-var
-// forms are NOT expanded here. Expansion happens in canonicalizePath (D-01), so
-// `type %USERPROFILE%\.ssh\id_rsa` returns the raw token and canonicalizePath
-// later resolves it to a path containing "/.ssh/".
+// The extracted path tokens are returned verbatim — %USERPROFILE% or other
+// env-var forms are NOT expanded here. Expansion happens in canonicalizePath
+// (D-01), so `type %USERPROFILE%\.ssh\id_rsa` returns the raw token and
+// canonicalizePath later resolves it to a path containing "/.ssh/".
 //
 // Returns nil when no read verb is found or when all tokens after verbs are empty.
 func extractBashCredentialPaths(cmd string) []string {
 	var paths []string
 	for _, verb := range bashReadVerbs {
-		idx := strings.Index(cmd, verb)
-		if idx == -1 {
-			continue
-		}
-		rest := strings.TrimSpace(cmd[idx+len(verb):])
-		token := firstShellToken(rest)
-		if token != "" {
-			paths = append(paths, token)
+		// Scan ALL occurrences of this verb (not just the first) so that
+		// chained commands like "cat safe.txt && cat ~/.ssh/id_rsa" extract
+		// every credential path read by the command (CR-01).
+		from := 0
+		for {
+			rel := strings.Index(cmd[from:], verb)
+			if rel == -1 {
+				break
+			}
+			idx := from + rel
+			rest := strings.TrimSpace(cmd[idx+len(verb):])
+
+			// Skip leading flag tokens (e.g. "-n", "-c 100") so that
+			// "cat -n ~/.ssh/id_rsa" reaches "~/.ssh/id_rsa" (CR-01).
+			for {
+				tok := firstShellToken(rest)
+				if tok == "" {
+					break
+				}
+				if !strings.HasPrefix(tok, "-") {
+					paths = append(paths, tok)
+					break
+				}
+				// Advance rest past this flag token.
+				rest = strings.TrimSpace(rest[len(tok):])
+			}
+
+			from = idx + len(verb)
 		}
 	}
 	return paths

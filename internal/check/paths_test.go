@@ -383,6 +383,24 @@ func TestExtractBashCredentialPaths(t *testing.T) {
 		got := extractBashCredentialPaths("tail ~/.aws/credentials")
 		assertContains(t, got, "~/.aws/credentials")
 	})
+
+	t.Run("chained cat: second occurrence of verb extracts credential path (CR-01)", func(t *testing.T) {
+		// cat appears TWICE: first read is benign, second reads a credential.
+		// The old strings.Index only found the first occurrence and missed the
+		// credential read. The fixed multi-occurrence loop must find BOTH.
+		got := extractBashCredentialPaths("cat banner.txt && cat ~/.ssh/id_rsa")
+		assertContains(t, got, "~/.ssh/id_rsa")
+		// The benign file should also be present.
+		assertContains(t, got, "banner.txt")
+	})
+
+	t.Run("leading flag token skipped to reach path (CR-01)", func(t *testing.T) {
+		// "cat -n ~/.ssh/id_rsa": the old firstShellToken returned "-n" as the
+		// first token, dropping the credential path. The fixed loop skips
+		// leading flags and returns "~/.ssh/id_rsa".
+		got := extractBashCredentialPaths("cat -n ~/.ssh/id_rsa")
+		assertContains(t, got, "~/.ssh/id_rsa")
+	})
 }
 
 // ---------------------------------------------------------------------------
