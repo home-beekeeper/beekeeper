@@ -7,7 +7,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bantuson/beekeeper/internal/audit"
 	"github.com/bantuson/beekeeper/internal/nudge"
@@ -129,6 +131,84 @@ func TestCheckDriftNoDrift(t *testing.T) {
 		if rec.RecordType == "version_drift" {
 			t.Errorf("unexpected version_drift record emitted for no-drift case: %+v", rec)
 		}
+	}
+}
+
+// TestStartDriftSchedulerBoundedConcurrency verifies WR-04: with a tick interval
+// much shorter than the drift check duration, the scheduler must NOT pile up
+// goroutines — at most one drift check runs at a time. The injected
+// metadataFetchFn blocks long enough that many ticks fire while a check is
+// in-flight; the in-flight guard must drop those ticks. The test asserts the
+// observed peak concurrency never exceeds 1.
+func TestStartDriftSchedulerBoundedConcurrency(t *testing.T) {
+	h, _ := newDriftTestHandler(t)
+	h.cfg.AuditPath = "" // suppress audit writes; we only care about concurrency
+	h.cfg.Nudge.MajorDriftCheck.Enabled = true
+	// Tiny interval so many ticks fire during a single slow fetch.
+	h.cfg.Nudge.MajorDriftCheck.Interval = "5ms"
+
+	var inFlight atomic.Int32
+	var peak atomic.Int32
+	var calls atomic.Int32
+
+	orig := metadataFetchFn
+	metadataFetchFn = func(_ context.Context) (map[string]string, error) {
+		calls.Add(1)
+		cur := inFlight.Add(1)
+		// Track the peak number of concurrent in-flight fetches.
+		for {
+			p := peak.Load()
+			if cur <= p || peak.CompareAndSwap(p, cur) {
+				break
+			}
+		}
+		// Hold the check in-flight far longer than the tick interval so the
+		// scheduler would pile up unbounded goroutines without the guard.
+		time.Sleep(60 * time.Millisecond)
+		inFlight.Add(-1)
+		return map[string]string{}, nil
+	}
+	defer func() { metadataFetchFn = orig }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	startDriftScheduler(ctx, h)
+
+	// Let the scheduler tick many times while checks are slow.
+	time.Sleep(300 * time.Millisecond)
+	cancel()
+	// Allow the final in-flight check to drain.
+	time.Sleep(100 * time.Millisecond)
+
+	if p := peak.Load(); p > 1 {
+		t.Errorf("peak concurrent drift checks = %d, want <= 1 (in-flight guard failed — WR-04)", p)
+	}
+	if calls.Load() == 0 {
+		t.Error("expected at least one drift check to run during the test window")
+	}
+}
+
+// TestStartDriftSchedulerDisabled verifies that the scheduler does nothing when
+// the drift check is disabled in config (no goroutine, no fetch).
+func TestStartDriftSchedulerDisabled(t *testing.T) {
+	h, _ := newDriftTestHandler(t)
+	h.cfg.Nudge.MajorDriftCheck.Enabled = false
+	h.cfg.Nudge.MajorDriftCheck.Interval = "5ms"
+
+	var calls atomic.Int32
+	orig := metadataFetchFn
+	metadataFetchFn = func(_ context.Context) (map[string]string, error) {
+		calls.Add(1)
+		return map[string]string{}, nil
+	}
+	defer func() { metadataFetchFn = orig }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startDriftScheduler(ctx, h)
+
+	time.Sleep(50 * time.Millisecond)
+	if calls.Load() != 0 {
+		t.Errorf("disabled scheduler ran %d drift checks, want 0", calls.Load())
 	}
 }
 

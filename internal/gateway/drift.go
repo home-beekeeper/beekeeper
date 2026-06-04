@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/bantuson/beekeeper/internal/audit"
@@ -162,17 +163,32 @@ func startDriftScheduler(ctx context.Context, h *gatewayHandler) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+
+		// WR-04: bound concurrency to a single in-flight drift check. Previously
+		// every tick spawned a fresh goroutine "so a slow fetch doesn't block the
+		// ticker" — but the interval is operator-configurable down to any positive
+		// duration, so a checkDrift that routinely outlasts the interval would
+		// accumulate goroutines without bound (a config-driven resource leak).
+		// The atomic flag drops a tick while a previous check is still running;
+		// the next tick after completion picks up again. A dropped drift check is
+		// harmless (it is an advisory, best-effort, fail-open task).
+		var running atomic.Bool
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				// Run in a separate goroutine so a slow fetch doesn't block the ticker.
-				go func() {
-					driftCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-					h.checkDrift(driftCtx)
-				}()
+				// Skip this tick if the prior check has not finished. Run in a
+				// goroutine so a slow fetch never blocks the ticker, but only
+				// ever one at a time.
+				if running.CompareAndSwap(false, true) {
+					go func() {
+						defer running.Store(false)
+						driftCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						defer cancel()
+						h.checkDrift(driftCtx)
+					}()
+				}
 			}
 		}
 	}()
