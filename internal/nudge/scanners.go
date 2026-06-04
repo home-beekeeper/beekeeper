@@ -256,7 +256,18 @@ func splitLines(content string) []string {
 	return strings.Split(content, "\n")
 }
 
-// parseInt parses a decimal integer string. Returns (0, err) on failure.
+// maxAge is a generous ceiling for parseInt accumulation (WR-02). It bounds the
+// running total so a huge minimumReleaseAge (e.g. the 35-digit fuzz seed in
+// scanners_fuzz_test.go) cannot silently overflow a 64-bit int and wrap to an
+// arbitrary — possibly negative — value that flips WeaknessLogged. The field is
+// minutes; 1<<31 (~4084 years) is far beyond any legitimate value, so anything
+// past it is treated as parse trouble → ok=false → safe default.
+const maxAge = 1 << 31
+
+// parseInt parses a decimal integer string. Returns (0, err) on failure,
+// including when the magnitude exceeds maxAge (overflow / absurd value). The
+// overflow guard maps to errNotInt, which the caller already treats as a parse
+// error → safe default (WR-02).
 func parseInt(s string) (int, error) {
 	if s == "" {
 		return 0, errEmpty
@@ -277,6 +288,12 @@ func parseInt(s string) (int, error) {
 			return 0, errNotInt
 		}
 		n = n*10 + int(c-'0')
+		if n > maxAge {
+			// Overflow / absurd magnitude — treat as parse trouble. Bounding
+			// here (before n can wrap) is what makes the guard sound: n never
+			// grows past maxAge*10 + 9, well inside int range.
+			return 0, errNotInt
+		}
 	}
 	if neg {
 		n = -n

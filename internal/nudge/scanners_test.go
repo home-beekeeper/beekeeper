@@ -486,6 +486,97 @@ func TestDetectPnpmHardeningEmptyPath(t *testing.T) {
 	}
 }
 
+// TestParseIntOverflow verifies WR-02: an absurdly large minimumReleaseAge does
+// not silently overflow int and wrap to a bogus (possibly negative) value.
+// parseInt must return a parse error past the maxAge ceiling, which the scanner
+// maps to ok=false → safe default. This guards the WeaknessLogged comparison
+// (minAge < minimumReleaseAgeWeaknessBaseline) from a wrapped value.
+func TestParseIntOverflow(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+		wantN   int
+	}{
+		{
+			// The exact 35-digit fuzz seed from scanners_fuzz_test.go:101.
+			name:    "35-digit overflow seed",
+			input:   "99999999999999999999999999999999999",
+			wantErr: true,
+		},
+		{
+			name:    "negative overflow seed",
+			input:   "-9999999999999999999",
+			wantErr: true,
+		},
+		{
+			name:    "just above maxAge ceiling",
+			input:   "2147483649", // maxAge = 1<<31 = 2147483648
+			wantErr: true,
+		},
+		{
+			name:    "at maxAge ceiling is accepted",
+			input:   "2147483648",
+			wantErr: false,
+			wantN:   1 << 31,
+		},
+		{
+			name:    "legitimate value 1440 accepted",
+			input:   "1440",
+			wantErr: false,
+			wantN:   1440,
+		},
+		{
+			name:    "zero accepted",
+			input:   "0",
+			wantErr: false,
+			wantN:   0,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			n, err := parseInt(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("parseInt(%q) = (%d, nil), want error", tc.input, n)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseInt(%q) unexpected error: %v", tc.input, err)
+			}
+			if n != tc.wantN {
+				t.Errorf("parseInt(%q) = %d, want %d", tc.input, n, tc.wantN)
+			}
+		})
+	}
+}
+
+// TestScanPnpmWorkspaceOverflowIsParseTrouble verifies WR-02 end-to-end: a
+// minimumReleaseAge that overflows is treated as parse trouble (ok=false), so
+// DetectPnpmHardening returns the safe default rather than a wrapped value that
+// could flip WeaknessLogged.
+func TestScanPnpmWorkspaceOverflowIsParseTrouble(t *testing.T) {
+	content := "minimumReleaseAge: 99999999999999999999999999999999999\n"
+	_, _, _, _, ok := scanPnpmWorkspace(content)
+	if ok {
+		t.Fatalf("scanPnpmWorkspace ok = true for overflow value, want false (parse trouble)")
+	}
+
+	// End-to-end through DetectPnpmHardening: parse trouble → safe default.
+	orig := readFileFn
+	readFileFn = func(_ string) ([]byte, error) { return []byte(content), nil }
+	defer func() { readFileFn = orig }()
+
+	result := DetectPnpmHardening("pnpm-workspace.yaml")
+	if !result.Hardened {
+		t.Errorf("Hardened = false on overflow value, want true (safe default)")
+	}
+	if result.WeaknessLogged {
+		t.Errorf("WeaknessLogged = true on overflow value, want false — a wrapped int must not flip the weakness flag")
+	}
+}
+
 // makeLargeContent creates n bytes of benign repeating ASCII content for
 // large-input tests.
 func makeLargeContent(n int) []byte {
