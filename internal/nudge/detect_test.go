@@ -43,6 +43,83 @@ func TestDetectStateTimeoutFallback(t *testing.T) {
 	}
 }
 
+// TestDetectStateParallelProbes proves WR-03: the three version probes run
+// concurrently, so worst-case detection latency is bounded by the single
+// slowest probe (~detectionTimeout) rather than the sum of all three. The test
+// injects three version-fns that each block on their context until cancelled,
+// drives DetectState under a single short deadline, and asserts the total wall
+// time is far below the ~3x sequential worst case — while preserving fail-open
+// (all three PMs report "not installed").
+func TestDetectStateParallelProbes(t *testing.T) {
+	const probeDelay = 400 * time.Millisecond
+
+	// Each probe blocks for probeDelay then returns a value. If the probes ran
+	// sequentially the total would be ~3*probeDelay (~1.2s); in parallel it is
+	// ~probeDelay (~0.4s). We assert well under the sequential sum.
+	blocker := func(_ context.Context) (string, error) {
+		time.Sleep(probeDelay)
+		return "", errors.New("slow probe → not installed")
+	}
+
+	origPnpm := pnpmVersionFn
+	origBun := bunVersionFn
+	origNode := nodeVersionFn
+	pnpmVersionFn = blocker
+	bunVersionFn = blocker
+	nodeVersionFn = blocker
+	defer func() {
+		pnpmVersionFn = origPnpm
+		bunVersionFn = origBun
+		nodeVersionFn = origNode
+	}()
+
+	start := time.Now()
+	state := DetectState(context.Background(), DefaultConfig())
+	elapsed := time.Since(start)
+
+	// Parallel: elapsed ~= probeDelay. Sequential would be ~3*probeDelay.
+	// Use 2*probeDelay as a generous ceiling that still proves parallelism.
+	if elapsed >= 2*probeDelay {
+		t.Errorf("detection took %v — probes appear sequential, want < %v (parallel)", elapsed, 2*probeDelay)
+	}
+
+	// Fail-open preserved: every PM reports not installed.
+	if state.PnpmInstalled || state.BunInstalled || state.NodeVersion != "" {
+		t.Errorf("fail-open violated: %+v — slow probes must yield 'not installed'", state)
+	}
+}
+
+// TestDetectStateProbePanicFailOpen proves WR-03 hardening: a panicking
+// version-fn is contained as a detection failure (fail-open), never crashing the
+// process. The injected pnpm probe panics; DetectState must return normally with
+// PnpmInstalled=false while bun/node still resolve.
+func TestDetectStateProbePanicFailOpen(t *testing.T) {
+	origPnpm := pnpmVersionFn
+	origBun := bunVersionFn
+	origNode := nodeVersionFn
+	pnpmVersionFn = func(_ context.Context) (string, error) { panic("boom in probe") }
+	bunVersionFn = func(_ context.Context) (string, error) { return "1.3.14", nil }
+	nodeVersionFn = func(_ context.Context) (string, error) { return "22.0.0", nil }
+	defer func() {
+		pnpmVersionFn = origPnpm
+		bunVersionFn = origBun
+		nodeVersionFn = origNode
+	}()
+
+	// Must not panic out of DetectState.
+	state := DetectState(context.Background(), DefaultConfig())
+
+	if state.PnpmInstalled {
+		t.Error("PnpmInstalled should be false when the pnpm probe panics (fail-open)")
+	}
+	if !state.BunInstalled {
+		t.Error("BunInstalled should still be true — bun probe is unaffected by pnpm panic")
+	}
+	if state.NodeVersion != "22.0.0" {
+		t.Errorf("NodeVersion = %q, want 22.0.0 — node probe unaffected by pnpm panic", state.NodeVersion)
+	}
+}
+
 // TestDetectStateErrorFallback proves §10-12: a version-fn returning an error
 // causes the PM to be treated as NOT installed (graceful fallback).
 func TestDetectStateErrorFallback(t *testing.T) {

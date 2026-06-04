@@ -27,6 +27,7 @@ package nudge
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,8 +88,21 @@ var nodeVersionFn = func(ctx context.Context) (string, error) {
 // with a 2s hard timeout and, when cfg.CheckSocketScanner is true, scans
 // bunfig.toml / pnpm-workspace.yaml.
 //
-// Fail-open contract: on any timeout or error a PM is treated as "not installed"
-// (graceful fallback — never blocks on detection failure, PRD §10 criterion 12).
+// WR-03: the three version probes are run CONCURRENTLY (they are independent),
+// not sequentially. Previously a hung pnpm + hung bun could each burn their full
+// 2s before node even started, so worst-case detection was ~6s — large relative
+// to the ~5s check-hook budget (handler.go), risking a fail-CLOSED block of an
+// unrelated tool call when the post-evaluation ctx.Err() check tripped. Running
+// them in parallel caps worst-case detection latency at ~detectionTimeout (~2s)
+// regardless of how many PMs hang.
+//
+// Fail-open contract (UNCHANGED): on any timeout or error a PM is treated as
+// "not installed" (graceful fallback — never blocks on detection failure, never
+// panics; PRD §10 criterion 12). A panic inside a probe goroutine would crash
+// the process, so each probe is run defensively (a panicking version-fn is
+// treated as "not installed", same as an error). The dependent file scans
+// (pnpm-workspace hardening, bunfig scanner) run AFTER the probes complete so the
+// resulting PMState is byte-for-byte identical to the previous sequential code.
 //
 // The check hook calls DetectStateFn (which defaults to DetectState) directly on
 // every invocation with no cache. The gateway wraps DetectStateFn in a 60s Cache.
@@ -96,15 +110,43 @@ var nodeVersionFn = func(ctx context.Context) (string, error) {
 // T-08-10: executes fixed argv ("pnpm"/"bun"/"node", "--version") only.
 // T-08-11: 2s hard timeout per exec; timeout → PM not installed, proceed.
 func DetectState(ctx context.Context, cfg Config) PMState {
+	// Resolve the three independent version probes in parallel. Each probe's
+	// own context.WithTimeout (inside the *VersionFn) still derives from ctx,
+	// so the outer deadline is respected AND the per-call 2s cap applies — but
+	// because they run concurrently the total wall time is bounded by the single
+	// slowest probe (~2s), not the sum (~6s).
+	var (
+		wg                       sync.WaitGroup
+		pnpmVer, bunVer, nodeVer string
+		pnpmErr, bunErr, nodeErr error
+	)
+	probe := func(fn func(context.Context) (string, error), ver *string, errp *error) {
+		defer wg.Done()
+		// Defensive: a panic inside a probe must be contained as a detection
+		// failure (fail-open), never crash the host process.
+		defer func() {
+			if r := recover(); r != nil {
+				*ver = ""
+				*errp = &probePanicError{value: r}
+			}
+		}()
+		*ver, *errp = fn(ctx)
+	}
+	wg.Add(3)
+	go probe(pnpmVersionFn, &pnpmVer, &pnpmErr)
+	go probe(bunVersionFn, &bunVer, &bunErr)
+	go probe(nodeVersionFn, &nodeVer, &nodeErr)
+	wg.Wait()
+
 	var state PMState
 
 	// Detect pnpm.
-	if ver, err := pnpmVersionFn(ctx); err == nil && ver != "" {
+	if pnpmErr == nil && pnpmVer != "" {
 		state.PnpmInstalled = true
-		state.PnpmVersion = ver
+		state.PnpmVersion = pnpmVer
 
 		// Compute hardening: version floor AND pnpm-workspace hardening scan.
-		hardeningOK := meetsFloor(ver, cfg.VersionFloors.Pnpm)
+		hardeningOK := meetsFloor(pnpmVer, cfg.VersionFloors.Pnpm)
 		if hardeningOK {
 			// Check for explicit hardening weaknesses in pnpm-workspace.yaml.
 			wsPath := pnpmWorkspacePath()
@@ -119,9 +161,9 @@ func DetectState(ctx context.Context, cfg Config) PMState {
 	// On pnpmVersionFn error/timeout: PnpmInstalled=false, proceed (fail-open).
 
 	// Detect bun (bun may be absent on dev machine — tests use injected fns).
-	if ver, err := bunVersionFn(ctx); err == nil && ver != "" {
+	if bunErr == nil && bunVer != "" {
 		state.BunInstalled = true
-		state.BunVersion = ver
+		state.BunVersion = bunVer
 
 		// BunScannerOK: checked only when cfg.CheckSocketScanner is true.
 		if cfg.CheckSocketScanner {
@@ -132,12 +174,21 @@ func DetectState(ctx context.Context, cfg Config) PMState {
 	// On bunVersionFn error/timeout: BunInstalled=false, proceed (fail-open).
 
 	// Detect node.
-	if ver, err := nodeVersionFn(ctx); err == nil && ver != "" {
-		state.NodeVersion = ver
+	if nodeErr == nil && nodeVer != "" {
+		state.NodeVersion = nodeVer
 	}
 	// On nodeVersionFn error/timeout: NodeVersion="", proceed (fail-open).
 
 	return state
+}
+
+// probePanicError wraps a value recovered from a panicking version-fn so that a
+// panic is surfaced as an ordinary detection error (fail-open) rather than
+// crashing the host process. It is never inspected beyond err != nil.
+type probePanicError struct{ value any }
+
+func (e *probePanicError) Error() string {
+	return fmt.Sprintf("nudge: version probe panicked: %v", e.value)
 }
 
 // DetectStateFn is the EXPORTED swappable detection seam.
