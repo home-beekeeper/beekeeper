@@ -141,24 +141,34 @@ func TestE2ELiveBinary(t *testing.T) {
 	// -------------------------------------------------------------------------
 	// Case 2: CORR — ai-figure critical install must block (exit 1, decision "block").
 	//
-	// DefaultCorroborationThresholds() has SeverityOverrides["critical"].BlockAt=1,
-	// so ONE signed critical source is sufficient to block (no OSV/Socket needed).
+	// CLEAN-01: This sub-case is hermetic — the block fires from the LOCAL signed
+	// catalog fixture alone, with no OSV network call required. The seeded entry is:
+	//   - SIGNED (CatalogSignature non-empty → Signed:true in the bumblebee adapter)
+	//   - NON-WILDCARD (Versions:["1.0.0"]) so the all-versions wildcard guard in
+	//     findSeverityOverride does NOT suppress escalation
+	//   - Severity "critical" matching SeverityOverrides["critical"].BlockAt=1
+	// With one signed critical source + CatalogHealthy:true (no state.json degradation),
+	// effectiveBlockAt=1 → signedCount(1) >= 1 → decision "block".
+	// This mirrors the hermetic unit test TestRunCheckAiFigureBlocks exactly.
+	// The stdin command uses the matching version ("npm install ai-figure@1.0.0") so the
+	// non-wildcard version entry matches. OSV is unreachable → case still blocks.
 	// -------------------------------------------------------------------------
 	t.Run("CORR_aifigure_critical_block", func(t *testing.T) {
 		homeDir, auditPath, catalogsDir, _ := newHome(t)
 		seedCatalog(t, catalogsDir, []catalog.Entry{
 			{
-				ID:            "e2e-ai-figure-critical",
-				Name:          "ai-figure compromised",
-				Ecosystem:     "npm",
-				Package:       "ai-figure",
-				Versions:      []string{"*"},
-				Severity:      "critical",
-				CatalogSource: "bumblebee",
+				ID:               "e2e-ai-figure-critical-signed",
+				Name:             "ai-figure critical supply-chain compromise",
+				Ecosystem:        "npm",
+				Package:          "ai-figure",
+				Versions:         []string{"1.0.0"},
+				Severity:         "critical",
+				CatalogSource:    "bumblebee",
+				CatalogSignature: "sha256:e2e-corr-test-sig", // non-empty → Signed:true in adapter
 			},
 		})
 
-		stdinJSON := `{"agent_name":"e2e-agent","tool_name":"Bash","tool_input":{"command":"npm install ai-figure"}}`
+		stdinJSON := `{"agent_name":"e2e-agent","tool_name":"Bash","tool_input":{"command":"npm install ai-figure@1.0.0"}}`
 		exitCode, rec := runCase(t, homeDir, auditPath, stdinJSON, "policy_decision")
 
 		if exitCode != 1 {
