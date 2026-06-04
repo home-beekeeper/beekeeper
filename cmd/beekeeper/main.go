@@ -29,6 +29,7 @@ import (
 	"github.com/bantuson/beekeeper/internal/hooks"
 	"github.com/bantuson/beekeeper/internal/llamafirewall"
 	"github.com/bantuson/beekeeper/internal/notify"
+	"github.com/bantuson/beekeeper/internal/nudge"
 	"github.com/bantuson/beekeeper/internal/platform"
 	"github.com/bantuson/beekeeper/internal/quarantine"
 	"github.com/bantuson/beekeeper/internal/scan"
@@ -80,6 +81,10 @@ func newRootCmd() *cobra.Command {
 		// Phase 9: policy-as-code (CODE-02/03/04) and diagnostics (CODE-06).
 		newPolicyCmd(),
 		newDiagCmd(),
+		// Phase 8: package-manager nudge CLI (NUDGE-07 / SC5).
+		newNudgeCmd(),
+		// Phase 8: config set nudge.* with audit logging (§10-17).
+		newConfigCmd(),
 	)
 
 	return root
@@ -1217,6 +1222,41 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 				}
 			}
 
+			// WARNING-3 daemon-side nudge wiring (Plan 08, Wave 5):
+			// Populate gatewayCfg.Nudge via the single nudge.ConfigFrom mapper from the
+			// layered cfg.Nudge so the gateway evaluates against the operator's config.
+			// Plan 06 (newGatewayHandler) still defaults a zero-value Nudge to
+			// nudge.DefaultConfig() as a safety net (T-08-29), but this wiring ensures
+			// the daemon carries the operator's explicit layered config.
+			var nudgeNC = cfg.Nudge
+			if nudgeNC == nil {
+				d := nudge.DefaultConfig()
+				// Use DefaultConfig() directly rather than ConfigFrom to avoid nil-deref.
+				_ = d // assigned below via ConfigFrom with defaults
+				nudgeNC = nil // handled by ConfigFrom empty-string fallbacks
+			}
+			var (
+				nudgeEnabled       = true
+				nudgeMode          = ""
+				nudgePreferred     = ""
+				nudgeCheckScanner  = true
+				nudgeFloorPnpm     = ""
+				nudgeFloorBun      = ""
+				nudgeFloorNode     = ""
+				nudgeDriftEnabled  = true
+				nudgeDriftInterval = ""
+			)
+			if nudgeNC != nil {
+				nudgeEnabled = nudgeNC.Enabled
+				nudgeMode = nudgeNC.Mode
+				nudgePreferred = nudgeNC.Preferred
+				nudgeCheckScanner = nudgeNC.CheckSocketScanner
+				nudgeFloorPnpm = nudgeNC.VersionFloors.Pnpm
+				nudgeFloorBun = nudgeNC.VersionFloors.Bun
+				nudgeFloorNode = nudgeNC.VersionFloors.Node
+				nudgeDriftEnabled = nudgeNC.MajorDriftCheck.Enabled
+				nudgeDriftInterval = nudgeNC.MajorDriftCheck.Interval
+			}
 			gatewayCfg := gateway.Config{
 				UpstreamURL: upstream,
 				BindAddr:    bind,
@@ -1228,6 +1268,18 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 				SocketToken: cfg.SocketAPIToken(),
 				FailOpen:    !cfg.FailClosed(),
 				Scanner:     llmfScanner,
+				// Plan 08 WARNING-3: populate Nudge from layered config via single mapper.
+				Nudge: nudge.ConfigFrom(
+					nudgeEnabled,
+					nudgeMode,
+					nudgePreferred,
+					nudgeCheckScanner,
+					nudgeFloorPnpm,
+					nudgeFloorBun,
+					nudgeFloorNode,
+					nudgeDriftEnabled,
+					nudgeDriftInterval,
+				),
 			}
 
 			bindAddr := bind
