@@ -16,15 +16,19 @@ import (
 
 // Supported target names.
 const (
-	TargetClaudeCode = "claude-code"
-	TargetCursor     = "cursor"
-	TargetCodex      = "codex"
-	TargetAugment    = "augment"
-	TargetCodeBuddy  = "codebuddy"
-	TargetQwen       = "qwen"
-	TargetContinue   = "continue"
-	TargetOpenCode   = "opencode"
-	TargetOpenClaw   = "openclaw"
+	TargetClaudeCode  = "claude-code"
+	TargetCursor      = "cursor"
+	TargetCodex       = "codex"
+	TargetAugment     = "augment"
+	TargetCodeBuddy   = "codebuddy"
+	TargetQwen        = "qwen"
+	TargetCopilot     = "copilot"
+	TargetAntigravity = "antigravity"
+	TargetGemini      = "gemini"
+	TargetWindsurf    = "windsurf"
+	TargetContinue    = "continue"
+	TargetOpenCode    = "opencode"
+	TargetOpenClaw    = "openclaw"
 )
 
 // gatewayTargets is the set of targets that receive a printed guide rather than
@@ -39,12 +43,14 @@ var gatewayTargets = map[string]bool{
 var fileTargets = []string{
 	TargetClaudeCode, TargetCursor, TargetCodex,
 	TargetAugment, TargetCodeBuddy, TargetQwen,
+	TargetCopilot, TargetAntigravity, TargetGemini, TargetWindsurf,
 }
 
 // allTargets is the complete list of supported targets.
 var allTargets = []string{
 	TargetClaudeCode, TargetCursor, TargetCodex,
 	TargetAugment, TargetCodeBuddy, TargetQwen,
+	TargetCopilot, TargetAntigravity, TargetGemini, TargetWindsurf,
 	TargetContinue, TargetOpenCode, TargetOpenClaw,
 }
 
@@ -95,12 +101,28 @@ func InstallTo(target string, dryRun bool, force bool, out io.Writer) error {
 		settingsPath := qwenSettingsPath(homeDir)
 		return installQwen(settingsPath, dryRun, out)
 
+	case TargetCopilot:
+		settingsPath := copilotSettingsPath(homeDir)
+		return installCopilot(settingsPath, dryRun, out)
+
+	case TargetAntigravity:
+		settingsPath := antigravitySettingsPath(homeDir)
+		return installAntigravity(settingsPath, dryRun, out)
+
+	case TargetGemini:
+		settingsPath := geminiSettingsPath(homeDir)
+		return installGemini(settingsPath, dryRun, out)
+
+	case TargetWindsurf:
+		hooksPath := windsurfHooksPath(homeDir)
+		return installWindsurf(hooksPath, dryRun, out)
+
 	case TargetContinue, TargetOpenCode, TargetOpenClaw:
 		return printGatewayGuide(target, out)
 
 	default:
 		return fmt.Errorf(
-			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, continue, opencode, openclaw",
+			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, copilot, antigravity, gemini, windsurf, continue, opencode, openclaw",
 			target,
 		)
 	}
@@ -148,6 +170,22 @@ func UninstallTo(target string, dryRun bool, out io.Writer) error {
 		settingsPath := qwenSettingsPath(homeDir)
 		return uninstallQwen(settingsPath, dryRun, out)
 
+	case TargetCopilot:
+		settingsPath := copilotSettingsPath(homeDir)
+		return uninstallCopilot(settingsPath, dryRun, out)
+
+	case TargetAntigravity:
+		settingsPath := antigravitySettingsPath(homeDir)
+		return uninstallAntigravity(settingsPath, dryRun, out)
+
+	case TargetGemini:
+		settingsPath := geminiSettingsPath(homeDir)
+		return uninstallGemini(settingsPath, dryRun, out)
+
+	case TargetWindsurf:
+		hooksPath := windsurfHooksPath(homeDir)
+		return uninstallWindsurf(hooksPath, dryRun, out)
+
 	case TargetContinue, TargetOpenCode, TargetOpenClaw:
 		fmt.Fprintf(out, "No files were written for %s — nothing to uninstall.\n", target)
 		fmt.Fprintf(out, "Remove the Beekeeper MCP server entry from your %s configuration manually.\n", target)
@@ -155,7 +193,7 @@ func UninstallTo(target string, dryRun bool, out io.Writer) error {
 
 	default:
 		return fmt.Errorf(
-			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, continue, opencode, openclaw",
+			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, copilot, antigravity, gemini, windsurf, continue, opencode, openclaw",
 			target,
 		)
 	}
