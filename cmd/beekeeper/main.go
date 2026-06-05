@@ -245,6 +245,7 @@ func newInitCmd() *cobra.Command {
 func newCheckCmd() *cobra.Command {
 	var toolName string
 	var toolArgs []string
+	var hookTarget string
 
 	cmd := &cobra.Command{
 		Use:   "check",
@@ -299,12 +300,31 @@ func newCheckCmd() *cobra.Command {
 			}
 
 			result := check.RunCheck(cmd.Context(), stdin, cfg, indexPath, auditPath, catalogDir)
+
+			// --hook adapter: emits the per-harness deny signal ONLY on block.
+			// On allow/warn, fall through to the default exit path (exit 0) —
+			// never emit permissionDecision:"allow" (CONTEXT decision 3, T-10-02).
+			// The default path (no --hook) is UNCHANGED: raw Decision JSON to stdout,
+			// exit 0 (allow) or exit 1 (block). Shim/gateway/tests rely on exit 1.
+			if hookTarget != "" && !result.Decision.Allow {
+				out := check.RenderDeny(check.HarnessID(hookTarget), result.Decision)
+				if len(out.Stdout) > 0 {
+					fmt.Fprint(os.Stdout, string(out.Stdout))
+				}
+				if len(out.Stderr) > 0 {
+					fmt.Fprint(os.Stderr, string(out.Stderr))
+				}
+				os.Exit(out.ExitCode)
+				return nil // unreachable
+			}
+
 			os.Exit(result.ExitCode)
 			return nil // unreachable; os.Exit above is the real return path
 		},
 	}
 	cmd.Flags().StringVar(&toolName, "tool", "", "Tool name for shim invocations (builds ToolCall JSON from flags)")
 	cmd.Flags().StringArrayVar(&toolArgs, "args", nil, "Arguments for shim invocations (used with --tool)")
+	cmd.Flags().StringVar(&hookTarget, "hook", "", "Harness name for hook invocations (emits exit 2 + harness-specific deny JSON on block; default mode unchanged)")
 	return cmd
 }
 
