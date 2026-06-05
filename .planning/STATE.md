@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2.0
-milestone_name: milestone
-status: verifying
-stopped_at: "Phase 10 inserted (hook-block protocol fix; seeds v1.3.0). Research + 10-CONTEXT.md + 10-LIVE-TEST-RESUME.md written; settings.json restored byte-exact. 4 prerequisite fixes merged to `main` (adc1f77, 50513ae); planning artifacts (ROADMAP/STATE/phase-10 dir) still uncommitted. On branch `main`. NEXT: `/gsd-plan-phase 10` (read the phase's `10-RESEARCH.md` first)."
-last_updated: "2026-06-05T10:57:26.141Z"
-last_activity: 2026-06-04 -- Phase 9 executed + verified (9/9); v1.2.0 ready for close
+milestone: v1.3.0
+milestone_name: hook-block-protocol-compliance-and-multi-harness-enforcement
+status: executing
+stopped_at: "Phase 10 plan 01 complete (d7bffe3, 76029a3, 342d78a). RenderDeny + --hook flag + claudePreCommand fix. NEXT: /gsd-execute-phase 10 plan 02."
+last_updated: "2026-06-05T12:00:00.000Z"
+last_activity: 2026-06-05 -- Phase 10 plan 01 executed (3/3 tasks, 3 commits)
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
+  total_phases: 10
+  completed_phases: 8
+  total_plans: 45
+  completed_plans: 39
+  percent: 82
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** v1.2.0 ✅ SHIPPED & archived (2026-06-04, tag `v1.2.0`). **Next milestone TBD** — `/gsd-new-milestone`. (v1.1.0 "Pollen" still PARKED at its maintainer release checkpoint — independent of the next cycle.)
+**Current focus:** Phase 10 — hook-block-protocol-compliance-and-multi-harness-enforcement
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 > **SUPERSEDED 2026-06-05 — read this first.** v1.2.0 is SHIPPED & ARCHIVED (tag `v1.2.0`; the "READY FOR CLOSE" lines below are stale pre-close text). **NEW critical finding:** a live dogfood proved Beekeeper's PreToolUse hook fires + decides "block" but harnesses run the tool anyway — `beekeeper check` exits `1`, but harnesses need exit `2` / a per-harness deny JSON. **The hook-block path is non-functional on every hook-based harness** (Claude Code/Cursor/Codex); shim + MCP-gateway paths are unaffected. **Phase 10 "Hook-Block Protocol Compliance & Multi-Harness Enforcement" inserted (seeds v1.3.0) — NOT yet planned.** Research + Context live in the phase folder: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/{10-RESEARCH.md, 10-CONTEXT.md}` (15-harness deny-contract matrix in 10-RESEARCH.md). **NEXT: `/gsd-plan-phase 10`** (read the research first; expect ≥2 sub-phases). The 4 prerequisite fixes are now on `main` (commits `adc1f77` nudge/timeout, `50513ae` hooks clobber→merge — fast-forward merged 2026-06-05; the `fix/windows-pnpm-timeout-and-hook-merge` branch is fully merged/redundant, deletable with `git branch -d`). **Phase 10 executes on `main`** (GSD runs the phase on the current branch; HEAD is on main). Planning artifacts (ROADMAP/STATE/phase-10 dir) remain uncommitted. Roadmap evolution: Phase 10 added 2026-06-05.
 
-Phase: 9 of 9 — ✅ COMPLETE & verified (v1.2.0 Tech-Debt Cleanup; status passed 9/9). All 4 v1.2.0 phases done.
-Plan: 5 of 5 complete (09-01..09-05, executed sequentially on main; +1 fix `ef4ea97`). Verifier: 9/9 must-haves; all 8 reqs (CLEAN-01..04 / HARDEN-01..03 / DRIFT-01) SATISFIED.
-Status: Phase 9 executed + verified PASSED. CORR E2E now hermetic (signed non-wildcard fixture → blocks offline); LoadLayered Nudge-pointer merge root-fixed; Phase-6 Nyquist COMPLIANT; SPATH evasion edges closed (ancestor-symlink dual-form `canonicalizePathForms` wired into runCheck + integration mirror, Windows ADS/trailing-dot `normalizeBasename`, verb word-boundary `isShellBoundary`); live `version_drift` npm registry query (fail-open, floors never bumped, no new deps); +1 pre-existing `internal/policy` fuzz-build fix surfaced by SC9. Release gates GREEN: go build + full unit suite + `-tags e2e` (15.4s) + `-tags fuzz` (incl. policy post-fix) + TestPathImportsArePure + TestOverlayAllowCannotDowngradePathBlock. **Milestone v1.2.0 READY FOR CLOSE** — re-run `/gsd-complete-milestone v1.2.0`; the audit's tech_debt findings are all resolved. Fold `v1.2.0-MILESTONE-AUDIT.md` + `09-VERIFICATION.md` into the archive.
-Last activity: 2026-06-04 -- Phase 9 executed + verified (9/9); v1.2.0 ready for close
+Phase: 10 (hook-block-protocol-compliance-and-multi-harness-enforcement) — EXECUTING
+Plan: 2 of 6 (plan 01 complete)
+Status: Executing Phase 10
+Last activity: 2026-06-05 -- Phase 10 plan 01 executed (3 tasks, 3 commits: d7bffe3 76029a3 342d78a)
 
 Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete & verified — milestone ready for close)
 
@@ -65,6 +65,13 @@ Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 10 (v1.3.0 - plan 10-01):
+
+- Phase 10-01: RenderDeny returns ExitCode=0 on allow — harness approval flow never bypassed; permissionDecision:"allow" never emitted (CONTEXT decision 3, T-10-02)
+- Phase 10-01: Hermes ExitCode=0 by design (exit codes ignored by Hermes; block carried by JSON action:"block" with guaranteed non-empty message)
+- Phase 10-01: Unknown HarnessID fails closed — exit 2 + stderr, nil Stdout (never silently allows)
+- Phase 10-01: claudePreCommand changed from "beekeeper check" to "beekeeper check --hook claude-code"; propagates to merge/uninstall helpers via sentinel string
 
 Recent decisions from Phase 02 (v1.1.0 Pollen - plan 02-02):
 

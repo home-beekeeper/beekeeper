@@ -190,7 +190,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **8/8** | **Complete** | **2026-06-04** |
 | **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **5/5** | **Complete & verified (9/9)** | **2026-06-04** |
-| **10. Hook-Block Protocol Compliance & Multi-Harness Enforcement** | **v1.3.0 (next)** | **0/6** | **Planned** | **—** |
+| **10. Hook-Block Protocol Compliance & Multi-Harness Enforcement** | **v1.3.0 (next)** | **1/6** | **Executing** | **—** |
 
 ### Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement
 
@@ -222,7 +222,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 6 plans across 5 waves (planned 2026-06-05).
 **Wave 1**
 
-- [ ] 10-01-PLAN.md — RenderDeny pure adapter + --hook flag + fixed Claude installer + the missing deny-contract regression gate (HPC-01/03/06) [wave 1]
+- [x] 10-01-PLAN.md — RenderDeny pure adapter + --hook flag + fixed Claude installer + the missing deny-contract regression gate (HPC-01/03/06) [wave 1] ✅ 2026-06-05 (d7bffe3, 76029a3, 342d78a)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
