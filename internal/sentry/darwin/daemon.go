@@ -78,18 +78,36 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 	}
 	defer ipcSrv.Close()
 
-	// 5. Load baseline and start correlation engine goroutine.
-	baselinePath := filepath.Join(stateDir, "sentry-baseline.json")
-	go correlationEngineLoop(ctx, events, auditWriter, baselinePath, state)
+	// 5. Build live extension inventory (TM-RS-01): seed from watch directories
+	// at startup, refresh every 30 s so SENTRY-004/005 can fire in production.
+	invStore := sentry.NewInventoryStore()
+	watchDirs := sentry.ExpandedWatchDirs(cfg.WatchDirectories())
+	invStore.ScanDirs(watchDirs, time.Now().UTC())
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				invStore.ScanDirs(watchDirs, time.Now().UTC())
+			}
+		}
+	}()
 
-	// 6. IPC server goroutine.
+	// 6. Load baseline and start correlation engine goroutine.
+	baselinePath := filepath.Join(stateDir, "sentry-baseline.json")
+	go correlationEngineLoop(ctx, events, auditWriter, baselinePath, state, invStore)
+
+	// 7. IPC server goroutine.
 	go func() {
 		_ = ipcSrv.Serve(ctx, func(conn net.Conn) {
 			handleIPCConn(conn, state, stateDir)
 		})
 	}()
 
-	// 7. Block until context is cancelled or eslogger exits.
+	// 8. Block until context is cancelled or eslogger exits.
 	select {
 	case <-ctx.Done():
 		return nil
@@ -184,12 +202,17 @@ func handleIPCConn(conn net.Conn, state *daemonState, stateDir string) {
 
 // correlationEngineLoop receives SentryEvent values from the events channel,
 // applies EvaluateEvent, and writes resulting SentryAlerts to auditWriter.
+//
+// invStore is the live extension inventory maintained by the daemon; its
+// Snapshot() is taken on each event so SENTRY-004/005 can fire in production
+// (TM-RS-01 fix — previously an empty InventorySnapshot{} was always passed).
 func correlationEngineLoop(
 	ctx context.Context,
 	events <-chan sentry.SentryEvent,
 	auditWriter *audit.Writer,
 	baselinePath string,
 	state *daemonState,
+	invStore *sentry.InventoryStore,
 ) {
 	baseline, _ := sentry.LoadBaseline(baselinePath)
 	ruleState := sentry.NewRuleState()
@@ -225,12 +248,13 @@ func correlationEngineLoop(
 
 			atomic.AddUint64(&state.eventsProcessed, 1)
 
+			now := time.Now().UTC()
 			alerts := sentry.EvaluateEvent(
 				ev, ruleState, tree,
-				sentry.InventorySnapshot{},
+				invStore.Snapshot(now),
 				sentry.RuleConfig{},
 				baseline,
-				time.Now().UTC(),
+				now,
 			)
 			for _, alert := range alerts {
 				rec := alertToAuditRecord(alert)

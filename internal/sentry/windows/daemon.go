@@ -188,9 +188,27 @@ func runDaemonBody(ctx context.Context, cfg *config.Config, auditPath string) er
 		})
 	}()
 
-	// 5. Start correlation engine goroutine.
+	// 5. Build live extension inventory (TM-RS-01): seed from watch directories
+	// at startup, refresh every 30 s so SENTRY-004/005 can fire in production.
+	invStore := sentry.NewInventoryStore()
+	watchDirs := sentry.ExpandedWatchDirs(cfg.WatchDirectories())
+	invStore.ScanDirs(watchDirs, time.Now().UTC())
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				invStore.ScanDirs(watchDirs, time.Now().UTC())
+			}
+		}
+	}()
+
+	// 6. Start correlation engine goroutine.
 	baselinePath := filepath.Join(stateDir, "sentry-baseline.json")
-	go correlationEngineLoop(ctx, events, auditWriter, baselinePath, state)
+	go correlationEngineLoop(ctx, events, auditWriter, baselinePath, state, invStore)
 
 	// 6. Block until ctx cancelled or consumer exits.
 	select {
@@ -290,13 +308,17 @@ func handleIPCConn(conn net.Conn, state *daemonState) {
 
 // correlationEngineLoop receives SentryEvent values from the events channel,
 // applies EvaluateEvent, and writes resulting SentryAlerts to auditWriter.
-// Copied verbatim from darwin/daemon.go (shared rule engine; body is identical).
+//
+// invStore is the live extension inventory maintained by the daemon; its
+// Snapshot() is taken on each event so SENTRY-004/005 can fire in production
+// (TM-RS-01 fix — previously an empty InventorySnapshot{} was always passed).
 func correlationEngineLoop(
 	ctx context.Context,
 	events <-chan sentry.SentryEvent,
 	auditWriter *audit.Writer,
 	baselinePath string,
 	state *daemonState,
+	invStore *sentry.InventoryStore,
 ) {
 	baseline, _ := sentry.LoadBaseline(baselinePath)
 	ruleState := sentry.NewRuleState()
@@ -332,12 +354,13 @@ func correlationEngineLoop(
 
 			atomic.AddUint64(&state.eventsProcessed, 1)
 
+			now := time.Now().UTC()
 			alerts := sentry.EvaluateEvent(
 				ev, ruleState, tree,
-				sentry.InventorySnapshot{},
+				invStore.Snapshot(now),
 				sentry.RuleConfig{},
 				baseline,
-				time.Now().UTC(),
+				now,
 			)
 			for _, alert := range alerts {
 				rec := alertToAuditRecord(alert)
