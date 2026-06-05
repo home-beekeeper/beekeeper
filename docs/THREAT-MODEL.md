@@ -1,8 +1,9 @@
 # Beekeeper Threat Model
 
-**Version:** v1.0.0  
-**Date:** 2026-05-29  
-**Status:** Published (Phase 9 capstone — final release gate)
+**Covers:** v1.0.0 + v1.2.0 (Runtime Hardening) + v1.3.0 (Multi-Harness Hook Enforcement)  
+**Originally published:** 2026-05-29 (v1.0.0, Phase 9 capstone)  
+**Last full codebase audit:** 2026-06-05  
+**Status:** Published — refreshed for v1.2.0 and v1.3.0
 
 This document describes the security properties Beekeeper provides, the
 attack surfaces it exposes, the known gaps in its defenses, and the
@@ -10,6 +11,16 @@ verification path an operator uses to confirm binary integrity. It is written
 for a technical audience: security researchers, operators, and developers who
 want to understand what they are trusting when they add Beekeeper to their
 CI pipeline or developer workstation.
+
+> **Version note.** The v1.0.0 sections below remain accurate and are preserved
+> verbatim. Two new top-level sections cover the work shipped after v1.0.0:
+> **§10 Multi-Harness Hook Enforcement (v1.3.0)** — the exit-2 deny protocol,
+> the per-harness deny contract families, the Hermes fail-OPEN class, and the
+> 15 per-harness config-file installers — and **§11 Runtime Hardening (v1.2.0):
+> SPATH, CORR, NUDGE**. The Attack Surface Summary (§1) and the Known Gaps
+> section (§8) have been refreshed to reference these. Where a v1.0.0 claim was
+> found to be stronger on paper than in code during the 2026-06-05 audit, the
+> discrepancy is called out honestly in §8 rather than silently edited.
 
 ---
 
@@ -24,6 +35,8 @@ CI pipeline or developer workstation.
 7. [Verification Path](#7-verification-path)
 8. [Known Gaps and Explicit Non-Defenses](#8-known-gaps-and-explicit-non-defenses)
 9. [Declarative Policy Overlay: Escape Hatch and Known Limitations](#9-declarative-policy-overlay-escape-hatch-and-known-limitations)
+10. [Multi-Harness Hook Enforcement (v1.3.0)](#10-multi-harness-hook-enforcement-v130)
+11. [Runtime Hardening (v1.2.0): SPATH, CORR, NUDGE](#11-runtime-hardening-v120-spath-corr-nudge)
 
 ---
 
@@ -70,12 +83,17 @@ build + Sigstore pipeline (see Section 2).
 | Surface | Risk | Mitigation |
 |---------|------|------------|
 | Beekeeper binary supply chain | Critical | Reproducible builds, Sigstore, SLSA Level 3, `beekeeper-self` feed |
-| Catalog feeds (bumblebee, OSV, Socket) | High | Corroboration semantics (see Section 3), sanity bounds, signatures |
+| Catalog feeds (bumblebee, OSV, Socket) | High | Corroboration semantics (see Section 3 + §11 CORR), sanity bounds, signatures |
+| Harness deny delivery (does the block actually stop the tool?) | High | exit-2 universal deny + per-harness deny JSON (see §10); fail-closed on unknown harness. **Tier-3 harnesses (Kilo/Trae) leave native tools unguarded; Hermes is structurally fail-OPEN** — see §10 |
+| Agent tool-call intake (`beekeeper check` stdin) | High | 1MB oversize probe, bounded JSON decode, 8s exec deadline, 256MB cap, top-level panic-recover — every path fails **closed** |
+| MCP gateway listener (`127.0.0.1:7837`) | High | constant-time bearer auth, 1MB body cap, bounded JSON-RPC parser (fuzzed), echo-back `id` correlation, token stripped before upstream. **`--bind 0.0.0.0` exposes it over plaintext HTTP — see §8** |
+| Sensitive-path runtime reads (`~/.ssh`, `.env`, MCP dirs) | High | SPATH blocklist applied **after** the allowlist overlay (most-restrictive-wins) so an allowlist cannot downgrade a credential-read block — see §11 |
+| Per-harness config-file installers (15 targets) | Medium | merge-not-clobber, per-target 0600 backup, atomic temp+rename, foreign-script preservation, user privileges only — see §10 |
+| Project/env config layer (`fail_mode`, `self_catalog.*`) | Medium | merged above user config and reaches every decision — a project-local `fail_mode:open` relaxes fail-closed; see §8 |
 | Policy file injection | Medium | `policyloader.ValidateSchema` rejects unknown fields and `exec` actions |
 | Policy allowlist override (escape hatch) | Medium | `package_allowlist` allow rules can override catalog blocks — see Section 9 |
-| Config injection via env/project | Low | Documented, operator controls trusted project directories |
-| Audit log tampering | Low | Owner-only permissions (0600), append-only writes, OTLP/syslog fan-out |
-| IPC named pipe / Unix socket | Low | OS-level owner-only permissions, no auth bypass path |
+| Audit log tampering / leakage | Low | Owner-only permissions (0600), append-only writes, redaction at check/gateway chokepoints, OTLP/syslog fan-out (see §8 for redaction field-coverage limits) |
+| IPC named pipe / Unix socket | Low | SO_PEERCRED / LOCAL_PEERCRED UID check + 0600 (Unix); SDDL DACL scoped to installing-user SID (Windows); 64KB framed cap |
 
 ---
 
@@ -542,6 +560,108 @@ to block all agent actions, but it reduces the quality of threat intelligence.
 This is an explicit availability vs. security tradeoff: bricking all agents
 for a multi-day outage was not acceptable for v1.0.0.
 
+#### Tier-3 Harnesses: Native Tools Are Unguarded (v1.3.0)
+
+Beekeeper intercepts agent tool calls through one of two mechanisms: a
+**pre-exec hook** (Tier 1/2 harnesses) or the **MCP gateway** (Tier 3). Two
+supported harnesses — **Kilo** and **Trae** — have no upstream pre-exec hook
+mechanism at all. For these, Beekeeper can only intercept tool calls that are
+routed through the MCP gateway.
+
+**The consequence:** any *native* built-in tool a Kilo or Trae agent invokes —
+Bash, file read/write, shell execution — bypasses Beekeeper entirely. Coverage
+is opt-in via gateway routing and is **partial by construction**. This is an
+upstream limitation (e.g. Kilo FR #5827), not a Beekeeper implementation bug,
+but it is a real residual coverage gap that depends on user configuration.
+
+To a lesser degree, **Windsurf** (fail-OPEN on any non-2 exit code) and
+**OpenCode** (its JS plugin does not intercept subagent `task` calls — issue
+#5894 — or, historically, MCP calls — issue #2319) also have coverage holes.
+Users who require complete pre-exec coverage should use a Tier-1 harness. See
+`docs/harness-support-matrix.md` and §10 for the full per-harness breakdown.
+
+#### Hermes Is a Structurally Fail-OPEN Harness (v1.3.0)
+
+**Hermes ignores hook exit codes.** A block is carried *only* by emitting
+`{"action":"block","message":"..."}` on stdout; any hook timeout, crash, or
+non-JSON stdout causes Hermes to **allow** the tool call. Beekeeper renders the
+exact JSON Hermes expects and suppresses its own raw decision line so it cannot
+leak ahead of the deny form (see §10), but there is no exit-code backstop: the
+block rests entirely on Hermes parsing stdout as documented. Any future Hermes
+stdout-format drift re-opens a silent-allow window. The MCP gateway is the more
+robust enforcement path for Hermes use cases.
+
+#### Gateway Remote-Bind Exposure and the Missing `allow_remote_gateway` Gate
+
+The gateway binds to `127.0.0.1` by default. The CLI help text states that
+binding to a public interface (`--bind 0.0.0.0`) "requires
+`allow_remote_gateway:true` in config." **In the current code this second-factor
+config gate does not exist** — there is no such config field and no validation;
+`--bind` flows straight to `net.Listen`. A single `--bind` flag therefore
+exposes the policy-decision proxy (and the upstream MCP server behind it) to
+off-host clients, protected only by the per-session bearer token.
+
+This is operator-initiated, not remotely triggerable (`--bind` is a CLI flag
+only — it cannot be set from a config file, so a poisoned project config cannot
+expose the gateway). However, two honesty caveats apply: (1) the help text
+promises a gate that is not implemented, which can create false confidence; and
+(2) the gateway is plain HTTP with no TLS, so a non-loopback bind sends the
+bearer token over the network in cleartext. **Recommendation:** do not bind the
+gateway to a non-loopback interface. This item is tracked for either
+implementing the gate or correcting the help text.
+
+#### Project/Env Config Layer Can Relax Fail-Closed Enforcement
+
+Beekeeper merges a project-local `.beekeeper/config.json` (discovered by walking
+up from the working directory) **above** the user config. In Beekeeper's own
+threat model the working tree is an untrusted surface — it is exactly the
+agent-cloned repository the tool exists to police. A project-local
+`{"fail_mode":"open"}` (or a dependency `postinstall` that writes one) therefore
+converts every fail-closed safety net — crash, timeout, oversized stdin,
+missing/corrupt index — into fail-open, and the same layer can disable `nudge`
+and the LlamaFirewall sidecar or repoint the `self_catalog` URL+key.
+
+The v1.0.0 model framed this under "Direct Human Malice" (the operator can
+always disable enforcement). That remains true for a deliberate operator, but
+the project layer is the *lowest-trust* file layer and is honored with the same
+precedence as a benign override, with no ownership or integrity check. A more
+defensive design would refuse fail-mode *relaxation* (closed→open) and
+`self_catalog.*` overrides from the project/env layers, accepting them only from
+user/system config. Until then: **treat the project `.beekeeper/config.json` as
+security-relevant, and do not run agents in untrusted repositories with project
+config discovery enabled if you rely on a fail-closed posture.**
+
+#### Audit Redaction Is Field-Scoped
+
+Redaction (`RedactRecord`) is applied at the `beekeeper check` and gateway
+chokepoints before records fan out to remote sinks, and it covers the primary
+credential carriers (the decision `Reason` and the raw/rewritten package-manager
+commands). It is **field-scoped**, not content-scanning: Sentry-derived fields
+(accessed file paths, network destinations, process exe paths, correlated
+extension IDs) and catalog coordinates are written verbatim, and the
+behavioral-watch audit path does not currently route through `RedactRecord` at
+all. A credential embedded in a watched file path or network destination can
+therefore reach a remote OTLP/HTTPS/syslog sink unscrubbed. The local audit file
+is owner-only (0600); remote sinks emit a "data leaving this machine" warning.
+Operators forwarding audit logs off-host should account for this field-coverage
+limit.
+
+#### Detection-Completeness Gaps in the Behavioral Sentry
+
+The Sentry is a behavioral *correlation* layer (detect/audit), not an
+enforcement chokepoint — the hook and gateway are where blocks happen. Two
+cross-signal correlation rules (fresh-extension correlation and the critical
+read-creds + fresh-extension + phone-home exfiltration-fusion rule) require an
+extension-inventory snapshot that the shipped daemons do not yet build, so those
+two rules do not fire in production today; the underlying behaviors (credential
+read, outbound connection, editor-descendant process tree) are still detected
+independently. On Windows, file/network events carry no parent-PID, so a
+short-lived or race-ordered malicious child can lose editor-descendant
+attribution. And collectors drop events under flood (the Linux fanotify path
+does not even count drops), so an attacker who floods benign events can evade
+windowed file-access rules. These reduce *detection coverage*; they do not relax
+the fail-closed enforcement path.
+
 ---
 
 ---
@@ -613,6 +733,188 @@ informational only and must not be relied upon for enforcement.
 
 ---
 
-*This document is published as part of the Beekeeper v1.0.0 release and will
-be updated when new threats are identified or mitigations change. For the
-vulnerability disclosure process, see [SECURITY.md](../SECURITY.md).*
+## 10. Multi-Harness Hook Enforcement (v1.3.0)
+
+A block decision is only worth as much as the harness's willingness to honor
+it. Beekeeper's policy engine can return a perfectly correct "block," but if the
+agent runtime ("harness") ignores it and runs the tool anyway, the user is not
+protected. This section documents the **deny-delivery** trust boundary — the
+contract between `beekeeper check` and each of the 15 supported harnesses — which
+is new in v1.3.0 and was not covered by the v1.0.0 model.
+
+### The exit-1 → exit-2 Protocol Bug and Fix
+
+In the v1.0.0/v1.1.0 era, `beekeeper check` signalled a block by **exiting 1**.
+This was a latent silent-allow defect: most agent harnesses treat exit 1 as a
+*hook error* (which they ignore or warn about), and reserve **exit 2** for an
+explicit deny. The hook fired and the block was audited, but the tool still ran.
+
+v1.3.0 fixes this with a **universal exit-2 deny contract**: on a block,
+`beekeeper check --hook <name>` exits **2**, writes the human-readable reason to
+stderr, and emits the harness-specific deny JSON (below) to stdout. Exit 2 is
+recognized as a deny by the broadest set of harnesses; the renderer falls back
+to exit 2 + stderr for any unknown harness, so an unrecognized target **fails
+closed** rather than silently allowing.
+
+### Per-Harness Deny Contract Families
+
+Harnesses do not agree on how a hook signals a block. `RenderDeny`
+(`internal/check/deny_render.go`) is table-driven over the following families:
+
+| Family | Harnesses | Deny mechanism |
+|--------|-----------|----------------|
+| Nested `hookSpecificOutput` | Claude Code, Codex, Augment, CodeBuddy, Qwen | exit 2 + stderr; OR stdout `hookSpecificOutput.permissionDecision:"deny"` |
+| Gemini-native `decision` | Gemini CLI, Antigravity | exit 2; OR stdout `{"decision":"deny","reason":"..."}` |
+| Cursor permission JSON | Cursor | exit 2; OR `{"permission":"deny","user_message":...,"agent_message":...}` (requires `failClosed:true` — Cursor is fail-OPEN by default) |
+| Flat permission JSON | Copilot | exit 2; OR flat `{"permissionDecision":"deny",...}` |
+| Cline cancel JSON | Cline | exit 2; OR `{"cancel":true,"errorMessage":"..."}` (macOS/Linux only) |
+| Hermes fail-OPEN (JSON-only) | Hermes | stdout `{"action":"block","message":"..."}` ONLY — **exit codes ignored** |
+| exit-2-only (no stdout JSON) | Windsurf, OpenCode, Kilo, Trae | exit 2 + stderr; deny carried by exit code / plugin throw / gateway |
+
+### Hermes: the Fail-OPEN / JSON-only Deny Path and the Raw-Decision-JSON Leak
+
+Hermes is the one harness that **ignores hook exit codes entirely**. The block
+is carried *only* by emitting `{"action":"block","message":"..."}` (with a
+non-empty message) as the first JSON object on stdout. This is structurally
+fail-open: a timeout, a crash, or any non-JSON stdout makes Hermes allow the
+call.
+
+A subtle silent-allow bug existed here. In `--hook` mode, the check handler also
+prints its own raw machine-readable decision (e.g. `{"Allow":false,...}`) to
+stdout. For Hermes, that raw line **preceded** the deny JSON, so Hermes parsed
+the *first* object — the raw decision — and (mis)interpreted it as an allow. The
+fix (commit f315c81) is the **`RunCheckTo(io.Discard)` seam**: in `--hook` mode
+the raw Decision JSON is written to `io.Discard` instead of stdout, so the only
+thing Hermes sees on stdout is the rendered harness deny form. An empty reason is
+also substituted with a non-empty sentinel so the required `message` field is
+never blank.
+
+This closes the *known* leak, but the Hermes block still rests entirely on
+Hermes parsing stdout as documented — there is no exit-code backstop. This class
+is listed as a known gap in §8.
+
+### The Installer Trust Boundary (15 Per-Harness Config Writers)
+
+`beekeeper hooks install --target <harness>` writes a hook entry into each
+harness's own configuration file (`~/.claude`, `~/.cursor`, `~/.hermes`, …).
+These installers run **with user privileges only — no escalation** — and follow
+fail-closed file-handling discipline:
+
+- **Merge-not-clobber:** the installer appends its hook entry only if absent; it
+  never overwrites an existing config. Foreign hooks (e.g. a user's own Cline
+  scripts) are preserved.
+- **Per-target backup:** the original config is backed up (0600) before any
+  write.
+- **Atomic write:** changes are written to a temp file and `rename`d into place,
+  so an interrupted install cannot leave a half-written config.
+- **JSONC-safe:** configs that allow comments are parsed without corrupting
+  them.
+
+Cline is **macOS/Linux only** — its hook requires a Unix executable file, so the
+Cline installer is guarded `//go:build !windows` and returns an explicit error
+on Windows rather than writing a config that cannot work.
+
+### Honest Support Ceiling: Tier 1 / 2 / 3
+
+Beekeeper is honest about how much each harness can actually be protected. Only
+**Claude Code** is *live-verified* on a real running harness (the hook was
+confirmed to block a credential-read tool call and audit it). Every other
+harness is implemented against published vendor documentation and validated by
+contract-shape unit tests that assert the correct exit code and JSON — but those
+tests **do not run a real harness**, and CI cannot verify that a given harness
+actually honors the contract.
+
+- **Tier 1 (full hook-block):** Claude Code (live-verified), plus Codex, Cursor,
+  Augment, CodeBuddy, Qwen, Gemini CLI, Copilot, Antigravity, Windsurf
+  (documented, not locally verified).
+- **Tier 2 (hook-block with caveats):** Hermes (fail-OPEN), Cline (no Windows),
+  OpenCode (plugin gaps — subagent/MCP).
+- **Tier 3 (MCP gateway only — native tools UNGUARDED):** Kilo, Trae.
+
+The full per-harness matrix, deny mechanisms, caveats, and source citations are
+in **`docs/harness-support-matrix.md`**. The Tier-3 native-tool gap and the
+Hermes fail-OPEN class are restated as known gaps in §8.
+
+---
+
+## 11. Runtime Hardening (v1.2.0): SPATH, CORR, NUDGE
+
+v1.2.0 tightened the policy engine and added runtime sensitive-path enforcement.
+These controls were not present in the v1.0.0 model.
+
+### SPATH — Sensitive-Path Runtime Enforcement
+
+Beekeeper now blocks agent reads of credential and secret paths that fall
+outside the project working directory. The default blocklist
+(`DefaultSensitivePaths`, `internal/policy/path.go`) covers paths such as
+`~/.ssh`, `~/.aws`, `~/.cargo/credentials`, `.env` globs, and editor MCP config
+directories (Cursor/Windsurf), with normalization for Windows alternate data
+streams and trailing-dot tricks. In the Sentry, paths are normalized with
+`filepath.ToSlash` so backslash paths from Windows ETW match the same rules.
+
+**The merge-ordering invariant (most important property):** in the check
+handler, the declarative policy overlay is applied **first**, and only then are
+the SPATH (sensitive-path) and NUDGE (package-manager) blocks merged in, using
+**most-restrictive-wins**. The practical guarantee is that a `package_allowlist`
+`allow` escape hatch (§9) can **never downgrade a credential-read block or a
+nudge block** — the allowlist can only relax the catalog/engine base decision,
+which is computed before the SPATH/NUDGE merge. The same parity check runs in the
+MCP gateway, so a tool call cannot escape SPATH by going through the gateway
+instead of the hook.
+
+### CORR — Per-Severity Corroboration and Anti-Poisoning Sanity Bounds
+
+The §3 corroboration model (1 source → warn, 2 → block, 3+ → quarantine) is
+extended with **per-severity thresholds**. A `critical`-severity catalog match
+can escalate to a block at a lower source count than a low-severity one. Two
+anti-poisoning guards protect this stronger escalation:
+
+- **All-versions wildcard guard (ALL-not-ANY):** a per-severity override is only
+  honored if *every* non-dissenting match is version-specific. A single injected
+  all-versions wildcard (`version: "*"`) cannot, by itself, mask a real
+  version-specific match and trigger escalation.
+- **Degraded-source suppression:** when the catalog is marked unhealthy
+  (`CatalogHealthy=false`), the per-severity overrides are suppressed and the
+  engine falls back to the flat default thresholds.
+
+> **Honesty note (audited 2026-06-05).** The "Signature Verification" and
+> "Degraded Mode" text in §3 is stronger than the current code for the *primary*
+> Bumblebee feed. In the live decision path, a Bumblebee entry's "signed" status
+> is a **presence check** (`catalog_signature` is non-empty), **not** an Ed25519
+> verification — real cryptographic verification (`VerifySignatureWithKey`) is
+> wired only for the `beekeeper-self` feed (§6). And the "degraded source counts
+> at most 0.5 toward corroboration" invariant described in §3 is **not currently
+> implemented in the corroboration counter**: a sanity-degraded source's matches
+> are not demoted to a fractional weight, and degraded-health is resolved from
+> the Bumblebee source only. The practical residual risk is a *false-positive*
+> single-source block on a `critical` entry (a coercion/DoS primitive), not a
+> malicious-allow bypass — the default two-signed-source requirement still holds
+> for non-critical entries. These discrepancies are tracked for remediation
+> (implement the weighting/verification, or correct §3). They are disclosed here
+> rather than silently edited so the audit trail is honest.
+
+### NUDGE — Package-Manager Hardening
+
+NUDGE normalizes package-manager invocations (`pnpm`/`bun`/`yarn` → `npm`
+semantics, plus `npm add`/`npm exec` verbs) so install/exec detection is not
+trivially evaded by using an alternate front-end. The package-manager detector
+that backs the soft "nudge" advisory is **fail-OPEN by design** — a slow or
+erroring package manager is treated as "not installed" so a soft advisory never
+blocks a legitimate install — and it execs only fixed argv with never-panic,
+overflow-guarded file scanners.
+
+**Known limitation (see §8 "Zero-Day Agent Tool-Call Semantics"):** install
+*parsing* is fail-open for invocation forms the parser does not recognize.
+Command-chaining (`&&`, `;`, `|`), leading environment-variable assignments
+(`FOO=bar npm install …`), and package managers not in the table (e.g. `deno`,
+`mvn`, `nuget`) parse as "no package identified" and are allowed by default
+rather than blocked. SPATH credential-read detection runs independently of this
+parser.
+
+---
+
+*This document was first published with the Beekeeper v1.0.0 release and has been
+refreshed to cover v1.2.0 (Runtime Hardening) and v1.3.0 (Multi-Harness Hook
+Enforcement). It will be updated again when new threats are identified or
+mitigations change. For the vulnerability disclosure process, see
+[SECURITY.md](../SECURITY.md).*
