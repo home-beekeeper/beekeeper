@@ -441,8 +441,8 @@ func TestInstallClaudeCodePreservesExistingHooks(t *testing.T) {
 	if !claudeEntriesContainCommand(pre, "my-existing-guard.js") {
 		t.Fatal("pre-existing PreToolUse guard was clobbered by install")
 	}
-	if !claudeEntriesContainCommand(pre, "beekeeper check") {
-		t.Fatal("beekeeper check was not added to PreToolUse")
+	if !claudeEntriesContainCommand(pre, "beekeeper check --hook claude-code") {
+		t.Fatal("beekeeper check --hook claude-code was not added to PreToolUse")
 	}
 	if len(pre) != 2 {
 		t.Fatalf("expected 2 PreToolUse entries (existing + beekeeper), got %d", len(pre))
@@ -475,8 +475,8 @@ func TestInstallClaudeCodePreservesExistingHooks(t *testing.T) {
 	m = readJSON(t, settingsPath)
 	hooks = m["hooks"].(map[string]any)
 	pre = hooks["PreToolUse"].([]any)
-	if claudeEntriesContainCommand(pre, "beekeeper check") {
-		t.Fatal("beekeeper check should be removed after uninstall")
+	if claudeEntriesContainCommand(pre, "beekeeper check --hook claude-code") {
+		t.Fatal("beekeeper check --hook claude-code should be removed after uninstall")
 	}
 	if !claudeEntriesContainCommand(pre, "my-existing-guard.js") {
 		t.Fatal("pre-existing guard must survive uninstall")
@@ -489,6 +489,73 @@ func TestInstallClaudeCodePreservesExistingHooks(t *testing.T) {
 	}
 	if m["statusLine"] == nil {
 		t.Fatal("statusLine must survive uninstall")
+	}
+}
+
+// -----------------------------------------------------------------------
+// TestInstallClaudeCodeWiresHookFlag — regression gate for HPC-01
+// -----------------------------------------------------------------------
+
+// TestInstallClaudeCodeWiresHookFlag asserts that the installed Claude Code hook
+// uses "beekeeper check --hook claude-code" (not the bare "beekeeper check" that
+// exits 1 on block — which every harness treats as a non-blocking soft error).
+// This test is the installer-level counterpart of TestRenderDeny: it proves the
+// installed command string ACTUALLY delivers the exit-2 deny adapter.
+func TestInstallClaudeCodeWiresHookFlag(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+
+	var buf bytes.Buffer
+	if err := installClaudeCode(settingsPath, false, &buf); err != nil {
+		t.Fatalf("installClaudeCode: %v", err)
+	}
+
+	// Read back and navigate to the installed PreToolUse command.
+	m := readJSON(t, settingsPath)
+	hooks, ok := m["hooks"].(map[string]any)
+	if !ok {
+		t.Fatal("hooks key missing or wrong type after install")
+	}
+	pre, ok := hooks["PreToolUse"].([]any)
+	if !ok || len(pre) == 0 {
+		t.Fatal("PreToolUse key missing or empty after install")
+	}
+
+	// Walk the entry array looking for the inner hooks command.
+	const wantCmd = "beekeeper check --hook claude-code"
+	found := false
+	for _, entry := range pre {
+		em, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		inner, ok := em["hooks"].([]any)
+		if !ok {
+			continue
+		}
+		for _, h := range inner {
+			hm, ok := h.(map[string]any)
+			if !ok {
+				continue
+			}
+			if cmd, _ := hm["command"].(string); cmd == wantCmd {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("installed PreToolUse command must be %q (not bare 'beekeeper check'); got entries: %v", wantCmd, pre)
+	}
+
+	// Idempotency: install again in the same settings; must not duplicate the entry.
+	if err := installClaudeCode(settingsPath, false, &buf); err != nil {
+		t.Fatalf("installClaudeCode (2nd): %v", err)
+	}
+	m2 := readJSON(t, settingsPath)
+	hooks2 := m2["hooks"].(map[string]any)
+	pre2 := hooks2["PreToolUse"].([]any)
+	if len(pre2) != 1 {
+		t.Fatalf("idempotency failure: expected 1 PreToolUse entry after 2nd install, got %d", len(pre2))
 	}
 }
 

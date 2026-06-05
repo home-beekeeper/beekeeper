@@ -13,7 +13,7 @@ import (
 // Beekeeper's hook command strings, used both to build the entries and to detect
 // their presence for idempotent install / targeted uninstall.
 const (
-	claudePreCommand  = "beekeeper check"
+	claudePreCommand  = "beekeeper check --hook claude-code"
 	claudePostCommand = "beekeeper audit-record"
 )
 
