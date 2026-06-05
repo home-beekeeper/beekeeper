@@ -73,6 +73,9 @@ func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds, ac
 
 	// Bulk editor-extension install: if a single command installs 2+ extensions,
 	// evaluate each one and return the worst decision (block > warn > allow).
+	// The Quarantine flag is propagated from any constituent decision that carries
+	// it — a bulk install containing a 3-source/critical item must quarantine even
+	// though the merged worst-level comparison happens on Level alone (TM-B-04).
 	if ecosystem == "editor-extension" {
 		if cmd, cmdOK := tc.ToolInput["command"].(string); cmdOK {
 			if strings.Count(strings.ToLower(cmd), "--install-extension ") >= 2 {
@@ -92,6 +95,11 @@ func Evaluate(tc ToolCall, idx MultiCatalogLookup, t CorroborationThresholds, ac
 					d := Evaluate(sub, idx, t, ac)
 					if levelRank[d.Level] > levelRank[worst.Level] {
 						worst = d
+					} else if d.Level == worst.Level && d.Quarantine && !worst.Quarantine {
+						// Same severity level but this sub-decision warrants quarantine:
+						// promote the Quarantine flag on the existing worst decision so
+						// the merged result correctly quarantines (TM-B-04).
+						worst.Quarantine = true
 					}
 				}
 				return worst

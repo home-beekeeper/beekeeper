@@ -45,7 +45,13 @@ type StatusResponse struct {
 	EventsDropped    uint64 `json:"events_dropped"`
 	BaselineActive   bool   `json:"baseline_active"`
 	BaselineDaysLeft int    `json:"baseline_days_left"`
-	SockPath         string `json:"sock_path"`
+	// BaselinePermanent is true when DurationDays < 0 (permanent learning mode).
+	// When true, BaselineDaysLeft is meaningless and should not be displayed.
+	// Permanent baseline mode suppresses QuarantineRec indefinitely — it must be
+	// surfaced prominently so operators cannot mistake warn-only alerts for full
+	// enforcement (TM-RS-03).
+	BaselinePermanent bool   `json:"baseline_permanent"`
+	SockPath          string `json:"sock_path"`
 }
 
 // RuleInfo describes a single Sentry rule.

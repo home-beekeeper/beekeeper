@@ -148,8 +148,12 @@ func handleIPCConn(conn net.Conn, state *daemonState, stateDir string) {
 		baselinePath := filepath.Join(stateDir, "sentry-baseline.json")
 		baseline, _ := sentry.LoadBaseline(baselinePath)
 		now := time.Now().UTC()
+		permanent := baseline.DurationDays < 0
 		daysLeft := 0
-		if sentry.IsBaselineActive(baseline, now) {
+		if sentry.IsBaselineActive(baseline, now) && !permanent {
+			// Only compute remaining days for finite-duration baselines (DurationDays > 0).
+			// For permanent baselines (DurationDays < 0) the duration arithmetic is
+			// nonsensical — set daysLeft=0 and surface BaselinePermanent=true (TM-RS-03).
 			remaining := time.Until(baseline.StartedAt.Add(
 				time.Duration(baseline.DurationDays) * 24 * time.Hour,
 			))
@@ -157,16 +161,17 @@ func handleIPCConn(conn net.Conn, state *daemonState, stateDir string) {
 		}
 
 		sr := ipc.StatusResponse{
-			DaemonPID:        os.Getpid(),
-			Uptime:           uptime,
-			Tier:             0,
-			TierReason:       "macOS eslogger (no entitlement)",
-			RulesActive:      rulesActive,
-			EventsProcessed:  ep,
-			EventsDropped:    dropped,
-			BaselineActive:   sentry.IsBaselineActive(baseline, now),
-			BaselineDaysLeft: daysLeft,
-			SockPath:         filepath.Join(stateDir, "sentry.sock"),
+			DaemonPID:         os.Getpid(),
+			Uptime:            uptime,
+			Tier:              0,
+			TierReason:        "macOS eslogger (no entitlement)",
+			RulesActive:       rulesActive,
+			EventsProcessed:   ep,
+			EventsDropped:     dropped,
+			BaselineActive:    sentry.IsBaselineActive(baseline, now),
+			BaselineDaysLeft:  daysLeft,
+			BaselinePermanent: permanent,
+			SockPath:          filepath.Join(stateDir, "sentry.sock"),
 		}
 		payload, _ := json.Marshal(sr)
 		resp = ipc.IPCResponse{Kind: "status_response", Payload: payload}

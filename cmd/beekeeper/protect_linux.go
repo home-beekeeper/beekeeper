@@ -108,6 +108,17 @@ func runProtectStatus(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(out, "Rules:      %d/5 active\n", sr.RulesActive)
 	fmt.Fprintf(out, "Events:     %d processed, %d dropped\n", sr.EventsProcessed, sr.EventsDropped)
 	fmt.Fprintf(out, "IPC socket: %s\n", sr.SockPath)
+	// TM-RS-03: baseline status must be surfaced prominently so permanent
+	// learn-only mode (quarantine suppressed) cannot mask enforcement silently.
+	if sr.BaselineActive {
+		if sr.BaselinePermanent {
+			fmt.Fprintf(out, "Baseline:   PERMANENT LEARNING MODE — quarantine suppressed indefinitely (duration_days<0); set duration_days>=0 to enable quarantine\n")
+		} else {
+			fmt.Fprintf(out, "Baseline:   active (%d day(s) remaining) — quarantine suppressed during learning window\n", sr.BaselineDaysLeft)
+		}
+	} else {
+		fmt.Fprintf(out, "Baseline:   inactive — full enforcement (quarantine enabled)\n")
+	}
 	return nil
 }
 

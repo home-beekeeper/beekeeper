@@ -724,6 +724,43 @@ func TestBunAddCatalogMatch(t *testing.T) {
 	}
 }
 
+// TestBulkExtensionInstallQuarantinePropagated verifies TM-B-04: a bulk
+// multi-extension install command that contains a 3-source/critical item must
+// produce a merged Decision with Quarantine=true. Previously the bulk path
+// tracked levelRank only and silently dropped the Quarantine flag, so the
+// merged Decision would block without quarantining the offending extension.
+func TestBulkExtensionInstallQuarantinePropagated(t *testing.T) {
+	// evil.ext is matched by three signed sources → should quarantine.
+	// safe.ext has no catalog entry → allow.
+	idx := newFakeMulti(map[string][]CatalogMatch{
+		"editor-extension::evil.ext": {
+			{CatalogSource: "bumblebee", Ecosystem: "editor-extension", Package: "evil.ext", Signed: true, Severity: "high"},
+			{CatalogSource: "osv", Ecosystem: "editor-extension", Package: "evil.ext", Signed: true, Severity: "high"},
+			{CatalogSource: "socket", Ecosystem: "editor-extension", Package: "evil.ext", Signed: true, Severity: "high"},
+		},
+	})
+	tc := ToolCall{
+		ToolName: "Bash",
+		ToolInput: map[string]any{
+			"command": "code --install-extension safe.ext --install-extension evil.ext",
+		},
+	}
+	d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
+
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q — bulk install with 3-source item must block", d.Level, "block")
+	}
+	if d.Allow {
+		t.Error("Allow = true, want false — bulk install must be denied")
+	}
+	if !d.Quarantine {
+		t.Error("Quarantine = false, want true — 3-source constituent must propagate Quarantine to bulk merged Decision (TM-B-04)")
+	}
+	if d.CorroborationCount != 3 {
+		t.Errorf("CorroborationCount = %d, want 3 (from 3-source evil.ext match)", d.CorroborationCount)
+	}
+}
+
 // TestEngineImportsArePure enforces the purity contract: engine.go must not
 // import any package that performs I/O, concurrency, or wall-clock access.
 func TestEngineImportsArePure(t *testing.T) {

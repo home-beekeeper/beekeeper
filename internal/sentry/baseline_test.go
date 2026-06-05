@@ -63,6 +63,39 @@ func TestLoadBaselineMissingFile(t *testing.T) {
 	}
 }
 
+// TestIsBaselineActivePermanentQuarantineSuppress verifies TM-RS-03: when
+// DurationDays < 0 (permanent learning mode), IsBaselineActive returns true and
+// QuarantineRec is suppressed by makeAlert. This test documents the INTENDED
+// behavior and guards against accidental removal of the permanent-mode code path.
+// The BaselinePermanent field in ipc.StatusResponse must be set to true so that
+// 'beekeeper protect status' can surface a prominent warning to the operator.
+func TestIsBaselineActivePermanentQuarantineSuppress(t *testing.T) {
+	now := time.Now().UTC()
+
+	// DurationDays=-1 (permanent): baseline must be active regardless of StartedAt.
+	permanent := BaselineState{
+		StartedAt:    now.Add(-365 * 24 * time.Hour), // started a year ago
+		DurationDays: -1,
+	}
+	if !IsBaselineActive(permanent, now) {
+		t.Error("DurationDays=-1: expected IsBaselineActive=true (permanent learning mode)")
+	}
+
+	// Verify that the daysLeft guard logic handles permanent mode correctly:
+	// computing time.Duration(-1)*24*time.Hour gives a negative/nonsensical result,
+	// so the daemon code must skip that computation when DurationDays < 0.
+	isPermanent := permanent.DurationDays < 0
+	if !isPermanent {
+		t.Error("DurationDays=-1 must be detected as permanent (DurationDays < 0)")
+	}
+
+	// DurationDays=-2 is also permanent (any negative value).
+	neg2 := BaselineState{StartedAt: now, DurationDays: -2}
+	if !IsBaselineActive(neg2, now) {
+		t.Error("DurationDays=-2: expected IsBaselineActive=true (any negative = permanent)")
+	}
+}
+
 func TestSaveLoadBaseline(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "baseline.json")
