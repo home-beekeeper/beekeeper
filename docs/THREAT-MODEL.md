@@ -877,21 +877,33 @@ anti-poisoning guards protect this stronger escalation:
   (`CatalogHealthy=false`), the per-severity overrides are suppressed and the
   engine falls back to the flat default thresholds.
 
-> **Honesty note (audited 2026-06-05).** The "Signature Verification" and
-> "Degraded Mode" text in §3 is stronger than the current code for the *primary*
-> Bumblebee feed. In the live decision path, a Bumblebee entry's "signed" status
-> is a **presence check** (`catalog_signature` is non-empty), **not** an Ed25519
-> verification — real cryptographic verification (`VerifySignatureWithKey`) is
-> wired only for the `beekeeper-self` feed (§6). And the "degraded source counts
-> at most 0.5 toward corroboration" invariant described in §3 is **not currently
-> implemented in the corroboration counter**: a sanity-degraded source's matches
-> are not demoted to a fractional weight, and degraded-health is resolved from
-> the Bumblebee source only. The practical residual risk is a *false-positive*
-> single-source block on a `critical` entry (a coercion/DoS primitive), not a
-> malicious-allow bypass — the default two-signed-source requirement still holds
-> for non-critical entries. These discrepancies are tracked for remediation
-> (implement the weighting/verification, or correct §3). They are disclosed here
-> rather than silently edited so the audit trail is honest.
+> **Honesty note (audited 2026-06-05; updated post-remediation).**
+>
+> **Degraded-source suppression (TM-B-01, partially remediated):**
+> `ResolveHealthy` now checks ALL catalog sources (bumblebee, OSV, Socket, and
+> any future source) — not only the bumblebee source. A sanity-degraded OSV or
+> Socket source suppresses the per-severity override escalation the same way a
+> degraded bumblebee source does. The "degraded source counts at most 0.5 toward
+> corroboration" fractional-weight invariant described in §3 is **not
+> implemented in the corroboration counter** and is not implemented by intent at
+> this time — full fractional weighting is a core decision-semantics change
+> (block/warn/quarantine thresholds) that requires separate design and review.
+> The practical residual risk is a *false-positive* single-source block on a
+> `critical` entry (a coercion/DoS primitive, not a malicious-allow bypass) only
+> when no source is sanity-degraded; when any source is degraded, escalation is
+> now suppressed across all sources. The §3 "0.5 weight" language overstates the
+> current implementation and will be corrected in a future doc pass.
+>
+> **Signature verification (TM-B-02, not yet remediated):** In the live decision
+> path, a Bumblebee entry's "signed" status remains a **presence check**
+> (`catalog_signature` is non-empty), **not** an Ed25519 verification — real
+> cryptographic verification (`VerifySignatureWithKey`) is wired only for the
+> `beekeeper-self` feed (§6). Production Bumblebee entries are already
+> `Signed:false`, so the realistic primitive is a single tampered critical entry
+> → single-source false-positive block, not a malicious-allow bypass. Wiring
+> Ed25519 verification into the Bumblebee decision path remains tracked for
+> remediation. These discrepancies are disclosed here rather than silently
+> edited so the audit trail is honest.
 
 ### NUDGE — Package-Manager Hardening
 
