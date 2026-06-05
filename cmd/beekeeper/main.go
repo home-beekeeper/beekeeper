@@ -1131,7 +1131,7 @@ func newHooksCmd() *cobra.Command {
 			return nil
 		},
 	}
-	installCmd.Flags().StringVar(&target, "target", "", "Agent CLI target (claude-code, cursor, codex, continue, opencode, openclaw)")
+	installCmd.Flags().StringVar(&target, "target", "", "Agent CLI target (claude-code, cursor, codex, augment, codebuddy, qwen, continue, opencode, openclaw)")
 	installCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print what would be written without modifying files")
 	installCmd.Flags().BoolVar(&force, "force", false, "Overwrite existing hooks without prompting")
 	_ = installCmd.MarkFlagRequired("target")
@@ -1154,7 +1154,7 @@ func newHooksCmd() *cobra.Command {
 			return nil
 		},
 	}
-	uninstallCmd.Flags().StringVar(&uninstallTarget, "target", "", "Agent CLI target (claude-code, cursor, codex, continue, opencode, openclaw)")
+	uninstallCmd.Flags().StringVar(&uninstallTarget, "target", "", "Agent CLI target (claude-code, cursor, codex, augment, codebuddy, qwen, continue, opencode, openclaw)")
 	uninstallCmd.Flags().BoolVar(&uninstallDryRun, "dry-run", false, "Print what would be removed without modifying files")
 	_ = uninstallCmd.MarkFlagRequired("target")
 	hooksCmd.AddCommand(uninstallCmd)

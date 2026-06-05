@@ -1,7 +1,8 @@
 // Package hooks implements the beekeeper hook installer and uninstaller.
 // It writes PreToolUse/PostToolUse hooks into the correct settings files for
-// Claude Code, Cursor, and Codex CLI. Gateway-based targets (Continue, OpenCode,
-// OpenClaw) receive printed configuration guidance rather than a file write.
+// Claude Code, Cursor, Codex, Augment, CodeBuddy, and Qwen. Gateway-based
+// targets (Continue, OpenCode, OpenClaw) receive printed configuration
+// guidance rather than a file write.
 package hooks
 
 import (
@@ -18,6 +19,9 @@ const (
 	TargetClaudeCode = "claude-code"
 	TargetCursor     = "cursor"
 	TargetCodex      = "codex"
+	TargetAugment    = "augment"
+	TargetCodeBuddy  = "codebuddy"
+	TargetQwen       = "qwen"
 	TargetContinue   = "continue"
 	TargetOpenCode   = "opencode"
 	TargetOpenClaw   = "openclaw"
@@ -32,11 +36,15 @@ var gatewayTargets = map[string]bool{
 }
 
 // fileTargets is the ordered list of targets that write files.
-var fileTargets = []string{TargetClaudeCode, TargetCursor, TargetCodex}
+var fileTargets = []string{
+	TargetClaudeCode, TargetCursor, TargetCodex,
+	TargetAugment, TargetCodeBuddy, TargetQwen,
+}
 
 // allTargets is the complete list of supported targets.
 var allTargets = []string{
 	TargetClaudeCode, TargetCursor, TargetCodex,
+	TargetAugment, TargetCodeBuddy, TargetQwen,
 	TargetContinue, TargetOpenCode, TargetOpenClaw,
 }
 
@@ -75,12 +83,24 @@ func InstallTo(target string, dryRun bool, force bool, out io.Writer) error {
 		hooksPath := codexHooksPath(homeDir)
 		return installCodex(hooksPath, dryRun, out)
 
+	case TargetAugment:
+		settingsPath := augmentSettingsPath(homeDir)
+		return installAugment(settingsPath, dryRun, out)
+
+	case TargetCodeBuddy:
+		settingsPath := codebuddySettingsPath(homeDir)
+		return installCodeBuddy(settingsPath, dryRun, out)
+
+	case TargetQwen:
+		settingsPath := qwenSettingsPath(homeDir)
+		return installQwen(settingsPath, dryRun, out)
+
 	case TargetContinue, TargetOpenCode, TargetOpenClaw:
 		return printGatewayGuide(target, out)
 
 	default:
 		return fmt.Errorf(
-			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, continue, opencode, openclaw",
+			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, continue, opencode, openclaw",
 			target,
 		)
 	}
@@ -116,6 +136,18 @@ func UninstallTo(target string, dryRun bool, out io.Writer) error {
 		hooksPath := codexHooksPath(homeDir)
 		return uninstallCodex(hooksPath, dryRun, out)
 
+	case TargetAugment:
+		settingsPath := augmentSettingsPath(homeDir)
+		return uninstallAugment(settingsPath, dryRun, out)
+
+	case TargetCodeBuddy:
+		settingsPath := codebuddySettingsPath(homeDir)
+		return uninstallCodeBuddy(settingsPath, dryRun, out)
+
+	case TargetQwen:
+		settingsPath := qwenSettingsPath(homeDir)
+		return uninstallQwen(settingsPath, dryRun, out)
+
 	case TargetContinue, TargetOpenCode, TargetOpenClaw:
 		fmt.Fprintf(out, "No files were written for %s — nothing to uninstall.\n", target)
 		fmt.Fprintf(out, "Remove the Beekeeper MCP server entry from your %s configuration manually.\n", target)
@@ -123,7 +155,7 @@ func UninstallTo(target string, dryRun bool, out io.Writer) error {
 
 	default:
 		return fmt.Errorf(
-			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, continue, opencode, openclaw",
+			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, continue, opencode, openclaw",
 			target,
 		)
 	}
