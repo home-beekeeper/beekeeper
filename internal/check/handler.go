@@ -35,8 +35,14 @@ import (
 const (
 	// maxStdin is the 1MB hard cap on tool-call JSON read from stdin (HOOK-04).
 	maxStdin = 1 << 20
-	// execTimeout is the 5s execution deadline for a single check (HOOK-04).
-	execTimeout = 5 * time.Second
+	// execTimeout is the execution deadline for a single check (HOOK-04). It must
+	// exceed the worst-case sum of the network catalog sub-context (OSV/Socket get
+	// 3s, WR-05) and the package-manager detection deadline (nudge.detectionTimeout
+	// = 3s after the Windows pnpm.cmd measurement — see internal/nudge/detect.go),
+	// so a slow-but-benign install nudge stays fail-OPEN (advisory) instead of the
+	// outer deadline tripping into a fail-CLOSED block of the install. 8s leaves
+	// ~2s of slack and stays well within Claude Code's 60s hook timeout.
+	execTimeout = 8 * time.Second
 	// memLimit is the 256MB soft memory cap for the process (HOOK-04).
 	memLimit = 256 * 1024 * 1024
 

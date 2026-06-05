@@ -41,10 +41,19 @@ import (
 // callers (gateway, check hook) see the same tunable value.
 //
 // Pitfall 1 (Windows corepack timing): corepack-shimmed pnpm on Windows may be
-// slower on first call due to Node bootstrap. The 2s timeout is intentional —
-// on timeout the PM is treated as "not installed" and the agent proceeds (never
-// blocks). The gateway 60s Cache amortizes the cost for long-lived sessions.
-var detectionTimeout = 2 * time.Second
+// slower on first call due to Node bootstrap. Live dogfood measurement on a
+// Windows dev box (pnpm 11.1.3 via the %APPDATA%\npm\pnpm.cmd shim) found
+// `pnpm --version` averaging ~1.75s with a ~2.7s tail — so the original 2s
+// deadline tripped on ~17% (4/24) of invocations, intermittently misreporting
+// pnpm as "not installed" and silently skipping the advisory. The deadline is
+// now 3s to cover the measured tail with margin. On timeout the PM is still
+// treated as "not installed" and the agent proceeds (never blocks — fail-open
+// §10-12); the gateway 60s Cache amortizes the cost for long-lived sessions.
+// Unix probes return in well under 1s, so 3s only widens the Windows hang-cap.
+// NOTE: the check hook's execTimeout (internal/check/handler.go) is sized to
+// exceed the OSV/Socket net sub-context (3s) PLUS this deadline, so a slow
+// detection can never push the outer deadline into a fail-CLOSED block.
+var detectionTimeout = 3 * time.Second
 
 // pnpmVersionFn, bunVersionFn, nodeVersionFn are the injectable package-level
 // vars for the PM version exec calls. Tests substitute slow/erroring fakes to
