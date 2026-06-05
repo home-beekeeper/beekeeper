@@ -59,7 +59,7 @@ To verify binary integrity and determine safe next steps, run:
 
   make verify-release VERSION=<your-version>
         - or -
-  cosign verify --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/heads/main \
+  cosign verify --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
                 --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
                 <binary-path>
         - or -

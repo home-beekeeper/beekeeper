@@ -132,7 +132,7 @@ Verify with cosign:
 
 ```bash
 cosign verify \
-  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/heads/main \
+  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```
@@ -439,7 +439,7 @@ the released binary was not produced from the tagged source.
 
 ```bash
 cosign verify \
-  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/heads/main \
+  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```
