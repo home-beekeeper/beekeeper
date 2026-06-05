@@ -536,6 +536,46 @@ func TestInstallGatewayTarget(t *testing.T) {
 	}
 }
 
+// TestInstallGatewayTargetKiloTraeUNGUARDED asserts that the Kilo and Trae
+// gateway guides explicitly state that native tools are UNGUARDED — the
+// critical honesty requirement (T-10-22: Kilo/Trae have no pre-exec hook so
+// their native Bash/file tools cannot be intercepted).
+func TestInstallGatewayTargetKiloTraeUNGUARDED(t *testing.T) {
+	for _, target := range []string{TargetKilo, TargetTrae} {
+		t.Run(target, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := printGatewayGuide(target, &buf); err != nil {
+				t.Fatalf("printGatewayGuide(%s): %v", target, err)
+			}
+
+			out := buf.String()
+
+			// Must mention the gateway URL (MCP interception is available).
+			if !strings.Contains(out, "127.0.0.1:7837") {
+				t.Fatalf("expected gateway URL in %s guide, got: %s", target, out)
+			}
+
+			// HONESTY GATE: must state native tools are UNGUARDED.
+			// This is the critical caveat that distinguishes Tier-3 from Tier-1.
+			if !strings.Contains(out, "UNGUARDED") {
+				t.Fatalf("%s guide must explicitly state native tools are UNGUARDED (T-10-22); got: %s", target, out)
+			}
+
+			// Must not write any files (gateway targets print-only).
+			dir := t.TempDir()
+			var buf2 bytes.Buffer
+			filesBefore, _ := filepath.Glob(filepath.Join(dir, "*"))
+			if err := printGatewayGuide(target, &buf2); err != nil {
+				t.Fatalf("printGatewayGuide(%s): %v", target, err)
+			}
+			filesAfter, _ := filepath.Glob(filepath.Join(dir, "*"))
+			if len(filesAfter) != len(filesBefore) {
+				t.Fatalf("%s guide must not write files; %d before, %d after", target, len(filesBefore), len(filesAfter))
+			}
+		})
+	}
+}
+
 // -----------------------------------------------------------------------
 // TestUninstallClaudeCode
 // -----------------------------------------------------------------------
