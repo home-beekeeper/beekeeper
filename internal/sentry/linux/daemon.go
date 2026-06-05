@@ -150,7 +150,7 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 
 	go func() {
 		_ = ipcSrv.Serve(ctx, func(conn net.Conn) {
-			handleIPCConn(conn, state, sockPath)
+			handleIPCConn(conn, state, stateDir)
 		})
 	}()
 
@@ -160,7 +160,9 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 
 // handleIPCConn decodes a single IPCCommand from conn, dispatches it, and
 // encodes the IPCResponse back. Called per-connection by the IPC server.
-func handleIPCConn(conn net.Conn, state *daemonState, sockPath string) {
+// stateDir is the platform state directory used to locate sentry-baseline.json
+// and to report the socket path — mirrors Windows handleIPCConn (TM-RS-04).
+func handleIPCConn(conn net.Conn, state *daemonState, stateDir string) {
 	var cmd ipc.IPCCommand
 	if err := ipc.Decode(conn, &cmd); err != nil {
 		return
@@ -182,7 +184,10 @@ func handleIPCConn(conn net.Conn, state *daemonState, sockPath string) {
 		dropped := atomic.LoadUint64(&EventsDropped)
 		state.mu.RUnlock()
 
-		baselinePath := sockPath + "-baseline.json"
+		// TM-RS-04: read the canonical stateDir path, matching the engine's write
+		// path at correlationEngineLoop (baselinePath = stateDir/sentry-baseline.json).
+		// Windows handleIPCConn already uses this pattern correctly.
+		baselinePath := filepath.Join(stateDir, "sentry-baseline.json")
 		baseline, _ := sentry.LoadBaseline(baselinePath)
 		now := time.Now().UTC()
 		daysLeft := 0
@@ -203,7 +208,7 @@ func handleIPCConn(conn net.Conn, state *daemonState, sockPath string) {
 			EventsDropped:    dropped,
 			BaselineActive:   sentry.IsBaselineActive(baseline, now),
 			BaselineDaysLeft: daysLeft,
-			SockPath:         sockPath,
+			SockPath:         filepath.Join(stateDir, "sentry.sock"),
 		}
 		payload, _ := json.Marshal(sr)
 		resp = ipc.IPCResponse{Kind: "status_response", Payload: payload}
