@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -143,6 +144,8 @@ func readFanotifyEvents(fanFd int, buf []byte, events chan<- sentry.SentryEvent)
 
 		// Non-blocking send — drop if channel full; fd already closed and
 		// FAN_ALLOW already sent so there is no kernel-side resource leak.
+		// TM-RS-06: increment EventsDropped (shared with eBPF path in ebpf.go)
+		// so channel saturation is observable in 'beekeeper diag' / status IPC.
 		ev := sentry.SentryEvent{
 			Kind:     sentry.EventFileAccess,
 			PID:      uint32(meta.Pid),
@@ -152,6 +155,7 @@ func readFanotifyEvents(fanFd int, buf []byte, events chan<- sentry.SentryEvent)
 		select {
 		case events <- ev:
 		default:
+			atomic.AddUint64(&EventsDropped, 1)
 		}
 
 		offset += int(meta.Event_len)
