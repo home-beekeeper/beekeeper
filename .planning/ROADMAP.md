@@ -179,7 +179,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | 7. Cross-Platform Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | v1.0.0 | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | v1.0.0 | 5/5 | Complete | 2026-05-29 |
-| 10. Cross-Phase Integration Closure | v1.0.0 | 1/1 | Complete | 2026-06-01 |
+| 10. Cross-Phase Integration Closure | v1.0.0 | 3/6 | In Progress|  |
 | 11. v1.0.0 PRD-Gap Closure (pre-push) | v1.0.0 | 1/1 | Complete | 2026-06-01 |
 | **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
 | **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
@@ -231,7 +231,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 10-04-PLAN.md — Copilot/Gemini/Antigravity/Windsurf installers, non-Claude deny families (HPC-02/03) [wave 3]
+- [x] 10-04-PLAN.md — Copilot/Gemini/Antigravity/Windsurf installers, non-Claude deny families (HPC-02/03) [wave 3]
 
 **Wave 4** *(blocked on Wave 3 completion)*
 

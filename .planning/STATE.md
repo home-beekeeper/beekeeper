@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.3.0
-milestone_name: hook-block-protocol-compliance-and-multi-harness-enforcement
+milestone_name: milestone
 status: executing
-stopped_at: "Phase 10 plan 03 complete (95ee9ed, a4211d0, 978fc4e). Cursor event-name fix + Codex features flag + Augment/CodeBuddy/Qwen installers + contract-shape tests. NEXT: /gsd-execute-phase 10 plan 04."
-last_updated: "2026-06-05T12:00:00.000Z"
-last_activity: 2026-06-05 -- Phase 10 plan 03 executed (3/3 tasks, 3 commits)
+stopped_at: Completed 10-04-PLAN.md
+last_updated: "2026-06-05T12:10:50.942Z"
+last_activity: "2026-06-05 -- Phase 10 plan 03 executed (3 tasks, 3 commits: 95ee9ed a4211d0 978fc4e)"
 progress:
-  total_phases: 10
-  completed_phases: 8
-  total_plans: 45
-  completed_plans: 39
-  percent: 82
+  total_phases: 6
+  completed_phases: 4
+  total_plans: 26
+  completed_plans: 22
+  percent: 67
 ---
 
 # Project State
@@ -30,8 +30,8 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 > **SUPERSEDED 2026-06-05 — read this first.** v1.2.0 is SHIPPED & ARCHIVED (tag `v1.2.0`; the "READY FOR CLOSE" lines below are stale pre-close text). **NEW critical finding:** a live dogfood proved Beekeeper's PreToolUse hook fires + decides "block" but harnesses run the tool anyway — `beekeeper check` exits `1`, but harnesses need exit `2` / a per-harness deny JSON. **The hook-block path is non-functional on every hook-based harness** (Claude Code/Cursor/Codex); shim + MCP-gateway paths are unaffected. **Phase 10 "Hook-Block Protocol Compliance & Multi-Harness Enforcement" inserted (seeds v1.3.0) — NOT yet planned.** Research + Context live in the phase folder: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/{10-RESEARCH.md, 10-CONTEXT.md}` (15-harness deny-contract matrix in 10-RESEARCH.md). **NEXT: `/gsd-plan-phase 10`** (read the research first; expect ≥2 sub-phases). The 4 prerequisite fixes are now on `main` (commits `adc1f77` nudge/timeout, `50513ae` hooks clobber→merge — fast-forward merged 2026-06-05; the `fix/windows-pnpm-timeout-and-hook-merge` branch is fully merged/redundant, deletable with `git branch -d`). **Phase 10 executes on `main`** (GSD runs the phase on the current branch; HEAD is on main). Planning artifacts (ROADMAP/STATE/phase-10 dir) remain uncommitted. Roadmap evolution: Phase 10 added 2026-06-05.
 
 Phase: 10 (hook-block-protocol-compliance-and-multi-harness-enforcement) — EXECUTING
-Plan: 4 of 6 (plans 01, 03 complete; plan 02 is checkpoint-only)
-Status: Executing Phase 10
+Plan: 5 of 6 (plans 01, 03 complete; plan 02 is checkpoint-only)
+Status: Ready to execute
 Last activity: 2026-06-05 -- Phase 10 plan 03 executed (3 tasks, 3 commits: 95ee9ed a4211d0 978fc4e)
 
 Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete & verified — milestone ready for close)
@@ -131,6 +131,9 @@ Recent decisions from Phase 07 (v1.2.0 — Sensitive-Path Runtime Enforcement):
 - extractBashCredentialPaths scans ALL read-verb occurrences (moving-offset loop, CR-01 fix) and firstShellToken skips leading flag tokens (handles `cat -n …` and `a && cat ~/.ssh/id_rsa`).
 - isAllowedPath gained a basename branch (no-separator patterns match lastSegment) — required for AllowPatterns (.env.example/.test/.schema) to take effect (Pitfall 2). extractTargetPath (policyloader) reads file_path primary, path fallback (both `!= ""` guarded).
 - DefaultSensitivePaths added /.cursor/, /.windsurf/, bare /.cargo/credentials (D-02). D-03: SPATH wired into `beekeeper check` ONLY (no gateway/watch/scan).
+- [Phase ?]: Antigravity settings path: ~/.gemini/antigravity/hooks.json (primary); .agents/hooks.json documented as project-local alternative
+- [Phase ?]: Windsurf: exit-2-only deny (no stdout JSON); installer uses runtime.GOOS branch for powershell vs command key
+- [Phase ?]: Gemini hooks in settings.json top-level hooks array, not nested event map
 
 ### Open Research Flags (v1.2.0)
 
@@ -161,12 +164,13 @@ Items acknowledged and carried forward:
 | Phase 06 P01 | 440 | 3 tasks | 5 files |
 | Phase 06 P02 | 171 | 2 tasks | 4 files |
 | Phase 06-corroboration-severity-hardening P03 | 15 | 3 tasks | 9 files |
+| Phase 10 P04 | 7 minutes | 3 tasks | 6 files |
 
 ## Session Continuity
 
-Last session: 2026-06-05 — live dogfood of shipped v1.2.0 (acting as the guarded agent) + Phase 10 insertion.
-Stopped at: Phase 10 inserted (hook-block protocol fix; seeds v1.3.0). Research + 10-CONTEXT.md + 10-LIVE-TEST-RESUME.md written; settings.json restored byte-exact. 4 prerequisite fixes merged to `main` (adc1f77, 50513ae); planning artifacts (ROADMAP/STATE/phase-10 dir) still uncommitted. On branch `main`. NEXT: `/gsd-plan-phase 10` (read the phase's `10-RESEARCH.md` first).
-Resume file: .planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/10-CONTEXT.md
+Last session: 2026-06-05T12:10:50.908Z
+Stopped at: Completed 10-04-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
