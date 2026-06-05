@@ -137,6 +137,37 @@ func defaultRunPollen(ctx context.Context, deep bool) (<-chan []byte, bool) {
 	return ch, true
 }
 
+// pollenAllowedRecordTypes is the exhaustive set of record_type values that a
+// legitimate Pollen binary may emit. Any record whose record_type is absent from
+// this set is dropped before being appended to the audit log to prevent a
+// PATH-hijacked pollen from injecting arbitrary record_type lines (TM-RS-07).
+//
+// The set covers the five documented Pollen output types (npm package, editor-
+// extension, browser-extension, mcp-config, scan_summary) plus the two
+// self-generated error types that Beekeeper itself synthesises when pollen exits
+// non-zero or emits malformed JSON.
+var pollenAllowedRecordTypes = map[string]bool{
+	"package":      true, // npm, editor-extension, browser-extension, mcp-config
+	"finding":      true, // pollen vulnerability finding record
+	"scan_summary": true, // end-of-scan summary
+	"scan_error":   true, // non-zero exit / malformed NDJSON (beekeeper-synthesised)
+	"scan_status":  true, // pollen unavailable notice (beekeeper-synthesised)
+}
+
+// pollenRecordTypeAllowed reports whether a raw NDJSON line emitted by pollen
+// carries a known-valid record_type. It returns false for any record with a
+// missing, null, non-string, or unrecognised record_type, preventing log
+// injection into beekeeper.ndjson (TM-RS-07).
+func pollenRecordTypeAllowed(line []byte) bool {
+	var probe struct {
+		RecordType string `json:"record_type"`
+	}
+	if err := json.Unmarshal(line, &probe); err != nil {
+		return false
+	}
+	return pollenAllowedRecordTypes[probe.RecordType]
+}
+
 // Scan orchestrates the Pollen CLI (when available) and the Beekeeper-own
 // per-extension catalog/release-age scan, writing merged NDJSON results to out.
 func Scan(ctx context.Context, cfg Config, out io.Writer) error {
@@ -165,7 +196,18 @@ func Scan(ctx context.Context, cfg Config, out io.Writer) error {
 				_ = writeJSONLine(out, warn)
 				continue
 			}
-			// Pass through unknown record_types unmodified.
+			// TM-RS-07: validate record_type against allowlist before appending to
+			// the audit log. A PATH-hijacked pollen could otherwise inject arbitrary
+			// record_type lines into beekeeper.ndjson. Unknown types are still passed
+			// through to out (scan consumers can decide), but are never written to the
+			// integrity-critical audit log.
+			if !pollenRecordTypeAllowed(line) {
+				// Unknown record_type: pass through to scan output for transparency
+				// but skip audit-log append to prevent forensic spoofing.
+				_, _ = fmt.Fprintf(out, "%s\n", line)
+				continue
+			}
+			// Known record_type: pass through AND append to audit log.
 			_, _ = fmt.Fprintf(out, "%s\n", line)
 			if cfg.AuditPath != "" {
 				_ = appendRawAuditLine(cfg.AuditPath, line)

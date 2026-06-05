@@ -291,3 +291,90 @@ func TestPollenCompatibility(t *testing.T) {
 		}
 	}
 }
+
+// TestPollenRecordTypeAllowlist verifies TM-RS-07: a pollen-emitted record with
+// an unknown record_type must NOT be appended to the audit log, even though it
+// is passed through to the scan output for transparency.
+//
+// Attack scenario: a PATH-hijacked pollen binary emits a crafted line such as
+// {"record_type":"sentry_alert","decision":"allow",...} to tamper with the
+// forensic audit log. The allowlist rejects this before appendRawAuditLine is
+// called.
+func TestPollenRecordTypeAllowlist(t *testing.T) {
+	old := runPollenFn
+	defer func() { runPollenFn = old }()
+
+	knownGood := `{"record_type":"package","scanner_name":"pollen","ecosystem":"npm","normalized_name":"left-pad","version":"1.3.0"}`
+	injected := `{"record_type":"sentry_alert","decision":"allow","scanner_name":"evil-pollen"}`
+
+	runPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
+		ch := make(chan []byte, 2)
+		ch <- []byte(knownGood)
+		ch <- []byte(injected)
+		close(ch)
+		return ch, true
+	}
+
+	// Use a temp audit file so we can inspect what was appended.
+	auditFile := t.TempDir() + "/audit.ndjson"
+
+	var scanOut bytes.Buffer
+	cfg := Config{AuditPath: auditFile}
+	if err := Scan(context.Background(), cfg, &scanOut); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	// Both records appear in scan output (transparency preserved).
+	out := scanOut.String()
+	if !strings.Contains(out, `"record_type":"package"`) {
+		t.Errorf("known-good record_type:package missing from scan output:\n%s", out)
+	}
+	if !strings.Contains(out, `"record_type":"sentry_alert"`) {
+		t.Errorf("injected record should still appear in scan output for transparency:\n%s", out)
+	}
+
+	// Only the known-good record is written to the audit log.
+	auditBytes, err := os.ReadFile(auditFile)
+	if err != nil {
+		t.Fatalf("read audit file: %v", err)
+	}
+	auditContent := string(auditBytes)
+
+	if !strings.Contains(auditContent, `"record_type":"package"`) {
+		t.Errorf("known-good record missing from audit log:\n%s", auditContent)
+	}
+	if strings.Contains(auditContent, `"record_type":"sentry_alert"`) {
+		t.Errorf("TM-RS-07: injected sentry_alert record_type was written to audit log — allowlist not enforced:\n%s", auditContent)
+	}
+}
+
+// TestPollenRecordTypeAllowedFn unit-tests the pollenRecordTypeAllowed helper
+// directly, covering all five documented Pollen types plus the two
+// beekeeper-synthesised types and several injection attempts.
+func TestPollenRecordTypeAllowedFn(t *testing.T) {
+	cases := []struct {
+		name  string
+		line  string
+		allow bool
+	}{
+		{"package (npm)", `{"record_type":"package","ecosystem":"npm"}`, true},
+		{"finding", `{"record_type":"finding","severity":"high"}`, true},
+		{"scan_summary", `{"record_type":"scan_summary"}`, true},
+		{"scan_error (beekeeper-synth)", `{"record_type":"scan_error","source":"pollen"}`, true},
+		{"scan_status (beekeeper-synth)", `{"record_type":"scan_status"}`, true},
+		{"sentry_alert injection", `{"record_type":"sentry_alert","decision":"allow"}`, false},
+		{"beekeeper_block injection", `{"record_type":"beekeeper_block"}`, false},
+		{"empty record_type", `{"record_type":""}`, false},
+		{"missing record_type", `{"scanner_name":"pollen"}`, false},
+		{"malformed JSON", `not-json`, false},
+		{"null record_type", `{"record_type":null}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := pollenRecordTypeAllowed([]byte(tc.line))
+			if got != tc.allow {
+				t.Errorf("pollenRecordTypeAllowed(%q) = %v; want %v", tc.line, got, tc.allow)
+			}
+		})
+	}
+}
