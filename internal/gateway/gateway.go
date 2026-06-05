@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/bantuson/beekeeper/internal/catalog"
@@ -19,6 +20,27 @@ const (
 	defaultPort     = 7837
 	defaultBindAddr = "127.0.0.1"
 )
+
+// IsLoopbackAddr reports whether addr is a loopback address that is safe to
+// bind without the --allow-remote opt-in. The following are considered loopback:
+//   - empty string (Start will substitute defaultBindAddr = "127.0.0.1")
+//   - "localhost" (DNS name that conventionally resolves to loopback)
+//   - any address in 127.0.0.0/8 (IPv4 loopback range)
+//   - "::1" (IPv6 loopback)
+//
+// Everything else — "0.0.0.0", "::", a LAN IP, an external hostname — is
+// treated as non-loopback and requires AllowRemote: true (TM-A-01).
+func IsLoopbackAddr(addr string) bool {
+	if addr == "" || strings.EqualFold(addr, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		// Unresolvable or hostname other than "localhost" — treat as non-loopback.
+		return false
+	}
+	return ip.IsLoopback()
+}
 
 // Server holds the gateway configuration for the MCP proxy daemon.
 type Server struct {
@@ -53,6 +75,30 @@ func Start(ctx context.Context, cfg Config) error {
 	}
 	if cfg.Port == 0 {
 		cfg.Port = defaultPort
+	}
+
+	// TM-A-01: refuse to bind a non-loopback address unless the operator has
+	// explicitly opted in with AllowRemote: true (--allow-remote CLI flag).
+	// The gateway is plain HTTP — binding 0.0.0.0 or any LAN address sends the
+	// bearer token in cleartext across the network. Fail closed.
+	if !IsLoopbackAddr(cfg.BindAddr) {
+		if !cfg.AllowRemote {
+			return fmt.Errorf(
+				"beekeeper gateway: refusing to bind non-loopback address %q — "+
+					"the gateway is plain HTTP; binding a non-loopback address "+
+					"would expose the bearer token in cleartext over the network. "+
+					"To opt in, re-run with --allow-remote and place the gateway "+
+					"behind a TLS-terminating reverse proxy (TM-A-01)",
+				cfg.BindAddr,
+			)
+		}
+		// Opt-in set: proceed, but warn loudly about cleartext exposure.
+		fmt.Fprintf(os.Stderr,
+			"WARNING: beekeeper gateway is bound to %s (non-loopback) with plain HTTP — "+
+				"the bearer token is transmitted in cleartext. "+
+				"Place this gateway behind a TLS-terminating reverse proxy.\n",
+			cfg.BindAddr,
+		)
 	}
 
 	// Step 1: generate per-session token (T-04-03-01: never in args/config.json).

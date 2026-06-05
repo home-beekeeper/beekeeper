@@ -1180,6 +1180,7 @@ func newHooksCmd() *cobra.Command {
 func newGatewayCmd() *cobra.Command {
 	var port int
 	var upstream, bind string
+	var allowRemote bool
 	gatewayCmd := &cobra.Command{
 		Use:   "gateway",
 		Short: "Manage the Beekeeper MCP gateway daemon",
@@ -1189,9 +1190,11 @@ The gateway is a stateless per-request HTTP proxy that intercepts MCP tools/call
 requests and evaluates them against the Beekeeper policy engine before forwarding
 to the upstream MCP server.
 
-Security: the gateway binds to 127.0.0.1 only by default. Exposing it on a
-public interface (--bind 0.0.0.0) requires allow_remote_gateway:true in config
-and is documented as reducing security.
+Security: the gateway binds to 127.0.0.1 only by default. Binding a non-loopback
+address (e.g. --bind 0.0.0.0) requires --allow-remote and is strongly discouraged
+because the gateway is plain HTTP — the bearer token travels in cleartext over any
+non-loopback network path. If you must expose the gateway on a LAN or external
+interface, place it behind a TLS-terminating reverse proxy.
 
 Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 		Args: cobra.NoArgs,
@@ -1293,6 +1296,7 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 				UpstreamURL: upstream,
 				BindAddr:    bind,
 				Port:        port,
+				AllowRemote: allowRemote,
 				StateFile:   filepath.Join(stateDir, "state.json"),
 				IndexPath:   filepath.Join(catalogDir, "bumblebee.idx"),
 				CacheDir:    catalogDir,
@@ -1326,6 +1330,7 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 	gatewayCmd.Flags().IntVar(&port, "port", 7837, "TCP port to bind (default 7837; 0 = random)")
 	gatewayCmd.Flags().StringVar(&upstream, "upstream", "", "Upstream MCP server URL (required at runtime)")
 	gatewayCmd.Flags().StringVar(&bind, "bind", "127.0.0.1", "Bind address (default 127.0.0.1 — localhost only)")
+	gatewayCmd.Flags().BoolVar(&allowRemote, "allow-remote", false, "Permit binding a non-loopback address (plain HTTP — place behind TLS proxy; TM-A-01)")
 
 	// gateway token — print the current session token from state.json
 	gatewayCmd.AddCommand(&cobra.Command{

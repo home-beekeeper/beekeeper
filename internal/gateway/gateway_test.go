@@ -129,6 +129,136 @@ func TestGatewayLocalOnlyBind(t *testing.T) {
 	}
 }
 
+// TestIsLoopbackAddr verifies the address classification helper (TM-A-01).
+func TestIsLoopbackAddr(t *testing.T) {
+	tests := []struct {
+		addr string
+		want bool
+	}{
+		// Loopback addresses — should return true.
+		{"", true},           // empty → default 127.0.0.1
+		{"127.0.0.1", true},  // IPv4 loopback
+		{"127.0.0.2", true},  // 127.0.0.0/8 range
+		{"127.1.2.3", true},  // 127.0.0.0/8 range
+		{"::1", true},        // IPv6 loopback
+		{"localhost", true},  // hostname alias
+		{"LOCALHOST", true},  // case-insensitive
+
+		// Non-loopback — should return false.
+		{"0.0.0.0", false},        // all-interfaces IPv4
+		{"::", false},             // all-interfaces IPv6
+		{"192.168.1.1", false},    // LAN IP
+		{"10.0.0.1", false},       // private range
+		{"203.0.113.1", false},    // external IP
+		{"example.com", false},    // external hostname
+		{"lan-host", false},       // non-localhost hostname
+	}
+	for _, tc := range tests {
+		t.Run(tc.addr, func(t *testing.T) {
+			got := IsLoopbackAddr(tc.addr)
+			if got != tc.want {
+				t.Errorf("IsLoopbackAddr(%q) = %v, want %v", tc.addr, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGatewayStartRefusesNonLoopbackWithoutOptIn verifies that Start returns an
+// error when BindAddr is non-loopback and AllowRemote is false (TM-A-01).
+func TestGatewayStartRefusesNonLoopbackWithoutOptIn(t *testing.T) {
+	ctx := context.Background()
+	cfg := Config{
+		UpstreamURL: "http://localhost:9999",
+		BindAddr:    "0.0.0.0",
+		AllowRemote: false, // no opt-in → must be refused
+	}
+	err := Start(ctx, cfg)
+	if err == nil {
+		t.Fatal("Start returned nil; expected error for non-loopback bind without --allow-remote")
+	}
+	if !strings.Contains(err.Error(), "refusing to bind non-loopback address") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+// TestGatewayStartNonLoopbackWithOptInWarns verifies that Start proceeds (does not
+// return the gate error) when AllowRemote is true, even for a non-loopback address.
+// Because we can't actually bind 0.0.0.0 reliably in unit tests (port conflicts, CI
+// restrictions), we verify absence of the gate error and capture the stderr warning.
+func TestGatewayStartNonLoopbackWithOptInWarns(t *testing.T) {
+	// We test only the gate check, not the full daemon lifecycle. Redirect stderr to
+	// capture the warning. The test expects the error to NOT be the gate refusal —
+	// it may be a downstream error (catalog not found, etc.) which is acceptable here.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately so Start exits after gate check + token gen + catalog open
+
+	cfg := Config{
+		UpstreamURL: "http://localhost:9999",
+		BindAddr:    "0.0.0.0",
+		AllowRemote: true, // opt-in → gate must pass
+		StateFile:   os.DevNull,
+		IndexPath:   os.DevNull, // will fail to open — that is expected
+	}
+
+	// Redirect os.Stderr to capture the plaintext-HTTP warning.
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := Start(ctx, cfg)
+
+	w.Close()
+	os.Stderr = origStderr
+	buf := new(strings.Builder)
+	io.Copy(buf, r) //nolint:errcheck
+
+	// The gate error must NOT appear — AllowRemote was set.
+	if err != nil && strings.Contains(err.Error(), "refusing to bind non-loopback address") {
+		t.Errorf("gate should pass when AllowRemote=true, got gate refusal: %v", err)
+	}
+
+	// The plaintext-HTTP warning must appear on stderr.
+	if !strings.Contains(buf.String(), "plain HTTP") {
+		t.Errorf("expected plaintext-HTTP warning on stderr; got: %q", buf.String())
+	}
+}
+
+// TestGatewayStartLoopbackNeedsNoOptIn verifies that a loopback bind (127.0.0.1)
+// succeeds without AllowRemote and emits no warning.
+func TestGatewayStartLoopbackNeedsNoOptIn(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cfg := Config{
+		UpstreamURL: "http://localhost:9999",
+		BindAddr:    "127.0.0.1",
+		AllowRemote: false, // loopback — no opt-in required
+		StateFile:   os.DevNull,
+		IndexPath:   os.DevNull,
+	}
+
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := Start(ctx, cfg)
+
+	w.Close()
+	os.Stderr = origStderr
+	buf := new(strings.Builder)
+	io.Copy(buf, r) //nolint:errcheck
+
+	// Must not be the gate refusal error.
+	if err != nil && strings.Contains(err.Error(), "refusing to bind non-loopback address") {
+		t.Errorf("loopback bind should not trigger gate refusal: %v", err)
+	}
+
+	// No plaintext-HTTP warning for loopback bind.
+	if strings.Contains(buf.String(), "plain HTTP") {
+		t.Errorf("loopback bind should not emit plaintext-HTTP warning; got: %q", buf.String())
+	}
+}
+
 // TestGatewayUnauthorized verifies that requests without an Authorization header
 // receive a JSON-RPC -32600 error (T-04-03-02).
 func TestGatewayUnauthorized(t *testing.T) {

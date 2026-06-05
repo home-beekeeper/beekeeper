@@ -30,8 +30,16 @@ type Config struct {
 	UpstreamURL string
 
 	// BindAddr is the address to bind the gateway HTTP server to.
-	// Default: "127.0.0.1" (never "0.0.0.0" without allow_remote_gateway).
+	// Default: "127.0.0.1" (loopback only). Binding a non-loopback address
+	// (e.g. "0.0.0.0") requires AllowRemote: true (TM-A-01 gate). The gateway
+	// is plain HTTP — a non-loopback bind exposes the bearer token in cleartext.
 	BindAddr string
+
+	// AllowRemote, when true, permits binding to a non-loopback address.
+	// The operator must set this explicitly (--allow-remote CLI flag). When false
+	// (the default), Start refuses to bind anything other than loopback (TM-A-01).
+	// A prominent plaintext-HTTP warning is printed to stderr when this is set.
+	AllowRemote bool
 
 	// Port is the TCP port to bind on. Default: 7837.
 	Port int
