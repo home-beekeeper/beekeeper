@@ -190,7 +190,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **8/8** | **Complete** | **2026-06-04** |
 | **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **5/5** | **Complete & verified (9/9)** | **2026-06-04** |
-| **10. Hook-Block Protocol Compliance & Multi-Harness Enforcement** | **v1.3.0 (next)** | **2/6** | **Executing** | **—** |
+| **10. Hook-Block Protocol Compliance & Multi-Harness Enforcement** | **v1.3.0 (next)** | **6/6** | **Complete** | **2026-06-05** |
 
 ### Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement
 
@@ -239,4 +239,4 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 10-06-PLAN.md — Kilo/Trae MCP-gateway routing + honest Tier 1/2/3 support matrix (HPC-05) [wave 5]
+- [x] 10-06-PLAN.md — Kilo/Trae MCP-gateway routing + honest Tier 1/2/3 support matrix (HPC-05) [wave 5] ✅ 2026-06-05 (c7018e0, 8e1b50d)

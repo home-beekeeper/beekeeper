@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 10-05-PLAN.md
-last_updated: "2026-06-05T13:10:00.000Z"
-last_activity: "2026-06-05 -- Phase 10 plan 05 executed (3 tasks, 2 commits: 840abbd e4b1572)"
+stopped_at: Completed 10-06-PLAN.md
+last_updated: "2026-06-05T12:44:15Z"
+last_activity: "2026-06-05 -- Phase 10 plan 06 executed (2 tasks, 2 commits: c7018e0 8e1b50d)"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 26
-  completed_plans: 23
-  percent: 88
+  completed_plans: 24
+  percent: 92
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 > **SUPERSEDED 2026-06-05 — read this first.** v1.2.0 is SHIPPED & ARCHIVED (tag `v1.2.0`; the "READY FOR CLOSE" lines below are stale pre-close text). **NEW critical finding:** a live dogfood proved Beekeeper's PreToolUse hook fires + decides "block" but harnesses run the tool anyway — `beekeeper check` exits `1`, but harnesses need exit `2` / a per-harness deny JSON. **The hook-block path is non-functional on every hook-based harness** (Claude Code/Cursor/Codex); shim + MCP-gateway paths are unaffected. **Phase 10 "Hook-Block Protocol Compliance & Multi-Harness Enforcement" inserted (seeds v1.3.0) — NOT yet planned.** Research + Context live in the phase folder: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/{10-RESEARCH.md, 10-CONTEXT.md}` (15-harness deny-contract matrix in 10-RESEARCH.md). **NEXT: `/gsd-plan-phase 10`** (read the research first; expect ≥2 sub-phases). The 4 prerequisite fixes are now on `main` (commits `adc1f77` nudge/timeout, `50513ae` hooks clobber→merge — fast-forward merged 2026-06-05; the `fix/windows-pnpm-timeout-and-hook-merge` branch is fully merged/redundant, deletable with `git branch -d`). **Phase 10 executes on `main`** (GSD runs the phase on the current branch; HEAD is on main). Planning artifacts (ROADMAP/STATE/phase-10 dir) remain uncommitted. Roadmap evolution: Phase 10 added 2026-06-05.
 
-Phase: 10 (hook-block-protocol-compliance-and-multi-harness-enforcement) — EXECUTING
-Plan: 6 of 6 (plans 01, 03, 04, 05 complete; plan 02 is checkpoint-only)
-Status: Ready to execute plan 06 (final plan)
-Last activity: 2026-06-05 -- Phase 10 plan 05 executed (3 tasks, 2 commits: 840abbd e4b1572)
+Phase: 10 (hook-block-protocol-compliance-and-multi-harness-enforcement) — COMPLETE
+Plan: 6 of 6 (all plans complete; plan 02 is checkpoint-only)
+Status: Phase 10 complete — all 6 plans executed (HPC-01 through HPC-05)
+Last activity: 2026-06-05 -- Phase 10 plan 06 executed (2 tasks, 2 commits: c7018e0 8e1b50d)
 
 Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete & verified — milestone ready for close)
 
@@ -65,6 +65,12 @@ Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 10 (v1.3.0 - plan 10-06):
+
+- Phase 10-06: kilo_trae.go is a dedicated file for Tier-3 no-hook harness guides; guides upgraded with "UNGUARDED" text; TestInstallGatewayTargetKiloTraeUNGUARDED enforces the honesty gate (T-10-22)
+- Phase 10-06: docs/harness-support-matrix.md is the authoritative 15-harness honesty document: Tier 1 testable = Claude Code; Tier 1 documented = 9 others; Tier 2 = Hermes/Cline/OpenCode; Tier 3 = Kilo/Trae
+- Phase 10-06: README.md created (project had no README); links harness-support-matrix.md; states headline honestly without overclaiming universal protection
 
 Recent decisions from Phase 10 (v1.3.0 - plan 10-05):
 
@@ -175,8 +181,8 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-05T12:32:32.570Z
-Stopped at: Completed 10-04-PLAN.md
+Last session: 2026-06-05T12:44:15Z
+Stopped at: Completed 10-06-PLAN.md (Phase 10 complete)
 Resume file: None
 
 ## Operator Next Steps
