@@ -203,6 +203,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Research**: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/10-RESEARCH.md` — the bug, live evidence, and the full 15-harness deny-contract matrix + citations. **Read it before planning.** Phase context: `10-CONTEXT.md` (same folder).
 
 **Requirements**:
+
 - **HPC-01** `beekeeper check --hook <harness>` adapter: on block emit exit 2 + stderr reason (universal baseline) plus the per-harness JSON; non-block → exit 0 (defer to the harness's own permission flow; never emit "allow"). Default (no flag) unchanged = raw Decision JSON + exit 1 (shim/gateway/tests). Pure, table-driven.
 - **HPC-02** Per-harness installer correctness: correct command (`--hook <name>`), event name(s), config format/location, feature flags. MUST fix the Cursor event-name bug (`preToolUse` → `beforeShellExecution`/`beforeMCPExecution`/`beforeReadFile`) and Codex `[features] hooks=true`; merge-not-clobber + targeted uninstall for every settings.json-style target; add the new harnesses.
 - **HPC-03** Per-harness deny-contract regression tests — the gate that was missing (assert the harness deny output + exit code, not just Beekeeper's internal exit code).
@@ -211,6 +212,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - **HPC-06** Self-defense: a release-gate test proving the harness deny contract holds for the shipped binary.
 
 **Success Criteria** (what must be TRUE):
+
   1. On Claude Code, a credential-read tool call is BLOCKED live (tool does not execute), verified end-to-end — not just an audit record.
   2. `beekeeper check --hook <harness>` emits the correct deny signal (exit 2 + per-harness JSON) for each Tier-1 harness, proven by unit tests; default mode still exits 1 with raw JSON (shim/gateway/tests unbroken).
   3. Installers write the correct event names + config + feature flags per harness and never clobber a user's existing hooks.
@@ -218,9 +220,23 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   5. A release-gate test asserts the harness deny contract (exit 2 / deny JSON), closing the gap that let exit-1 ship.
 
 **Plans**: 6 plans across 5 waves (planned 2026-06-05).
+**Wave 1**
+
 - [ ] 10-01-PLAN.md — RenderDeny pure adapter + --hook flag + fixed Claude installer + the missing deny-contract regression gate (HPC-01/03/06) [wave 1]
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 10-02-PLAN.md — Live Claude Code end-to-end block re-proof (HPC-04) [wave 2, checkpoint]
 - [ ] 10-03-PLAN.md — Fix Cursor event-name bug + Codex features flag; add Augment/CodeBuddy/Qwen installers (HPC-02/03) [wave 2]
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 10-04-PLAN.md — Copilot/Gemini/Antigravity/Windsurf installers, non-Claude deny families (HPC-02/03) [wave 3]
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 10-05-PLAN.md — Hermes (fail-open JSON-only) + Cline (no-Windows) + OpenCode plugin (HPC-02/03/05) [wave 4]
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 10-06-PLAN.md — Kilo/Trae MCP-gateway routing + honest Tier 1/2/3 support matrix (HPC-05) [wave 5]

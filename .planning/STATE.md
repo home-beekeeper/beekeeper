@@ -1,11 +1,11 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2.0
-milestone_name: "Runtime Behavioral Hardening"
-status: complete
-stopped_at: v1.2.0 "Runtime Behavioral Hardening" SHIPPED & ARCHIVED 2026-06-04 — tagged `v1.2.0` (local, like v1.0.0; unpushed). Roadmap/requirements/audit archived under `.planning/milestones/v1.2.0-*`; ROADMAP collapsed to a one-line entry (parked v1.1.0 preserved); REQUIREMENTS.md archived + removed (fresh for next milestone); MILESTONES.md + RETROSPECTIVE.md + PROJECT.md evolved. All 25 requirements complete & verified (Phases 6,7,8,9). NEXT: `/gsd-new-milestone` to start the next cycle. v1.1.0 "Pollen" remains PARKED (signed tags pollen.2/.3/.4/.5 via `docs/release-runbook.md` + `HANDOFF.json`) — independent of this close.
-last_updated: "2026-06-05T07:21:22.000Z"
-last_activity: 2026-06-04 -- v1.2.0 milestone SHIPPED & archived (tag v1.2.0)
+milestone_name: milestone
+status: verifying
+stopped_at: "Phase 10 inserted (hook-block protocol fix; seeds v1.3.0). Research + 10-CONTEXT.md + 10-LIVE-TEST-RESUME.md written; settings.json restored byte-exact. 4 prerequisite fixes merged to `main` (adc1f77, 50513ae); planning artifacts (ROADMAP/STATE/phase-10 dir) still uncommitted. On branch `main`. NEXT: `/gsd-plan-phase 10` (read the phase's `10-RESEARCH.md` first)."
+last_updated: "2026-06-05T10:57:26.141Z"
+last_activity: 2026-06-04 -- Phase 9 executed + verified (9/9); v1.2.0 ready for close
 progress:
   total_phases: 4
   completed_phases: 4
@@ -26,6 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
+
+> **SUPERSEDED 2026-06-05 — read this first.** v1.2.0 is SHIPPED & ARCHIVED (tag `v1.2.0`; the "READY FOR CLOSE" lines below are stale pre-close text). **NEW critical finding:** a live dogfood proved Beekeeper's PreToolUse hook fires + decides "block" but harnesses run the tool anyway — `beekeeper check` exits `1`, but harnesses need exit `2` / a per-harness deny JSON. **The hook-block path is non-functional on every hook-based harness** (Claude Code/Cursor/Codex); shim + MCP-gateway paths are unaffected. **Phase 10 "Hook-Block Protocol Compliance & Multi-Harness Enforcement" inserted (seeds v1.3.0) — NOT yet planned.** Research + Context live in the phase folder: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/{10-RESEARCH.md, 10-CONTEXT.md}` (15-harness deny-contract matrix in 10-RESEARCH.md). **NEXT: `/gsd-plan-phase 10`** (read the research first; expect ≥2 sub-phases). The 4 prerequisite fixes are now on `main` (commits `adc1f77` nudge/timeout, `50513ae` hooks clobber→merge — fast-forward merged 2026-06-05; the `fix/windows-pnpm-timeout-and-hook-merge` branch is fully merged/redundant, deletable with `git branch -d`). **Phase 10 executes on `main`** (GSD runs the phase on the current branch; HEAD is on main). Planning artifacts (ROADMAP/STATE/phase-10 dir) remain uncommitted. Roadmap evolution: Phase 10 added 2026-06-05.
 
 Phase: 9 of 9 — ✅ COMPLETE & verified (v1.2.0 Tech-Debt Cleanup; status passed 9/9). All 4 v1.2.0 phases done.
 Plan: 5 of 5 complete (09-01..09-05, executed sequentially on main; +1 fix `ef4ea97`). Verifier: 9/9 must-haves; all 8 reqs (CLEAN-01..04 / HARDEN-01..03 / DRIFT-01) SATISFIED.
@@ -148,9 +150,9 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-03T19:32:26.629Z
-Stopped at: Roadmap creation complete — ready to plan Phase 6.
-Resume file: None
+Last session: 2026-06-05 — live dogfood of shipped v1.2.0 (acting as the guarded agent) + Phase 10 insertion.
+Stopped at: Phase 10 inserted (hook-block protocol fix; seeds v1.3.0). Research + 10-CONTEXT.md + 10-LIVE-TEST-RESUME.md written; settings.json restored byte-exact. 4 prerequisite fixes merged to `main` (adc1f77, 50513ae); planning artifacts (ROADMAP/STATE/phase-10 dir) still uncommitted. On branch `main`. NEXT: `/gsd-plan-phase 10` (read the phase's `10-RESEARCH.md` first).
+Resume file: .planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/10-CONTEXT.md
 
 ## Operator Next Steps
 
