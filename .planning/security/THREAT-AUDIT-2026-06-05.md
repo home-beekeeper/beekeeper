@@ -233,4 +233,46 @@ No cluster finding was fully refuted (`verified.real=false` did not occur). Howe
 
 ---
 
+## 9. Remediation Status (completed 2026-06-05)
+
+All 25 findings addressed the same day. Full `go test ./...` green (24 pkgs, 0 fail) on Windows + linux/darwin cross-compile after every fix.
+
+### Fixed in code
+
+| Finding | Sev | Commit | Fix |
+|---------|-----|--------|-----|
+| TM-D-01/D-02 | Med | `e69dac2` | trust-aware merge — project/env layers can no longer relax fail_mode, self_catalog, nudge/llamafirewall |
+| TM-A-01 | Med | `2eeb602` | gateway non-loopback bind gated behind `--allow-remote` + plaintext-HTTP/cleartext-bearer warning |
+| TM-RS-01 | Med | `28a0f4d` | live `InventoryStore` wired into EvaluateEvent on all 3 daemons — SENTRY-004/005 now fire in production |
+| TM-D-03 | Med | `4287009` | watch path now redacts; RedactRecord widened to Sentry/catalog fields |
+| TM-B-01 | High | `a99b020` | ResolveHealthy consults ALL sources (degraded OSV/Socket now suppresses escalation) — *conservative scope* |
+| TM-D-05 | Low | `8a20162` | quarantine Restore rejects traversal / quarantine-dir-escape OriginalPath |
+| TM-A-04 | Low | `a37aaf7` | shim multi-arg installs no longer mis-parse + blocked |
+| TM-RS-04 | Low | `07c7025` | Linux/macOS status reads correct stateDir baseline path |
+| TM-RS-06 | Low | `cc25508` | fanotify drops counted in shared EventsDropped |
+| TM-RS-07 | Low | `b67473d` | pollen record_type validated against allowlist before audit append |
+| TM-D-06 | Low | `7cb11fe` | llamafirewall persistState uses platform.StateDir() |
+| TM-D-04 | Low | `c37741b` | cosign --certificate-identity corrected to tag-ref form (docs + code) |
+| TM-B-04 | Low | `5278763` | bulk extension path propagates Quarantine flag |
+| TM-RS-03 | Low | `5278763` | permanent baseline surfaced loudly in `protect status` (intended feature, was silent) |
+
+### Documented / accepted (no code change, honestly disclosed)
+
+| Finding | Sev | Where |
+|---------|-----|-------|
+| TM-B-02 | Med | `docs/THREAT-MODEL.md` §11 — primary-feed "signed" is a presence check; real Ed25519 only on beekeeper-self. **Wiring Ed25519 to the bumblebee path is deferred** (production entries are `Signed:false`; needs feed-signing rollout). |
+| TM-A-02 | Med | Already had `TestHermesHookNoRawDecisionLeak`; fail-open class documented §10. |
+| TM-A-03 | Med | Tier-3 native-tools-unguarded documented §8/§10 + support matrix. |
+| TM-RS-02 | Low | §8 — Windows ETW missing-PPID attribution gap (backlog). |
+| TM-B-06 | Low | §8 — enumerated package-parse evasion classes (zero-day semantics acceptance). |
+| TM-B-07 | Low | §8 — sanity bounds defend bulk count anomalies, not content-preserving tamper. |
+| TM-B-03, TM-B-05 | — | accepted (pre-existing documented trade-offs). |
+| TM-A-05, TM-RS-05 | — | mitigated (cosmetic / fail-closed loader). |
+
+### Deferred by design (NOT auto-fixed)
+
+- **TM-B-01 fractional 0.5-weight in `corroborate()`** — deliberately NOT implemented via quick task. It changes core block/warn/quarantine decision semantics and warrants a designed + reviewed change. The conservative degraded-source-suppression part is done (`a99b020`); the residual is honestly disclosed in §11.
+
+---
+
 *This is the audit of record. The public-facing distillation is `docs/THREAT-MODEL.md` (refreshed in place to cover v1.0.0 + v1.2.0 + v1.3.0). For the disclosure process see `SECURITY.md`.*
