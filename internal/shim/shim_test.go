@@ -373,6 +373,75 @@ func TestShimNudgeNonInstallSkipped(t *testing.T) {
 	}
 }
 
+// TestShimMultiArgContent verifies TM-A-04: the generated shim script passes
+// individual args so that multi-word installs (e.g. npm install left-pad react)
+// round-trip correctly through cobra.ArbitraryArgs on the Go side.
+//
+// On Unix: the script must contain `--args "$@"` so the shell expands each
+// argument separately (cobra.ArbitraryArgs collects the overflow as positional args).
+// On Windows: the script must NOT use `--args %*` (which produces a single
+// space-joined string); instead it must pass %1 as --args and %2..%9 as
+// individual positional args.
+func TestShimMultiArgContent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		shimDir := t.TempDir()
+
+		// We need a real npm in PATH on Windows; use a fake .cmd binary.
+		realBinDir := t.TempDir()
+		fakeNpm := filepath.Join(realBinDir, "npm.cmd")
+		if err := os.WriteFile(fakeNpm, []byte("@echo off\r\necho npm\r\n"), 0755); err != nil {
+			t.Fatalf("setup fake npm: %v", err)
+		}
+		origPath := os.Getenv("PATH")
+		t.Setenv("PATH", realBinDir+string(os.PathListSeparator)+origPath)
+
+		var out bytes.Buffer
+		if err := shim.Install(shimDir, []string{"npm"}, &out); err != nil {
+			t.Fatalf("Install: %v", err)
+		}
+
+		content, err := os.ReadFile(filepath.Join(shimDir, "npm.cmd"))
+		if err != nil {
+			t.Fatalf("read npm.cmd: %v", err)
+		}
+
+		// Must NOT use %* for the --args value (that collapses multi-arg into one string).
+		// Must use %1 as the --args value and %2..%9 as positional args.
+		if strings.Contains(string(content), "--args %*") {
+			t.Error("Windows shim must not use '--args %*' (collapses all args into one string); use '--args %1 %2 ... %9' instead")
+		}
+		if !strings.Contains(string(content), "--args %1 %2") {
+			t.Error("Windows shim must pass '--args %1 %2 ...' to enable multi-arg round-trip via cobra.ArbitraryArgs")
+		}
+	} else {
+		shimDir := t.TempDir()
+
+		realBinDir := t.TempDir()
+		realNpm := filepath.Join(realBinDir, "npm")
+		if err := os.WriteFile(realNpm, []byte("#!/bin/sh\necho npm"), 0755); err != nil {
+			t.Fatalf("setup real npm: %v", err)
+		}
+		origPath := os.Getenv("PATH")
+		t.Setenv("PATH", realBinDir+string(os.PathListSeparator)+origPath)
+
+		var out bytes.Buffer
+		if err := shim.Install(shimDir, []string{"npm"}, &out); err != nil {
+			t.Fatalf("Install: %v", err)
+		}
+
+		content, err := os.ReadFile(filepath.Join(shimDir, "npm"))
+		if err != nil {
+			t.Fatalf("read npm shim: %v", err)
+		}
+
+		// Unix shim must use --args "$@" so the shell expands to separate words.
+		// cobra.ArbitraryArgs then collects the overflow positional args on the Go side.
+		if !strings.Contains(string(content), `--args "$@"`) {
+			t.Errorf("Unix shim must use '--args \"$@\"' for correct multi-arg expansion; got:\n%s", string(content))
+		}
+	}
+}
+
 // TestShimPathInstructions verifies that Install prints PATH instructions after creating shims.
 func TestShimPathInstructions(t *testing.T) {
 	if runtime.GOOS == "windows" {

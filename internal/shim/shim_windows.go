@@ -24,18 +24,31 @@ func shimFilePath(shimDir, tool string) string {
 // (T-04-04-05 — Pitfall 8 from RESEARCH). Any LF-only line will cause
 // silent exec failure under cmd.exe.
 //
-// CR-04: beekeeper check --tool <name> --args %* passes arguments as separate
-// parameters to beekeeper, which constructs the JSON with json.Marshal in Go
-// code rather than embedding raw %* in a shell-interpolated JSON string.
+// CR-04 / TM-A-04 fix: pass %1 as the --args flag value and %2..%9 as
+// individual positional arguments. cobra.ArbitraryArgs (main.go) collects
+// those positional args and appends them to allArgs, so a multi-word install
+//   npm install left-pad react
+// produces toolArgs=["install"] + positional=["left-pad","react"] →
+// "args": ["install","left-pad","react"] in the ToolCall JSON.
+//
+// Supports up to 9 arguments per invocation (cmd.exe %1..%9 limit).
+// Unset %N tokens expand to empty and are skipped by cobra's arg parser.
 // The tool name is a fixed string set at install time (safe to embed).
 //
 // Template: RESEARCH Pattern 9 (VERIFIED — INTG-06).
 func writeShellScript(shimDir, tool, realBin string) error {
 	// Build content using "\r\n" as line separator (NOT "\n").
 	// The quoted realBin path mitigates T-04-04-02 (spaces in path).
+	//
+	// TM-A-04: %1 is passed as the --args flag value; %2 through %9 become
+	// cobra positional args (cobra.ArbitraryArgs) and are appended to allArgs
+	// on the Go side before json.Marshal. Empty %N tokens (when fewer than 9
+	// args are provided) produce no tokens — cmd.exe skips whitespace-only
+	// portions of the command line. The :run section forwards the original
+	// full argv (%*) to the real binary unchanged.
 	content := fmt.Sprintf(
 		"@echo off\r\n"+
-			"beekeeper check --tool \"%s\" --args %%*\r\n"+
+			"beekeeper check --tool \"%s\" --args %%1 %%2 %%3 %%4 %%5 %%6 %%7 %%8 %%9\r\n"+
 			"if %%ERRORLEVEL%% EQU 0 goto :run\r\n"+
 			"exit /b %%ERRORLEVEL%%\r\n"+
 			":run\r\n"+

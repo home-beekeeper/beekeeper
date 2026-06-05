@@ -250,8 +250,18 @@ func newCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Evaluate a tool call read from stdin (allow=0, block!=0)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		// ArbitraryArgs allows positional arguments so that shim invocations like
+		//   beekeeper check --tool npm --args install left-pad react
+		// work correctly. The shim emits: --args <first-arg> [extra positional args…]
+		// and we append the extra positional args to toolArgs below (TM-A-04).
+		//
+		// Without --tool the check command reads a tool call from stdin and
+		// positional args are disallowed in practice (they are unused). Allowing
+		// them does not widen the attack surface because the positional args are
+		// only used when --tool is set (shim path), and only appended to toolArgs
+		// which feeds json.Marshal (injection-safe).
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard — runs before any
 			// enforcement logic. Refuses to continue if the running binary version
 			// appears in the beekeeper-self compromised-version list.
@@ -281,14 +291,33 @@ func newCheckCmd() *cobra.Command {
 
 			// Shim invocation: build ToolCall JSON from flags using json.Marshal.
 			// This is injection-safe — no shell string embedding of user arguments.
+			//
+			// TM-A-04: shim scripts emit --args for the first positional arg, then
+			// the remaining package-manager args fall through as cobra positional
+			// args (because the shell expansion of "$@" / %* is not individually
+			// wrapped in --args flags). Append those positional args here so that
+			//   beekeeper check --tool npm --args install left-pad react
+			// produces "args": ["install","left-pad","react"] — not ["install"]
+			// with "left-pad react" silently dropped.
+			//
+			// Only apply when --tool is set (shim path). On the stdin path (no
+			// --tool), extra positional args are an error in the user's invocation
+			// and are ignored silently (they do not feed any policy decision).
 			var stdin io.Reader = os.Stdin
 			if toolName != "" {
+				// Merge flag-supplied toolArgs with any remaining positional args.
+				// Order: flag args first (preserves the original shim arg order),
+				// then positional args (which are the overflow from the shell's
+				// "$@" / %* expansion).
+				allArgs := make([]string, 0, len(toolArgs)+len(args))
+				allArgs = append(allArgs, toolArgs...)
+				allArgs = append(allArgs, args...)
 				tc := map[string]any{
 					"tool_name":  "execute",
 					"agent_name": "shim",
 					"tool_input": map[string]any{
 						"command": toolName,
-						"args":    toolArgs,
+						"args":    allArgs,
 					},
 				}
 				data, merr := json.Marshal(tc)
