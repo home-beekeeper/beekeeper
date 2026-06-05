@@ -20,14 +20,19 @@ func writeLayerConfig(t *testing.T, dir, name, content string) string {
 // TestLoadLayered_PrecedenceOrder verifies the five-row layered config test
 // matrix from 09-RESEARCH.md "Layered config test matrix":
 //
-//	user overrides system; project overrides user.
+//	user overrides system; project tightening overrides user.
+//
+// Note: "user overrides system" with a relaxation (closed→open) is a TRUSTED
+// layer transition and remains fully allowed (TM-D-01 only gates project/env).
+// "project overrides user" with a tightening (open→closed) is also always
+// allowed regardless of trust level.
 func TestLoadLayered_PrecedenceOrder(t *testing.T) {
 	tests := []struct {
-		name        string
-		system      string // JSON content or "" to skip
-		user        string // JSON content (always written)
-		project     string // JSON content or "" to skip
-		wantMode    string
+		name         string
+		system       string // JSON content or "" to skip
+		user         string // JSON content (always written)
+		project      string // JSON content or "" to skip
+		wantMode     string
 		wantAPIToken string
 	}{
 		{
@@ -36,29 +41,29 @@ func TestLoadLayered_PrecedenceOrder(t *testing.T) {
 			wantMode: FailModeClosed,
 		},
 		{
-			name:     "user overrides system",
+			name:     "user overrides system (trusted layer relaxation allowed)",
 			system:   `{"fail_mode":"closed"}`,
 			user:     `{"fail_mode":"open"}`,
 			wantMode: FailModeOpen,
 		},
 		{
-			name:     "project overrides user",
+			name:     "project tightens user (open→closed always allowed)",
 			user:     `{"fail_mode":"open"}`,
 			project:  `{"fail_mode":"closed"}`,
 			wantMode: FailModeClosed,
 		},
 		{
-			name:        "project overrides user - api token preserved",
-			user:        `{"fail_mode":"open","socket":{"api_token":"tok_user"}}`,
-			project:     `{"fail_mode":"closed"}`,
-			wantMode:    FailModeClosed,
+			name:         "project overrides user - api token preserved",
+			user:         `{"fail_mode":"open","socket":{"api_token":"tok_user"}}`,
+			project:      `{"fail_mode":"closed"}`,
+			wantMode:     FailModeClosed,
 			wantAPIToken: "tok_user", // project did not set socket; user value survives
 		},
 		{
-			name:        "project api token overrides user api token",
-			user:        `{"socket":{"api_token":"tok_user"}}`,
-			project:     `{"socket":{"api_token":"tok_project"}}`,
-			wantMode:    FailModeClosed,
+			name:         "project api token overrides user api token",
+			user:         `{"socket":{"api_token":"tok_user"}}`,
+			project:      `{"socket":{"api_token":"tok_project"}}`,
+			wantMode:     FailModeClosed,
 			wantAPIToken: "tok_project",
 		},
 	}
@@ -173,11 +178,16 @@ func TestMerge_NudgeDefaultedAtLayeredRoot(t *testing.T) {
 	}
 }
 
-// TestMerge_NudgeProjectDisableWins verifies the NUDGE-08/§11 project-disable
-// rule: a project layer that sets ONLY nudge.enabled:false wins over the
-// defaulting user layer, and the other nudge sub-fields inherit the defaults
-// (the partial project layer must NOT zero them — Pitfall 5).
-func TestMerge_NudgeProjectDisableWins(t *testing.T) {
+// TestMerge_NudgeProjectDisableRefused verifies TM-D-02: a project layer that
+// sets ONLY nudge.enabled:false cannot disable a user-enabled nudge. The
+// disable is refused from the low-trust project layer; Enabled stays true and
+// all other nudge fields inherit defaults.
+//
+// NOTE: This test was previously named TestMerge_NudgeProjectDisableWins and
+// asserted the opposite behavior (project disable wins per NUDGE-08/§11). The
+// security hardening fix (TM-D-02) overrides that: project/env layers are
+// low-trust and cannot relax security-enforcement switches including nudge.
+func TestMerge_NudgeProjectDisableRefused(t *testing.T) {
 	dir := t.TempDir()
 	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
 	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"enabled":false}}`)
@@ -189,10 +199,11 @@ func TestMerge_NudgeProjectDisableWins(t *testing.T) {
 	if cfg.Nudge == nil {
 		t.Fatal("cfg.Nudge = nil, want non-nil block")
 	}
-	if cfg.Nudge.Enabled {
-		t.Error("cfg.Nudge.Enabled = true, want false — project nudge.enabled:false must win (§11)")
+	// TM-D-02: project nudge.enabled:false must be REFUSED (not applied).
+	if !cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = false, want true — project nudge disable is refused from low-trust layer (TM-D-02)")
 	}
-	// Other fields must inherit defaults, not be zeroed by the partial project layer.
+	// Other fields must still inherit defaults (partial project layer must not zero them — Pitfall 5).
 	def := DefaultNudgeConfig()
 	if cfg.Nudge.Mode != def.Mode {
 		t.Errorf("cfg.Nudge.Mode = %q, want %q (inherited default, not zeroed)", cfg.Nudge.Mode, def.Mode)
@@ -266,11 +277,17 @@ func TestLoadLayeredNudgeDefaulting(t *testing.T) {
 	}
 }
 
-// TestLoadLayeredProjectNudgeOverrideWins (Test B): a project file containing
-// {"nudge":{"enabled":false}} over a defaulting user layer → Enabled false AND
-// the other nudge fields equal the defaults (Mode "soft", Preferred "pnpm",
+// TestLoadLayeredProjectNudgeDisableRefused (Test B / TM-D-02): a project file
+// containing {"nudge":{"enabled":false}} over a defaulting user layer → Enabled
+// stays TRUE because the disable is refused from the low-trust project layer.
+// The other nudge fields equal the defaults (Mode "soft", Preferred "pnpm",
 // floors intact).
-func TestLoadLayeredProjectNudgeOverrideWins(t *testing.T) {
+//
+// Previously this test asserted the project disable wins (NUDGE-08/§11 project-
+// disable). The security fix (TM-D-02) supersedes that: project/env layers are
+// low-trust and cannot relax security enforcement. To disable nudge, the operator
+// must set nudge.enabled:false in the user config (~/.beekeeper/config.json).
+func TestLoadLayeredProjectNudgeDisableRefused(t *testing.T) {
 	dir := t.TempDir()
 	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
 	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"enabled":false}}`)
@@ -283,8 +300,9 @@ func TestLoadLayeredProjectNudgeOverrideWins(t *testing.T) {
 		t.Fatal("cfg.Nudge = nil, want non-nil block")
 	}
 	def := DefaultNudgeConfig()
-	if cfg.Nudge.Enabled {
-		t.Error("cfg.Nudge.Enabled = true, want false (project disable wins, §11)")
+	// TM-D-02: project nudge disable is refused; Enabled must stay true.
+	if !cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = false, want true (project nudge disable refused from low-trust layer, TM-D-02)")
 	}
 	if cfg.Nudge.Mode != def.Mode {
 		t.Errorf("cfg.Nudge.Mode = %q, want %q (default intact)", cfg.Nudge.Mode, def.Mode)
@@ -321,9 +339,15 @@ func TestLoadLayeredProjectNudgeModeOverride(t *testing.T) {
 
 // ---- Task 2: TDD tests for applyEnvVars + applyFlagOverrides ----
 
-// TestLoadLayered_EnvVarOverride verifies that BEEKEEPER_FAIL_MODE=open in
-// opts.Environ overrides a JSON file fail_mode "closed".
-func TestLoadLayered_EnvVarOverride(t *testing.T) {
+// TestLoadLayered_EnvVarRelaxationRefused verifies that BEEKEEPER_FAIL_MODE=open
+// in opts.Environ is REFUSED when the current merged value is "closed" (TM-D-01).
+// The env layer is low-trust; a relaxation (closed→open) is not applied.
+//
+// Previously this test asserted that the env var override succeeds. The security
+// fix (TM-D-01) reverses that for relaxations from the env layer: only tightening
+// is allowed. To use fail_mode:open, the operator must set it in their user config
+// (~/.beekeeper/config.json) or pass --fail-mode=open as a CLI flag.
+func TestLoadLayered_EnvVarRelaxationRefused(t *testing.T) {
 	dir := t.TempDir()
 	userPath := writeLayerConfig(t, dir, "user.json", `{"fail_mode":"closed"}`)
 
@@ -334,13 +358,34 @@ func TestLoadLayered_EnvVarOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLayered returned error: %v", err)
 	}
-	if cfg.FailMode != FailModeOpen {
-		t.Errorf("FailMode = %q, want %q (BEEKEEPER_FAIL_MODE env must override JSON)", cfg.FailMode, FailModeOpen)
+	// TM-D-01: env relaxation (closed→open) must be refused; result stays closed.
+	if cfg.FailMode != FailModeClosed {
+		t.Errorf("FailMode = %q, want %q (env fail_mode relaxation must be refused, TM-D-01)", cfg.FailMode, FailModeClosed)
 	}
 }
 
-// TestLoadLayered_EnvOverridesProject verifies that env vars beat the project layer.
-func TestLoadLayered_EnvOverridesProject(t *testing.T) {
+// TestLoadLayered_EnvVarTighteningAllowed verifies that BEEKEEPER_FAIL_MODE=closed
+// over a user warn is allowed (tightening from env is always safe).
+func TestLoadLayered_EnvVarTighteningAllowed(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{"fail_mode":"warn"}`)
+
+	cfg, err := LoadLayered(LayerOpts{
+		UserPath: userPath,
+		Environ:  []string{"BEEKEEPER_FAIL_MODE=closed"},
+	})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.FailMode != FailModeClosed {
+		t.Errorf("FailMode = %q, want %q (env tightening warn→closed must be allowed)", cfg.FailMode, FailModeClosed)
+	}
+}
+
+// TestLoadLayered_EnvRelaxationOverProjectRefused verifies that BEEKEEPER_FAIL_MODE=warn
+// is refused when the merged value after project layer is "closed" (TM-D-01).
+// Both project and env are low-trust; neither can relax closed to warn.
+func TestLoadLayered_EnvRelaxationOverProjectRefused(t *testing.T) {
 	dir := t.TempDir()
 	userPath := writeLayerConfig(t, dir, "user.json", `{"fail_mode":"closed"}`)
 	projectPath := writeLayerConfig(t, dir, "project.json", `{"fail_mode":"closed"}`)
@@ -353,8 +398,9 @@ func TestLoadLayered_EnvOverridesProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLayered returned error: %v", err)
 	}
-	if cfg.FailMode != FailModeWarn {
-		t.Errorf("FailMode = %q, want %q (env must beat project layer)", cfg.FailMode, FailModeWarn)
+	// TM-D-01: env relaxation (closed→warn) must be refused; result stays closed.
+	if cfg.FailMode != FailModeClosed {
+		t.Errorf("FailMode = %q, want %q (env relaxation from low-trust layer refused, TM-D-01)", cfg.FailMode, FailModeClosed)
 	}
 }
 
@@ -415,20 +461,24 @@ func TestLoadLayered_EnvAuditSinks(t *testing.T) {
 	}
 }
 
-// TestLoadLayered_EnvSelfCatalogURL verifies BEEKEEPER_SELF_CATALOG_URL mapping.
-func TestLoadLayered_EnvSelfCatalogURL(t *testing.T) {
+// TestLoadLayered_EnvSelfCatalogURLRefused verifies that BEEKEEPER_SELF_CATALOG_URL
+// is ignored from the env layer (TM-D-02). The self-catalog URL is a trust anchor;
+// env-var injection must not redirect it to an attacker-controlled feed.
+func TestLoadLayered_EnvSelfCatalogURLRefused(t *testing.T) {
 	dir := t.TempDir()
 	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
 
 	cfg, err := LoadLayered(LayerOpts{
 		UserPath: userPath,
-		Environ:  []string{"BEEKEEPER_SELF_CATALOG_URL=https://example.com/beekeeper-self.json"},
+		Environ:  []string{"BEEKEEPER_SELF_CATALOG_URL=https://attacker.example.com/evil.json"},
 	})
 	if err != nil {
 		t.Fatalf("LoadLayered returned error: %v", err)
 	}
-	if cfg.SelfCatalog.URL != "https://example.com/beekeeper-self.json" {
-		t.Errorf("SelfCatalog.URL = %q, want https://example.com/beekeeper-self.json", cfg.SelfCatalog.URL)
+	// TM-D-02: env self_catalog.url must be refused; URL stays empty (compiled-in default).
+	if cfg.SelfCatalog.URL != "" {
+		t.Errorf("SelfCatalog.URL = %q, want %q (env self_catalog.url refused from low-trust layer, TM-D-02)",
+			cfg.SelfCatalog.URL, "")
 	}
 }
 
@@ -463,5 +513,178 @@ func TestLoadLayered_EnvLlamaFirewallEnabled(t *testing.T) {
 	}
 	if !cfg.LlamaFirewall.Enabled {
 		t.Error("LlamaFirewall.Enabled = false, want true from BEEKEEPER_LLAMAFIREWALL_ENABLED=true")
+	}
+}
+
+// ---- TM-D-01 / TM-D-02: trust-aware merge acceptance tests ----
+
+// TestTMD01_ProjectFailModeRelaxationRefused verifies that a project layer
+// fail_mode:open over a user closed is refused (relaxation from low-trust layer).
+func TestTMD01_ProjectFailModeRelaxationRefused(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{"fail_mode":"closed"}`)
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"fail_mode":"open"}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.FailMode != FailModeClosed {
+		t.Errorf("FailMode = %q, want %q — project fail_mode:open must not relax user closed (TM-D-01)",
+			cfg.FailMode, FailModeClosed)
+	}
+}
+
+// TestTMD01_ProjectFailModeTighteningAllowed verifies that a project layer
+// fail_mode:closed over a user open is honored (tightening is always safe).
+func TestTMD01_ProjectFailModeTighteningAllowed(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{"fail_mode":"open"}`)
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"fail_mode":"closed"}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.FailMode != FailModeClosed {
+		t.Errorf("FailMode = %q, want %q — project tightening (open→closed) must be honored (TM-D-01)",
+			cfg.FailMode, FailModeClosed)
+	}
+}
+
+// TestTMD01_UserFailModeRelaxationHonored verifies that a USER layer fail_mode:open
+// over a system closed is honored (user is a trusted layer).
+func TestTMD01_UserFailModeRelaxationHonored(t *testing.T) {
+	dir := t.TempDir()
+	systemPath := writeLayerConfig(t, dir, "system.json", `{"fail_mode":"closed"}`)
+	userPath := writeLayerConfig(t, dir, "user.json", `{"fail_mode":"open"}`)
+
+	cfg, err := LoadLayered(LayerOpts{SystemPath: systemPath, UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.FailMode != FailModeOpen {
+		t.Errorf("FailMode = %q, want %q — user (trusted) fail_mode:open must override system closed (TM-D-01)",
+			cfg.FailMode, FailModeOpen)
+	}
+}
+
+// TestTMD02_ProjectSelfCatalogIgnored verifies that project layer self_catalog.url
+// and self_catalog.pub_key are ignored entirely (TM-D-02).
+func TestTMD02_ProjectSelfCatalogIgnored(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json",
+		`{"self_catalog":{"url":"https://official.example.com/feed.json","pub_key":"trustedkey=="}}`)
+	projectPath := writeLayerConfig(t, dir, "project.json",
+		`{"self_catalog":{"url":"https://attacker.example.com/evil.json","pub_key":"evilkey=="}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.SelfCatalog.URL != "https://official.example.com/feed.json" {
+		t.Errorf("SelfCatalog.URL = %q, want official URL — project self_catalog.url refused (TM-D-02)",
+			cfg.SelfCatalog.URL)
+	}
+	if cfg.SelfCatalog.PubKey != "trustedkey==" {
+		t.Errorf("SelfCatalog.PubKey = %q, want trusted key — project self_catalog.pub_key refused (TM-D-02)",
+			cfg.SelfCatalog.PubKey)
+	}
+}
+
+// TestTMD02_UserSelfCatalogHonored verifies that a USER layer self_catalog override
+// is honored (user is a trusted layer; operator intentionally reconfigured).
+func TestTMD02_UserSelfCatalogHonored(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json",
+		`{"self_catalog":{"url":"https://mirror.example.com/feed.json","pub_key":"mirrorkey=="}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.SelfCatalog.URL != "https://mirror.example.com/feed.json" {
+		t.Errorf("SelfCatalog.URL = %q, want mirror URL — user (trusted) self_catalog.url must be honored (TM-D-02)",
+			cfg.SelfCatalog.URL)
+	}
+	if cfg.SelfCatalog.PubKey != "mirrorkey==" {
+		t.Errorf("SelfCatalog.PubKey = %q, want mirror key — user (trusted) self_catalog.pub_key must be honored (TM-D-02)",
+			cfg.SelfCatalog.PubKey)
+	}
+}
+
+// TestTMD02_ProjectLlamaFirewallDisableRefused verifies that a project layer
+// llamafirewall.enabled:false over a user-enabled sidecar is refused (TM-D-02).
+func TestTMD02_ProjectLlamaFirewallDisableRefused(t *testing.T) {
+	dir := t.TempDir()
+	// User enables LlamaFirewall with sample_rate so the "other fields" trigger
+	// carries the enable intent unambiguously.
+	userPath := writeLayerConfig(t, dir, "user.json",
+		`{"llamafirewall":{"enabled":true,"sample_rate":1.0}}`)
+	// Project tries to disable the sidecar.
+	projectPath := writeLayerConfig(t, dir, "project.json",
+		`{"llamafirewall":{"enabled":false}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if !cfg.LlamaFirewall.Enabled {
+		t.Error("LlamaFirewall.Enabled = false, want true — project disable refused from low-trust layer (TM-D-02)")
+	}
+}
+
+// TestTMD02_UserLlamaFirewallDisableHonored verifies that a USER layer
+// llamafirewall.enabled:false is honored (trusted operator choice).
+func TestTMD02_UserLlamaFirewallDisableHonored(t *testing.T) {
+	dir := t.TempDir()
+	systemPath := writeLayerConfig(t, dir, "system.json",
+		`{"llamafirewall":{"enabled":true,"sample_rate":1.0}}`)
+	userPath := writeLayerConfig(t, dir, "user.json",
+		`{"llamafirewall":{"enabled":false,"sample_rate":0.5}}`)
+
+	cfg, err := LoadLayered(LayerOpts{SystemPath: systemPath, UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.LlamaFirewall.Enabled {
+		t.Error("LlamaFirewall.Enabled = true, want false — user (trusted) disable must be honored (TM-D-02)")
+	}
+}
+
+// TestTMD02_ProjectNudgeDisableRefused is the canonical TM-D-02 nudge gate test:
+// project nudge.enabled:false is refused when user has nudge enabled.
+func TestTMD02_ProjectNudgeDisableRefused(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{}`) // defaults: nudge enabled
+	projectPath := writeLayerConfig(t, dir, "project.json", `{"nudge":{"enabled":false}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projectPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil block")
+	}
+	if !cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = false, want true — project nudge disable refused from low-trust layer (TM-D-02)")
+	}
+}
+
+// TestTMD02_UserNudgeDisableHonored verifies that a USER layer nudge.enabled:false
+// is honored (trusted operator choice; operator opted out project-wide via ~/.beekeeper).
+func TestTMD02_UserNudgeDisableHonored(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{"nudge":{"enabled":false}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Nudge == nil {
+		t.Fatal("cfg.Nudge = nil, want non-nil block")
+	}
+	if cfg.Nudge.Enabled {
+		t.Error("cfg.Nudge.Enabled = true, want false — user (trusted) nudge disable must be honored (TM-D-02)")
 	}
 }

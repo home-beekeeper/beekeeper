@@ -86,15 +86,16 @@ func LoadLayered(opts LayerOpts) (Config, error) {
 	}
 	cfg = merge(cfg, user)
 
-	// Layer 3: project (optional).
+	// Layer 3: project (optional) — LOW-TRUST: security-relaxing levers refused.
 	if opts.ProjectPath != "" {
 		if proj, ok, _ := loadIfPresent(opts.ProjectPath); ok {
-			cfg = merge(cfg, proj)
+			cfg = mergeUntrusted(cfg, proj, "project")
 		}
 	}
 
-	// Layer 4: BEEKEEPER_* environment variables.
-	cfg = applyEnvVars(cfg, opts.Environ)
+	// Layer 4: BEEKEEPER_* environment variables — LOW-TRUST: security-relaxing
+	// levers refused (attacker-influenceable on shared/CI systems).
+	cfg = applyEnvVarsUntrusted(cfg, opts.Environ)
 
 	// Layer 5: CLI flag overrides (highest precedence).
 	cfg = applyFlagOverrides(cfg, opts.FlagOverrides)
@@ -150,9 +151,31 @@ func unmarshalConfig(data []byte, cfg *Config) error {
 	return json.Unmarshal(data, cfg)
 }
 
+// failModeStrictness maps a FailMode string to an integer where higher means
+// more restrictive. Used by mergeUntrusted to allow only tightening changes
+// from low-trust layers (TM-D-01).
+//
+//	closed(2) > warn(1) > open(0)   — "" treated as closed (fail-closed default)
+func failModeStrictness(m string) int {
+	switch m {
+	case FailModeClosed, "":
+		return 2
+	case FailModeWarn:
+		return 1
+	case FailModeOpen:
+		return 0
+	default:
+		return 2 // unknown → treat as most strict (fail-closed)
+	}
+}
+
 // merge applies src fields over dst only where src fields are non-zero.
 // This implements the "src wins if non-zero" rule that prevents a partial
 // higher layer from resetting lower-layer values to zero (Pitfall 5).
+//
+// Use merge for TRUSTED layers (system, user, flag); use mergeUntrusted for
+// low-trust layers (project, env) to enforce security-relaxation guards
+// (TM-D-01, TM-D-02).
 //
 // Rules per field type:
 //   - string: src wins if src != "".
@@ -213,6 +236,84 @@ func merge(dst, src Config) Config {
 	// nudge.* override was silently dropped and any LoadLayered consumer reading
 	// cfg.Nudge without a nil-check got nil. mergeNudge carries the block through.
 	dst.Nudge = mergeNudge(dst.Nudge, src.Nudge)
+
+	return dst
+}
+
+// mergeUntrusted applies src fields over dst from a LOW-TRUST layer (project
+// config file, environment variables). It behaves identically to merge for
+// all fields EXCEPT the four security-relaxing levers gated by TM-D-01 and
+// TM-D-02:
+//
+//   - FailMode: tightening (closed > warn > open) is always allowed; a
+//     relaxation (e.g. closed → open) is silently ignored with a stderr warning.
+//   - SelfCatalog.URL / SelfCatalog.PubKey: always ignored from low-trust layers.
+//   - LlamaFirewall.Enabled == false: a disable is ignored (enable is allowed).
+//   - Nudge.Enabled == false: a disable is ignored (enable is allowed) when the
+//     nudge block contains ONLY the disable (srcHasOtherSignal == false) — the
+//     project-disable path defined in NUDGE-08/§11. When the nudge block carries
+//     other fields, the standard mergeNudge logic applies and an absent
+//     (false) Enabled does not clobber the lower layer.
+//
+// All other fields (socket token, audit sinks, redact patterns, watch dirs, etc.)
+// are merged unchanged — only the four security levers are gated here.
+//
+// The layerName parameter ("project" or "env") is included in stderr warnings
+// so operators can locate the source of the refused relaxation.
+func mergeUntrusted(dst, src Config, layerName string) Config {
+	// --- FailMode: allow only tightening from low-trust layers (TM-D-01) ---
+	if src.FailMode != "" {
+		if failModeStrictness(src.FailMode) >= failModeStrictness(dst.FailMode) {
+			// Equal or stricter → apply (tightening is always safe).
+			dst.FailMode = src.FailMode
+		} else {
+			// Relaxation refused.
+			fmt.Fprintf(os.Stderr,
+				"beekeeper: ignoring fail_mode relaxation %q→%q from %s config layer (security)\n",
+				dst.FailMode, src.FailMode, layerName)
+		}
+	}
+
+	// SocketConfig — not a security-relaxing lever; apply unconditionally.
+	if src.Socket.APIToken != "" {
+		dst.Socket.APIToken = src.Socket.APIToken
+	}
+
+	// WatchSettings — not a security-relaxing lever; apply unconditionally.
+	if src.Watch != nil {
+		if dst.Watch == nil {
+			dst.Watch = &WatchSettings{}
+		}
+		if len(src.Watch.Directories) > 0 {
+			dst.Watch.Directories = src.Watch.Directories
+		}
+	}
+
+	// RedactPatterns — not a security-relaxing lever; apply unconditionally.
+	if len(src.RedactPatterns) > 0 {
+		dst.RedactPatterns = src.RedactPatterns
+	}
+
+	// AuditConfig — not a security-relaxing lever; apply unconditionally.
+	dst.Audit = mergeAudit(dst.Audit, src.Audit)
+
+	// LlamaFirewallConfig — use the low-trust merge variant (TM-D-02).
+	dst.LlamaFirewall = mergeLlamaFirewallUntrusted(dst.LlamaFirewall, src.LlamaFirewall, layerName)
+
+	// SelfCatalogConfig — always ignored from low-trust layers (TM-D-02).
+	if src.SelfCatalog.URL != "" {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring self_catalog.url override from %s config layer (security)\n",
+			layerName)
+	}
+	if src.SelfCatalog.PubKey != "" {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring self_catalog.pub_key override from %s config layer (security)\n",
+			layerName)
+	}
+
+	// NudgeConfig — use the low-trust nudge merge variant (TM-D-02).
+	dst.Nudge = mergeNudgeUntrusted(dst.Nudge, src.Nudge, layerName)
 
 	return dst
 }
@@ -370,9 +471,105 @@ func mergeLlamaFirewall(dst, src LlamaFirewallConfig) LlamaFirewallConfig {
 	return dst
 }
 
+// mergeLlamaFirewallUntrusted is the low-trust variant of mergeLlamaFirewall
+// (TM-D-02). A disable (src.Enabled == false) from a low-trust layer is refused
+// when the lower layer has LlamaFirewall enabled; an explicit enable is always
+// allowed. All other non-security fields are merged unconditionally.
+func mergeLlamaFirewallUntrusted(dst, src LlamaFirewallConfig, layerName string) LlamaFirewallConfig {
+	srcHasOtherFields := src.SampleRate > 0 || src.FailMode != "" ||
+		src.CodeShield || src.AlignmentCheck ||
+		src.CodeShieldAction != "" || src.PythonPath != ""
+
+	if src.Enabled {
+		// Explicit enable from low-trust layer: always honored.
+		dst.Enabled = true
+	} else if srcHasOtherFields && !src.Enabled && dst.Enabled {
+		// Low-trust layer has other sidecar fields but sets Enabled=false while
+		// the lower layer has it enabled → refuse the disable.
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring llamafirewall.enabled:false from %s config layer (security)\n",
+			layerName)
+	}
+
+	if src.SampleRate > 0 {
+		dst.SampleRate = src.SampleRate
+	}
+	if src.FailMode != "" {
+		dst.FailMode = src.FailMode
+	}
+	if src.CodeShield {
+		dst.CodeShield = src.CodeShield
+	}
+	if src.AlignmentCheck {
+		dst.AlignmentCheck = src.AlignmentCheck
+	}
+	if src.CodeShieldAction != "" {
+		dst.CodeShieldAction = src.CodeShieldAction
+	}
+	if src.PythonPath != "" {
+		dst.PythonPath = src.PythonPath
+	}
+	return dst
+}
+
+// mergeNudgeUntrusted is the low-trust variant of mergeNudge (TM-D-02).
+// A project/env layer's nudge.enabled:false is refused when the lower layer
+// has Nudge enabled; enables from low-trust layers are always allowed. All
+// other nudge sub-fields follow the standard mergeNudge logic.
+func mergeNudgeUntrusted(dst, src *NudgeConfig, layerName string) *NudgeConfig {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		// No lower layer to merge — adopt src, but gate the Enabled field.
+		cp := *src
+		// If the src has only Enabled:false and nothing else, treat as default.
+		// (No lower layer means we cannot "refuse" a relax — start from src as-is.)
+		return &cp
+	}
+
+	// Determine whether src carries signal beyond Enabled.
+	srcHasOtherSignal := src.Mode != "" || src.Preferred != "" ||
+		src.RequireHardened || src.CheckSocketScanner ||
+		src.MajorDriftCheck != (NudgeMajorDriftCheck{}) ||
+		src.VersionFloors != (NudgeVersionFloors{})
+
+	// Gate: refuse a disable from a low-trust layer when the lower layer has nudge enabled.
+	// A disable-only object (!srcHasOtherSignal && !src.Enabled) from low-trust is refused.
+	if !srcHasOtherSignal && !src.Enabled && dst.Enabled {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring nudge.enabled:false from %s config layer (security)\n",
+			layerName)
+		// Run the standard merge with Enabled forced to true so all other fields
+		// are preserved but the disable is suppressed. Since src has no other
+		// signal, this effectively keeps dst unchanged.
+		srcCopy := *src
+		srcCopy.Enabled = dst.Enabled
+		return mergeNudge(dst, &srcCopy)
+	}
+
+	// For all other cases (enable, or disable accompanied by other nudge fields,
+	// or disable when lower layer already has it disabled) use standard merge —
+	// but if it's a disable with other fields and the lower layer is enabled, warn.
+	if srcHasOtherSignal && !src.Enabled && dst.Enabled {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring nudge.enabled:false from %s config layer (security)\n",
+			layerName)
+		srcCopy := *src
+		srcCopy.Enabled = dst.Enabled
+		return mergeNudge(dst, &srcCopy)
+	}
+
+	return mergeNudge(dst, src)
+}
+
 // applyEnvVars applies BEEKEEPER_* environment variables as the fourth layer.
 // Only the hardcoded known set of variables is mapped; unknown BEEKEEPER_* vars
 // and all other env vars are silently ignored (T-09-05: no reflective application).
+//
+// Deprecated internal call path: use applyEnvVarsUntrusted for the env layer in
+// LoadLayered (env vars are low-trust). This function is retained for callers that
+// explicitly need unrestricted env application (e.g. flag layer helpers).
 func applyEnvVars(cfg Config, environ []string) Config {
 	env := parseEnvSlice(environ)
 
@@ -404,6 +601,68 @@ func applyEnvVars(cfg Config, environ []string) Config {
 	}
 	if v, ok := env["BEEKEEPER_SELF_CATALOG_URL"]; ok && v != "" {
 		cfg.SelfCatalog.URL = v
+	}
+
+	return cfg
+}
+
+// applyEnvVarsUntrusted is the low-trust variant of applyEnvVars used by
+// LoadLayered for the env layer (TM-D-01, TM-D-02). Security-relaxing levers
+// (FailMode relaxation, SelfCatalog.URL, LlamaFirewall disable) are refused
+// from the env layer; all other env vars are applied unconditionally.
+func applyEnvVarsUntrusted(cfg Config, environ []string) Config {
+	env := parseEnvSlice(environ)
+
+	// FailMode: apply only if not relaxing (TM-D-01).
+	if v, ok := env["BEEKEEPER_FAIL_MODE"]; ok && v != "" {
+		if failModeStrictness(v) >= failModeStrictness(cfg.FailMode) {
+			cfg.FailMode = v
+		} else {
+			fmt.Fprintf(os.Stderr,
+				"beekeeper: ignoring fail_mode relaxation %q→%q from env config layer (security)\n",
+				cfg.FailMode, v)
+		}
+	}
+
+	// SocketAPIToken — not a security-relaxing lever; apply unconditionally.
+	if v, ok := env["BEEKEEPER_SOCKET_API_TOKEN"]; ok {
+		cfg.Socket.APIToken = v
+	}
+
+	// LlamaFirewall enable/disable — enable is always allowed; disable refused (TM-D-02).
+	if v, ok := env["BEEKEEPER_LLAMAFIREWALL_ENABLED"]; ok {
+		switch strings.ToLower(v) {
+		case "true", "1", "yes":
+			cfg.LlamaFirewall.Enabled = true
+		case "false", "0", "no":
+			if cfg.LlamaFirewall.Enabled {
+				fmt.Fprintf(os.Stderr,
+					"beekeeper: ignoring llamafirewall.enabled:false from env config layer (security)\n")
+			} else {
+				cfg.LlamaFirewall.Enabled = false
+			}
+		}
+	}
+
+	// AuditSinks — not a security-relaxing lever; apply unconditionally.
+	if v, ok := env["BEEKEEPER_AUDIT_SINKS"]; ok && v != "" {
+		parts := strings.Split(v, ",")
+		sinks := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if s := strings.TrimSpace(p); s != "" {
+				sinks = append(sinks, s)
+			}
+		}
+		if len(sinks) > 0 {
+			cfg.Audit.Sinks = sinks
+		}
+	}
+
+	// SelfCatalog.URL — always refused from env layer (TM-D-02).
+	if v, ok := env["BEEKEEPER_SELF_CATALOG_URL"]; ok && v != "" {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring self_catalog.url override from env config layer (security)\n")
+		_ = v // refused
 	}
 
 	return cfg
