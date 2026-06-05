@@ -299,13 +299,25 @@ func newCheckCmd() *cobra.Command {
 				stdin = strings.NewReader(string(data))
 			}
 
-			result := check.RunCheck(cmd.Context(), stdin, cfg, indexPath, auditPath, catalogDir)
+			// --hook mode: suppress the raw Decision JSON so the harness sees ONLY
+			// its own deny form on stdout. Hermes is fail-open on exit codes and
+			// parses the FIRST JSON object on stdout as the decision — a leading
+			// {"Allow":false,...} would cause Hermes to silently allow the block.
+			// io.Discard suppresses the raw Decision JSON; the harness-specific deny
+			// form is written below by RenderDeny.
+			//
+			// Default path (no --hook): raw Decision JSON to stdout via RunCheck,
+			// exit 0 (allow) or exit 1 (block). Shim/gateway/tests rely on exit 1.
+			var result check.Result
+			if hookTarget != "" {
+				result = check.RunCheckTo(cmd.Context(), stdin, cfg, indexPath, auditPath, catalogDir, io.Discard)
+			} else {
+				result = check.RunCheck(cmd.Context(), stdin, cfg, indexPath, auditPath, catalogDir)
+			}
 
 			// --hook adapter: emits the per-harness deny signal ONLY on block.
 			// On allow/warn, fall through to the default exit path (exit 0) —
 			// never emit permissionDecision:"allow" (CONTEXT decision 3, T-10-02).
-			// The default path (no --hook) is UNCHANGED: raw Decision JSON to stdout,
-			// exit 0 (allow) or exit 1 (block). Shim/gateway/tests rely on exit 1.
 			if hookTarget != "" && !result.Decision.Allow {
 				out := check.RenderDeny(check.HarnessID(hookTarget), result.Decision)
 				if len(out.Stdout) > 0 {

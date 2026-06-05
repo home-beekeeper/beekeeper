@@ -90,7 +90,20 @@ type Result struct {
 // cacheDir is the Beekeeper catalogs directory (e.g. ~/.beekeeper/catalogs).
 // It is used to locate OSV and Socket caches for the multi-source aggregator.
 func RunCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string) Result {
-	return runCheck(ctx, stdin, cfg, indexPath, auditPath, cacheDir, defaultOpener)
+	return RunCheckTo(ctx, stdin, cfg, indexPath, auditPath, cacheDir, os.Stdout)
+}
+
+// RunCheckTo is identical to RunCheck but emits the structured Decision JSON to
+// decisionOut instead of hard-coded os.Stdout. Callers that need to suppress the
+// raw Decision JSON (e.g. --hook mode, which emits only the harness-specific deny
+// form) pass io.Discard. Callers that want the default behavior pass os.Stdout.
+//
+// This is the writer seam that closes the Hermes fail-open leak: in --hook mode
+// the raw {"Allow":false,...} line must not precede the harness deny JSON on
+// stdout, otherwise Hermes (which ignores exit codes and parses the FIRST JSON
+// object on stdout) will parse the raw decision instead of the block JSON.
+func RunCheckTo(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string, decisionOut io.Writer) Result {
+	return runCheck(ctx, stdin, cfg, indexPath, auditPath, cacheDir, defaultOpener, decisionOut)
 }
 
 // hookInput extends ToolCall with the Claude Code hook stdin fields that are
@@ -103,8 +116,9 @@ type hookInput struct {
 }
 
 // runCheck is the testable core; opener is injected so tests can force a panic
-// or error from index opening.
-func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string, open catalogOpener) (result Result) {
+// or error from index opening. decisionOut is the writer for the structured
+// Decision JSON (os.Stdout in normal use; io.Discard when --hook suppresses it).
+func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath, auditPath, cacheDir string, open catalogOpener, decisionOut io.Writer) (result Result) {
 	// Record the start time for hook latency tracking (CODE-06). The elapsed
 	// duration is appended to the persisted ring file at the end of runCheck
 	// so beekeeper diag can report accumulated p95/p99 across one-shot invocations.
@@ -126,7 +140,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "beekeeper check: recovered panic: %v\n", r)
 			d := failDecision(cfg, "internal error (fail-closed)")
-			result = finalizeWithAC(d, cfg, toolCall, auditPath, policy.AgentContext{})
+			result = finalizeWithAC(d, cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 		}
 	}()
 
@@ -160,9 +174,9 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		// Distinguish oversized input from genuinely malformed JSON: if the
 		// limited reader is exhausted we very likely truncated a large payload.
 		if limited.N <= 0 {
-			return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+			return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 		}
-		return finalizeWithAC(failDecision(cfg, "invalid tool call JSON (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+		return finalizeWithAC(failDecision(cfg, "invalid tool call JSON (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 	}
 	toolCall = hi.ToolCall
 	stdinAgentID := hi.AgentID
@@ -171,19 +185,19 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// that consumed everything up to (and including) the extra cap byte means
 	// the payload was at least maxStdin+1 bytes.
 	if limited.N <= 0 {
-		return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+		return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 	}
 
 	// Early timeout check after the (potentially slow) stdin read.
 	if ctx.Err() != nil {
-		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 	}
 
 	// HOOK-02: load the catalog via the mmap index, never a cold JSON parse.
 	bbIdx, err := open(indexPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: catalog index unavailable: %v\n", err)
-		return finalizeWithAC(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+		return finalizeWithAC(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 	}
 	defer bbIdx.Close()
 
@@ -220,7 +234,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 
 	// Re-check the deadline before the pure evaluation.
 	if ctx.Err() != nil {
-		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 	}
 
 	// Build agent context from env vars + stdin agent_id (INTG-07).
@@ -243,7 +257,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		if policyErr != nil {
 			// Cannot read the policies directory. Honor fail_mode (T-09-33).
 			fmt.Fprintf(os.Stderr, "beekeeper check: policies directory unreadable: %v\n", policyErr)
-			return finalizeWithAC(failDecision(cfg, "policies directory unreadable (fail-closed)"), cfg, toolCall, auditPath, ac)
+			return finalizeWithAC(failDecision(cfg, "policies directory unreadable (fail-closed)"), cfg, toolCall, auditPath, ac, decisionOut)
 		}
 	}
 
@@ -334,12 +348,12 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
 	if ctx.Err() != nil {
-		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{})
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
 	}
 
 	// Successful evaluation results are NOT subject to fail-mode overrides —
 	// fail modes only govern the failure paths above.
-	return finalizeWithAC(decision, cfg, toolCall, auditPath, ac)
+	return finalizeWithAC(decision, cfg, toolCall, auditPath, ac, decisionOut)
 }
 
 // readAgentContext builds a policy.AgentContext from environment variables
@@ -421,18 +435,22 @@ func failDecision(cfg config.Config, reason string) policy.Decision {
 //
 // Deprecated: prefer finalizeWithAC which carries AgentContext for lineage tracking.
 func finalize(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string) Result {
-	return finalizeWithAC(d, cfg, tc, auditPath, policy.AgentContext{})
+	return finalizeWithAC(d, cfg, tc, auditPath, policy.AgentContext{}, os.Stdout)
 }
 
 // finalizeWithAC maps a decision to an exit code, writes the audit record with
-// agent lineage fields, and prints the decision JSON to stdout. This is the
-// single chokepoint that all code paths (including the panic recover) run through.
-func finalizeWithAC(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string, ac policy.AgentContext) Result {
+// agent lineage fields, and emits the decision JSON to out. This is the single
+// chokepoint that all code paths (including the panic recover) run through.
+//
+// out is the writer for the structured Decision JSON. In normal (non-hook) mode
+// this is os.Stdout so the raw {"Allow":...} line appears on stdout as before.
+// In --hook mode it is io.Discard so the harness sees ONLY its own deny form.
+func finalizeWithAC(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string, ac policy.AgentContext, out io.Writer) Result {
 	writeAuditWithAC(tc, d, auditPath, ac)
 
-	// Emit the structured decision to stdout.
+	// Emit the structured decision to the caller-supplied writer.
 	if data, err := json.Marshal(d); err == nil {
-		fmt.Fprintln(os.Stdout, string(data))
+		fmt.Fprintln(out, string(data))
 	}
 
 	return Result{Decision: d, ExitCode: exitCodeFor(d)}

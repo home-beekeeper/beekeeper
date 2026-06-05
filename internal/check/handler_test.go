@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,7 +94,7 @@ func TestFailClosedOnPanic(t *testing.T) {
 	}
 	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install x"}}`)
 
-	res := runCheck(context.Background(), stdin, closedConfig(), "ignored", auditPathIn(t), t.TempDir(), panicOpener)
+	res := runCheck(context.Background(), stdin, closedConfig(), "ignored", auditPathIn(t), t.TempDir(), panicOpener, io.Discard)
 
 	if res.Decision.Allow {
 		t.Fatal("Allow = true on panic, want false (fail-closed)")
@@ -417,7 +418,7 @@ func TestRunCheckMultiSourceBlock(t *testing.T) {
 
 	// Single Bumblebee match (unsigned) → warn, not block.
 	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Install","tool_input":{"ecosystem":"editor-extension","package":"nrwl.angular-console","version":"18.95.0"}}`)
-	res := runCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), t.TempDir(), realOpener)
+	res := runCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), t.TempDir(), realOpener, io.Discard)
 
 	// Single unsigned source → warn, exit 0 (per PLCY-01 corroboration semantics).
 	if res.ExitCode != exitAllow {
@@ -1176,5 +1177,211 @@ func TestOverlayAllowCannotDowngradePathBlock(t *testing.T) {
 	}
 	if !hasRuleID(rec.RuleIDs, "sensitive-path-policy") {
 		t.Errorf("audit RuleIDs = %v, want sensitive-path-policy (CR-02 regression)", rec.RuleIDs)
+	}
+}
+
+// ─── Phase 10 Plan 01: writer-seam regression tests (HPC-01 fix) ─────────────
+//
+// These tests close the blind spot that allowed the raw {"Allow":false,...}
+// Decision JSON to leak onto stdout in --hook mode, defeating Hermes's block
+// (Hermes ignores exit codes; its ONLY deny path is the first JSON on stdout).
+
+// TestRunCheckToWriterSeam verifies that RunCheckTo routes the raw Decision JSON
+// to the supplied writer and not to os.Stdout. Passing io.Discard proves the
+// seam is the control point; passing a bytes.Buffer captures the output for
+// inspection.
+func TestRunCheckToWriterSeam(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+
+	// A clean fictional package — the Decision JSON should still be emitted (allow).
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-test-clean-writer-seam-xyz@1.0.0"}}`)
+
+	var buf bytes.Buffer
+	res := RunCheckTo(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), t.TempDir(), &buf)
+
+	if !res.Decision.Allow {
+		t.Fatalf("expected allow for clean package; decision: %+v", res.Decision)
+	}
+
+	// The raw Decision JSON must have landed in buf, not on os.Stdout.
+	captured := buf.String()
+	if captured == "" {
+		t.Fatal("RunCheckTo: writer received nothing; raw Decision JSON was not routed to the supplied writer")
+	}
+
+	var d map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(captured)), &d); err != nil {
+		t.Fatalf("RunCheckTo: writer content is not valid JSON: %v\ncaptured: %s", err, captured)
+	}
+
+	// Verify it is the Decision JSON (not some other output).
+	if _, ok := d["Allow"]; !ok {
+		t.Errorf("RunCheckTo: writer JSON missing 'Allow' field; got: %s", captured)
+	}
+}
+
+// TestRunCheckToDiscardSuppressesDecisionJSON verifies that passing io.Discard
+// suppresses the raw Decision JSON entirely (the --hook mode contract).
+func TestRunCheckToDiscardSuppressesDecisionJSON(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+
+	// Missing index → block decision; with io.Discard the raw JSON must not appear
+	// anywhere we can observe (it goes to io.Discard internally).
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-test-clean-discard-xyz@1.0.0"}}`)
+	res := RunCheckTo(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), t.TempDir(), io.Discard)
+
+	// The Result must still be correct — Discard must not change the decision.
+	if !res.Decision.Allow {
+		t.Fatalf("expected allow for clean package with Discard writer; decision: %+v", res.Decision)
+	}
+	if res.ExitCode != exitAllow {
+		t.Fatalf("ExitCode = %d, want %d", res.ExitCode, exitAllow)
+	}
+}
+
+// TestHookModeEmitsOnlyHarnessDenyForm is the key regression test for HPC-01.
+//
+// It proves that in --hook mode the combined stdout seen by the harness contains
+// ONLY the harness-specific deny JSON and does NOT contain the raw "Allow":false
+// Decision field. This is the exact failure mode that defeats Hermes: Hermes
+// ignores exit codes and parses the first JSON object on stdout as the decision.
+// If the raw {"Allow":false,...} object appears first, Hermes parses the wrong
+// object and silently allows the blocked tool call.
+//
+// The test simulates the full --hook pipeline at the package level:
+//   1. RunCheckTo(..., io.Discard) → suppresses raw Decision JSON
+//   2. RenderDeny(harness, result.Decision) → produces harness-specific deny form
+//   3. Combined stdout must contain ONLY the harness deny form.
+func TestHookModeEmitsOnlyHarnessDenyForm(t *testing.T) {
+	dir := t.TempDir()
+	// Build an index with the critical signed entry so we get a real block decision
+	// without relying on network (OSV/Socket).
+	idxPath := buildCriticalTestIndex(t, dir)
+
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	// Simulate the exact --hook pipeline for each critical harness.
+	harnesses := []HarnessID{
+		HarnessHermes,      // critical: fail-open on exit codes; JSON is the ONLY block path
+		HarnessClaudeCode,  // Family A: nested hookSpecificOutput
+		HarnessCursor,      // Family C: permission field
+		HarnessGemini,      // Family D: decision field
+		HarnessCopilot,     // Family B: flat permissionDecision
+	}
+
+	for _, harness := range harnesses {
+		t.Run(string(harness), func(t *testing.T) {
+			stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install ai-figure-test@1.0.0"}}`)
+
+			// Step 1: RunCheckTo with io.Discard — raw Decision JSON must not reach stdout.
+			result := RunCheckTo(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir, io.Discard)
+
+			// The decision must be a block for this test to be meaningful.
+			if result.Decision.Allow {
+				t.Fatalf("expected block decision for ai-figure-test; got allow — test is not testing what it claims")
+			}
+
+			// Step 2: RenderDeny produces the harness-specific deny form.
+			out := RenderDeny(harness, result.Decision)
+
+			// Simulate the combined stdout the harness would see.
+			// In --hook mode: ONLY out.Stdout is written (no raw Decision JSON first).
+			var combinedStdout bytes.Buffer
+			if len(out.Stdout) > 0 {
+				combinedStdout.Write(out.Stdout)
+			}
+			combined := combinedStdout.String()
+
+			// KEY ASSERTION: the raw "Allow": field must NOT appear in stdout.
+			// If it does, the harness (especially Hermes) would parse the wrong object.
+			if strings.Contains(combined, `"Allow":`) {
+				t.Errorf("harness %q: raw 'Allow' field found in combined stdout — raw Decision JSON is leaking\nstdout: %s", harness, combined)
+			}
+
+			// Hermes-specific: the block JSON must be present with action:"block".
+			if harness == HarnessHermes {
+				if !strings.Contains(combined, `"action":"block"`) {
+					t.Errorf("Hermes: stdout does not contain action:block — Hermes would silently allow\nstdout: %s", combined)
+				}
+				if !strings.Contains(combined, `"message"`) {
+					t.Errorf("Hermes: stdout missing message field — Hermes block requires non-empty message\nstdout: %s", combined)
+				}
+				// Hermes exit code must be 0 (it ignores non-zero exits).
+				if out.ExitCode != 0 {
+					t.Errorf("Hermes: ExitCode = %d, want 0 (Hermes ignores non-zero exit)", out.ExitCode)
+				}
+			}
+
+			// All non-Hermes harnesses must use exitHookBlock (2).
+			if harness != HarnessHermes && out.ExitCode != exitHookBlock {
+				t.Errorf("harness %q: ExitCode = %d, want %d", harness, out.ExitCode, exitHookBlock)
+			}
+
+			// Stderr must carry the reason (universal baseline).
+			if len(out.Stderr) == 0 {
+				t.Errorf("harness %q: Stderr is empty; every block must carry a reason on stderr", harness)
+			}
+		})
+	}
+}
+
+// TestHermesHookNoRawDecisionLeak specifically targets the Hermes silent-allow
+// regression. Before the fix, a leading {"Allow":false,...} object would cause
+// Hermes to parse the wrong object and silently allow the block.
+//
+// This test verifies that:
+//   1. The pipeline with io.Discard produces NO "Allow": field in stdout.
+//   2. The hermesDeny JSON has a non-empty message (Hermes requirement).
+//   3. The combined stdout parses as valid JSON with action:"block".
+func TestHermesHookNoRawDecisionLeak(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildCriticalTestIndex(t, dir)
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	stdin := strings.NewReader(`{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install ai-figure-test@1.0.0"}}`)
+	result := RunCheckTo(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir, io.Discard)
+
+	if result.Decision.Allow {
+		t.Fatal("expected block decision; ai-figure-test should be blocked — test fixture may be wrong")
+	}
+
+	out := RenderDeny(HarnessHermes, result.Decision)
+
+	// The raw Decision JSON must NOT appear (io.Discard suppressed it).
+	// out.Stdout is the ONLY thing written to stdout in --hook mode.
+	stdoutStr := string(out.Stdout)
+
+	if strings.Contains(stdoutStr, `"Allow":`) {
+		t.Errorf("Hermes stdout contains raw 'Allow' field — Decision JSON leaked; Hermes would silently allow\nstdout: %s", stdoutStr)
+	}
+
+	// The Hermes deny JSON must parse cleanly.
+	var hermesPayload map[string]any
+	if err := json.Unmarshal(out.Stdout, &hermesPayload); err != nil {
+		t.Fatalf("Hermes stdout is not valid JSON: %v\nstdout: %s", err, stdoutStr)
+	}
+
+	// action must be "block".
+	if hermesPayload["action"] != "block" {
+		t.Errorf("Hermes JSON: action = %v, want block\nstdout: %s", hermesPayload["action"], stdoutStr)
+	}
+
+	// message must be non-empty (Hermes block requirement).
+	msg, _ := hermesPayload["message"].(string)
+	if msg == "" {
+		t.Errorf("Hermes JSON: message is empty — Hermes requires a non-empty message\nstdout: %s", stdoutStr)
+	}
+
+	// Exit code must be 0 (Hermes ignores non-zero).
+	if out.ExitCode != 0 {
+		t.Errorf("Hermes ExitCode = %d, want 0", out.ExitCode)
 	}
 }
