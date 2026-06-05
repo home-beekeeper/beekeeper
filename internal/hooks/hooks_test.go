@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -1223,5 +1224,604 @@ func TestInstallDispatch(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Continue") {
 		t.Fatalf("expected Continue guide, got: %s", buf.String())
+	}
+}
+
+// -----------------------------------------------------------------------
+// TestInstallCopilot — contract-shape tests for the Copilot installer
+// -----------------------------------------------------------------------
+
+func TestInstallCopilot(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installCopilot(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCopilot: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		if _, ok := m["hooks"]; !ok {
+			t.Fatal("expected hooks key in settings.json after install")
+		}
+
+		hooks := m["hooks"].(map[string]any)
+		// Copilot uses "preToolUse" (camelCase) — the correct event for Copilot.
+		pre, ok := hooks["preToolUse"].([]any)
+		if !ok || len(pre) == 0 {
+			t.Fatal("expected non-empty preToolUse after install")
+		}
+		if !claudeEntriesContainCommand(pre, copilotPreCommand) {
+			t.Fatalf("expected command %q in preToolUse", copilotPreCommand)
+		}
+	})
+
+	t.Run("preserves_existing_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		// Seed with a foreign preToolUse entry.
+		original := `{
+  "hooks": {
+    "preToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "my-copilot-guard.sh"}]}
+    ]
+  }
+}`
+		if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installCopilot(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCopilot: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["preToolUse"].([]any)
+
+		if !claudeEntriesContainCommand(pre, "my-copilot-guard.sh") {
+			t.Fatal("pre-existing preToolUse hook must be preserved after install")
+		}
+		if !claudeEntriesContainCommand(pre, copilotPreCommand) {
+			t.Fatalf("beekeeper %q must be added", copilotPreCommand)
+		}
+		if len(pre) != 2 {
+			t.Fatalf("expected 2 preToolUse entries (existing + beekeeper), got %d", len(pre))
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installCopilot(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCopilot (1st): %v", err)
+		}
+		if err := installCopilot(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCopilot (2nd): %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["preToolUse"].([]any)
+		if len(pre) != 1 {
+			t.Fatalf("idempotency: expected 1 preToolUse entry, got %d", len(pre))
+		}
+	})
+
+	t.Run("dry_run", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installCopilot(settingsPath, true, &buf); err != nil {
+			t.Fatalf("installCopilot dry-run: %v", err)
+		}
+
+		// File must not have been created.
+		if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+			t.Fatal("dry-run must not create the settings file")
+		}
+		if !strings.Contains(buf.String(), "[dry-run]") {
+			t.Fatalf("dry-run output must contain [dry-run], got: %s", buf.String())
+		}
+	})
+
+	t.Run("uninstall_only_removes_beekeeper", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		// Seed with a foreign entry + install beekeeper.
+		original := `{
+  "hooks": {
+    "preToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "my-copilot-guard.sh"}]}
+    ]
+  }
+}`
+		if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installCopilot(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCopilot: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallCopilot(settingsPath, false, &buf); err != nil {
+			t.Fatalf("uninstallCopilot: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["preToolUse"].([]any)
+
+		if claudeEntriesContainCommand(pre, copilotPreCommand) {
+			t.Fatalf("beekeeper %q must be removed after uninstall", copilotPreCommand)
+		}
+		if !claudeEntriesContainCommand(pre, "my-copilot-guard.sh") {
+			t.Fatal("foreign hook must survive uninstall")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallGemini — contract-shape tests for the Gemini CLI installer
+// -----------------------------------------------------------------------
+
+func TestInstallGemini(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installGemini(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installGemini: %v", err)
+		}
+
+		// Verify the file was created with a BeforeTool hook entry.
+		var f geminiHooksFile
+		data, _ := os.ReadFile(settingsPath)
+		if err := json.Unmarshal(data, &f); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+
+		if !containsGeminiHookByCommand(f.Hooks, "beekeeper check --hook gemini") {
+			t.Fatal("beekeeper check --hook gemini not found in hooks")
+		}
+
+		// Verify the entry has BeforeTool event.
+		found := false
+		for _, h := range f.Hooks {
+			if h.Command == "beekeeper check --hook gemini" {
+				if h.Event != "BeforeTool" {
+					t.Fatalf("expected event BeforeTool, got %q", h.Event)
+				}
+				if h.Matcher == "" {
+					t.Fatal("expected non-empty Matcher")
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("beekeeper check --hook gemini entry not found")
+		}
+	})
+
+	t.Run("preserves_existing_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		// Seed with a foreign hook entry.
+		original := `{"hooks": [{"event": "BeforeTool", "matcher": ".*", "command": "my-gemini-guard.sh"}]}`
+		if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installGemini(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installGemini: %v", err)
+		}
+
+		var f geminiHooksFile
+		data, _ := os.ReadFile(settingsPath)
+		json.Unmarshal(data, &f)
+
+		// Both the original and beekeeper entry must exist.
+		if !containsGeminiHookByCommand(f.Hooks, "my-gemini-guard.sh") {
+			t.Fatal("pre-existing hook must be preserved")
+		}
+		if !containsGeminiHookByCommand(f.Hooks, "beekeeper check --hook gemini") {
+			t.Fatal("beekeeper check --hook gemini must be added")
+		}
+		if len(f.Hooks) != 2 {
+			t.Fatalf("expected 2 hook entries (existing + beekeeper), got %d", len(f.Hooks))
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installGemini(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installGemini (1st): %v", err)
+		}
+		if err := installGemini(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installGemini (2nd): %v", err)
+		}
+
+		var f geminiHooksFile
+		data, _ := os.ReadFile(settingsPath)
+		json.Unmarshal(data, &f)
+		if len(f.Hooks) != 1 {
+			t.Fatalf("idempotency: expected 1 hook entry, got %d", len(f.Hooks))
+		}
+	})
+
+	t.Run("uninstall_removes_beekeeper_preserves_foreign", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		// Seed with a foreign entry + install beekeeper.
+		original := `{"hooks": [{"event": "BeforeTool", "matcher": ".*", "command": "my-gemini-guard.sh"}]}`
+		if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installGemini(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installGemini: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallGemini(settingsPath, false, &buf); err != nil {
+			t.Fatalf("uninstallGemini: %v", err)
+		}
+
+		var f geminiHooksFile
+		data, _ := os.ReadFile(settingsPath)
+		json.Unmarshal(data, &f)
+
+		if containsGeminiHookByCommand(f.Hooks, "beekeeper check --hook gemini") {
+			t.Fatal("beekeeper entry must be removed after uninstall")
+		}
+		if !containsGeminiHookByCommand(f.Hooks, "my-gemini-guard.sh") {
+			t.Fatal("foreign hook must survive uninstall")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallAntigravity — contract-shape tests for the Antigravity installer
+// -----------------------------------------------------------------------
+
+func TestInstallAntigravity(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installAntigravity(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAntigravity: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		if _, ok := m["hooks"]; !ok {
+			t.Fatal("expected hooks key in hooks.json after install")
+		}
+
+		hooks := m["hooks"].(map[string]any)
+		pre, ok := hooks["PreToolUse"].([]any)
+		if !ok || len(pre) == 0 {
+			t.Fatal("expected non-empty PreToolUse after install")
+		}
+		if !claudeEntriesContainCommand(pre, antigravityPreCommand) {
+			t.Fatalf("expected command %q in PreToolUse", antigravityPreCommand)
+		}
+	})
+
+	t.Run("preserves_existing_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "hooks.json")
+
+		// Seed with a foreign PreToolUse entry.
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "my-antigravity-guard.sh"}]}
+    ]
+  }
+}`
+		if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installAntigravity(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAntigravity: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if !claudeEntriesContainCommand(pre, "my-antigravity-guard.sh") {
+			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
+		}
+		if !claudeEntriesContainCommand(pre, antigravityPreCommand) {
+			t.Fatalf("beekeeper %q must be added", antigravityPreCommand)
+		}
+		if len(pre) != 2 {
+			t.Fatalf("expected 2 PreToolUse entries (existing + beekeeper), got %d", len(pre))
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installAntigravity(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAntigravity (1st): %v", err)
+		}
+		if err := installAntigravity(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAntigravity (2nd): %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+		if len(pre) != 1 {
+			t.Fatalf("idempotency: expected 1 PreToolUse entry, got %d", len(pre))
+		}
+	})
+
+	t.Run("dry_run", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installAntigravity(settingsPath, true, &buf); err != nil {
+			t.Fatalf("installAntigravity dry-run: %v", err)
+		}
+
+		// File must not have been created.
+		if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+			t.Fatal("dry-run must not create the settings file")
+		}
+		if !strings.Contains(buf.String(), "[dry-run]") {
+			t.Fatalf("dry-run output must contain [dry-run], got: %s", buf.String())
+		}
+	})
+
+	t.Run("uninstall_only_removes_beekeeper", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "hooks.json")
+
+		// Seed with a foreign entry + install beekeeper.
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "my-antigravity-guard.sh"}]}
+    ]
+  }
+}`
+		if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installAntigravity(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAntigravity: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallAntigravity(settingsPath, false, &buf); err != nil {
+			t.Fatalf("uninstallAntigravity: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if claudeEntriesContainCommand(pre, antigravityPreCommand) {
+			t.Fatalf("beekeeper %q must be removed after uninstall", antigravityPreCommand)
+		}
+		if !claudeEntriesContainCommand(pre, "my-antigravity-guard.sh") {
+			t.Fatal("foreign hook must survive uninstall")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallWindsurf — contract-shape tests for the Windsurf installer
+// -----------------------------------------------------------------------
+
+func TestInstallWindsurf(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		hooksPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("installWindsurf: %v", err)
+		}
+
+		var f windsurfHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		if err := json.Unmarshal(data, &f); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+
+		// Assert all three pre_* events are written.
+		for _, event := range windsurfEvents {
+			if len(f.Hooks[event]) == 0 {
+				t.Fatalf("expected beekeeper hook under event %q, got none", event)
+			}
+		}
+	})
+
+	t.Run("os_correct_key", func(t *testing.T) {
+		// Assert the correct key is set for the current OS.
+		// On Windows, PowerShell field must be set; on Linux/macOS, Command field.
+		dir := t.TempDir()
+		hooksPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("installWindsurf: %v", err)
+		}
+
+		var f windsurfHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		json.Unmarshal(data, &f)
+
+		const cmd = "beekeeper check --hook windsurf"
+		hooks := f.Hooks["pre_run_command"]
+		if len(hooks) == 0 {
+			t.Fatal("expected hook under pre_run_command")
+		}
+		h := hooks[0]
+
+		if runtime.GOOS == "windows" {
+			if h.PowerShell != cmd {
+				t.Fatalf("on Windows: expected PowerShell=%q, got %q (Command=%q)", cmd, h.PowerShell, h.Command)
+			}
+			if h.Command != "" {
+				t.Fatalf("on Windows: Command field must be empty, got %q", h.Command)
+			}
+		} else {
+			if h.Command != cmd {
+				t.Fatalf("on Linux/macOS: expected Command=%q, got %q (PowerShell=%q)", cmd, h.Command, h.PowerShell)
+			}
+			if h.PowerShell != "" {
+				t.Fatalf("on Linux/macOS: PowerShell field must be empty, got %q", h.PowerShell)
+			}
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		hooksPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("installWindsurf (1st): %v", err)
+		}
+		if err := installWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("installWindsurf (2nd): %v", err)
+		}
+
+		var f windsurfHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		json.Unmarshal(data, &f)
+		for _, event := range windsurfEvents {
+			if len(f.Hooks[event]) != 1 {
+				t.Fatalf("idempotency failure: expected 1 hook for event %q, got %d", event, len(f.Hooks[event]))
+			}
+		}
+	})
+
+	t.Run("uninstall_removes_beekeeper", func(t *testing.T) {
+		dir := t.TempDir()
+		hooksPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("installWindsurf: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("uninstallWindsurf: %v", err)
+		}
+
+		var f windsurfHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		json.Unmarshal(data, &f)
+		const cmd = "beekeeper check --hook windsurf"
+		for _, event := range windsurfEvents {
+			if containsWindsurfHookByCommand(f.Hooks[event], cmd) {
+				t.Fatalf("beekeeper hook must be removed from event %q after uninstall", event)
+			}
+		}
+	})
+
+	t.Run("preserves_foreign_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		hooksPath := filepath.Join(dir, "hooks.json")
+
+		// Seed with a foreign hook in pre_run_command.
+		original := `{"hooks":{"pre_run_command":[{"command":"my-other-tool","timeout":5}]}}`
+		if err := os.WriteFile(hooksPath, []byte(original), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("installWindsurf: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallWindsurf(hooksPath, false, &buf); err != nil {
+			t.Fatalf("uninstallWindsurf: %v", err)
+		}
+
+		var f windsurfHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		json.Unmarshal(data, &f)
+
+		// Foreign hook must survive.
+		if !containsWindsurfHookByCommand(f.Hooks["pre_run_command"], "my-other-tool") {
+			t.Fatal("foreign hook must survive uninstall")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallDispatchNewTargets — dispatch coverage for all four new targets
+// -----------------------------------------------------------------------
+
+// TestInstallDispatchNewTargets ensures each new target routes without error
+// via the exported InstallTo and UninstallTo APIs. Uses temp files via
+// internal helpers to avoid touching the real home directory.
+func TestInstallDispatchNewTargets(t *testing.T) {
+	targets := []struct {
+		name    string
+		install func(dir string) error
+	}{
+		{
+			name: TargetCopilot,
+			install: func(dir string) error {
+				return installCopilot(filepath.Join(dir, "settings.json"), false, &bytes.Buffer{})
+			},
+		},
+		{
+			name: TargetAntigravity,
+			install: func(dir string) error {
+				return installAntigravity(filepath.Join(dir, "hooks.json"), false, &bytes.Buffer{})
+			},
+		},
+		{
+			name: TargetGemini,
+			install: func(dir string) error {
+				return installGemini(filepath.Join(dir, "settings.json"), false, &bytes.Buffer{})
+			},
+		},
+		{
+			name: TargetWindsurf,
+			install: func(dir string) error {
+				return installWindsurf(filepath.Join(dir, "hooks.json"), false, &bytes.Buffer{})
+			},
+		},
+	}
+	for _, tc := range targets {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := tc.install(dir); err != nil {
+				t.Fatalf("install %s: %v", tc.name, err)
+			}
+		})
 	}
 }
