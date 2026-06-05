@@ -18,6 +18,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/bantuson/beekeeper/internal/platform"
 )
 
 // ErrSidecarUnavailable is returned by Scan when the sidecar has failed and the
@@ -341,11 +343,15 @@ func (s *Supervisor) StatusInfo() Status {
 	}
 }
 
-// persistState writes the sidecar PID and start time to ~/.beekeeper/state.json
+// persistState writes the sidecar PID and start time to the platform state
+// directory (honoring %APPDATA% on Windows and BEEKEEPER_HOME on all platforms)
 // so that the CLI status command can report on a running sidecar without holding
 // a reference to the Supervisor object.
 func (s *Supervisor) persistState(pid int) {
-	stateDir := os.ExpandEnv("$HOME/.beekeeper")
+	stateDir, err := platform.StateDir()
+	if err != nil {
+		return // cannot determine state dir — silently skip; informational state only
+	}
 	statePath := filepath.Join(stateDir, "state.json")
 	data, _ := os.ReadFile(statePath)
 	var state map[string]any
