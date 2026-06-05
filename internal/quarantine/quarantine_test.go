@@ -198,3 +198,81 @@ func TestQuarantineRestorePathTraversal(t *testing.T) {
 		t.Error("Restore with path-traversal id should return an error, got nil")
 	}
 }
+
+// TestQuarantineRestoreTamperedOriginalPath verifies TM-D-05: Restore rejects
+// a manifest whose OriginalPath has been tampered with to attempt:
+//   - a relative path with ".." traversal components
+//   - an absolute path that resolves inside the quarantine directory itself
+//
+// Both cases must return a non-nil error and leave the quarantine entry intact.
+func TestQuarantineRestoreTamperedOriginalPath(t *testing.T) {
+	tests := []struct {
+		name         string
+		originalPath func(quarantineDir string) string
+	}{
+		{
+			name: "relative traversal",
+			// e.g. "../../etc/cron.d" — would escape the extensions root
+			originalPath: func(_ string) string { return "../../etc/cron.d" },
+		},
+		{
+			name: "dotdot in absolute path",
+			// absolute but contains ".." component
+			originalPath: func(q string) string {
+				// Build a path like /tmp/quarantine/../../../etc/passwd
+				return filepath.Join(q, "..", "..", "etc", "passwd")
+			},
+		},
+		{
+			name: "restore into quarantine dir itself",
+			// OriginalPath resolves inside quarantineDir — restore-to-quarantine cycle
+			originalPath: func(q string) string {
+				return filepath.Join(q, "planted-file")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			quarantineDir := t.TempDir()
+			extDir := quarantine.ExtensionsDir(quarantineDir)
+
+			// Craft a quarantine entry with a tampered manifest manually, since
+			// Move() always sets OriginalPath from the actual extension path.
+			const entryID = "evil.pkg-1.0.0-99999999999"
+			entryDir := filepath.Join(extDir, entryID)
+			if err := os.MkdirAll(entryDir, 0o700); err != nil {
+				t.Fatalf("mkdir entry: %v", err)
+			}
+
+			tamperedPath := tt.originalPath(quarantineDir)
+			m := quarantine.Manifest{
+				ID:           entryID,
+				Publisher:    "evil",
+				Name:         "pkg",
+				Version:      "1.0.0",
+				OriginalPath: tamperedPath,
+			}
+			data, err := json.MarshalIndent(m, "", "  ")
+			if err != nil {
+				t.Fatalf("marshal manifest: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(entryDir, "beekeeper-manifest.json"), data, 0o600); err != nil {
+				t.Fatalf("write manifest: %v", err)
+			}
+
+			// Restore must be rejected.
+			err = quarantine.Restore(quarantineDir, entryID)
+			if err == nil {
+				t.Errorf("[%s] Restore with tampered original_path %q should return error, got nil", tt.name, tamperedPath)
+			} else {
+				t.Logf("[%s] correctly rejected: %v", tt.name, err)
+			}
+
+			// The quarantine entry must still be intact (nothing was moved).
+			if _, statErr := os.Stat(entryDir); statErr != nil {
+				t.Errorf("[%s] quarantine entry dir was removed even though restore was rejected", tt.name)
+			}
+		})
+	}
+}

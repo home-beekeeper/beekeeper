@@ -161,8 +161,17 @@ func List(quarantineDir string) ([]Manifest, error) {
 
 // Restore moves a quarantined extension back to its original location.
 // The id is sanitized with filepath.Base to prevent traversal attacks.
-// Returns an error if the manifest has an empty OriginalPath or if the
-// quarantine entry does not exist.
+// Returns an error if the manifest has an empty OriginalPath, if the
+// quarantine entry does not exist, or if the manifest OriginalPath
+// would resolve outside the expected extensions root (TM-D-05).
+//
+// OriginalPath validation mirrors the entry-id guard discipline:
+//   - Absolute paths are accepted when they resolve outside the quarantine
+//     directory itself (restoring to the original install root is normal).
+//   - Paths that are NOT absolute are checked for ".." traversal components
+//     that would escape the parent of the extensions root.
+//   - Any path that would resolve INSIDE quarantineDir is rejected to prevent
+//     restore-to-quarantine cycles.
 func Restore(quarantineDir, id string) error {
 	// Strip any directory component from the caller-supplied id.
 	safeID := filepath.Base(id)
@@ -193,6 +202,37 @@ func Restore(quarantineDir, id string) error {
 	}
 	if m.OriginalPath == "" {
 		return fmt.Errorf("quarantine: manifest for %q has empty original_path", safeID)
+	}
+
+	// TM-D-05: validate OriginalPath before restoring to it.
+	// A tampered manifest could set OriginalPath to an absolute attacker-chosen
+	// location (e.g. /etc/... or C:\Windows\...) or a relative path with ".."
+	// traversal components (e.g. ../../etc/cron.d).
+	//
+	// Rules applied (mirror entry-id guard discipline):
+	//   1. Reject any path whose CLEAN form sits inside quarantineDir — this
+	//      prevents restore-to-quarantine cycles.
+	//   2. Reject any path whose individual components contain ".." — this
+	//      catches relative traversals regardless of whether the path is
+	//      absolute or relative.
+	cleanOriginal := filepath.Clean(m.OriginalPath)
+	cleanQuarantine := filepath.Clean(quarantineDir)
+
+	// Rule 1: restoring into the quarantine directory itself is always wrong.
+	if cleanOriginal == cleanQuarantine ||
+		strings.HasPrefix(cleanOriginal, cleanQuarantine+string(filepath.Separator)) {
+		return fmt.Errorf("quarantine: manifest original_path %q resolves inside quarantine dir %q — refusing restore", cleanOriginal, cleanQuarantine)
+	}
+
+	// Rule 2: reject ".." traversal components in the manifest-supplied path.
+	// filepath.Clean normalises "a/../b" → "b", so we must check for ".."
+	// segments in the RAW path (before cleaning), not in cleanOriginal.
+	for _, part := range strings.FieldsFunc(m.OriginalPath, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if part == ".." {
+			return fmt.Errorf("quarantine: manifest original_path %q contains path traversal — refusing restore", m.OriginalPath)
+		}
 	}
 
 	if err := os.Rename(entryDir, m.OriginalPath); err != nil {
