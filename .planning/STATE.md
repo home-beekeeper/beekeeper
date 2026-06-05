@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: "Runtime Behavioral Hardening"
-status: executing
-stopped_at: ALL v1.2.0 phases (6,7,8,9) complete & verified. Phase 9 tech-debt cleanup executed (5/5 plans, sequential on main) + verified PASSED 9/9 — CORR E2E now hermetic (signed non-wildcard fixture blocks offline), LoadLayered Nudge-pointer merge root-fixed, Phase-6 Nyquist COMPLIANT, SPATH evasion edges closed (ancestor-symlink dual-form + Windows ADS/trailing-dot + verb word-boundary), live version_drift npm registry query (fail-open, floors never bumped, no new deps), +1 pre-existing internal/policy fuzz-build fix (ef4ea97, surfaced by SC9). go build + full unit suite + -tags e2e + -tags fuzz + purity + CR-02 all GREEN. Milestone READY FOR CLOSE — re-run /gsd-complete-milestone v1.2.0 (the audit's tech_debt findings are now all resolved; fold v1.2.0-MILESTONE-AUDIT.md + 09-VERIFICATION.md into the archive).
-last_updated: "2026-06-04T19:52:31.000Z"
-last_activity: 2026-06-04 -- Phase 9 executed + verified (9/9); v1.2.0 ready for close
+status: complete
+stopped_at: v1.2.0 "Runtime Behavioral Hardening" SHIPPED & ARCHIVED 2026-06-04 — tagged `v1.2.0` (local, like v1.0.0; unpushed). Roadmap/requirements/audit archived under `.planning/milestones/v1.2.0-*`; ROADMAP collapsed to a one-line entry (parked v1.1.0 preserved); REQUIREMENTS.md archived + removed (fresh for next milestone); MILESTONES.md + RETROSPECTIVE.md + PROJECT.md evolved. All 25 requirements complete & verified (Phases 6,7,8,9). NEXT: `/gsd-new-milestone` to start the next cycle. v1.1.0 "Pollen" remains PARKED (signed tags pollen.2/.3/.4/.5 via `docs/release-runbook.md` + `HANDOFF.json`) — independent of this close.
+last_updated: "2026-06-05T07:21:22.000Z"
+last_activity: 2026-06-04 -- v1.2.0 milestone SHIPPED & archived (tag v1.2.0)
 progress:
   total_phases: 4
   completed_phases: 4
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Milestone close — all 4 v1.2.0 phases (6, 7, 8, 9) ✅ complete & verified. Re-run `/gsd-complete-milestone v1.2.0` (audit tech_debt findings resolved by Phase 9).
+**Current focus:** v1.2.0 ✅ SHIPPED & archived (2026-06-04, tag `v1.2.0`). **Next milestone TBD** — `/gsd-new-milestone`. (v1.1.0 "Pollen" still PARKED at its maintainer release checkpoint — independent of the next cycle.)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 

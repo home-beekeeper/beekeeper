@@ -1,5 +1,28 @@
 # Milestones
 
+## v1.2.0 — Runtime Behavioral Hardening (Shipped: 2026-06-04)
+
+**Phases:** 4 (6–9, numbering continues from v1.1.0 "Pollen") · **Plans:** 19 (+1 pre-existing policy fuzz-build fix) · **Timeline:** 2026-06-03 → 2026-06-04
+**Audit:** `tech_debt` (no blockers) — all surfaced findings cleared by the inserted Phase 9 (verified passed 9/9). Archive: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
+
+**Delivered:** Closed the three runtime-enforcement gaps that live `beekeeper check` validation exposed — with the agent itself as the test subject — each locked in by a behavioral test suite proving the wiring is live: a *critical*-severity malware package that warned instead of blocking (F1), credential files that returned ALLOW to agent reads (F2), and `pnpm`/`bun` installs that bypassed catalog matching entirely (F3).
+
+**Key accomplishments:**
+
+1. **Corroboration severity hardening (F1)** — per-severity `SeverityOverrides["critical"]={BlockAt:1}` so a known critical package (`ai-figure` / Shai-Hulud, OSV `MAL-2026-4126`) blocks at one trusted source, gated on `catalog/sanity.go` degraded state; a mis-tagged `versions:["*"]` critical entry still requires 2-source corroboration (anti-poisoning bound).
+2. **Sensitive-path runtime enforcement (F2)** — `policy.EvaluatePath`/`DefaultSensitivePaths` wired live into `runCheck`: credential reads (`~/.aws/credentials`, `~/.ssh/id_rsa`, `.env`, MCP configs) and `cat`/`type`/`Get-Content` shell targets block fail-closed; traversal/tilde/Windows-env-var bypasses canonicalized away; `.env.example/.test/.schema` allowlisted; overlay can escalate but never downgrade a path block (CR-02).
+3. **Package-manager nudge + F3 closure** — a single pure `internal/pkgparse` so pnpm/bun/yarn installs are catalog-matched; `internal/nudge` soft-advise-default / hard-rewrite + `requireHardened`-block, wired into check (fresh detect) + gateway (60s cache) + shim, with the `beekeeper nudge status|check|audit` CLI.
+4. **Behavioral test suite + hermetic live-binary E2E gate** — table-driven §10 tests, RunCheck integration, fuzz targets (`bunfig.toml`/`pnpm-workspace.yaml` hand scanners), and a `-tags e2e` live-binary battery over SPATH+CORR+NUDGE as the release gate.
+5. **Tech-debt cleanup (Phase 9, from the milestone audit)** — made the CORR E2E gate network-independent (signed non-wildcard fixture), fixed `config.LoadLayered`'s Nudge-pointer merge at its root, hardened SPATH against ancestor-symlink / Windows-ADS / verb-substring evasion, shipped a live `version_drift` npm registry query (fail-open, floors never bumped), reconciled Phase-6 Nyquist, and repaired a pre-existing `internal/policy` `-tags fuzz` build break (`ef4ea97`).
+6. **Self-defense = the test suite** — every fix ships a regression test that fails on the pre-fix code; `internal/policy`/`internal/nudge`/`internal/pkgparse` stay pure (import-purity tests); `-tags fuzz` + `-tags e2e` release gates green.
+
+**Known deferred at close (carried to v1.3.0+):**
+- NUDGE-F1 hard-rewrite on-by-default (gated on soft-advise production validation); NUDGE-F2 Yarn Berry + pip/cargo/gem/composer coverage; CORR-F1 OSV/Socket as an automatic hot-path second source; NUDGE-F3 `GHSA-*` vs `MAL-*` distinction in critical escalation.
+- pnpm/bun/node floor **auto-update** on drift stays Out-of-Scope (drift is informational only).
+- **v1.1.0 "Pollen" remains PARKED** at its maintainer release checkpoint (signed tags `pollen.2/.3/.4/.5`) — not part of this close; resume via `docs/release-runbook.md` + `HANDOFF.json`.
+
+---
+
 ## v1.0.0 — Comprehensive Standalone Release (Shipped: 2026-06-01)
 
 **Phases:** 11 (Phases 1–9 planned + Phase 10 integration closure + Phase 11 PRD-gap closure) · **Plans:** 51 · **Tasks:** 59
