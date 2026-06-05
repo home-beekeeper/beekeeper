@@ -165,16 +165,20 @@ func TestInstallCursor(t *testing.T) {
 		if f.Version != 1 {
 			t.Fatalf("expected version 1, got %d", f.Version)
 		}
-		preToolUse := f.Hooks["preToolUse"]
-		if len(preToolUse) != 1 {
-			t.Fatalf("expected 1 preToolUse hook, got %d", len(preToolUse))
-		}
-		h := preToolUse[0]
-		if !h.FailClosed {
-			t.Fatal("failClosed must be true")
-		}
-		if h.Command != "beekeeper check" {
-			t.Fatalf("expected command beekeeper check, got %q", h.Command)
+
+		// Verify the three real Cursor v1.7+ events are written (NOT "preToolUse").
+		for _, event := range cursorEvents {
+			hooks := f.Hooks[event]
+			if len(hooks) != 1 {
+				t.Fatalf("expected 1 hook for event %q, got %d", event, len(hooks))
+			}
+			h := hooks[0]
+			if !h.FailClosed {
+				t.Fatalf("event %q: failClosed must be true", event)
+			}
+			if h.Command != "beekeeper check --hook cursor" {
+				t.Fatalf("event %q: expected command %q, got %q", event, "beekeeper check --hook cursor", h.Command)
+			}
 		}
 
 		// Idempotency: install again, must not duplicate.
@@ -184,8 +188,48 @@ func TestInstallCursor(t *testing.T) {
 		data2, _ := os.ReadFile(hooksPath)
 		var f2 cursorHooksFile
 		json.Unmarshal(data2, &f2)
-		if len(f2.Hooks["preToolUse"]) != 1 {
-			t.Fatalf("idempotency failure: expected 1 hook, got %d", len(f2.Hooks["preToolUse"]))
+		for _, event := range cursorEvents {
+			if len(f2.Hooks[event]) != 1 {
+				t.Fatalf("idempotency failure: expected 1 hook for event %q, got %d", event, len(f2.Hooks[event]))
+			}
+		}
+	})
+
+	// correct_event_names: regression gate for T-10-09. Asserts preToolUse is
+	// ABSENT and all three real Cursor v1.7+ events are present with failClosed:true
+	// and "beekeeper check --hook cursor".
+	t.Run("correct_event_names", func(t *testing.T) {
+		dir := t.TempDir()
+		hooksPath := filepath.Join(dir, "hooks.json")
+
+		var buf bytes.Buffer
+		if err := installCursor(hooksPath, false, &buf); err != nil {
+			t.Fatalf("installCursor: %v", err)
+		}
+
+		var f cursorHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		if err := json.Unmarshal(data, &f); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+
+		// "preToolUse" must NOT be written — it does not exist in Cursor.
+		if _, ok := f.Hooks["preToolUse"]; ok {
+			t.Fatal("preToolUse must NOT be written — it does not exist in Cursor")
+		}
+
+		// All three real events must be present with the beekeeper hook.
+		for _, event := range []string{"beforeShellExecution", "beforeMCPExecution", "beforeReadFile"} {
+			if len(f.Hooks[event]) == 0 {
+				t.Fatalf("expected beekeeper hook under event %q", event)
+			}
+			for _, h := range f.Hooks[event] {
+				if h.Command == "beekeeper check --hook cursor" {
+					if !h.FailClosed {
+						t.Fatalf("event %q: failClosed must be true (Cursor is fail-OPEN by default)", event)
+					}
+				}
+			}
 		}
 	})
 
@@ -201,14 +245,11 @@ func TestInstallCursor(t *testing.T) {
 		var f cursorHooksFile
 		data, _ := os.ReadFile(hooksPath)
 		json.Unmarshal(data, &f)
+
+		// The fixture has a "some-other-linter" entry under "preToolUse".
+		// After install, beekeeper is added to the three real events;
+		// the existing "preToolUse" key (foreign tool's data) is preserved.
 		preToolUse := f.Hooks["preToolUse"]
-
-		// Should have original entry + beekeeper entry = 2 entries.
-		if len(preToolUse) != 2 {
-			t.Fatalf("expected 2 preToolUse hooks (original + beekeeper), got %d", len(preToolUse))
-		}
-
-		// Verify the original entry was preserved.
 		found := false
 		for _, h := range preToolUse {
 			if h.Command == "some-other-linter" {
@@ -217,22 +258,24 @@ func TestInstallCursor(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Fatal("expected original hook (some-other-linter) to be preserved")
+			t.Fatal("expected original hook (some-other-linter) under preToolUse to be preserved")
 		}
 
-		// Verify beekeeper entry has failClosed: true.
-		bkFound := false
-		for _, h := range preToolUse {
-			if h.Command == "beekeeper check" {
-				bkFound = true
-				if !h.FailClosed {
-					t.Fatal("beekeeper check hook must have failClosed: true")
+		// The three real events must have the beekeeper entry with failClosed.
+		for _, event := range cursorEvents {
+			bkFound := false
+			for _, h := range f.Hooks[event] {
+				if h.Command == "beekeeper check --hook cursor" {
+					bkFound = true
+					if !h.FailClosed {
+						t.Fatalf("event %q: beekeeper check hook must have failClosed: true", event)
+					}
+					break
 				}
-				break
 			}
-		}
-		if !bkFound {
-			t.Fatal("beekeeper check hook not found after install")
+			if !bkFound {
+				t.Fatalf("beekeeper check --hook cursor not found under event %q after install", event)
+			}
 		}
 
 		// Backup must exist.
@@ -251,8 +294,11 @@ func TestInstallCodex(t *testing.T) {
 	t.Run("from_absent", func(t *testing.T) {
 		dir := t.TempDir()
 		hooksPath := filepath.Join(dir, "hooks.json")
+		configPath := filepath.Join(dir, "config.toml")
 
 		var buf bytes.Buffer
+		// Use the lower-level installCodex; config.toml goes via UserHomeDir normally,
+		// but for this test we call ensureCodexFeaturesFlag directly.
 		if err := installCodex(hooksPath, false, &buf); err != nil {
 			t.Fatalf("installCodex: %v", err)
 		}
@@ -263,9 +309,9 @@ func TestInstallCodex(t *testing.T) {
 			t.Fatalf("unmarshal: %v", err)
 		}
 
-		// PreToolUse must have beekeeper check.
-		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "beekeeper check") {
-			t.Fatal("beekeeper check not found in PreToolUse")
+		// PreToolUse must have beekeeper check --hook codex.
+		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "beekeeper check --hook codex") {
+			t.Fatal("beekeeper check --hook codex not found in PreToolUse")
 		}
 
 		// PostToolUse must have beekeeper audit-record.
@@ -292,6 +338,38 @@ func TestInstallCodex(t *testing.T) {
 		if len(f2.Hooks["PostToolUse"]) != 1 {
 			t.Fatalf("idempotency failure: expected 1 PostToolUse entry, got %d", len(f2.Hooks["PostToolUse"]))
 		}
+
+		// config.toml [features] hooks=true via ensureCodexFeaturesFlag directly.
+		var cfgBuf bytes.Buffer
+		if err := ensureCodexFeaturesFlag(configPath, &cfgBuf); err != nil {
+			t.Fatalf("ensureCodexFeaturesFlag: %v", err)
+		}
+		cfgData, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("read config.toml: %v", err)
+		}
+		cfgContent := string(cfgData)
+		if !strings.Contains(cfgContent, "[features]") {
+			t.Fatal("config.toml must contain [features] section")
+		}
+		if !strings.Contains(cfgContent, "hooks = true") {
+			t.Fatal("config.toml must contain hooks = true")
+		}
+
+		// Idempotency: calling ensureCodexFeaturesFlag again must not duplicate.
+		var cfgBuf2 bytes.Buffer
+		if err := ensureCodexFeaturesFlag(configPath, &cfgBuf2); err != nil {
+			t.Fatalf("ensureCodexFeaturesFlag (2nd): %v", err)
+		}
+		cfgData2, _ := os.ReadFile(configPath)
+		featureCount := strings.Count(string(cfgData2), "[features]")
+		if featureCount != 1 {
+			t.Fatalf("idempotency: expected 1 [features] section, got %d", featureCount)
+		}
+		hooksCount := strings.Count(string(cfgData2), "hooks = true")
+		if hooksCount != 1 {
+			t.Fatalf("idempotency: expected 1 'hooks = true' line, got %d", hooksCount)
+		}
 	})
 
 	t.Run("merge_with_existing", func(t *testing.T) {
@@ -317,9 +395,101 @@ func TestInstallCodex(t *testing.T) {
 			t.Fatal("expected original hook (some-other-checker) to be preserved")
 		}
 
-		// Beekeeper check must be present.
-		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "beekeeper check") {
-			t.Fatal("beekeeper check not found in PreToolUse after install")
+		// Beekeeper check --hook codex must be present.
+		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "beekeeper check --hook codex") {
+			t.Fatal("beekeeper check --hook codex not found in PreToolUse after install")
+		}
+	})
+
+	t.Run("config_toml_absent_then_created", func(t *testing.T) {
+		// Verify ensureCodexFeaturesFlag creates config.toml from scratch.
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.toml")
+
+		var buf bytes.Buffer
+		if err := ensureCodexFeaturesFlag(configPath, &buf); err != nil {
+			t.Fatalf("ensureCodexFeaturesFlag: %v", err)
+		}
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("config.toml was not created: %v", err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "[features]") {
+			t.Fatal("created config.toml must contain [features] section")
+		}
+		if !strings.Contains(content, "hooks = true") {
+			t.Fatal("created config.toml must contain hooks = true")
+		}
+	})
+
+	t.Run("config_toml_existing_no_features", func(t *testing.T) {
+		// Verify ensureCodexFeaturesFlag appends [features] to an existing file
+		// that has other content but no [features] section.
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.toml")
+		existing := "[model]\nname = \"o3\"\n"
+		os.WriteFile(configPath, []byte(existing), 0o644)
+
+		var buf bytes.Buffer
+		if err := ensureCodexFeaturesFlag(configPath, &buf); err != nil {
+			t.Fatalf("ensureCodexFeaturesFlag: %v", err)
+		}
+		data, _ := os.ReadFile(configPath)
+		content := string(data)
+		if !strings.Contains(content, "[features]") {
+			t.Fatal("must add [features] section")
+		}
+		if !strings.Contains(content, "hooks = true") {
+			t.Fatal("must add hooks = true")
+		}
+		// Original content must be preserved.
+		if !strings.Contains(content, "[model]") {
+			t.Fatal("original [model] section must be preserved")
+		}
+		if !strings.Contains(content, "name = \"o3\"") {
+			t.Fatal("original model name must be preserved")
+		}
+	})
+
+	t.Run("config_toml_existing_features_no_hooks", func(t *testing.T) {
+		// Verify ensureCodexFeaturesFlag inserts hooks=true into an existing
+		// [features] section that doesn't have it.
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.toml")
+		existing := "[features]\nsomeOtherFlag = true\n"
+		os.WriteFile(configPath, []byte(existing), 0o644)
+
+		var buf bytes.Buffer
+		if err := ensureCodexFeaturesFlag(configPath, &buf); err != nil {
+			t.Fatalf("ensureCodexFeaturesFlag: %v", err)
+		}
+		data, _ := os.ReadFile(configPath)
+		content := string(data)
+		if !strings.Contains(content, "hooks = true") {
+			t.Fatal("must add hooks = true to existing [features] section")
+		}
+		if !strings.Contains(content, "someOtherFlag = true") {
+			t.Fatal("existing feature flag must be preserved")
+		}
+	})
+
+	t.Run("config_toml_already_correct", func(t *testing.T) {
+		// Verify ensureCodexFeaturesFlag is a no-op when [features] hooks=true
+		// is already present.
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.toml")
+		existing := "[features]\nhooks = true\n"
+		os.WriteFile(configPath, []byte(existing), 0o644)
+
+		var buf bytes.Buffer
+		if err := ensureCodexFeaturesFlag(configPath, &buf); err != nil {
+			t.Fatalf("ensureCodexFeaturesFlag: %v", err)
+		}
+		data, _ := os.ReadFile(configPath)
+		// Must still have exactly one occurrence.
+		if strings.Count(string(data), "hooks = true") != 1 {
+			t.Fatalf("idempotency: expected exactly 1 'hooks = true' line, got file: %s", data)
 		}
 	})
 }
@@ -564,29 +734,463 @@ func TestInstallClaudeCodeWiresHookFlag(t *testing.T) {
 // -----------------------------------------------------------------------
 
 func TestUninstallCursor(t *testing.T) {
-	dir := t.TempDir()
-	hooksPath := filepath.Join(dir, "hooks.json")
+	t.Run("removes_from_all_events", func(t *testing.T) {
+		dir := t.TempDir()
+		hooksPath := filepath.Join(dir, "hooks.json")
 
-	var buf bytes.Buffer
+		var buf bytes.Buffer
 
-	// Install first.
-	if err := installCursor(hooksPath, false, &buf); err != nil {
-		t.Fatalf("install: %v", err)
-	}
+		// Install first.
+		if err := installCursor(hooksPath, false, &buf); err != nil {
+			t.Fatalf("install: %v", err)
+		}
 
-	// Uninstall.
-	buf.Reset()
-	if err := uninstallCursor(hooksPath, false, &buf); err != nil {
-		t.Fatalf("uninstall: %v", err)
-	}
+		// Verify all three events have the beekeeper hook.
+		var fBefore cursorHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		json.Unmarshal(data, &fBefore)
+		for _, event := range cursorEvents {
+			if !containsCursorHookByCommand(fBefore.Hooks[event], "beekeeper check --hook cursor") {
+				t.Fatalf("expected beekeeper hook under event %q before uninstall", event)
+			}
+		}
 
-	// Verify preToolUse no longer contains beekeeper check.
-	var f cursorHooksFile
-	data, _ := os.ReadFile(hooksPath)
-	json.Unmarshal(data, &f)
-	if containsCursorHookByCommand(f.Hooks["preToolUse"], "beekeeper check") {
-		t.Fatal("beekeeper check should be removed after uninstall")
-	}
+		// Uninstall.
+		buf.Reset()
+		if err := uninstallCursor(hooksPath, false, &buf); err != nil {
+			t.Fatalf("uninstall: %v", err)
+		}
+
+		// Verify beekeeper hook is gone from all three events.
+		var f cursorHooksFile
+		data, _ = os.ReadFile(hooksPath)
+		json.Unmarshal(data, &f)
+		for _, event := range cursorEvents {
+			if containsCursorHookByCommand(f.Hooks[event], "beekeeper check --hook cursor") {
+				t.Fatalf("beekeeper check --hook cursor should be removed from event %q after uninstall", event)
+			}
+		}
+	})
+
+	t.Run("preserves_foreign_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		hooksPath := copyFixture(t, "cursor_hooks.json", dir)
+
+		var buf bytes.Buffer
+		if err := installCursor(hooksPath, false, &buf); err != nil {
+			t.Fatalf("install: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallCursor(hooksPath, false, &buf); err != nil {
+			t.Fatalf("uninstall: %v", err)
+		}
+
+		var f cursorHooksFile
+		data, _ := os.ReadFile(hooksPath)
+		json.Unmarshal(data, &f)
+
+		// The original "some-other-linter" entry in "preToolUse" must survive.
+		if !containsCursorHookByCommand(f.Hooks["preToolUse"], "some-other-linter") {
+			t.Fatal("foreign hook (some-other-linter) must survive uninstall")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallAugment — contract-shape tests for the Augment installer
+// -----------------------------------------------------------------------
+
+func TestInstallAugment(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installAugment(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAugment: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		if _, ok := m["hooks"]; !ok {
+			t.Fatal("expected hooks key in settings.json after install")
+		}
+
+		hooks := m["hooks"].(map[string]any)
+		pre, ok := hooks["PreToolUse"].([]any)
+		if !ok || len(pre) == 0 {
+			t.Fatal("expected non-empty PreToolUse after install")
+		}
+		if !claudeEntriesContainCommand(pre, augmentPreCommand) {
+			t.Fatalf("expected command %q in PreToolUse", augmentPreCommand)
+		}
+	})
+
+	t.Run("preserves_existing_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		// Seed with a foreign PreToolUse entry.
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "my-augment-guard.sh"}]}
+    ]
+  }
+}`
+		os.WriteFile(settingsPath, []byte(original), 0o644)
+
+		var buf bytes.Buffer
+		if err := installAugment(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAugment: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if !claudeEntriesContainCommand(pre, "my-augment-guard.sh") {
+			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
+		}
+		if !claudeEntriesContainCommand(pre, augmentPreCommand) {
+			t.Fatalf("beekeeper %q must be added", augmentPreCommand)
+		}
+		if len(pre) != 2 {
+			t.Fatalf("expected 2 PreToolUse entries (existing + beekeeper), got %d", len(pre))
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installAugment(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAugment (1st): %v", err)
+		}
+		if err := installAugment(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAugment (2nd): %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+		if len(pre) != 1 {
+			t.Fatalf("idempotency: expected 1 PreToolUse entry, got %d", len(pre))
+		}
+	})
+
+	t.Run("dry_run", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installAugment(settingsPath, true, &buf); err != nil {
+			t.Fatalf("installAugment dry-run: %v", err)
+		}
+
+		// File must not have been created.
+		if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+			t.Fatal("dry-run must not create the settings file")
+		}
+		if !strings.Contains(buf.String(), "[dry-run]") {
+			t.Fatalf("dry-run output must contain [dry-run], got: %s", buf.String())
+		}
+	})
+
+	t.Run("uninstall_only_removes_beekeeper", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		// Seed with a foreign entry + install beekeeper.
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "my-augment-guard.sh"}]}
+    ]
+  }
+}`
+		os.WriteFile(settingsPath, []byte(original), 0o644)
+
+		var buf bytes.Buffer
+		if err := installAugment(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installAugment: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallAugment(settingsPath, false, &buf); err != nil {
+			t.Fatalf("uninstallAugment: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if claudeEntriesContainCommand(pre, augmentPreCommand) {
+			t.Fatalf("beekeeper %q must be removed after uninstall", augmentPreCommand)
+		}
+		if !claudeEntriesContainCommand(pre, "my-augment-guard.sh") {
+			t.Fatal("foreign hook must survive uninstall")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallCodeBuddy — contract-shape tests for the CodeBuddy installer
+// -----------------------------------------------------------------------
+
+func TestInstallCodeBuddy(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installCodeBuddy(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCodeBuddy: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		if _, ok := m["hooks"]; !ok {
+			t.Fatal("expected hooks key in settings.json after install")
+		}
+
+		hooks := m["hooks"].(map[string]any)
+		pre, ok := hooks["PreToolUse"].([]any)
+		if !ok || len(pre) == 0 {
+			t.Fatal("expected non-empty PreToolUse after install")
+		}
+		if !claudeEntriesContainCommand(pre, codebuddyPreCommand) {
+			t.Fatalf("expected command %q in PreToolUse", codebuddyPreCommand)
+		}
+	})
+
+	t.Run("preserves_existing_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "my-codebuddy-guard.sh"}]}
+    ]
+  }
+}`
+		os.WriteFile(settingsPath, []byte(original), 0o644)
+
+		var buf bytes.Buffer
+		if err := installCodeBuddy(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCodeBuddy: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if !claudeEntriesContainCommand(pre, "my-codebuddy-guard.sh") {
+			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
+		}
+		if !claudeEntriesContainCommand(pre, codebuddyPreCommand) {
+			t.Fatalf("beekeeper %q must be added", codebuddyPreCommand)
+		}
+		if len(pre) != 2 {
+			t.Fatalf("expected 2 PreToolUse entries, got %d", len(pre))
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installCodeBuddy(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCodeBuddy (1st): %v", err)
+		}
+		if err := installCodeBuddy(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCodeBuddy (2nd): %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+		if len(pre) != 1 {
+			t.Fatalf("idempotency: expected 1 PreToolUse entry, got %d", len(pre))
+		}
+	})
+
+	t.Run("dry_run", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installCodeBuddy(settingsPath, true, &buf); err != nil {
+			t.Fatalf("installCodeBuddy dry-run: %v", err)
+		}
+		if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+			t.Fatal("dry-run must not create the settings file")
+		}
+	})
+
+	t.Run("uninstall_only_removes_beekeeper", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "my-codebuddy-guard.sh"}]}
+    ]
+  }
+}`
+		os.WriteFile(settingsPath, []byte(original), 0o644)
+
+		var buf bytes.Buffer
+		if err := installCodeBuddy(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installCodeBuddy: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallCodeBuddy(settingsPath, false, &buf); err != nil {
+			t.Fatalf("uninstallCodeBuddy: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if claudeEntriesContainCommand(pre, codebuddyPreCommand) {
+			t.Fatalf("beekeeper %q must be removed after uninstall", codebuddyPreCommand)
+		}
+		if !claudeEntriesContainCommand(pre, "my-codebuddy-guard.sh") {
+			t.Fatal("foreign hook must survive uninstall")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallQwen — contract-shape tests for the Qwen Code installer
+// -----------------------------------------------------------------------
+
+func TestInstallQwen(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installQwen(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installQwen: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		if _, ok := m["hooks"]; !ok {
+			t.Fatal("expected hooks key in settings.json after install")
+		}
+
+		hooks := m["hooks"].(map[string]any)
+		pre, ok := hooks["PreToolUse"].([]any)
+		if !ok || len(pre) == 0 {
+			t.Fatal("expected non-empty PreToolUse after install")
+		}
+		if !claudeEntriesContainCommand(pre, qwenPreCommand) {
+			t.Fatalf("expected command %q in PreToolUse", qwenPreCommand)
+		}
+	})
+
+	t.Run("preserves_existing_hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "my-qwen-guard.sh"}]}
+    ]
+  }
+}`
+		os.WriteFile(settingsPath, []byte(original), 0o644)
+
+		var buf bytes.Buffer
+		if err := installQwen(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installQwen: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if !claudeEntriesContainCommand(pre, "my-qwen-guard.sh") {
+			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
+		}
+		if !claudeEntriesContainCommand(pre, qwenPreCommand) {
+			t.Fatalf("beekeeper %q must be added", qwenPreCommand)
+		}
+		if len(pre) != 2 {
+			t.Fatalf("expected 2 PreToolUse entries, got %d", len(pre))
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installQwen(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installQwen (1st): %v", err)
+		}
+		if err := installQwen(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installQwen (2nd): %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+		if len(pre) != 1 {
+			t.Fatalf("idempotency: expected 1 PreToolUse entry, got %d", len(pre))
+		}
+	})
+
+	t.Run("dry_run", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		var buf bytes.Buffer
+		if err := installQwen(settingsPath, true, &buf); err != nil {
+			t.Fatalf("installQwen dry-run: %v", err)
+		}
+		if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+			t.Fatal("dry-run must not create the settings file")
+		}
+	})
+
+	t.Run("uninstall_only_removes_beekeeper", func(t *testing.T) {
+		dir := t.TempDir()
+		settingsPath := filepath.Join(dir, "settings.json")
+
+		original := `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "my-qwen-guard.sh"}]}
+    ]
+  }
+}`
+		os.WriteFile(settingsPath, []byte(original), 0o644)
+
+		var buf bytes.Buffer
+		if err := installQwen(settingsPath, false, &buf); err != nil {
+			t.Fatalf("installQwen: %v", err)
+		}
+		buf.Reset()
+		if err := uninstallQwen(settingsPath, false, &buf); err != nil {
+			t.Fatalf("uninstallQwen: %v", err)
+		}
+
+		m := readJSON(t, settingsPath)
+		hooks := m["hooks"].(map[string]any)
+		pre := hooks["PreToolUse"].([]any)
+
+		if claudeEntriesContainCommand(pre, qwenPreCommand) {
+			t.Fatalf("beekeeper %q must be removed after uninstall", qwenPreCommand)
+		}
+		if !claudeEntriesContainCommand(pre, "my-qwen-guard.sh") {
+			t.Fatal("foreign hook must survive uninstall")
+		}
+	})
 }
 
 // -----------------------------------------------------------------------
