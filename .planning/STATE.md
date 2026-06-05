@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 10-04-PLAN.md
-last_updated: "2026-06-05T12:10:50.942Z"
-last_activity: "2026-06-05 -- Phase 10 plan 03 executed (3 tasks, 3 commits: 95ee9ed a4211d0 978fc4e)"
+stopped_at: Completed 10-05-PLAN.md
+last_updated: "2026-06-05T13:10:00.000Z"
+last_activity: "2026-06-05 -- Phase 10 plan 05 executed (3 tasks, 2 commits: 840abbd e4b1572)"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 26
-  completed_plans: 22
-  percent: 67
+  completed_plans: 23
+  percent: 88
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 > **SUPERSEDED 2026-06-05 — read this first.** v1.2.0 is SHIPPED & ARCHIVED (tag `v1.2.0`; the "READY FOR CLOSE" lines below are stale pre-close text). **NEW critical finding:** a live dogfood proved Beekeeper's PreToolUse hook fires + decides "block" but harnesses run the tool anyway — `beekeeper check` exits `1`, but harnesses need exit `2` / a per-harness deny JSON. **The hook-block path is non-functional on every hook-based harness** (Claude Code/Cursor/Codex); shim + MCP-gateway paths are unaffected. **Phase 10 "Hook-Block Protocol Compliance & Multi-Harness Enforcement" inserted (seeds v1.3.0) — NOT yet planned.** Research + Context live in the phase folder: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/{10-RESEARCH.md, 10-CONTEXT.md}` (15-harness deny-contract matrix in 10-RESEARCH.md). **NEXT: `/gsd-plan-phase 10`** (read the research first; expect ≥2 sub-phases). The 4 prerequisite fixes are now on `main` (commits `adc1f77` nudge/timeout, `50513ae` hooks clobber→merge — fast-forward merged 2026-06-05; the `fix/windows-pnpm-timeout-and-hook-merge` branch is fully merged/redundant, deletable with `git branch -d`). **Phase 10 executes on `main`** (GSD runs the phase on the current branch; HEAD is on main). Planning artifacts (ROADMAP/STATE/phase-10 dir) remain uncommitted. Roadmap evolution: Phase 10 added 2026-06-05.
 
 Phase: 10 (hook-block-protocol-compliance-and-multi-harness-enforcement) — EXECUTING
-Plan: 5 of 6 (plans 01, 03 complete; plan 02 is checkpoint-only)
-Status: Ready to execute
-Last activity: 2026-06-05 -- Phase 10 plan 03 executed (3 tasks, 3 commits: 95ee9ed a4211d0 978fc4e)
+Plan: 6 of 6 (plans 01, 03, 04, 05 complete; plan 02 is checkpoint-only)
+Status: Ready to execute plan 06 (final plan)
+Last activity: 2026-06-05 -- Phase 10 plan 05 executed (3 tasks, 2 commits: 840abbd e4b1572)
 
 Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete & verified — milestone ready for close)
 
@@ -65,6 +65,13 @@ Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 10 (v1.3.0 - plan 10-05):
+
+- Phase 10-05: Hermes YAML patching uses bufio.Scanner line scan (3 cases: append full block / append pre_tool_call: under hooks: / insert entry under existing pre_tool_call:); no gopkg.in/yaml.v3 dep
+- Phase 10-05: Cline build-tag split — cline.go (!windows) real installer with executable PreToolUse 0o755; cline_windows.go (windows) stub with "macOS/Linux only" error; both GOOS builds clean
+- Phase 10-05: TargetOpenCode moved from gatewayTargets to plugin installer; printOpenCodeGuide retained as MCP-fallback reference; TargetKilo/TargetTrae added to gatewayTargets + gateway_targets.go
+- Phase 10-05: T-10-20 — installCline backs up + warns on foreign PreToolUse before overwriting; uninstallCline verifies clinePreCommand marker before removing
 
 Recent decisions from Phase 10 (v1.3.0 - plan 10-03):
 
@@ -168,7 +175,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-05T12:10:50.908Z
+Last session: 2026-06-05T12:32:32.570Z
 Stopped at: Completed 10-04-PLAN.md
 Resume file: None
 
