@@ -53,15 +53,17 @@ const openCodePluginTemplate = `// Beekeeper safety hook for OpenCode
 
 import { spawnSync } from "child_process";
 
+// Hook: tool.execute.before — called before every tool invocation.
+// Shells to: beekeeper check --hook opencode
 export default {
   tool: {
     execute: {
-      before: (ctx) => {
+      before: (ctx) => { // tool.execute.before
         // Serialize the tool call context and pipe it to beekeeper check.
         const input = JSON.stringify(ctx);
         const result = spawnSync(
           "beekeeper",
-          ["check", "--hook", "opencode"],
+          ["check", "--hook", "opencode"], // command: beekeeper check --hook opencode
           {
             input,
             encoding: "utf-8",

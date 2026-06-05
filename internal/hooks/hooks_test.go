@@ -1817,6 +1817,31 @@ func TestInstallDispatchNewTargets(t *testing.T) {
 				return installWindsurf(filepath.Join(dir, "hooks.json"), false, &bytes.Buffer{})
 			},
 		},
+		{
+			name: TargetHermes,
+			install: func(dir string) error {
+				return installHermes(filepath.Join(dir, "config.yaml"), false, &bytes.Buffer{})
+			},
+		},
+		{
+			name: TargetOpenCode,
+			install: func(dir string) error {
+				return installOpenCodePlugin(dir, false, &bytes.Buffer{})
+			},
+		},
+		{
+			// Cline dispatch: on Windows returns the "macOS/Linux only" error; that
+			// is expected — guard so the dispatch test passes on Windows too.
+			name: TargetCline,
+			install: func(dir string) error {
+				err := installCline(dir, false, &bytes.Buffer{})
+				if err != nil && runtime.GOOS == "windows" {
+					// Expected: Windows stub returns "macOS/Linux only" error.
+					return nil
+				}
+				return err
+			},
+		},
 	}
 	for _, tc := range targets {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1826,4 +1851,254 @@ func TestInstallDispatchNewTargets(t *testing.T) {
 			}
 		})
 	}
+}
+
+// -----------------------------------------------------------------------
+// TestInstallHermes — contract-shape tests for the Hermes installer
+// -----------------------------------------------------------------------
+
+func TestInstallHermes(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.yaml")
+
+		var buf bytes.Buffer
+		if err := installHermes(configPath, false, &buf); err != nil {
+			t.Fatalf("installHermes: %v", err)
+		}
+
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("config.yaml was not created: %v", err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "pre_tool_call:") {
+			t.Fatal("config.yaml must contain pre_tool_call key after install")
+		}
+		if !strings.Contains(content, hermesPreCommand) {
+			t.Fatalf("config.yaml must contain %q", hermesPreCommand)
+		}
+		if !strings.Contains(content, "hooks:") {
+			t.Fatal("config.yaml must contain hooks: section")
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.yaml")
+
+		var buf bytes.Buffer
+		if err := installHermes(configPath, false, &buf); err != nil {
+			t.Fatalf("installHermes (1st): %v", err)
+		}
+
+		// Install again — must be a no-op.
+		buf.Reset()
+		if err := installHermes(configPath, false, &buf); err != nil {
+			t.Fatalf("installHermes (2nd): %v", err)
+		}
+
+		// Must still have exactly one beekeeper command.
+		data, _ := os.ReadFile(configPath)
+		count := strings.Count(string(data), hermesPreCommand)
+		if count != 1 {
+			t.Fatalf("idempotency: expected 1 occurrence of %q, got %d", hermesPreCommand, count)
+		}
+	})
+
+	t.Run("uninstall_removes_entry", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.yaml")
+
+		var buf bytes.Buffer
+		if err := installHermes(configPath, false, &buf); err != nil {
+			t.Fatalf("installHermes: %v", err)
+		}
+
+		// Uninstall.
+		buf.Reset()
+		if err := uninstallHermes(configPath, false, &buf); err != nil {
+			t.Fatalf("uninstallHermes: %v", err)
+		}
+
+		data, _ := os.ReadFile(configPath)
+		if strings.Contains(string(data), hermesPreCommand) {
+			t.Fatalf("beekeeper command should be removed after uninstall")
+		}
+	})
+
+	t.Run("foreign_content_preserved", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.yaml")
+
+		// Seed with existing content that must survive install.
+		existing := "model: hermes-3-llama\ntemperature: 0.7\n"
+		if err := os.WriteFile(configPath, []byte(existing), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installHermes(configPath, false, &buf); err != nil {
+			t.Fatalf("installHermes: %v", err)
+		}
+
+		data, _ := os.ReadFile(configPath)
+		content := string(data)
+		if !strings.Contains(content, "model: hermes-3-llama") {
+			t.Fatal("foreign content (model) must be preserved after install")
+		}
+		if !strings.Contains(content, "temperature: 0.7") {
+			t.Fatal("foreign content (temperature) must be preserved after install")
+		}
+		if !strings.Contains(content, hermesPreCommand) {
+			t.Fatalf("beekeeper command must be present after install, got:\n%s", content)
+		}
+	})
+
+	t.Run("dry_run_no_write", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.yaml")
+
+		var buf bytes.Buffer
+		if err := installHermes(configPath, true, &buf); err != nil {
+			t.Fatalf("installHermes dry-run: %v", err)
+		}
+
+		// File must NOT have been created.
+		if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+			t.Fatal("dry-run must not create config.yaml")
+		}
+
+		if !strings.Contains(buf.String(), "dry-run") {
+			t.Fatalf("dry-run output should mention dry-run, got: %s", buf.String())
+		}
+	})
+
+	t.Run("backup_created", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.yaml")
+
+		// Create file first so backup is triggered.
+		if err := os.WriteFile(configPath, []byte("model: hermes\n"), 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		if err := installHermes(configPath, false, &buf); err != nil {
+			t.Fatalf("installHermes: %v", err)
+		}
+
+		backups := globFiles(t, dir, "config.yaml.beekeeper-backup-*")
+		if len(backups) == 0 {
+			t.Fatal("expected backup file to be created")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// TestInstallOpenCodePlugin — contract-shape tests for the OpenCode plugin
+// -----------------------------------------------------------------------
+
+func TestInstallOpenCodePlugin(t *testing.T) {
+	t.Run("from_absent", func(t *testing.T) {
+		dir := t.TempDir()
+
+		var buf bytes.Buffer
+		if err := installOpenCodePlugin(dir, false, &buf); err != nil {
+			t.Fatalf("installOpenCodePlugin: %v", err)
+		}
+
+		pluginPath := openCodePluginPath(dir)
+		data, err := os.ReadFile(pluginPath)
+		if err != nil {
+			t.Fatalf("beekeeper.js was not created: %v", err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "tool.execute.before") {
+			t.Fatal("beekeeper.js must contain 'tool.execute.before' hook reference")
+		}
+		if !strings.Contains(content, "beekeeper check --hook opencode") {
+			t.Fatal("beekeeper.js must contain 'beekeeper check --hook opencode'")
+		}
+		if !strings.Contains(content, "throw new Error") {
+			t.Fatal("beekeeper.js must contain 'throw new Error' (deny path)")
+		}
+		// Marker for idempotency and safe uninstall.
+		if !strings.Contains(content, openCodePluginMarker) {
+			t.Fatal("beekeeper.js must contain the beekeeper marker string")
+		}
+	})
+
+	t.Run("idempotent", func(t *testing.T) {
+		dir := t.TempDir()
+
+		var buf bytes.Buffer
+		if err := installOpenCodePlugin(dir, false, &buf); err != nil {
+			t.Fatalf("installOpenCodePlugin (1st): %v", err)
+		}
+
+		buf.Reset()
+		if err := installOpenCodePlugin(dir, false, &buf); err != nil {
+			t.Fatalf("installOpenCodePlugin (2nd): %v", err)
+		}
+
+		// Output on second call should say already installed.
+		if !strings.Contains(buf.String(), "already installed") {
+			t.Fatalf("expected 'already installed' on 2nd call, got: %s", buf.String())
+		}
+	})
+
+	t.Run("uninstall_removes_plugin", func(t *testing.T) {
+		dir := t.TempDir()
+
+		var buf bytes.Buffer
+		if err := installOpenCodePlugin(dir, false, &buf); err != nil {
+			t.Fatalf("installOpenCodePlugin: %v", err)
+		}
+
+		buf.Reset()
+		if err := uninstallOpenCodePlugin(dir, false, &buf); err != nil {
+			t.Fatalf("uninstallOpenCodePlugin: %v", err)
+		}
+
+		pluginPath := openCodePluginPath(dir)
+		if _, err := os.Stat(pluginPath); !os.IsNotExist(err) {
+			t.Fatal("beekeeper.js should be removed after uninstall")
+		}
+	})
+
+	t.Run("caveat_printed", func(t *testing.T) {
+		dir := t.TempDir()
+
+		var buf bytes.Buffer
+		if err := installOpenCodePlugin(dir, false, &buf); err != nil {
+			t.Fatalf("installOpenCodePlugin: %v", err)
+		}
+
+		out := buf.String()
+		if !strings.Contains(out, "#5894") {
+			t.Fatalf("output must mention subagent caveat #5894, got: %s", out)
+		}
+		if !strings.Contains(out, "#2319") {
+			t.Fatalf("output must mention MCP caveat #2319, got: %s", out)
+		}
+	})
+
+	t.Run("dry_run_no_write", func(t *testing.T) {
+		dir := t.TempDir()
+
+		var buf bytes.Buffer
+		if err := installOpenCodePlugin(dir, true, &buf); err != nil {
+			t.Fatalf("installOpenCodePlugin dry-run: %v", err)
+		}
+
+		pluginPath := openCodePluginPath(dir)
+		if _, err := os.Stat(pluginPath); !os.IsNotExist(err) {
+			t.Fatal("dry-run must not create beekeeper.js")
+		}
+
+		if !strings.Contains(buf.String(), "dry-run") {
+			t.Fatalf("dry-run output should mention dry-run, got: %s", buf.String())
+		}
+	})
 }
