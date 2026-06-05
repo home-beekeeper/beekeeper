@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: hook-block-protocol-compliance-and-multi-harness-enforcement
 status: executing
-stopped_at: "Phase 10 plan 01 complete (d7bffe3, 76029a3, 342d78a). RenderDeny + --hook flag + claudePreCommand fix. NEXT: /gsd-execute-phase 10 plan 02."
+stopped_at: "Phase 10 plan 03 complete (95ee9ed, a4211d0, 978fc4e). Cursor event-name fix + Codex features flag + Augment/CodeBuddy/Qwen installers + contract-shape tests. NEXT: /gsd-execute-phase 10 plan 04."
 last_updated: "2026-06-05T12:00:00.000Z"
-last_activity: 2026-06-05 -- Phase 10 plan 01 executed (3/3 tasks, 3 commits)
+last_activity: 2026-06-05 -- Phase 10 plan 03 executed (3/3 tasks, 3 commits)
 progress:
   total_phases: 10
   completed_phases: 8
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 > **SUPERSEDED 2026-06-05 — read this first.** v1.2.0 is SHIPPED & ARCHIVED (tag `v1.2.0`; the "READY FOR CLOSE" lines below are stale pre-close text). **NEW critical finding:** a live dogfood proved Beekeeper's PreToolUse hook fires + decides "block" but harnesses run the tool anyway — `beekeeper check` exits `1`, but harnesses need exit `2` / a per-harness deny JSON. **The hook-block path is non-functional on every hook-based harness** (Claude Code/Cursor/Codex); shim + MCP-gateway paths are unaffected. **Phase 10 "Hook-Block Protocol Compliance & Multi-Harness Enforcement" inserted (seeds v1.3.0) — NOT yet planned.** Research + Context live in the phase folder: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/{10-RESEARCH.md, 10-CONTEXT.md}` (15-harness deny-contract matrix in 10-RESEARCH.md). **NEXT: `/gsd-plan-phase 10`** (read the research first; expect ≥2 sub-phases). The 4 prerequisite fixes are now on `main` (commits `adc1f77` nudge/timeout, `50513ae` hooks clobber→merge — fast-forward merged 2026-06-05; the `fix/windows-pnpm-timeout-and-hook-merge` branch is fully merged/redundant, deletable with `git branch -d`). **Phase 10 executes on `main`** (GSD runs the phase on the current branch; HEAD is on main). Planning artifacts (ROADMAP/STATE/phase-10 dir) remain uncommitted. Roadmap evolution: Phase 10 added 2026-06-05.
 
 Phase: 10 (hook-block-protocol-compliance-and-multi-harness-enforcement) — EXECUTING
-Plan: 2 of 6 (plan 01 complete)
+Plan: 4 of 6 (plans 01, 03 complete; plan 02 is checkpoint-only)
 Status: Executing Phase 10
-Last activity: 2026-06-05 -- Phase 10 plan 01 executed (3 tasks, 3 commits: d7bffe3 76029a3 342d78a)
+Last activity: 2026-06-05 -- Phase 10 plan 03 executed (3 tasks, 3 commits: 95ee9ed a4211d0 978fc4e)
 
 Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete & verified — milestone ready for close)
 
@@ -65,6 +65,13 @@ Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 10 (v1.3.0 - plan 10-03):
+
+- Phase 10-03: Cursor event-name fixed (preToolUse → beforeShellExecution/beforeMCPExecution/beforeReadFile); FailClosed:true retained; command updated to --hook cursor
+- Phase 10-03: ensureCodexFeaturesFlag uses targeted line/section string patching without new TOML library (CLAUDE.md constraint); idempotent under all 4 entry conditions
+- Phase 10-03: Augment/CodeBuddy/Qwen reuse mergeClaudeHookEntry/removeClaudeHookEntry trinity; beekeeperClaudePreEntryWith/beekeeperClaudePostEntryWith added for parametric entry construction
+- Phase 10-03: installCodex backs up config.toml before calling ensureCodexFeaturesFlag
 
 Recent decisions from Phase 10 (v1.3.0 - plan 10-01):
 

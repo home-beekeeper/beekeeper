@@ -190,7 +190,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **8/8** | **Complete** | **2026-06-04** |
 | **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **5/5** | **Complete & verified (9/9)** | **2026-06-04** |
-| **10. Hook-Block Protocol Compliance & Multi-Harness Enforcement** | **v1.3.0 (next)** | **1/6** | **Executing** | **—** |
+| **10. Hook-Block Protocol Compliance & Multi-Harness Enforcement** | **v1.3.0 (next)** | **2/6** | **Executing** | **—** |
 
 ### Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement
 
@@ -227,7 +227,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [ ] 10-02-PLAN.md — Live Claude Code end-to-end block re-proof (HPC-04) [wave 2, checkpoint]
-- [ ] 10-03-PLAN.md — Fix Cursor event-name bug + Codex features flag; add Augment/CodeBuddy/Qwen installers (HPC-02/03) [wave 2]
+- [x] 10-03-PLAN.md — Fix Cursor event-name bug + Codex features flag; add Augment/CodeBuddy/Qwen installers (HPC-02/03) [wave 2] ✅ 2026-06-05 (95ee9ed, a4211d0, 978fc4e)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
