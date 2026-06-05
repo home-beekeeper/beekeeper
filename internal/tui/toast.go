@@ -49,7 +49,7 @@ func (t ToastModel) View(width int) string {
 	}
 	var icon string
 	if t.kind == toastWarn {
-		icon = styleAmber.Render("✓")
+		icon = styleAmber.Render("⚠")
 	} else {
 		icon = styleGreen.Render("✓")
 	}
