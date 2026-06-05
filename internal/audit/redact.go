@@ -104,6 +104,19 @@ func applyRedaction(s string, patterns []redactPattern) string {
 //   - PMState: the flattened §9 PM-state string (Phase 8). It is structured
 //     detection metadata today, but it is redacted defensively so that no
 //     attacker-influenced data path bypasses redaction (WR-01).
+//   - SentryProcessExe: the path of the monitored process. May embed credential
+//     paths or tokens in argv-derived exe strings on some platforms (TM-D-03).
+//   - SentryCorrelatedExt: the extension ID correlated with a sentry alert. May
+//     contain publisher-supplied strings that embed tokens (TM-D-03).
+//   - SentryFilesAccessed: slice of file paths observed by the Sentry — may
+//     contain credential paths or secrets embedded in paths (TM-D-03).
+//   - SentryNetworkDests: slice of network destinations — may contain bearer
+//     tokens embedded in URL query strings or authority components (TM-D-03).
+//   - CatalogProvenance: struct slice — Reason and EntryID fields within each
+//     match may carry attacker-controlled strings from the catalog (TM-D-03).
+//
+// Non-sensitive structural fields (RecordType, Decision, Timestamp, RuleIDs,
+// boolean flags, numeric counters) are NOT redacted.
 //
 // ToolInput is a map[string]any in policy.ToolCall (not in AuditRecord directly);
 // string values would be redacted at the ToolCall layer if exposed here.
@@ -113,8 +126,8 @@ func RedactRecord(rec AuditRecord, patterns []redactPattern) AuditRecord {
 	if len(patterns) == 0 {
 		return rec
 	}
-	// Shallow copy — all fields are value types or immutable (slices are not
-	// modified by redaction since we only redact string fields).
+	// Shallow copy — all value-type fields are copied verbatim. Slice fields
+	// that need redaction are replaced with freshly allocated slices below.
 	out := rec
 	out.Reason = applyRedaction(rec.Reason, patterns)
 	// WR-01: the Phase-8 nudge fields carry attacker-influenced raw command
@@ -123,6 +136,27 @@ func RedactRecord(rec AuditRecord, patterns []redactPattern) AuditRecord {
 	out.OriginalCommand = applyRedaction(rec.OriginalCommand, patterns)
 	out.RewrittenCommand = applyRedaction(rec.RewrittenCommand, patterns)
 	out.PMState = applyRedaction(rec.PMState, patterns)
+
+	// TM-D-03: redact Sentry string fields that may carry credential-adjacent
+	// data (process paths, network destinations, correlated extension IDs).
+	out.SentryProcessExe = applyRedaction(rec.SentryProcessExe, patterns)
+	out.SentryCorrelatedExt = applyRedaction(rec.SentryCorrelatedExt, patterns)
+	out.SentryFilesAccessed = RedactStringSlice(rec.SentryFilesAccessed, patterns)
+	out.SentryNetworkDests = RedactStringSlice(rec.SentryNetworkDests, patterns)
+
+	// TM-D-03: redact CatalogProvenance fields that carry attacker-influenced
+	// strings (Package, EntryID). Structural/provenance fields (CatalogSource,
+	// Ecosystem, Severity, Version, boolean flags) are not redacted.
+	if len(rec.CatalogMatches) > 0 {
+		redactedMatches := make([]CatalogProvenance, len(rec.CatalogMatches))
+		for i, cm := range rec.CatalogMatches {
+			redactedMatches[i] = cm
+			redactedMatches[i].Package = applyRedaction(cm.Package, patterns)
+			redactedMatches[i].EntryID = applyRedaction(cm.EntryID, patterns)
+		}
+		out.CatalogMatches = redactedMatches
+	}
+
 	return out
 }
 

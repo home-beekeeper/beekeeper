@@ -302,6 +302,111 @@ func TestRedactRecordNoPatterns(t *testing.T) {
 	}
 }
 
+// TestRedactRecordSentryFields verifies TM-D-03: RedactRecord redacts the
+// Sentry string fields (SentryFilesAccessed, SentryNetworkDests, SentryProcessExe,
+// SentryCorrelatedExt) and CatalogProvenance entries so that credentials embedded
+// in those fields do not reach remote OTLP/HTTPS/syslog sinks.
+func TestRedactRecordSentryFields(t *testing.T) {
+	patterns := DefaultRedactPatterns()
+
+	original := AuditRecord{
+		RecordType:  "sentry_alert",
+		RecordID:    "sentry-id-1",
+		Timestamp:   "2026-06-05T00:00:00Z",
+		ScannerName: "beekeeper",
+		Decision:    "block",
+		// Sensitive data embedded in Sentry fields.
+		SentryProcessExe:    "/usr/bin/node --token=ghp_1234567890abcdef",
+		SentryCorrelatedExt: "malicious.ext sk-proj-abc123XYZ",
+		SentryFilesAccessed: []string{
+			"/home/user/.ssh/id_rsa",
+			"/home/user/Authorization: Bearer secret-file-token /data",
+		},
+		SentryNetworkDests: []string{
+			"https://exfil.example.com/?token=ghp_abcdefghijklmnop",
+			"192.0.2.1:443",
+		},
+		CatalogMatches: []CatalogProvenance{
+			{
+				CatalogSource: "bumblebee",
+				EntryID:       "entry-ghp_1234567890abcdef",
+				Ecosystem:     "editor-extension",
+				Package:       "evil.pkg sk-ant-api03-secretkey",
+				Version:       "1.0.0",
+				Severity:      "critical",
+			},
+		},
+	}
+
+	redacted := RedactRecord(original, patterns)
+
+	// Original must be unchanged.
+	if original.SentryProcessExe != "/usr/bin/node --token=ghp_1234567890abcdef" {
+		t.Fatalf("RedactRecord mutated original.SentryProcessExe")
+	}
+
+	// SentryProcessExe: token must be redacted.
+	if strings.Contains(redacted.SentryProcessExe, "ghp_1234567890abcdef") {
+		t.Errorf("SentryProcessExe token not redacted: %q", redacted.SentryProcessExe)
+	}
+
+	// SentryCorrelatedExt: API key must be redacted.
+	if strings.Contains(redacted.SentryCorrelatedExt, "sk-proj-abc123XYZ") {
+		t.Errorf("SentryCorrelatedExt key not redacted: %q", redacted.SentryCorrelatedExt)
+	}
+
+	// SentryFilesAccessed: bearer token in path must be redacted; plain path unchanged.
+	if len(redacted.SentryFilesAccessed) != 2 {
+		t.Fatalf("SentryFilesAccessed length changed: got %d want 2", len(redacted.SentryFilesAccessed))
+	}
+	// Plain path must be unchanged (no credential pattern).
+	if redacted.SentryFilesAccessed[0] != original.SentryFilesAccessed[0] {
+		t.Errorf("SentryFilesAccessed[0] changed unexpectedly: got %q", redacted.SentryFilesAccessed[0])
+	}
+	// Bearer token in second entry must be redacted.
+	if strings.Contains(redacted.SentryFilesAccessed[1], "secret-file-token") {
+		t.Errorf("SentryFilesAccessed[1] bearer token not redacted: %q", redacted.SentryFilesAccessed[1])
+	}
+
+	// SentryNetworkDests: GitHub PAT in URL must be redacted.
+	if len(redacted.SentryNetworkDests) != 2 {
+		t.Fatalf("SentryNetworkDests length changed: got %d want 2", len(redacted.SentryNetworkDests))
+	}
+	if strings.Contains(redacted.SentryNetworkDests[0], "ghp_abcdefghijklmnop") {
+		t.Errorf("SentryNetworkDests[0] PAT not redacted: %q", redacted.SentryNetworkDests[0])
+	}
+	// Plain IP must be unchanged.
+	if redacted.SentryNetworkDests[1] != original.SentryNetworkDests[1] {
+		t.Errorf("SentryNetworkDests[1] changed unexpectedly: got %q", redacted.SentryNetworkDests[1])
+	}
+
+	// CatalogMatches: Package and EntryID must be redacted.
+	if len(redacted.CatalogMatches) != 1 {
+		t.Fatalf("CatalogMatches length changed: got %d want 1", len(redacted.CatalogMatches))
+	}
+	if strings.Contains(redacted.CatalogMatches[0].Package, "sk-ant-api03-secretkey") {
+		t.Errorf("CatalogMatches[0].Package key not redacted: %q", redacted.CatalogMatches[0].Package)
+	}
+	if strings.Contains(redacted.CatalogMatches[0].EntryID, "ghp_1234567890abcdef") {
+		t.Errorf("CatalogMatches[0].EntryID PAT not redacted: %q", redacted.CatalogMatches[0].EntryID)
+	}
+	// Non-sensitive structural fields must be unchanged.
+	if redacted.CatalogMatches[0].CatalogSource != "bumblebee" {
+		t.Errorf("CatalogMatches[0].CatalogSource changed: got %q", redacted.CatalogMatches[0].CatalogSource)
+	}
+	if redacted.CatalogMatches[0].Severity != "critical" {
+		t.Errorf("CatalogMatches[0].Severity changed: got %q", redacted.CatalogMatches[0].Severity)
+	}
+
+	// Structural fields must be unchanged.
+	if redacted.RecordType != "sentry_alert" {
+		t.Errorf("RedactRecord changed RecordType: got %q", redacted.RecordType)
+	}
+	if redacted.Decision != "block" {
+		t.Errorf("RedactRecord changed Decision: got %q", redacted.Decision)
+	}
+}
+
 // TestRedactPathologicalInputs verifies that default patterns do not catastrophically
 // backtrack on adversarial inputs (T-04-05-07).
 // Each test case must complete in <100ms (enforced by test timeout).

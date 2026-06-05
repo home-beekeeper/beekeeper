@@ -180,11 +180,13 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 			rec.RuleIDs = append([]string{"EDXT-03"}, rec.RuleIDs...)
 		}
 
-		// Write audit record.
+		// Write audit record — redact before fan-out to disk/remote sinks.
+		// Mirrors check/handler.go:493-494 and gateway/proxy.go:514-515 (TM-D-03).
+		redactedRec := audit.RedactRecord(rec, audit.DefaultRedactPatterns())
 		if w, err := audit.NewWriter(h.AuditPath); err != nil {
 			log.Printf("beekeeper watch: audit writer unavailable: %v", err)
 		} else {
-			if err := w.Write(rec); err != nil {
+			if err := w.Write(redactedRec); err != nil {
 				log.Printf("beekeeper watch: audit write failed: %v", err)
 			}
 			w.Close()
@@ -220,7 +222,7 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 		return
 	}
 
-	// 10. Clean — write an allow audit record.
+	// 10. Clean — write an allow audit record — redact before fan-out (TM-D-03).
 	allowDecision := policy.Decision{
 		Allow:   true,
 		Level:   "allow",
@@ -228,10 +230,11 @@ func (h *Handler) HandleNewExtension(ctx context.Context, path string) {
 		RuleIDs: []string{"EDXT-02"},
 	}
 	rec := audit.FromDecision(tc, allowDecision, generateRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
+	redactedAllow := audit.RedactRecord(rec, audit.DefaultRedactPatterns())
 	if w, err := audit.NewWriter(h.AuditPath); err != nil {
 		log.Printf("beekeeper watch: audit writer unavailable: %v", err)
 	} else {
-		if err := w.Write(rec); err != nil {
+		if err := w.Write(redactedAllow); err != nil {
 			log.Printf("beekeeper watch: audit write failed: %v", err)
 		}
 		w.Close()
