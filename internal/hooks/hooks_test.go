@@ -403,6 +403,96 @@ func TestUninstallClaudeCode(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------
+// TestInstallClaudeCodePreservesExistingHooks — regression for the clobber bug
+// -----------------------------------------------------------------------
+
+// A user with pre-existing Claude Code hooks must KEEP them after
+// `beekeeper hooks install`, and uninstall must remove ONLY beekeeper's entries.
+// Before the merge fix the installer overwrote the whole "hooks" key, silently
+// destroying every non-beekeeper hook.
+func TestInstallClaudeCodePreservesExistingHooks(t *testing.T) {
+	dir := t.TempDir()
+	settingsPath := filepath.Join(dir, "settings.json")
+
+	original := `{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "my-session-init.sh"}]}
+    ],
+    "PreToolUse": [
+      {"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "my-existing-guard.js"}]}
+    ]
+  },
+  "statusLine": {"type": "command", "command": "my-statusline.js"}
+}`
+	if err := os.WriteFile(settingsPath, []byte(original), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := installClaudeCode(settingsPath, false, &buf); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	m := readJSON(t, settingsPath)
+	hooks := m["hooks"].(map[string]any)
+
+	pre := hooks["PreToolUse"].([]any)
+	if !claudeEntriesContainCommand(pre, "my-existing-guard.js") {
+		t.Fatal("pre-existing PreToolUse guard was clobbered by install")
+	}
+	if !claudeEntriesContainCommand(pre, "beekeeper check") {
+		t.Fatal("beekeeper check was not added to PreToolUse")
+	}
+	if len(pre) != 2 {
+		t.Fatalf("expected 2 PreToolUse entries (existing + beekeeper), got %d", len(pre))
+	}
+	if _, ok := hooks["SessionStart"]; !ok {
+		t.Fatal("SessionStart hooks were lost")
+	}
+	if m["statusLine"] == nil {
+		t.Fatal("statusLine was lost")
+	}
+	post := hooks["PostToolUse"].([]any)
+	if !claudeEntriesContainCommand(post, "beekeeper audit-record") {
+		t.Fatal("beekeeper audit-record was not added to PostToolUse")
+	}
+
+	// Idempotent re-install.
+	if err := installClaudeCode(settingsPath, false, &buf); err != nil {
+		t.Fatalf("install (2nd): %v", err)
+	}
+	m = readJSON(t, settingsPath)
+	hooks = m["hooks"].(map[string]any)
+	if got := len(hooks["PreToolUse"].([]any)); got != 2 {
+		t.Fatalf("idempotency: expected 2 PreToolUse entries, got %d", got)
+	}
+
+	// Uninstall removes ONLY beekeeper; the user's guard + SessionStart survive.
+	if err := uninstallClaudeCode(settingsPath, false, &buf); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	m = readJSON(t, settingsPath)
+	hooks = m["hooks"].(map[string]any)
+	pre = hooks["PreToolUse"].([]any)
+	if claudeEntriesContainCommand(pre, "beekeeper check") {
+		t.Fatal("beekeeper check should be removed after uninstall")
+	}
+	if !claudeEntriesContainCommand(pre, "my-existing-guard.js") {
+		t.Fatal("pre-existing guard must survive uninstall")
+	}
+	if _, ok := hooks["PostToolUse"]; ok {
+		t.Fatal("empty PostToolUse array should be dropped after removing beekeeper")
+	}
+	if _, ok := hooks["SessionStart"]; !ok {
+		t.Fatal("SessionStart hooks must survive uninstall")
+	}
+	if m["statusLine"] == nil {
+		t.Fatal("statusLine must survive uninstall")
+	}
+}
+
+// -----------------------------------------------------------------------
 // TestUninstallCursor
 // -----------------------------------------------------------------------
 
