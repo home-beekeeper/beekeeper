@@ -500,7 +500,9 @@ func TestInstallCodex(t *testing.T) {
 // -----------------------------------------------------------------------
 
 func TestInstallGatewayTarget(t *testing.T) {
-	targets := []string{TargetContinue, TargetOpenCode, TargetOpenClaw}
+	// TargetOpenCode is now a plugin installer (not a gateway guide); it is
+	// covered by TestInstallOpenCodePlugin below.
+	targets := []string{TargetContinue, TargetOpenClaw, TargetKilo, TargetTrae}
 
 	for _, target := range targets {
 		t.Run(target, func(t *testing.T) {

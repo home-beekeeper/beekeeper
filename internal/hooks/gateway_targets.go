@@ -14,10 +14,12 @@ func printGatewayGuide(target string, out io.Writer) error {
 	switch target {
 	case TargetContinue:
 		return printContinueGuide(out)
-	case TargetOpenCode:
-		return printOpenCodeGuide(out)
 	case TargetOpenClaw:
 		return printOpenClawGuide(out)
+	case TargetKilo:
+		return printKiloGuide(out)
+	case TargetTrae:
+		return printTraeGuide(out)
 	default:
 		return fmt.Errorf("printGatewayGuide: unknown gateway target %q", target)
 	}
@@ -52,7 +54,10 @@ Get the current token:
 	return nil
 }
 
-// printOpenCodeGuide prints OpenCode MCP configuration instructions.
+// printOpenCodeGuide prints OpenCode MCP gateway configuration instructions.
+// OpenCode also supports a JS plugin installer (installOpenCodePlugin) that
+// provides pre-exec blocking via tool.execute.before; this guide is kept as a
+// fallback reference for users who prefer the MCP gateway path.
 // Verified schema from opencode.ai/docs/mcp-servers/.
 func printOpenCodeGuide(out io.Writer) error {
 	fmt.Fprintf(out, `Beekeeper Gateway — OpenCode Configuration
@@ -115,6 +120,86 @@ No file has been written. Add the following to your OpenClaw config:
 Replace <token> with the output of:
 
   beekeeper gateway token
+
+Get the current token:
+
+  beekeeper gateway token
+
+`)
+	return nil
+}
+
+// printKiloGuide prints Kilo MCP gateway configuration instructions.
+// Kilo has no pre-exec hook (open feature request #5827). Native built-in
+// tools (Bash, file operations) are unguarded by Beekeeper. Only MCP tools
+// routed through the Beekeeper gateway are intercepted.
+func printKiloGuide(out io.Writer) error {
+	fmt.Fprintf(out, `Beekeeper Gateway — Kilo Configuration
+=======================================
+
+Kilo does not support pre-exec hooks (FR #5827). Native tools (Bash, file
+operations) cannot be intercepted by Beekeeper via the hook path.
+
+MCP tools can be intercepted by routing them through the Beekeeper gateway.
+Add the following to your kilo.json:
+
+  kilo.json  (project-level  or  ~/.config/kilo/kilo.json):
+
+    {
+      "mcp": {
+        "beekeeper": {
+          "type": "remote",
+          "url": "http://127.0.0.1:7837/mcp",
+          "headers": {
+            "Authorization": "Bearer {env:BEEKEEPER_GATEWAY_TOKEN}"
+          }
+        }
+      }
+    }
+
+Set the auth token in your shell environment before starting Kilo:
+
+  export BEEKEEPER_GATEWAY_TOKEN=$(beekeeper gateway token)
+
+Get the current token:
+
+  beekeeper gateway token
+
+`)
+	return nil
+}
+
+// printTraeGuide prints Trae MCP gateway configuration instructions.
+// Trae has no programmatic pre-exec hook. Native commands are gated only by
+// Trae's interactive "Auto-run & security" UI. Only MCP tools routed through
+// the Beekeeper gateway can be intercepted.
+func printTraeGuide(out io.Writer) error {
+	fmt.Fprintf(out, `Beekeeper Gateway — Trae Configuration
+=======================================
+
+Trae does not support programmatic pre-exec hooks. Native commands are gated
+only by Trae's interactive "Auto-run & security" UI.
+
+MCP tools can be intercepted by routing them through the Beekeeper gateway.
+Add the following to ~/.trae/mcp.json:
+
+  ~/.trae/mcp.json:
+
+    {
+      "mcpServers": {
+        "beekeeper": {
+          "type": "streamable-http",
+          "url": "http://127.0.0.1:7837/mcp",
+          "headers": {
+            "Authorization": "Bearer {env:BEEKEEPER_GATEWAY_TOKEN}"
+          }
+        }
+      }
+    }
+
+Set the auth token in your shell environment before starting Trae:
+
+  export BEEKEEPER_GATEWAY_TOKEN=$(beekeeper gateway token)
 
 Get the current token:
 

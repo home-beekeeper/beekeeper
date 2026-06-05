@@ -26,6 +26,10 @@ const (
 	TargetAntigravity = "antigravity"
 	TargetGemini      = "gemini"
 	TargetWindsurf    = "windsurf"
+	TargetHermes      = "hermes"
+	TargetCline       = "cline"
+	TargetKilo        = "kilo"
+	TargetTrae        = "trae"
 	TargetContinue    = "continue"
 	TargetOpenCode    = "opencode"
 	TargetOpenClaw    = "openclaw"
@@ -35,11 +39,15 @@ const (
 // a file write.
 var gatewayTargets = map[string]bool{
 	TargetContinue: true,
-	TargetOpenCode: true,
 	TargetOpenClaw: true,
+	TargetKilo:     true,
+	TargetTrae:     true,
 }
 
-// fileTargets is the ordered list of targets that write files.
+// fileTargets is the ordered list of targets that write files (settings.json or
+// equivalent). Note: Hermes, Cline, and OpenCode also write files but use
+// custom formats; they are listed in allTargets but kept separate here because
+// they don't use the settings.json PatchSettings helper.
 var fileTargets = []string{
 	TargetClaudeCode, TargetCursor, TargetCodex,
 	TargetAugment, TargetCodeBuddy, TargetQwen,
@@ -51,7 +59,9 @@ var allTargets = []string{
 	TargetClaudeCode, TargetCursor, TargetCodex,
 	TargetAugment, TargetCodeBuddy, TargetQwen,
 	TargetCopilot, TargetAntigravity, TargetGemini, TargetWindsurf,
+	TargetHermes, TargetCline,
 	TargetContinue, TargetOpenCode, TargetOpenClaw,
+	TargetKilo, TargetTrae,
 }
 
 // Install installs Beekeeper hooks for the given target.
@@ -117,12 +127,24 @@ func InstallTo(target string, dryRun bool, force bool, out io.Writer) error {
 		hooksPath := windsurfHooksPath(homeDir)
 		return installWindsurf(hooksPath, dryRun, out)
 
-	case TargetContinue, TargetOpenCode, TargetOpenClaw:
+	case TargetHermes:
+		configPath := hermesConfigPath(homeDir)
+		return installHermes(configPath, dryRun, out)
+
+	case TargetCline:
+		hooksDir := clineHooksDir(homeDir)
+		return installCline(hooksDir, dryRun, out)
+
+	case TargetOpenCode:
+		pluginDir := openCodePluginDir(homeDir)
+		return installOpenCodePlugin(pluginDir, dryRun, out)
+
+	case TargetContinue, TargetOpenClaw, TargetKilo, TargetTrae:
 		return printGatewayGuide(target, out)
 
 	default:
 		return fmt.Errorf(
-			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, copilot, antigravity, gemini, windsurf, continue, opencode, openclaw",
+			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, copilot, antigravity, gemini, windsurf, hermes, cline, opencode, continue, openclaw, kilo, trae",
 			target,
 		)
 	}
@@ -186,14 +208,26 @@ func UninstallTo(target string, dryRun bool, out io.Writer) error {
 		hooksPath := windsurfHooksPath(homeDir)
 		return uninstallWindsurf(hooksPath, dryRun, out)
 
-	case TargetContinue, TargetOpenCode, TargetOpenClaw:
+	case TargetHermes:
+		configPath := hermesConfigPath(homeDir)
+		return uninstallHermes(configPath, dryRun, out)
+
+	case TargetCline:
+		hooksDir := clineHooksDir(homeDir)
+		return uninstallCline(hooksDir, dryRun, out)
+
+	case TargetOpenCode:
+		pluginDir := openCodePluginDir(homeDir)
+		return uninstallOpenCodePlugin(pluginDir, dryRun, out)
+
+	case TargetContinue, TargetOpenClaw, TargetKilo, TargetTrae:
 		fmt.Fprintf(out, "No files were written for %s — nothing to uninstall.\n", target)
 		fmt.Fprintf(out, "Remove the Beekeeper MCP server entry from your %s configuration manually.\n", target)
 		return nil
 
 	default:
 		return fmt.Errorf(
-			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, copilot, antigravity, gemini, windsurf, continue, opencode, openclaw",
+			"hooks: unknown target %q; valid targets: claude-code, cursor, codex, augment, codebuddy, qwen, copilot, antigravity, gemini, windsurf, hermes, cline, opencode, continue, openclaw, kilo, trae",
 			target,
 		)
 	}
