@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bantuson/beekeeper/internal/audit"
-	tui "github.com/bantuson/beekeeper/internal/tui"
 	"github.com/bantuson/beekeeper/internal/catalog"
 	"github.com/bantuson/beekeeper/internal/check"
 	"github.com/bantuson/beekeeper/internal/config"
@@ -34,6 +33,7 @@ import (
 	"github.com/bantuson/beekeeper/internal/quarantine"
 	"github.com/bantuson/beekeeper/internal/scan"
 	"github.com/bantuson/beekeeper/internal/shim"
+	tui "github.com/bantuson/beekeeper/internal/tui"
 	"github.com/bantuson/beekeeper/internal/version"
 	"github.com/bantuson/beekeeper/internal/watch"
 )
@@ -1147,6 +1147,57 @@ func newSelftestCmd() *cobra.Command {
 	}
 }
 
+// ensureNudgeBlockDefault sets nudge.mode = "block" in the user config the first
+// time Beekeeper hooks are installed, so installing protection DEFAULTS to
+// supply-chain enforcement (npm/yarn installs are denied, steering the agent to
+// pnpm/bun). The shipped library default stays "soft" (PRD §3.2) — block is opted
+// in here because installing the hook is an explicit "protect this machine" action.
+//
+// It NEVER overrides an existing nudge.mode (a user who chose soft/hard/block keeps
+// it), preserves all other config keys, and never clobbers an unparseable config.
+// Best-effort: any failure is silent and does NOT fail the install (the hook is
+// already written).
+func ensureNudgeBlockDefault(out io.Writer) {
+	cfgPath, err := platform.ConfigPath()
+	if err != nil {
+		return
+	}
+	cfg := map[string]any{}
+	if data, rerr := os.ReadFile(cfgPath); rerr == nil {
+		if jerr := json.Unmarshal(data, &cfg); jerr != nil {
+			return // existing config is unparseable — do not clobber it
+		}
+		if cfg == nil {
+			cfg = map[string]any{}
+		}
+	}
+	nudge, _ := cfg["nudge"].(map[string]any)
+	if nudge == nil {
+		nudge = map[string]any{}
+	}
+	if mode, _ := nudge["mode"].(string); mode != "" {
+		return // user already chose a mode — respect it
+	}
+	nudge["mode"] = "block"
+	if _, ok := nudge["enabled"]; !ok {
+		nudge["enabled"] = true
+	}
+	cfg["nudge"] = nudge
+
+	data, merr := json.MarshalIndent(cfg, "", "  ")
+	if merr != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		return
+	}
+	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
+		return
+	}
+	fmt.Fprintf(out, "Enabled supply-chain enforcement: nudge.mode=block in %s\n", cfgPath)
+	fmt.Fprintf(out, "  npm/yarn installs are now DENIED (use pnpm or bun). Set nudge.mode=soft to opt down.\n")
+}
+
 // newHooksCmd groups hook installer subcommands for writing Beekeeper
 // PreToolUse/PostToolUse hooks to agent CLIs (INTG-01, INTG-02).
 func newHooksCmd() *cobra.Command {
@@ -1168,6 +1219,9 @@ func newHooksCmd() *cobra.Command {
 			}
 			if !dryRun {
 				fmt.Fprintf(cmd.OutOrStdout(), "Beekeeper hooks installed for target %q.\n", target)
+				// Installing a hook is an explicit "protect this machine" action, so
+				// default the nudge to block (supply-chain enforcement) on first install.
+				ensureNudgeBlockDefault(cmd.OutOrStdout())
 			}
 			return nil
 		},
@@ -1296,7 +1350,7 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 			if nudgeNC == nil {
 				d := nudge.DefaultConfig()
 				// Use DefaultConfig() directly rather than ConfigFrom to avoid nil-deref.
-				_ = d // assigned below via ConfigFrom with defaults
+				_ = d         // assigned below via ConfigFrom with defaults
 				nudgeNC = nil // handled by ConfigFrom empty-string fallbacks
 			}
 			var (

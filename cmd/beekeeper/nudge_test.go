@@ -193,3 +193,78 @@ func TestNudgeAuditCmd_FiltersToNudgeRecords(t *testing.T) {
 		t.Errorf("policy_decision record should be filtered out, but found in output: %q", output)
 	}
 }
+
+// TestEnsureNudgeBlockDefault verifies that installing hooks defaults nudge.mode
+// to "block" on a fresh config, NEVER overrides an existing mode, preserves other
+// config keys, and never clobbers an unparseable config.
+func TestEnsureNudgeBlockDefault(t *testing.T) {
+	read := func(t *testing.T, path string) (cfg, nudge map[string]any) {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read config: %v", err)
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			t.Fatalf("parse config: %v", err)
+		}
+		nudge, _ = cfg["nudge"].(map[string]any)
+		return cfg, nudge
+	}
+
+	t.Run("fresh config gets block", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("BEEKEEPER_HOME", home)
+		var out bytes.Buffer
+		ensureNudgeBlockDefault(&out)
+		cfgPath := filepath.Join(home, "beekeeper", "config.json")
+		_, nudge := read(t, cfgPath)
+		if nudge == nil || nudge["mode"] != "block" {
+			t.Errorf("nudge.mode = %v, want block", nudge["mode"])
+		}
+		if !strings.Contains(out.String(), "nudge.mode=block") {
+			t.Errorf("expected block-mode notice; got %q", out.String())
+		}
+	})
+
+	t.Run("existing soft mode preserved", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("BEEKEEPER_HOME", home)
+		cfgPath := filepath.Join(home, "beekeeper", "config.json")
+		if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(cfgPath, []byte(`{"fail_mode":"closed","nudge":{"mode":"soft"}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		ensureNudgeBlockDefault(&out)
+		cfg, nudge := read(t, cfgPath)
+		if nudge["mode"] != "soft" {
+			t.Errorf("nudge.mode = %v, want soft (must not override user choice)", nudge["mode"])
+		}
+		if cfg["fail_mode"] != "closed" {
+			t.Errorf("fail_mode = %v, want closed (sibling preserved)", cfg["fail_mode"])
+		}
+	})
+
+	t.Run("adds block while preserving other keys", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("BEEKEEPER_HOME", home)
+		cfgPath := filepath.Join(home, "beekeeper", "config.json")
+		if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(cfgPath, []byte(`{"fail_mode":"closed"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		ensureNudgeBlockDefault(&out)
+		cfg, nudge := read(t, cfgPath)
+		if nudge["mode"] != "block" {
+			t.Errorf("nudge.mode = %v, want block", nudge["mode"])
+		}
+		if cfg["fail_mode"] != "closed" {
+			t.Errorf("fail_mode = %v, want closed (preserved)", cfg["fail_mode"])
+		}
+	})
+}
