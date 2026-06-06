@@ -284,6 +284,11 @@ func TestValidateNudgeConfigExported(t *testing.T) {
 		t.Errorf("ValidateNudgeConfig(mode:hard, preferred:pnpm) = %v, want nil", err)
 	}
 
+	// Valid "block" mode (supply-chain enforcement) must be accepted.
+	if err := ValidateNudgeConfig(NudgeConfig{Mode: "block", Preferred: "pnpm"}); err != nil {
+		t.Errorf("ValidateNudgeConfig(mode:block, preferred:pnpm) = %v, want nil", err)
+	}
+
 	// Valid "bun" preferred must be accepted.
 	if err := ValidateNudgeConfig(NudgeConfig{Preferred: "bun"}); err != nil {
 		t.Errorf("ValidateNudgeConfig(preferred:bun) = %v, want nil", err)

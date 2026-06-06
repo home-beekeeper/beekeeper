@@ -357,9 +357,11 @@ func TestIntegrationNudgeSoftAdvisory(t *testing.T) {
 	// Empty catalog index: catalog match does not block; only nudge fires.
 	idx := &mapMultiIndex{matchesByKey: map[string][]policy.CatalogMatch{}}
 
-	// pnpm install foo — an install command; pnpm is installed and hardened →
-	// soft mode → Advise / pnpm-available-soft.
-	toolCallJSON := `{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"pnpm install foo"}}`
+	// npm install foo — an UNHARDENED install command; pnpm is installed and
+	// hardened → soft mode → Advise / pnpm-available-soft. (A `pnpm install`
+	// command would instead Proceed/already-hardened-pm — you don't nudge
+	// pnpm→pnpm — so the advisory case must use an npm/yarn command.)
+	toolCallJSON := `{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install foo"}}`
 	auditPath := auditPathIn(t)
 
 	res := runCheckWithIndex(context.Background(), strings.NewReader(toolCallJSON), closedConfig(), idx, auditPath)

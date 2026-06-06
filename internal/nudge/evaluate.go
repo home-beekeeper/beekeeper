@@ -119,8 +119,13 @@ type Decision struct {
 //
 // Decision flow (PRD §4):
 //  1. If cfg.Enabled is false OR cmd.IsInstall is false → Proceed/not-applicable.
-//  2. If cmd.Sudo → Advise/sudo-passthrough, NEVER Rewrite (§10-10, T-08-07).
-//  3. If pnpm installed and hardened:
+//     1b. If cmd.Ecosystem != "npm" (pip/go/gem/cargo/composer) → Proceed/not-applicable.
+//     1c. If cmd.Manager is already pnpm/bun → Proceed/already-hardened-pm.
+//  2. If cmd.Sudo → Advise/sudo-passthrough, NEVER Rewrite/Block (§10-10, T-08-07).
+//     2b. BLOCK MODE: if mode == "block" and not exec and Node not known-too-old →
+//     Block/pnpm-enforce-block (or bun-enforce-block when Preferred==bun).
+//     Detection-INDEPENDENT enforcement — does NOT fail open on a flaky pnpm probe.
+//  3. If pnpm installed and hardened (soft/hard advisory path):
 //     a. If Node < floor → Advise/node-incompatible-with-pnpm-11 (§10-6).
 //     b. If mode == "hard" → Rewrite to pnpm (§10-2).
 //     c. Else → Advise/pnpm-available-soft (§10-1); no-arg gets softer reason (§10-8).
@@ -139,9 +144,55 @@ func Evaluate(cmd pkgparse.ParsedCommand, state PMState, cfg Config) Decision {
 		return makeDecision(Proceed, ReasonNotApplicable, cmd.Raw, "", state)
 	}
 
-	// 2. Sudo passthrough — parse + log, NEVER rewrite (§10-10, T-08-07).
+	// 1b. Scope: the nudge targets the npm/JS ecosystem only. pip/go/gem/cargo/
+	// composer installs proceed unchanged — a JS package manager cannot replace
+	// them, so nudging (and especially BLOCKING) them would be wrong.
+	if cmd.Ecosystem != "npm" {
+		return makeDecision(Proceed, ReasonNotApplicable, cmd.Raw, "", state)
+	}
+
+	// 1c. If the command ALREADY uses a hardened PM (pnpm/bun), proceed — there is
+	// nothing to steer toward. This is what prevents block mode from blocking
+	// `pnpm install` itself, and removes the redundant pnpm→pnpm advisory that
+	// soft/hard mode would otherwise emit for an already-hardened command.
+	if cmd.Manager == "pnpm" || cmd.Manager == "bun" {
+		return makeDecision(Proceed, ReasonAlreadyHardened, cmd.Raw, "", state)
+	}
+
+	// 2. Sudo passthrough — parse + log, NEVER rewrite/block (§10-10, T-08-07).
+	// A privileged command is never blocked even in block mode (blocking a
+	// `sudo npm install` is more disruptive than the advisory it replaces).
 	if cmd.Sudo {
 		return makeDecision(Advise, ReasonSudoPassthrough, cmd.Raw, "", state)
+	}
+
+	// 2b. BLOCK MODE (supply-chain enforcement). Deny unhardened npm/yarn installs
+	// outright, INDEPENDENT of PM detection. This is deliberately NOT gated on the
+	// pnpm/bun version probe: that probe is flaky on Windows corepack `.cmd` shims
+	// (it intermittently exceeds its subprocess deadline), and a security
+	// ENFORCEMENT control must never fail OPEN just because a slow subprocess timed
+	// out — that would let a compromised `npm install` through exactly when the
+	// agent is under attack. We have already excluded the cases where blocking
+	// would be wrong: non-npm ecosystems (1b), commands already using a hardened PM
+	// (1c), and sudo (2). Exec verbs (npx/dlx/x) are also left to the advisory path
+	// — blocking an exec is too disruptive and not always rewritable.
+	//
+	// The single carve-out: an explicitly-detected too-old Node (< pnpm 11 floor).
+	// Node detection is reliable (a real `node.exe`, ~50ms), so when we positively
+	// know Node is too old, blocking would dead-end the agent (no pnpm 11 path); we
+	// fall through to the detection-based advisory instead. An UNKNOWN Node version
+	// still blocks (fail-closed for an enforcement control).
+	if cfg.Mode == "block" && !cmd.IsExec {
+		nodeKnownTooOld := state.NodeVersion != "" &&
+			!meetsFloor(state.NodeVersion, cfg.VersionFloors.Node)
+		if !nodeKnownTooOld {
+			if cfg.Preferred == "bun" {
+				return makeDecisionBlock(ReasonBunEnforceBlock, cmd.Raw, rewriteToBun(cmd), state)
+			}
+			return makeDecisionBlock(ReasonPnpmEnforceBlock, cmd.Raw, rewriteToPnpm(cmd), state)
+		}
+		// Node too old → fall through to the advisory path below (never block into
+		// a dead end).
 	}
 
 	// Determine whether pnpm and bun meet their respective floors.
@@ -174,6 +225,8 @@ func Evaluate(cmd pkgparse.ParsedCommand, state PMState, cfg Config) Decision {
 }
 
 // evaluatePnpm handles the pnpm branch of the decision tree.
+// (Block mode is handled earlier in Evaluate, detection-independent, so it is
+// not repeated here — this branch only runs when pnpm was actually detected.)
 func evaluatePnpm(cmd pkgparse.ParsedCommand, state PMState, cfg Config) Decision {
 	// §10-6: Node.js version must meet the floor for pnpm 11.
 	if !meetsFloor(state.NodeVersion, cfg.VersionFloors.Node) {
@@ -194,7 +247,8 @@ func evaluatePnpm(cmd pkgparse.ParsedCommand, state PMState, cfg Config) Decisio
 
 // evaluateBun handles the bun branch of the decision tree.
 func evaluateBun(cmd pkgparse.ParsedCommand, state PMState, cfg Config) Decision {
-	// §10-5: scanner absent → advisory to install it.
+	// §10-5: scanner absent → advisory to install it (bun is not fully hardened
+	// without the Socket scanner, so we advise rather than block toward it).
 	if cfg.CheckSocketScanner && !state.BunScannerOK {
 		return makeDecision(Advise, ReasonBunAvailableNoScanner, cmd.Raw, "", state)
 	}
@@ -238,6 +292,24 @@ func makeDecisionRewrite(reason, original, rewritten string, state PMState) Deci
 		Rewritten:   rewritten,
 		Detected:    state,
 		Level:       levelFor(Rewrite),
+		AuditFields: fields,
+	}
+}
+
+// makeDecisionBlock builds a Decision value for the block-mode enforcement path.
+// suggested is the hardened-PM equivalent command (e.g. "pnpm install") carried
+// in Rewritten so the deny message can tell the agent exactly what to run instead.
+// Level is "block" (Allow=false downstream) — this is the only nudge path that
+// actually denies the tool call.
+func makeDecisionBlock(reason, original, suggested string, state PMState) Decision {
+	fields := buildAuditFields(Block, reason, original, suggested, state)
+	return Decision{
+		Action:      Block,
+		Reason:      reason,
+		Original:    original,
+		Rewritten:   suggested,
+		Detected:    state,
+		Level:       levelFor(Block), // "block"
 		AuditFields: fields,
 	}
 }

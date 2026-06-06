@@ -50,10 +50,29 @@ const (
 	ReasonNoArgInstallSoft = "no-arg-install-soft"
 
 	// ReasonNotApplicable is returned when the nudge feature is disabled
-	// (cfg.Enabled false) or the command is not an install-class verb
-	// (cmd.IsInstall false).
+	// (cfg.Enabled false), the command is not an install-class verb
+	// (cmd.IsInstall false), or the install targets a non-npm ecosystem
+	// (pip/go/gem/cargo/composer — a JS package manager cannot replace them).
 	// Action: Proceed.
 	ReasonNotApplicable = "not-applicable"
+
+	// ReasonAlreadyHardened is returned when the install command itself already
+	// uses a hardened package manager (pnpm or bun) — there is nothing to steer
+	// toward, so the command proceeds unchanged. This is what prevents block mode
+	// from blocking `pnpm install` and removes the redundant pnpm→pnpm advisory.
+	// Action: Proceed.
+	ReasonAlreadyHardened = "already-hardened-pm"
+
+	// ReasonPnpmEnforceBlock is returned when pnpm >= floor is installed and mode
+	// is "block": the npm/yarn install is DENIED and the agent is told to use the
+	// pnpm equivalent. Supply-chain enforcement (an advisory the agent can ignore
+	// is not enough — block makes the safer PM the only path). Action: Block.
+	ReasonPnpmEnforceBlock = "pnpm-enforce-block"
+
+	// ReasonBunEnforceBlock is the bun equivalent of ReasonPnpmEnforceBlock,
+	// returned when bun is the selected hardened PM and mode is "block".
+	// Action: Block.
+	ReasonBunEnforceBlock = "bun-enforce-block"
 )
 
 // validReasons is the complete set of legal reason codes. Use IsValidReason to
@@ -68,6 +87,9 @@ var validReasons = map[string]bool{
 	ReasonSudoPassthrough:        true,
 	ReasonNoArgInstallSoft:       true,
 	ReasonNotApplicable:          true,
+	ReasonAlreadyHardened:        true,
+	ReasonPnpmEnforceBlock:       true,
+	ReasonBunEnforceBlock:        true,
 }
 
 // IsValidReason reports whether code is one of the defined closed-enum reason

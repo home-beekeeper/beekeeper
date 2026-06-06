@@ -13,6 +13,15 @@ import (
 	"github.com/bantuson/beekeeper/internal/pkgparse"
 )
 
+// RewriteToPnpm is the EXPORTED wrapper over rewriteToPnpm so the check adapter
+// (presentation layer) can compute the pnpm-equivalent command for a block deny
+// message across the package boundary. The lowercase form stays unexported for
+// the internal Evaluate path.
+func RewriteToPnpm(cmd pkgparse.ParsedCommand) string { return rewriteToPnpm(cmd) }
+
+// RewriteToBun is the EXPORTED wrapper over rewriteToBun (see RewriteToPnpm).
+func RewriteToBun(cmd pkgparse.ParsedCommand) string { return rewriteToBun(cmd) }
+
 // rewriteToPnpm rewrites a parsed npm install command to its pnpm equivalent.
 //
 // Verb mapping (PRD §6.4, NUDGE-03):

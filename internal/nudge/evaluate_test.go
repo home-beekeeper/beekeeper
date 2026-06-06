@@ -58,92 +58,92 @@ func TestEvaluatePRDSection10(t *testing.T) {
 	hardCfg.Mode = "hard"
 
 	tests := []struct {
-		name      string
-		cmd       pkgparse.ParsedCommand
-		state     PMState
-		cfg       Config
-		wantAct   Action
-		wantReason string
-		wantLevel string
-		wantAllow bool   // Level "allow"/"warn" → Allow=true; "block" → Allow=false
-		wantRewritten string // non-empty only for Rewrite
+		name            string
+		cmd             pkgparse.ParsedCommand
+		state           PMState
+		cfg             Config
+		wantAct         Action
+		wantReason      string
+		wantLevel       string
+		wantAllow       bool   // Level "allow"/"warn" → Allow=true; "block" → Allow=false
+		wantRewritten   string // non-empty only for Rewrite
 		wantNudgeAction string
 	}{
 		// §10-1: pnpm >= 11 installed, mode soft, "npm install foo" → Advise
 		{
-			name:        "§10-1 pnpm soft advise",
-			cmd:         parseOrFatal(t, "npm install foo"),
-			state:       pmStateHardenedPnpm("22.5.0"),
-			cfg:         softCfg,
-			wantAct:     Advise,
-			wantReason:  ReasonPnpmAvailableSoft,
-			wantLevel:   "warn",
-			wantAllow:   true,
+			name:            "§10-1 pnpm soft advise",
+			cmd:             parseOrFatal(t, "npm install foo"),
+			state:           pmStateHardenedPnpm("22.5.0"),
+			cfg:             softCfg,
+			wantAct:         Advise,
+			wantReason:      ReasonPnpmAvailableSoft,
+			wantLevel:       "warn",
+			wantAllow:       true,
 			wantNudgeAction: "advise",
 		},
 		// §10-2: pnpm >= 11 installed, mode hard → Rewrite with "pnpm add foo"
 		{
-			name:        "§10-2 pnpm hard rewrite",
-			cmd:         parseOrFatal(t, "npm install foo"),
-			state:       pmStateHardenedPnpm("22.5.0"),
-			cfg:         hardCfg,
-			wantAct:     Rewrite,
-			wantReason:  ReasonPnpmHardRewrite,
-			wantLevel:   "warn",
-			wantAllow:   true,
-			wantRewritten: "pnpm add foo",
+			name:            "§10-2 pnpm hard rewrite",
+			cmd:             parseOrFatal(t, "npm install foo"),
+			state:           pmStateHardenedPnpm("22.5.0"),
+			cfg:             hardCfg,
+			wantAct:         Rewrite,
+			wantReason:      ReasonPnpmHardRewrite,
+			wantLevel:       "warn",
+			wantAllow:       true,
+			wantRewritten:   "pnpm add foo",
 			wantNudgeAction: "rewrite",
 		},
 		// §10-3: no hardened PM, requireHardened false → Proceed
 		{
-			name:        "§10-3 no hardened PM proceed",
-			cmd:         parseOrFatal(t, "npm install foo"),
-			state:       pmStateNone(),
-			cfg:         softCfg,
-			wantAct:     Proceed,
-			wantReason:  ReasonNoHardenedPM,
-			wantLevel:   "allow",
-			wantAllow:   true,
+			name:            "§10-3 no hardened PM proceed",
+			cmd:             parseOrFatal(t, "npm install foo"),
+			state:           pmStateNone(),
+			cfg:             softCfg,
+			wantAct:         Proceed,
+			wantReason:      ReasonNoHardenedPM,
+			wantLevel:       "allow",
+			wantAllow:       true,
 			wantNudgeAction: "proceed",
 		},
 		// §10-4: no hardened PM, requireHardened true → Block
 		{
-			name: "§10-4 requireHardened block",
-			cmd:  parseOrFatal(t, "npm install foo"),
+			name:  "§10-4 requireHardened block",
+			cmd:   parseOrFatal(t, "npm install foo"),
 			state: pmStateNone(),
 			cfg: func() Config {
 				c := DefaultConfig()
 				c.RequireHardened = true
 				return c
 			}(),
-			wantAct:     Block,
-			wantReason:  ReasonNoHardenedPM,
-			wantLevel:   "block",
-			wantAllow:   false,
+			wantAct:         Block,
+			wantReason:      ReasonNoHardenedPM,
+			wantLevel:       "block",
+			wantAllow:       false,
 			wantNudgeAction: "block",
 		},
 		// §10-5: bun >= 1.3 installed, scanner absent → Advise bun-available-no-scanner
 		{
-			name:        "§10-5 bun no scanner",
-			cmd:         parseOrFatal(t, "npm install foo"),
-			state:       pmStateHardenedBun(false),
-			cfg:         softCfg,
-			wantAct:     Advise,
-			wantReason:  ReasonBunAvailableNoScanner,
-			wantLevel:   "warn",
-			wantAllow:   true,
+			name:            "§10-5 bun no scanner",
+			cmd:             parseOrFatal(t, "npm install foo"),
+			state:           pmStateHardenedBun(false),
+			cfg:             softCfg,
+			wantAct:         Advise,
+			wantReason:      ReasonBunAvailableNoScanner,
+			wantLevel:       "warn",
+			wantAllow:       true,
 			wantNudgeAction: "advise",
 		},
 		// §10-6: pnpm 11 installed, NodeVersion < 22 → Advise node-incompatible-with-pnpm-11
 		{
-			name:        "§10-6 node incompatible",
-			cmd:         parseOrFatal(t, "npm install foo"),
-			state:       pmStateHardenedPnpm("20.0.0"),
-			cfg:         softCfg,
-			wantAct:     Advise,
-			wantReason:  ReasonNodeIncompatiblePnpm11,
-			wantLevel:   "warn",
-			wantAllow:   true,
+			name:            "§10-6 node incompatible",
+			cmd:             parseOrFatal(t, "npm install foo"),
+			state:           pmStateHardenedPnpm("20.0.0"),
+			cfg:             softCfg,
+			wantAct:         Advise,
+			wantReason:      ReasonNodeIncompatiblePnpm11,
+			wantLevel:       "warn",
+			wantAllow:       true,
 			wantNudgeAction: "advise",
 		},
 		// §10-7: non-install → Proceed not-applicable (npm ls returns ok=false from pkgparse)
@@ -157,36 +157,36 @@ func TestEvaluatePRDSection10(t *testing.T) {
 				Manager:   "npm",
 				IsInstall: false,
 			},
-			state:       pmStateHardenedPnpm("22.5.0"),
-			cfg:         softCfg,
-			wantAct:     Proceed,
-			wantReason:  ReasonNotApplicable,
-			wantLevel:   "allow",
-			wantAllow:   true,
+			state:           pmStateHardenedPnpm("22.5.0"),
+			cfg:             softCfg,
+			wantAct:         Proceed,
+			wantReason:      ReasonNotApplicable,
+			wantLevel:       "allow",
+			wantAllow:       true,
 			wantNudgeAction: "proceed",
 		},
 		// §10-8: no-arg "npm install" → Advise with softer reason no-arg-install-soft
 		{
-			name:        "§10-8 no-arg soft reason",
-			cmd:         parseOrFatal(t, "npm install"),
-			state:       pmStateHardenedPnpm("22.5.0"),
-			cfg:         softCfg,
-			wantAct:     Advise,
-			wantReason:  ReasonNoArgInstallSoft,
-			wantLevel:   "warn",
-			wantAllow:   true,
+			name:            "§10-8 no-arg soft reason",
+			cmd:             parseOrFatal(t, "npm install"),
+			state:           pmStateHardenedPnpm("22.5.0"),
+			cfg:             softCfg,
+			wantAct:         Advise,
+			wantReason:      ReasonNoArgInstallSoft,
+			wantLevel:       "warn",
+			wantAllow:       true,
 			wantNudgeAction: "advise",
 		},
 		// §10-9: npx → still nudged (Advise/Rewrite per mode)
 		{
-			name:        "§10-9 npx nudged soft",
-			cmd:         parseOrFatal(t, "npx create-app"),
-			state:       pmStateHardenedPnpm("22.5.0"),
-			cfg:         softCfg,
-			wantAct:     Advise,
-			wantReason:  ReasonPnpmAvailableSoft,
-			wantLevel:   "warn",
-			wantAllow:   true,
+			name:            "§10-9 npx nudged soft",
+			cmd:             parseOrFatal(t, "npx create-app"),
+			state:           pmStateHardenedPnpm("22.5.0"),
+			cfg:             softCfg,
+			wantAct:         Advise,
+			wantReason:      ReasonPnpmAvailableSoft,
+			wantLevel:       "warn",
+			wantAllow:       true,
 			wantNudgeAction: "advise",
 		},
 		// §10-10: sudo → Advise sudo-passthrough, NEVER Rewrite (even in hard mode)
@@ -196,12 +196,12 @@ func TestEvaluatePRDSection10(t *testing.T) {
 				p, _ := pkgparse.Parse("sudo npm install foo")
 				return p
 			}(),
-			state:       pmStateHardenedPnpm("22.5.0"),
-			cfg:         hardCfg, // hard mode — but sudo must still not rewrite
-			wantAct:     Advise,
-			wantReason:  ReasonSudoPassthrough,
-			wantLevel:   "warn",
-			wantAllow:   true,
+			state:           pmStateHardenedPnpm("22.5.0"),
+			cfg:             hardCfg, // hard mode — but sudo must still not rewrite
+			wantAct:         Advise,
+			wantReason:      ReasonSudoPassthrough,
+			wantLevel:       "warn",
+			wantAllow:       true,
 			wantNudgeAction: "advise",
 		},
 	}
@@ -343,6 +343,115 @@ func TestEvaluatePreferredPnpmWhenBothHardened(t *testing.T) {
 	// Should use pnpm path (pnpm-available-soft), not bun-available-soft
 	if d.Reason != ReasonPnpmAvailableSoft {
 		t.Errorf("Reason = %q, want %q (pnpm preferred when both hardened)", d.Reason, ReasonPnpmAvailableSoft)
+	}
+}
+
+// TestEvaluateBlockMode covers mode="block" (supply-chain enforcement) and the
+// scoping guards that keep it safe: it must BLOCK unhardened npm/yarn installs
+// when pnpm is available, but NEVER block `pnpm install` itself, a non-npm
+// ecosystem install (pip), an exec verb (npx), or a privileged (sudo) command.
+func TestEvaluateBlockMode(t *testing.T) {
+	blockCfg := DefaultConfig()
+	blockCfg.Mode = "block"
+	pnpm := pmStateHardenedPnpm("22.5.0")
+
+	tests := []struct {
+		name          string
+		cmd           string
+		state         PMState
+		wantAct       Action
+		wantReason    string
+		wantLevel     string
+		wantAllow     bool
+		wantSuggested string // Rewritten field; checked when non-empty
+	}{
+		{
+			name: "npm install foo → BLOCK + suggest pnpm add",
+			cmd:  "npm install foo", state: pnpm,
+			wantAct: Block, wantReason: ReasonPnpmEnforceBlock, wantLevel: "block",
+			wantAllow: false, wantSuggested: "pnpm add foo",
+		},
+		{
+			name: "no-arg npm install → BLOCK + suggest pnpm install",
+			cmd:  "npm install", state: pnpm,
+			wantAct: Block, wantReason: ReasonPnpmEnforceBlock, wantLevel: "block",
+			wantAllow: false, wantSuggested: "pnpm install",
+		},
+		{
+			name: "yarn install → BLOCK (unhardened npm-ecosystem manager)",
+			cmd:  "yarn install", state: pnpm,
+			wantAct: Block, wantReason: ReasonPnpmEnforceBlock, wantLevel: "block", wantAllow: false,
+		},
+		{
+			// RELIABILITY: the pnpm probe MISSED (timed out) but Node is present.
+			// Block must STILL fire — an enforcement control cannot fail open on a
+			// flaky detection probe. This is the supply-chain gap that a
+			// detection-gated block would leave on Windows corepack boxes.
+			name:    "npm install foo + pnpm NOT detected → STILL BLOCK (no fail-open)",
+			cmd:     "npm install foo",
+			state:   PMState{NpmInstalled: true, NodeVersion: "22.5.0"},
+			wantAct: Block, wantReason: ReasonPnpmEnforceBlock, wantLevel: "block",
+			wantAllow: false, wantSuggested: "pnpm add foo",
+		},
+		{
+			// CARVE-OUT: Node positively too old for pnpm 11 → do NOT block into a
+			// dead end; fall through to the node-incompatible advisory instead.
+			name:    "npm install foo + Node too old → ADVISE not block (no dead-end)",
+			cmd:     "npm install foo",
+			state:   pmStateHardenedPnpm("20.0.0"),
+			wantAct: Advise, wantReason: ReasonNodeIncompatiblePnpm11, wantLevel: "warn",
+			wantAllow: true,
+		},
+		{
+			name: "pnpm install → PROCEED (already hardened, never blocked)",
+			cmd:  "pnpm install", state: pnpm,
+			wantAct: Proceed, wantReason: ReasonAlreadyHardened, wantLevel: "allow", wantAllow: true,
+		},
+		{
+			name: "pnpm add foo → PROCEED (already hardened)",
+			cmd:  "pnpm add foo", state: pnpm,
+			wantAct: Proceed, wantReason: ReasonAlreadyHardened, wantLevel: "allow", wantAllow: true,
+		},
+		{
+			name: "pip install requests → PROCEED (non-npm ecosystem, out of scope)",
+			cmd:  "pip install requests", state: pnpm,
+			wantAct: Proceed, wantReason: ReasonNotApplicable, wantLevel: "allow", wantAllow: true,
+		},
+		{
+			name: "npx create-foo → ADVISE not block (exec verb not blocked)",
+			cmd:  "npx create-foo", state: pnpm,
+			wantAct: Advise, wantLevel: "warn", wantAllow: true,
+		},
+		{
+			name: "sudo npm install foo → ADVISE sudo-passthrough (privileged never blocked)",
+			cmd:  "sudo npm install foo", state: pnpm,
+			wantAct: Advise, wantReason: ReasonSudoPassthrough, wantLevel: "warn", wantAllow: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := Evaluate(parseOrFatal(t, tc.cmd), tc.state, blockCfg)
+			if d.Action != tc.wantAct {
+				t.Errorf("Action = %v, want %v", d.Action, tc.wantAct)
+			}
+			if tc.wantReason != "" && d.Reason != tc.wantReason {
+				t.Errorf("Reason = %q, want %q", d.Reason, tc.wantReason)
+			}
+			if d.Level != tc.wantLevel {
+				t.Errorf("Level = %q, want %q", d.Level, tc.wantLevel)
+			}
+			allow := d.Level != "block"
+			if allow != tc.wantAllow {
+				t.Errorf("Allow = %v, want %v", allow, tc.wantAllow)
+			}
+			if tc.wantSuggested != "" && d.Rewritten != tc.wantSuggested {
+				t.Errorf("Rewritten(suggestion) = %q, want %q", d.Rewritten, tc.wantSuggested)
+			}
+			if !IsValidReason(d.Reason) {
+				t.Errorf("Reason %q is not a valid closed-enum reason code", d.Reason)
+			}
+		})
 	}
 }
 

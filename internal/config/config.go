@@ -135,9 +135,12 @@ type NudgeConfig struct {
 	// Enabled controls whether the nudge feature runs at all. Default true.
 	// Set to false in project .beekeeper.json to opt out project-wide.
 	Enabled bool `json:"enabled"`
-	// Mode is the nudge aggressiveness: "soft" (advise+proceed, default) or
-	// "hard" (rewrite the command to pnpm/bun equivalent). "aggressive" and
-	// all other values are rejected by ValidateNudgeConfig (fail-closed).
+	// Mode is the nudge aggressiveness:
+	//   "soft"  (advise + proceed, default) — warn but allow the npm install.
+	//   "hard"  (rewrite the command to its pnpm/bun equivalent, advisory; allow).
+	//   "block" (DENY npm/yarn installs when a hardened PM is available, telling
+	//           the agent to use pnpm/bun instead — supply-chain enforcement).
+	// All other values are rejected by ValidateNudgeConfig (fail-closed).
 	Mode string `json:"mode,omitempty"`
 	// RequireHardened, when true, blocks npm install when no hardened PM is
 	// installed. Default false (npm calls proceed with advisory).
@@ -181,8 +184,9 @@ func DefaultNudgeConfig() NudgeConfig {
 // Any value not in this set is rejected by ValidateNudgeConfig (fail-closed,
 // mirrors legalRuleTypes / legalActions in internal/policyloader/validate.go).
 var legalNudgeModes = map[string]bool{
-	"soft": true,
-	"hard": true,
+	"soft":  true,
+	"hard":  true,
+	"block": true,
 }
 
 // legalNudgePreferred is the complete enum of valid Preferred values.
@@ -224,14 +228,14 @@ func parseVersionFloor(v string) error {
 // Load delegates to this same exported function; there is exactly ONE validator.
 //
 // Rejects:
-//   - Mode not in {"soft", "hard"} (e.g. "aggressive" is not a valid mode)
+//   - Mode not in {"soft", "hard", "block"} (e.g. "aggressive" is not a valid mode)
 //   - Preferred not in {"pnpm", "bun"}
 //   - Malformed version floor (non-empty string that is not major.minor[.patch])
 //   - Malformed MajorDriftCheck.Interval (non-empty string that time.ParseDuration rejects)
 func ValidateNudgeConfig(nc NudgeConfig) error {
 	// Validate Mode (closed enum).
 	if nc.Mode != "" && !legalNudgeModes[nc.Mode] {
-		return fmt.Errorf("invalid nudge mode %q (want %q or %q)", nc.Mode, "soft", "hard")
+		return fmt.Errorf("invalid nudge mode %q (want %q, %q, or %q)", nc.Mode, "soft", "hard", "block")
 	}
 
 	// Validate Preferred (closed enum).

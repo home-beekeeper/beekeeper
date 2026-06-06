@@ -47,7 +47,9 @@ type Config struct {
 	// Enabled controls whether nudge evaluation runs at all (NUDGE-08 layered
 	// disable). When false, Evaluate immediately returns Proceed/not-applicable.
 	Enabled bool
-	// Mode is "soft" (advise + proceed, default) or "hard" (rewrite the command).
+	// Mode is "soft" (advise + proceed, default), "hard" (rewrite the command,
+	// advisory), or "block" (deny npm/yarn installs when a hardened PM is
+	// available — supply-chain enforcement).
 	Mode string
 	// RequireHardened, when true, blocks npm install when no hardened PM is
 	// installed. Default false.

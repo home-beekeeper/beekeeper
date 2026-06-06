@@ -109,10 +109,36 @@ func evaluateNudge(ctx context.Context, tc policy.ToolCall, nc config.NudgeConfi
 // "allow|warn|block" vocabulary (research A1 / levelFor), so we lift it directly.
 func nudgeLevelToDecision(d nudge.Decision) policy.Decision {
 	allow := d.Level != "block"
+	reason := fmt.Sprintf("nudge(%s): %s", nudge.ActionString(d.Action), d.Reason)
+	// On a block (mode=="block" enforcement), surface an actionable deny message:
+	// Claude Code shows policy.Decision.Reason to the agent on a PreToolUse deny,
+	// so tell it WHY and exactly what to run instead. A bare reason code would not
+	// steer the agent (the whole point of block mode over a soft advisory).
+	//
+	// We offer BOTH hardened options — pnpm and bun — each with its concrete
+	// equivalent command, computed by re-parsing the original command. Both have
+	// strong supply-chain features (install cooldowns / minimumReleaseAge, strict
+	// lockfile integrity, lifecycle-script controls) that plain npm/yarn lack.
+	if d.Action == nudge.Block {
+		pnpmCmd, bunCmd := "pnpm install", "bun install"
+		if parsed, ok := pkgparse.Parse(d.Original); ok {
+			pnpmCmd = nudge.RewriteToPnpm(parsed)
+			bunCmd = nudge.RewriteToBun(parsed)
+		}
+		reason = fmt.Sprintf(
+			"Beekeeper blocked this npm/yarn install to defend against supply-chain attacks. "+
+				"Use a hardened package manager instead — either:\n"+
+				"  • pnpm:  %s\n"+
+				"  • bun:   %s\n"+
+				"(Both add supply-chain protections plain npm lacks: install cooldowns, "+
+				"strict lockfile integrity, and lifecycle-script controls.)",
+			pnpmCmd, bunCmd,
+		)
+	}
 	return policy.Decision{
-		Allow:  allow,
-		Level:  d.Level,
-		Reason: fmt.Sprintf("nudge(%s): %s", nudge.ActionString(d.Action), d.Reason),
+		Allow:   allow,
+		Level:   d.Level,
+		Reason:  reason,
 		RuleIDs: []string{"NUDGE-03"},
 	}
 }
