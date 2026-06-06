@@ -181,9 +181,9 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-06-05T12:44:15Z
-Stopped at: Completed 10-06-PLAN.md (Phase 10 complete)
-Resume file: None
+Last session: 2026-06-06 (resumed)
+Stopped at: Big dogfood session. (1) handoff #9 scan→pollen E2E validated. (2) #13 scan audit-bloat FIXED. (3) Wired beekeeper as a LIVE Claude Code hook (~/.claude/settings.json, merged w/ GSD; backup .pre-beekeeper-20260606.bak). (4) Found pnpm-detect flaky on Windows (42-92%). (5) Built nudge `mode=block` (detection-INDEPENDENT enforcement, offers pnpm+bun) — PROVEN blocking live npm install via the hook. (6) Fixed pkgparse compound/env bypass (was defeating nudge AND catalog block). 3 commits on main: 6691585 fix(scan), 96f0a7b fix(pkgparse), 0028392 feat(nudge). Live config: %APPDATA%/beekeeper/config.json mode=block.
+Resume file: memory/nudge-block-mode-and-bypass-fix.md + HANDOFF.json. Open: block-as-default decision; block-mode false-positive on quoted "&& npm install" (e.g. commit msgs → use git commit -F); optional /gsd-code-review, /gsd-new-milestone v1.3.0.
 
 ## Operator Next Steps
 

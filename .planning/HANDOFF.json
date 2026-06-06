@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-06T08:05:25.522Z",
+  "timestamp": "2026-06-06T17:32:25.434Z",
   "phase": "10",
   "phase_name": "hook-block-protocol-compliance-and-multi-harness-enforcement",
   "phase_dir": ".planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement",
@@ -8,33 +8,37 @@
   "task": null,
   "total_tasks": null,
   "status": "paused",
-  "context": "post-phase security follow-up (Phase 10 complete; no in-progress phase task)",
-  "head": "7e384ba",
+  "context": "Post-Phase-10 dogfood + v1.3.0-seed feature work. No active PLAN.md execution. Phase 10 already closed (planned->executed->verified->secured). This session: scan E2E validation + 3 shipped feature areas (scan audit-bloat, nudge block mode + bypass fix, installer block-default). 5 commits on main. v1.3.0 NOT yet formalized as a milestone.",
+  "head": "87ffd66",
   "branch": "main",
   "completed_tasks": [
-    {"id": 1, "name": "Phase 10 planned + executed (6 plans, hook-block exit-2 deny protocol, 15 harnesses)", "status": "done"},
-    {"id": 2, "name": "Live HPC-04 proof on Claude Code (canary creds DENIED end-to-end)", "status": "done"},
-    {"id": 3, "name": "Found + fixed Hermes fail-open leak", "status": "done", "commit": "f315c81"},
-    {"id": 4, "name": "Phase 10 verified 5/5 + secured 23/23", "status": "done", "commit": "c29ed54"},
-    {"id": 5, "name": "Codebase-wide multi-agent threat audit + refreshed docs/THREAT-MODEL.md", "status": "done", "commit": "e7d8843"},
-    {"id": 6, "name": "Remediated all 25 audit findings (config trust gate, gateway bind gate, SENTRY-004/005 wiring, redaction/quarantine/shim/pollen/baseline, etc.)", "status": "done"},
-    {"id": 7, "name": "TUI toast alert-type fix + tests", "status": "done", "commit": "6c53cdc"},
-    {"id": 8, "name": "Reassessed + reverted TM-B-01 as by-design (bumblebee canonical)", "status": "done", "commit": "7e384ba"}
+    {"id": 1, "name": "Validated `beekeeper scan` -> pollen production path E2E on Windows (handoff #9); rebuilt from HEAD first", "status": "done"},
+    {"id": 2, "name": "#13 scan audit-bloat: exclude benign pollen `package` inventory from the security audit log", "status": "done", "commit": "6691585"},
+    {"id": 3, "name": "Wired beekeeper as a LIVE Claude Code PreToolUse/PostToolUse hook (~/.claude/settings.json, merged with GSD hooks; backup .pre-beekeeper-20260606.bak)", "status": "done"},
+    {"id": 4, "name": "Found pnpm-detect flaky on Windows (42-92% across batches; corepack .cmd ~2s vs 3s deadline) — documented", "status": "done"},
+    {"id": 5, "name": "nudge mode=block (detection-INDEPENDENT supply-chain enforcement; offers pnpm+bun); PROVEN blocking live npm install via the hook", "status": "done", "commit": "0028392"},
+    {"id": 6, "name": "Fixed pkgparse compound/env-prefix bypass (cd x && npm install / NODE_ENV=prod npm install) — defeated BOTH nudge block AND catalog block (engine.go shares pkgparse.Parse)", "status": "done", "commit": "96f0a7b"},
+    {"id": 7, "name": "Fixed block-mode false-positive: quote-aware splitSegments (quoted '&& npm install' in commit msgs no longer blocks)", "status": "done", "commit": "54c6c8a"},
+    {"id": 8, "name": "Made block the default for installed protection via installer (ensureNudgeBlockDefault writes nudge.mode=block on `hooks install`); reverted code-default-block as too disruptive (~12 test cascade)", "status": "done", "commit": "87ffd66"}
   ],
   "remaining_tasks": [
-    {"id": 9, "name": "TEST `beekeeper scan` using pollen end-to-end — validate the scan/catalog production path works (pollen is the Windows stand-in for bumblebee, which has no Windows support yet). NOT YET EXERCISED.", "status": "not_started", "priority": "primary"},
-    {"id": 10, "name": "Optional: wire toastWarn to a real warn-level event (defined + glyph-distinct but no call site)", "status": "not_started", "priority": "optional"},
-    {"id": 11, "name": "Optional: /gsd-code-review 10 (advisory gate deferred during execute-phase)", "status": "not_started", "priority": "optional"},
-    {"id": 12, "name": "Optional: /gsd-new-milestone to formalize v1.3.0 (Phase 10 is its standalone seed)", "status": "not_started", "priority": "optional"}
+    {"id": 9, "name": "Formalize v1.3.0 milestone (/gsd-new-milestone) — Phase 10 + these features are its standalone seed; milestone never created", "status": "not_started", "priority": "primary"},
+    {"id": 10, "name": "PRODUCT DECISION: keep block-as-default via installer (current) OR make it the hard CODE default (DefaultNudgeConfig->block, ~12 test updates across check+gateway). User leaned strongly toward strong defaults; left at installer approach.", "status": "not_started", "priority": "primary"},
+    {"id": 11, "name": "Optional: /gsd-code-review 10 (advisory gate deferred during execute-phase) — now also covers the 5 new commits", "status": "not_started", "priority": "optional"},
+    {"id": 12, "name": "Optional: wire toastWarn to a real warn-level event (defined + glyph-distinct, no call site)", "status": "not_started", "priority": "optional"}
   ],
   "blockers": [],
-  "human_actions_pending": [],
-  "decisions": [
-    {"decision": "Hook deny uses exit 2 + per-harness deny JSON; --hook mode emits ONLY the harness deny form (RunCheckTo(io.Discard))", "rationale": "exit 1 was ignored by all harnesses; raw Decision JSON leak silently allowed on fail-open Hermes", "phase": "10"},
-    {"decision": "TM-B-01 (degraded-source corroboration) is BY-DESIGN, not a gap; a99b020 reverted", "rationale": "bumblebee is the canonical synced/sanity-tracked source; OSV/Socket are per-request adapters that degrade to no-match and never appear in state.Sources; gating escalation on bumblebee-health is correct", "phase": "audit"},
-    {"decision": "Did NOT implement fractional 0.5 corroboration weighting", "rationale": "core decision-semantics change; gross poisoning already covered by sanity-suppression; subtle tamper is the corroboration+signature layer's job (TM-B-07)", "phase": "audit"}
+  "human_actions_pending": [
+    {"action": "Optional: rotate/truncate %APPDATA%/beekeeper/audit/beekeeper.ndjson (~95MB+ of pre-#13-fix pollen inventory; #13 stops future growth, does not shrink existing)", "context": "user's data, not done unilaterally", "blocking": false},
+    {"action": "Decide block-as-code-default vs installer-default (task #10)", "context": "user wants strong protection; trade-off is ~12 test updates + blocking npm in gateway/library contexts", "blocking": false}
   ],
-  "uncommitted_files": ["beekeeper-tui-prototype.html (untracked, stray prototype, unrelated — leave it)"],
-  "next_action": "Run `beekeeper scan` (it shells to pollen at C:\\Users\\Bantu\\go\\bin\\pollen) against installed extensions and confirm it works end-to-end — validates the scan/catalog production path on Windows. Then decide on the optional follow-ups.",
-  "context_notes": "Phase 10 fully closed (planned->executed->verified 5/5->secured 23/23). A full codebase-wide threat audit ran and ALL 25 findings are remediated or reassessed. The audit's one 'High' (TM-B-01) was a false alarm — the audit agents conflated the canonical synced bumblebee catalog with the per-request OSV/Socket adapters. ARCHITECTURE INTEL for whoever resumes: bumblebee = canonical production catalog/scanner; OSV+Socket = per-request corroboration adapters; pollen = LOCAL Windows-only dev scanner (bumblebee has no Windows build yet). Audit of record: .planning/security/THREAT-AUDIT-2026-06-05.md. Everything committed to main (local, never pushed). Paused due to high token count."
+  "decisions": [
+    {"decision": "nudge block is detection-INDEPENDENT (does not gate on the pnpm probe)", "rationale": "the pnpm probe is ~50% flaky on Windows corepack; a security enforcement control must not fail open on a slow subprocess", "phase": "10-followup"},
+    {"decision": "block is the default for INSTALLED protection (installer writes nudge.mode=block) — NOT the code default", "rationale": "flipping DefaultNudgeConfig->block cascaded ~12 test failures because npm install is the universal test command; code-default-block would block npm everywhere incl. gateway/library. Installer-writes-block achieves 'protected machines block by default' cleanly. Library default stays soft (PRD 3.2).", "phase": "10-followup"},
+    {"decision": "pkgparse splitSegments is quote-aware", "rationale": "a separator inside quotes is literal text (a quoted install never executes), so honoring quotes removes block-mode false-positives on commit messages/echo without weakening detection of real compound installs", "phase": "10-followup"},
+    {"decision": "scan audit-append excludes benign pollen `package` inventory (pollenAuditableRecordTypes)", "rationale": "~15k inventory records per scan bloated the audit log to ~95MB and buried forensic records; inventory belongs in scan stdout, not the security audit trail", "phase": "10-followup"}
+  ],
+  "uncommitted_files": ["beekeeper-tui-prototype.html (untracked, stray, leave it)", ".claude/ (untracked, leave it)", ".planning/STATE.md + HANDOFF.json (this handoff, committed as WIP)"],
+  "next_action": "Run /gsd-new-milestone to formalize v1.3.0 (Phase 10 + the 5 new commits are its seed), OR /gsd-code-review 10 to review the new commits first. Then resolve the block-as-code-default product decision (task #10).",
+  "context_notes": "LIVE STATE on this machine: %APPDATA%/beekeeper/config.json = {nudge:{enabled:true,mode:block}}; beekeeper hook installed in ~/.claude/settings.json; binary current at ~/go/bin (Jun 6 19:07, all 5 commits). Block mode is ACTIVE — npm/yarn installs are DENIED by the live PreToolUse hook (proven), pnpm/bun allowed. ARCHITECTURE INTEL: bumblebee=canonical catalog (never exec'd); OSV+Socket=per-request adapters; pollen=local Windows-only scanner beekeeper execs on ALL OSes. Windows state dir=%APPDATA%/beekeeper (NOT ~/.beekeeper). GOTCHAS for whoever resumes: (1) block mode live → a Bash command that quotes '&& <install>' is now fine (quote-aware), but an UNQUOTED compound install in your own command will be DENIED by the hook; git commit -F <file> is the fallback if a commit message ever trips it. (2) The live fail-closed hook locks you out only if `beekeeper check` fails on ~every call — a panic/hang in an always-run path, OR a config the live binary's validator rejects (e.g. mode=block while an old soft/hard-only binary is still the hook). A failed COMPILE is safe (go install won't replace the binary). Order: install the new binary BEFORE the config that depends on it; smoke-test (build-to-temp + pipe a check) only if you touched startup/config/eval code. A bug on SOME inputs blocks only those calls, not a lockout. (3) gsd init.plan-phase/state.begin-phase resolvers map bare phase numbers to ARCHIVED v1.0.0 dirs — pass explicit paths, update STATE/ROADMAP manually. Memory: nudge-block-mode-and-bypass-fix.md, scan-audit-bloat-finding.md, pnpm-windows-detection-timeout.md. v1.1.0 Pollen still PARKED (separate). Everything committed to main, local, never pushed."
 }
