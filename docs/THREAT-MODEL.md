@@ -199,12 +199,21 @@ not sufficient.
 
 ### Signature Verification
 
-Every catalog feed is verified against an embedded public key before the feed
-entries are applied. A feed with an invalid or absent signature is treated as
-an integrity failure and causes the corresponding source to enter degraded
-mode. Degraded-mode matches count at most 0.5 toward the corroboration count,
-meaning even a successfully-fetched but integrity-failed feed cannot drive a
-block decision on its own.
+The `beekeeper-self` self-quarantine feed is cryptographically verified against
+an embedded Ed25519 public key before its entries are applied (§6); an
+invalid/absent signature is an integrity failure that fails closed. For the
+**primary bumblebee** catalog, integrity in the live decision path rests on
+corroboration (the two-source requirement) plus the sanity bounds below — a
+bumblebee entry's `signed` flag is currently a *presence* check, not Ed25519
+verification (TM-B-02; see the §11 honesty note). When bumblebee's sync trips a
+sanity bound the source is marked degraded and per-severity escalation overrides
+are **suppressed** (the engine falls back to flat corroboration thresholds, so a
+single degraded-feed match cannot escalate a `critical` to a block on its own).
+The OSV and Socket sources are per-request network adapters that degrade to
+*no-match* on error, so a degraded adapter contributes nothing toward escalation.
+(An earlier draft of this section described a fractional "0.5 weight" for degraded
+sources; that fractional weighting is **not implemented** — escalation suppression
+on canonical-feed degradation is the actual mechanism.)
 
 ### Sanity Bounds
 
@@ -975,20 +984,25 @@ anti-poisoning guards protect this stronger escalation:
 
 > **Honesty note (audited 2026-06-05; updated post-remediation).**
 >
-> **Degraded-source suppression (TM-B-01, partially remediated):**
-> `ResolveHealthy` now checks ALL catalog sources (bumblebee, OSV, Socket, and
-> any future source) — not only the bumblebee source. A sanity-degraded OSV or
-> Socket source suppresses the per-severity override escalation the same way a
-> degraded bumblebee source does. The "degraded source counts at most 0.5 toward
-> corroboration" fractional-weight invariant described in §3 is **not
-> implemented in the corroboration counter** and is not implemented by intent at
-> this time — full fractional weighting is a core decision-semantics change
-> (block/warn/quarantine thresholds) that requires separate design and review.
-> The practical residual risk is a *false-positive* single-source block on a
-> `critical` entry (a coercion/DoS primitive, not a malicious-allow bypass) only
-> when no source is sanity-degraded; when any source is degraded, escalation is
-> now suppressed across all sources. The §3 "0.5 weight" language overstates the
-> current implementation and will be corrected in a future doc pass.
+> **Degraded-source escalation (TM-B-01, reassessed 2026-06-06 — by design):**
+> `ResolveHealthy` gates per-severity escalation on the health of the **canonical
+> bumblebee feed** — the only locally-synced, sanity-tracked source (the watch
+> daemon writes a degradation flag only for bumblebee). This is intentional: OSV
+> and Socket are per-request adapters that degrade to *no-match* (so they cannot
+> drive escalation regardless of any "health" signal), and gating escalation on a
+> transient OSV/Socket outage would suppress bumblebee's legitimate `critical`
+> escalation — weakening true-positive detection, especially offline / on Windows.
+> The "degraded source counts at most 0.5 toward corroboration" fractional weight
+> once described in §3 is **not implemented, and not planned as a mechanical
+> change**: it is a core decision-semantics change, and for *gross* feed poisoning
+> it is already covered by the sanity-bound degradation suppression above, while
+> *subtle* content-preserving single-entry tamper is the corroboration + signature
+> layer's job (TM-B-07, §8). The residual is a *false-positive* single-source block
+> on a `critical` entry from a tampered-but-not-sanity-tripping canonical feed — a
+> coercion/DoS primitive, not a malicious-allow bypass. A prior change that made
+> `ResolveHealthy` loop over all sources was reverted as a no-op (only bumblebee is
+> ever present in `state.Sources`) whose comment implied a multi-source degradation
+> model that does not exist.
 >
 > **Signature verification (TM-B-02, not yet remediated):** In the live decision
 > path, a Bumblebee entry's "signed" status remains a **presence check**

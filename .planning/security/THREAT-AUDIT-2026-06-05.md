@@ -245,7 +245,7 @@ All 25 findings addressed the same day. Full `go test ./...` green (24 pkgs, 0 f
 | TM-A-01 | Med | `2eeb602` | gateway non-loopback bind gated behind `--allow-remote` + plaintext-HTTP/cleartext-bearer warning |
 | TM-RS-01 | Med | `28a0f4d` | live `InventoryStore` wired into EvaluateEvent on all 3 daemons — SENTRY-004/005 now fire in production |
 | TM-D-03 | Med | `4287009` | watch path now redacts; RedactRecord widened to Sentry/catalog fields |
-| TM-B-01 | High | `a99b020` | ResolveHealthy consults ALL sources (degraded OSV/Socket now suppresses escalation) — *conservative scope* |
+| TM-B-01 | High→**reassessed** | `a99b020` then reverted | See "Reassessed as by-design" below — the bumblebee-only health gate is intentional; the audit conflated synced sources with per-request adapters |
 | TM-D-05 | Low | `8a20162` | quarantine Restore rejects traversal / quarantine-dir-escape OriginalPath |
 | TM-A-04 | Low | `a37aaf7` | shim multi-arg installs no longer mis-parse + blocked |
 | TM-RS-04 | Low | `07c7025` | Linux/macOS status reads correct stateDir baseline path |
@@ -269,9 +269,10 @@ All 25 findings addressed the same day. Full `go test ./...` green (24 pkgs, 0 f
 | TM-B-03, TM-B-05 | — | accepted (pre-existing documented trade-offs). |
 | TM-A-05, TM-RS-05 | — | mitigated (cosmetic / fail-closed loader). |
 
-### Deferred by design (NOT auto-fixed)
+### Reassessed as by-design (audit premise corrected 2026-06-06)
 
-- **TM-B-01 fractional 0.5-weight in `corroborate()`** — deliberately NOT implemented via quick task. It changes core block/warn/quarantine decision semantics and warrants a designed + reviewed change. The conservative degraded-source-suppression part is done (`a99b020`); the residual is honestly disclosed in §11.
+- **TM-B-01 — bumblebee-only health gate is INTENTIONAL, not a gap.** Owner confirmed bumblebee is the canonical scanner/catalog Beekeeper consumes in production (OSV/Socket are corroboration adapters; `pollen` is a local Windows-only dev scanner since bumblebee lacks Windows support yet). Code verified: the watch daemon writes a `Degraded` flag **only** for `bumblebee` (`internal/catalog/watch.go:195`); OSV/Socket are per-request adapters that degrade to *no-match* and never appear in `state.Sources`. So `ResolveHealthy` gating escalation on bumblebee's health is correct — gating on transient OSV/Socket outages would *suppress* bumblebee's legitimate `critical` escalation. The `a99b020` "consult all sources" change was a **no-op** (only bumblebee is ever in `state.Sources`) with a misleading comment + fiction tests; it was **reverted** (commit below). Docs §3 + §11 corrected (the "0.5 weight" language was the overstatement, not the code).
+- **TM-B-01 fractional 0.5-weight** — remains unimplemented *by design*: it is a core decision-semantics change; gross poisoning is already handled by sanity-bound degradation suppression, and subtle single-entry tamper is the corroboration + signature layer's job (TM-B-07).
 
 ---
 
