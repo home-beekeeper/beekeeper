@@ -281,6 +281,49 @@ func TestParse(t *testing.T) {
 			wantOK: true,
 			want:   want{Manager: "npm", Ecosystem: "npm", Verb: "install", Package: "foo", IsInstall: true, Unpinned: true},
 		},
+		// ── Compound + env-prefix coverage (bypass fix) ──────────────────
+		// These previously returned ok=false (prefix parser saw "cd"/"NODE_ENV")
+		// and silently escaped BOTH the nudge block and the catalog block.
+		{
+			name:   "compound: cd && npm install caught",
+			input:  "cd /project && npm install evil-pkg",
+			wantOK: true,
+			want:   want{Manager: "npm", Ecosystem: "npm", Verb: "install", Package: "evil-pkg", IsInstall: true, Unpinned: true},
+		},
+		{
+			name:   "env-prefix: NODE_ENV=prod npm install caught",
+			input:  "NODE_ENV=production npm install lodash@4.17.20",
+			wantOK: true,
+			want:   want{Manager: "npm", Ecosystem: "npm", Verb: "install", Package: "lodash", Version: "4.17.20", IsInstall: true},
+		},
+		{
+			name:   "compound + env + pnpm caught (ecosystem npm)",
+			input:  "cd app && FORCE_COLOR=1 pnpm add chalk",
+			wantOK: true,
+			want:   want{Manager: "pnpm", Ecosystem: "npm", Verb: "add", Package: "chalk", IsInstall: true, Unpinned: true},
+		},
+		{
+			name:   "semicolon: npm install foo; echo done — package is clean",
+			input:  "npm install foo; echo done",
+			wantOK: true,
+			want:   want{Manager: "npm", Ecosystem: "npm", Verb: "install", Package: "foo", IsInstall: true, Unpinned: true},
+		},
+		{
+			name:   "env + sudo: FOO=bar sudo npm install baz",
+			input:  "FOO=bar sudo npm install baz",
+			wantOK: true,
+			want:   want{Manager: "npm", Ecosystem: "npm", Verb: "install", Package: "baz", IsInstall: true, Sudo: true, Unpinned: true},
+		},
+		{
+			name:   "compound non-install stays false (cd && npm ls)",
+			input:  "cd /tmp && npm ls",
+			wantOK: false,
+		},
+		{
+			name:   "compound with no install verb stays false",
+			input:  "echo hi && ls -la",
+			wantOK: false,
+		},
 	}
 
 	for _, tc := range tests {

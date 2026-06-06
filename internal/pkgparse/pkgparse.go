@@ -104,17 +104,40 @@ var installTable = []installEntry{
 // ok is false when the command is not a recognised install/exec verb (e.g.
 // "npm ls", "npm run start", "npm publish" — §10-7 non-install).
 //
+// Compound-command coverage (SECURITY): an install verb is detected even when it
+// is NOT the first token of the command. The command is split on shell separators
+// (`&&`, `||`, `;`, `|`, `&`, newlines) and each segment is examined, with leading
+// environment-variable assignments (`VAR=val cmd`) and a `sudo` prefix stripped.
+// This closes a bypass where `cd /project && npm install evil-pkg` or
+// `NODE_ENV=prod npm install evil-pkg` would otherwise escape both the nudge and
+// the catalog block (engine.go routes Bash-command package extraction through this
+// function). The FIRST segment that resolves to an install verb wins.
+//
 // Parse is PURE: it does no I/O, no exec, no globals mutation. It may safely
 // be called from any goroutine without synchronisation.
 func Parse(cmd string) (ParsedCommand, bool) {
-	raw := cmd
+	for _, seg := range splitSegments(cmd) {
+		if pc, ok := parseSegment(cmd, seg); ok {
+			return pc, true
+		}
+	}
+	// No segment resolved to an install verb → non-install (§10-7).
+	return ParsedCommand{}, false
+}
 
-	// Strip a leading "sudo " and set Sudo=true (§6.4 criterion 10).
+// parseSegment attempts to parse a single shell segment as an install command.
+// raw is the full original command (preserved verbatim in ParsedCommand.Raw);
+// seg is the individual segment. Leading env-var assignments and a sudo prefix
+// are stripped before the install-prefix table is consulted.
+func parseSegment(raw, seg string) (ParsedCommand, bool) {
+	trimmed := stripLeadingEnvAssignments(strings.TrimSpace(seg))
+
+	// Strip a leading "sudo " and set Sudo=true (§6.4 criterion 10). Handle both
+	// "sudo VAR=val cmd" and "VAR=val sudo cmd" by re-stripping env after sudo.
 	sudo := false
-	trimmed := strings.TrimSpace(cmd)
 	if strings.HasPrefix(strings.ToLower(trimmed), "sudo ") {
 		sudo = true
-		trimmed = strings.TrimSpace(trimmed[5:])
+		trimmed = stripLeadingEnvAssignments(strings.TrimSpace(trimmed[len("sudo "):]))
 	}
 
 	lower := strings.ToLower(trimmed)
@@ -160,8 +183,77 @@ func Parse(cmd string) (ParsedCommand, bool) {
 		}, true
 	}
 
-	// No install prefix matched → non-install verb (§10-7).
 	return ParsedCommand{}, false
+}
+
+// splitSegments splits a shell command on command separators (`&&`, `||`, `;`,
+// `|`, `&`, newline, carriage-return) into individual command segments. It scans
+// byte-by-byte (no sentinel substitution) so it is safe on inputs containing NUL
+// or arbitrary control bytes, and never panics. Quoting is intentionally NOT
+// honoured: for a security detector, over-splitting a quoted separator only risks
+// examining an extra (harmless) segment, whereas UNDER-splitting would miss an
+// install verb — so we err toward more segments.
+func splitSegments(cmd string) []string {
+	var segs []string
+	start := 0
+	for i := 0; i < len(cmd); {
+		if i+1 < len(cmd) {
+			if two := cmd[i : i+2]; two == "&&" || two == "||" {
+				segs = append(segs, cmd[start:i])
+				i += 2
+				start = i
+				continue
+			}
+		}
+		switch cmd[i] {
+		case ';', '|', '&', '\n', '\r':
+			segs = append(segs, cmd[start:i])
+			i++
+			start = i
+		default:
+			i++
+		}
+	}
+	return append(segs, cmd[start:])
+}
+
+// stripLeadingEnvAssignments removes any leading `VAR=value` environment-variable
+// assignments from a command segment (e.g. "NODE_ENV=prod FORCE=1 npm install"
+// → "npm install"). It stops at the first token that is not a valid assignment.
+func stripLeadingEnvAssignments(s string) string {
+	for {
+		s = strings.TrimLeft(s, " \t")
+		sp := strings.IndexAny(s, " \t")
+		if sp <= 0 {
+			return s
+		}
+		if !isEnvAssignment(s[:sp]) {
+			return s
+		}
+		s = s[sp+1:]
+	}
+}
+
+// isEnvAssignment reports whether tok has the shape NAME=... where NAME is a
+// valid shell identifier ([A-Za-z_][A-Za-z0-9_]*). The value part is not
+// inspected. Used to skip leading env-var assignments in stripLeadingEnvAssignments.
+func isEnvAssignment(tok string) bool {
+	eq := strings.IndexByte(tok, '=')
+	if eq <= 0 {
+		return false
+	}
+	for i := 0; i < eq; i++ {
+		c := tok[i]
+		switch {
+		case c == '_', c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z':
+			// valid identifier char
+		case c >= '0' && c <= '9' && i > 0:
+			// digit allowed after the first character
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // firstPackageToken returns the first whitespace-delimited token in rest that
