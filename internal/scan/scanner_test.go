@@ -292,24 +292,28 @@ func TestPollenCompatibility(t *testing.T) {
 	}
 }
 
-// TestPollenRecordTypeAllowlist verifies TM-RS-07: a pollen-emitted record with
-// an unknown record_type must NOT be appended to the audit log, even though it
-// is passed through to the scan output for transparency.
+// TestPollenRecordTypeAllowlist verifies two layered audit-log gates:
+//   - TM-RS-07: an unknown record_type (injection) must NOT reach the audit log,
+//     though it is passed through to scan output for transparency.
+//   - #13: the benign high-volume "package" inventory type must NOT reach the
+//     audit log either (noise control), though it too passes through to stdout.
+//   - A forensically-meaningful auditable type ("finding") DOES reach the audit log.
 //
-// Attack scenario: a PATH-hijacked pollen binary emits a crafted line such as
-// {"record_type":"sentry_alert","decision":"allow",...} to tamper with the
-// forensic audit log. The allowlist rejects this before appendRawAuditLine is
-// called.
+// Attack scenario for TM-RS-07: a PATH-hijacked pollen binary emits a crafted
+// line such as {"record_type":"sentry_alert","decision":"allow",...} to tamper
+// with the forensic audit log. The allowlist rejects it before appendRawAuditLine.
 func TestPollenRecordTypeAllowlist(t *testing.T) {
 	old := runPollenFn
 	defer func() { runPollenFn = old }()
 
-	knownGood := `{"record_type":"package","scanner_name":"pollen","ecosystem":"npm","normalized_name":"left-pad","version":"1.3.0"}`
+	auditable := `{"record_type":"finding","scanner_name":"pollen","severity":"high","normalized_name":"evil-pkg"}`
+	inventory := `{"record_type":"package","scanner_name":"pollen","ecosystem":"npm","normalized_name":"left-pad","version":"1.3.0"}`
 	injected := `{"record_type":"sentry_alert","decision":"allow","scanner_name":"evil-pollen"}`
 
 	runPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
-		ch := make(chan []byte, 2)
-		ch <- []byte(knownGood)
+		ch := make(chan []byte, 3)
+		ch <- []byte(auditable)
+		ch <- []byte(inventory)
 		ch <- []byte(injected)
 		close(ch)
 		return ch, true
@@ -324,27 +328,57 @@ func TestPollenRecordTypeAllowlist(t *testing.T) {
 		t.Fatalf("Scan: %v", err)
 	}
 
-	// Both records appear in scan output (transparency preserved).
+	// All three records appear in scan output (transparency / inventory preserved).
 	out := scanOut.String()
-	if !strings.Contains(out, `"record_type":"package"`) {
-		t.Errorf("known-good record_type:package missing from scan output:\n%s", out)
-	}
-	if !strings.Contains(out, `"record_type":"sentry_alert"`) {
-		t.Errorf("injected record should still appear in scan output for transparency:\n%s", out)
+	for _, want := range []string{`"record_type":"finding"`, `"record_type":"package"`, `"record_type":"sentry_alert"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%s missing from scan output (stdout passthrough):\n%s", want, out)
+		}
 	}
 
-	// Only the known-good record is written to the audit log.
+	// Only the forensically-meaningful auditable record reaches the audit log.
 	auditBytes, err := os.ReadFile(auditFile)
 	if err != nil {
 		t.Fatalf("read audit file: %v", err)
 	}
 	auditContent := string(auditBytes)
 
-	if !strings.Contains(auditContent, `"record_type":"package"`) {
-		t.Errorf("known-good record missing from audit log:\n%s", auditContent)
+	if !strings.Contains(auditContent, `"record_type":"finding"`) {
+		t.Errorf("auditable record_type:finding missing from audit log:\n%s", auditContent)
+	}
+	if strings.Contains(auditContent, `"record_type":"package"`) {
+		t.Errorf("#13: benign package inventory was written to audit log — audit-bloat gate not enforced:\n%s", auditContent)
 	}
 	if strings.Contains(auditContent, `"record_type":"sentry_alert"`) {
 		t.Errorf("TM-RS-07: injected sentry_alert record_type was written to audit log — allowlist not enforced:\n%s", auditContent)
+	}
+}
+
+// TestPollenRecordTypeAuditableFn unit-tests the pollenRecordTypeAuditable helper
+// (#13): forensically-meaningful types are auditable; benign "package" inventory
+// and any non-allowed/injection type are not.
+func TestPollenRecordTypeAuditableFn(t *testing.T) {
+	cases := []struct {
+		name  string
+		line  string
+		audit bool
+	}{
+		{"finding", `{"record_type":"finding","severity":"high"}`, true},
+		{"scan_summary", `{"record_type":"scan_summary"}`, true},
+		{"scan_error", `{"record_type":"scan_error","source":"pollen"}`, true},
+		{"scan_status", `{"record_type":"scan_status"}`, true},
+		{"package (benign inventory — excluded)", `{"record_type":"package","ecosystem":"npm"}`, false},
+		{"sentry_alert injection", `{"record_type":"sentry_alert","decision":"allow"}`, false},
+		{"empty record_type", `{"record_type":""}`, false},
+		{"missing record_type", `{"scanner_name":"pollen"}`, false},
+		{"malformed JSON", `not-json`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pollenRecordTypeAuditable([]byte(tc.line)); got != tc.audit {
+				t.Errorf("pollenRecordTypeAuditable(%q) = %v; want %v", tc.line, got, tc.audit)
+			}
+		})
 	}
 }
 

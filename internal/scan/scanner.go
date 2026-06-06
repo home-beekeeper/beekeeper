@@ -168,6 +168,38 @@ func pollenRecordTypeAllowed(line []byte) bool {
 	return pollenAllowedRecordTypes[probe.RecordType]
 }
 
+// pollenAuditableRecordTypes is the subset of allowed pollen record types that
+// carry forensic value and are therefore appended to the integrity-critical
+// audit log (beekeeper.ndjson). It deliberately EXCLUDES the benign high-volume
+// "package" inventory type: a single scan emits thousands of "package" records
+// (the machine's full dependency inventory — >14k on a typical dev box), which
+// would bloat the audit log and bury the security-relevant records. Inventory is
+// still streamed to scan stdout; it simply is not part of the security audit
+// trail. This is a noise-control narrowing layered ON TOP OF the TM-RS-07
+// injection gate (pollenAllowedRecordTypes) — it never widens what may reach the
+// audit log, only restricts it further (#13).
+var pollenAuditableRecordTypes = map[string]bool{
+	"finding":      true, // pollen vulnerability finding record — primary security signal
+	"scan_summary": true, // one per scan: counts, roots, duration
+	"scan_error":   true, // non-zero exit / malformed NDJSON (beekeeper-synthesised)
+	"scan_status":  true, // pollen unavailable notice (beekeeper-synthesised)
+	// "package" intentionally omitted — benign bulk inventory, see doc comment.
+}
+
+// pollenRecordTypeAuditable reports whether a known-valid pollen NDJSON line
+// should be appended to the audit log. Callers must first confirm the line is
+// allowed via pollenRecordTypeAllowed; this helper only further narrows the
+// allowed set to the forensically-meaningful types (#13).
+func pollenRecordTypeAuditable(line []byte) bool {
+	var probe struct {
+		RecordType string `json:"record_type"`
+	}
+	if err := json.Unmarshal(line, &probe); err != nil {
+		return false
+	}
+	return pollenAuditableRecordTypes[probe.RecordType]
+}
+
 // Scan orchestrates the Pollen CLI (when available) and the Beekeeper-own
 // per-extension catalog/release-age scan, writing merged NDJSON results to out.
 func Scan(ctx context.Context, cfg Config, out io.Writer) error {
@@ -207,9 +239,13 @@ func Scan(ctx context.Context, cfg Config, out io.Writer) error {
 				_, _ = fmt.Fprintf(out, "%s\n", line)
 				continue
 			}
-			// Known record_type: pass through AND append to audit log.
+			// Known record_type: always pass through to scan output. Append to the
+			// integrity-critical audit log ONLY for forensically-meaningful types
+			// (finding / scan_summary / scan_* status). Benign bulk "package"
+			// inventory (thousands of records per scan) is excluded to prevent
+			// audit-log bloat + signal dilution — it lives in scan stdout only (#13).
 			_, _ = fmt.Fprintf(out, "%s\n", line)
-			if cfg.AuditPath != "" {
+			if cfg.AuditPath != "" && pollenRecordTypeAuditable(line) {
 				_ = appendRawAuditLine(cfg.AuditPath, line)
 			}
 		}
