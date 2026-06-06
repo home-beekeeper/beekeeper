@@ -1,39 +1,40 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-03T11:53:20.132Z",
-  "phase": "05",
-  "phase_name": "Contribution-Back & Milestone Close",
-  "phase_dir": ".planning/phases/05-contribution-back-milestone-close",
-  "plan": 5,
-  "task": 2,
-  "total_tasks": 3,
+  "timestamp": "2026-06-06T08:05:25.522Z",
+  "phase": "10",
+  "phase_name": "hook-block-protocol-compliance-and-multi-harness-enforcement",
+  "phase_dir": ".planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
   "status": "paused",
+  "context": "post-phase security follow-up (Phase 10 complete; no in-progress phase task)",
+  "head": "7e384ba",
+  "branch": "main",
   "completed_tasks": [
-    {"id": "05-01", "name": "PTEST-05 — isSensitivePath ToSlash fix + Windows honeypot (SENTRY-005)", "status": "done", "commit": "10ab2ba"},
-    {"id": "05-02", "name": "SDEF-01 — pollen-self in beekeeper-self catalog", "status": "done", "commit": "107cf90"},
-    {"id": "05-03", "name": "SYNC-01/02 — UPSTREAM.md sync workflow + pollen.5 VERSION/CHANGES", "status": "done", "commit": "d466815"},
-    {"id": "05-04", "name": "BKINT-02 — CI go-install pin + release runbook", "status": "done", "commit": "ebc3cdd"},
-    {"id": "05-05-task1", "name": "Release pre-flight verification (both repos green, 4 tag commits present)", "status": "done", "progress": "verified inline during E2E"},
-    {"id": "e2e", "name": "Local E2E validation (beekeeper<->pollen cross-binary scan on Windows) + --deep fix", "status": "done", "commit": "9d5de68"}
+    {"id": 1, "name": "Phase 10 planned + executed (6 plans, hook-block exit-2 deny protocol, 15 harnesses)", "status": "done"},
+    {"id": 2, "name": "Live HPC-04 proof on Claude Code (canary creds DENIED end-to-end)", "status": "done"},
+    {"id": 3, "name": "Found + fixed Hermes fail-open leak", "status": "done", "commit": "f315c81"},
+    {"id": 4, "name": "Phase 10 verified 5/5 + secured 23/23", "status": "done", "commit": "c29ed54"},
+    {"id": 5, "name": "Codebase-wide multi-agent threat audit + refreshed docs/THREAT-MODEL.md", "status": "done", "commit": "e7d8843"},
+    {"id": 6, "name": "Remediated all 25 audit findings (config trust gate, gateway bind gate, SENTRY-004/005 wiring, redaction/quarantine/shim/pollen/baseline, etc.)", "status": "done"},
+    {"id": 7, "name": "TUI toast alert-type fix + tests", "status": "done", "commit": "6c53cdc"},
+    {"id": 8, "name": "Reassessed + reverted TM-B-01 as by-design (bumblebee canonical)", "status": "done", "commit": "7e384ba"}
   ],
   "remaining_tasks": [
-    {"id": "05-05-task2", "name": "MAINTAINER CHECKPOINT (autonomous:false): push pollen, cut+cosign-sign tags pollen.2/.3/.4/.5, verify, create+push beekeeper", "status": "not_started"},
-    {"id": "05-05-task3", "name": "Post-release tracking update (STATE/ROADMAP/REQUIREMENTS DISCHARGED rows) + phase verify + milestone v1.1.0 close", "status": "not_started"}
+    {"id": 9, "name": "TEST `beekeeper scan` using pollen end-to-end — validate the scan/catalog production path works (pollen is the Windows stand-in for bumblebee, which has no Windows support yet). NOT YET EXERCISED.", "status": "not_started", "priority": "primary"},
+    {"id": 10, "name": "Optional: wire toastWarn to a real warn-level event (defined + glyph-distinct but no call site)", "status": "not_started", "priority": "optional"},
+    {"id": 11, "name": "Optional: /gsd-code-review 10 (advisory gate deferred during execute-phase)", "status": "not_started", "priority": "optional"},
+    {"id": 12, "name": "Optional: /gsd-new-milestone to formalize v1.3.0 (Phase 10 is its standalone seed)", "status": "not_started", "priority": "optional"}
   ],
-  "blockers": [
-    {"description": "Release is auth-gated (GitHub gh auth + cosign OIDC) and irreversible — only the maintainer can perform it", "type": "human_action", "workaround": "Follow docs/release-runbook.md step-by-step"}
-  ],
-  "human_actions_pending": [
-    {"action": "Run docs/release-runbook.md: push ../pollen (16 commits ahead, remote github.com/Bantuson/pollen) -> 3-OS CI green -> tag+push v0.1.1-pollen.2 (c94b271) / .3 (19695e3) / .4 (b906404) / .5 (HEAD 3b6d8f2) -> cosign verify-blob (identity ^https://github.com/Bantuson/pollen/) -> gh repo create bantuson/beekeeper + push beekeeper", "context": "Milestone v1.1.0 close (SC6). Pollen MUST be pushed+tagged BEFORE beekeeper push so beekeeper CI's go install @v0.1.1-pollen.4 resolves.", "blocking": true}
-  ],
+  "blockers": [],
+  "human_actions_pending": [],
   "decisions": [
-    {"decision": "SYNC-02 / roadmap SC2 DESCOPED — no upstream PRs to perplexityai/bumblebee", "rationale": "Upstream Windows PRs #3/#4 ignored; maintainers doing their own Windows update — no viable contribution path. Documented in pollen UPSTREAM.md.", "phase": "05"},
-    {"decision": "Four signed tags (pollen.2/.3/.4/.5) cut at the 05-05 checkpoint; GitHub push enabled (reverses local-only posture)", "rationale": "D-3/D-4; fork must stand on its own published signed release", "phase": "05"},
-    {"decision": "pollen.4 tags at b906404 (the WR-01 .vscode-oss->vscodium fix), NOT a9db7b3; cosign identity is capital-B Bantuson", "rationale": "ship the VSCodium label fix; GitHub OIDC binds canonical account casing", "phase": "05"},
-    {"decision": "BKINT-02 is binary-only (CI go install @version + source const), no go.mod module import", "rationale": "preserves the BKINT-01 subprocess boundary", "phase": "05"},
-    {"decision": "beekeeper scan --deep now wires --root <home> + emits scan_error on any non-zero pollen exit (fix 9d5de68)", "rationale": "E2E found --deep silently produced nothing (pollen deep needs --root; non-zero exit was swallowed). Pre-existing latent bug, not an M2 regression.", "phase": "05"}
+    {"decision": "Hook deny uses exit 2 + per-harness deny JSON; --hook mode emits ONLY the harness deny form (RunCheckTo(io.Discard))", "rationale": "exit 1 was ignored by all harnesses; raw Decision JSON leak silently allowed on fail-open Hermes", "phase": "10"},
+    {"decision": "TM-B-01 (degraded-source corroboration) is BY-DESIGN, not a gap; a99b020 reverted", "rationale": "bumblebee is the canonical synced/sanity-tracked source; OSV/Socket are per-request adapters that degrade to no-match and never appear in state.Sources; gating escalation on bumblebee-health is correct", "phase": "audit"},
+    {"decision": "Did NOT implement fractional 0.5 corroboration weighting", "rationale": "core decision-semantics change; gross poisoning already covered by sanity-suppression; subtle tamper is the corroboration+signature layer's job (TM-B-07)", "phase": "audit"}
   ],
-  "uncommitted_files": ["beekeeper-tui-prototype.html (untracked, pre-existing, NOT part of this work)"],
-  "next_action": "Maintainer runs docs/release-runbook.md (push pollen + 4 signed tags + cosign verify + push beekeeper). Then reply 'done' or re-run /gsd-execute-phase 5 to finish 05-05 task 3 (tracking) -> phase verify -> milestone v1.1.0 close.",
-  "context_notes": "All four autonomous plans (05-01..05-04) are committed and local E2E is fully validated & green on Windows (beekeeper 22 pkgs + pollen all pkgs; live beekeeper scan spawns real pollen -> 14,929 merged records, 0 unavailable/malformed; --deep now 30,690 deep records after fix). Nothing has been pushed/tagged/signed. The ONLY remaining work is the maintainer's auth-gated GitHub release (05-05 checkpoint) then the wrap-up. Binaries are installed at $(go env GOPATH)/bin (C:\\Users\\Bantu\\go\\bin) and on PATH. CROSS-REPO GOTCHA: the Bash tool cwd resets to the beekeeper root after a compound 'cd ../pollen && ...' — use explicit absolute cd or git -C for pollen ops."
+  "uncommitted_files": ["beekeeper-tui-prototype.html (untracked, stray prototype, unrelated — leave it)"],
+  "next_action": "Run `beekeeper scan` (it shells to pollen at C:\\Users\\Bantu\\go\\bin\\pollen) against installed extensions and confirm it works end-to-end — validates the scan/catalog production path on Windows. Then decide on the optional follow-ups.",
+  "context_notes": "Phase 10 fully closed (planned->executed->verified 5/5->secured 23/23). A full codebase-wide threat audit ran and ALL 25 findings are remediated or reassessed. The audit's one 'High' (TM-B-01) was a false alarm — the audit agents conflated the canonical synced bumblebee catalog with the per-request OSV/Socket adapters. ARCHITECTURE INTEL for whoever resumes: bumblebee = canonical production catalog/scanner; OSV+Socket = per-request corroboration adapters; pollen = LOCAL Windows-only dev scanner (bumblebee has no Windows build yet). Audit of record: .planning/security/THREAT-AUDIT-2026-06-05.md. Everything committed to main (local, never pushed). Paused due to high token count."
 }
