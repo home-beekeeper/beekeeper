@@ -324,6 +324,25 @@ func TestParse(t *testing.T) {
 			input:  "echo hi && ls -la",
 			wantOK: false,
 		},
+		// ── Quoting honoured (no false positives on quoted text) ─────────
+		// A separator inside quotes is literal — the install never executes, so it
+		// must NOT be detected (otherwise block mode would deny e.g. commit messages).
+		{
+			name:   "quoted '&& npm install' in commit message NOT matched",
+			input:  `git commit -m "fix: handle 'cd x && npm install foo'"`,
+			wantOK: false,
+		},
+		{
+			name:   "single-quoted '; pnpm add evil' NOT matched",
+			input:  `echo 'oops ; pnpm add evil'`,
+			wantOK: false,
+		},
+		{
+			name:   "quoted path before real unquoted install IS matched",
+			input:  `cd "/my project dir" && npm install foo`,
+			wantOK: true,
+			want:   want{Manager: "npm", Ecosystem: "npm", Verb: "install", Package: "foo", IsInstall: true, Unpinned: true},
+		},
 	}
 
 	for _, tc := range tests {

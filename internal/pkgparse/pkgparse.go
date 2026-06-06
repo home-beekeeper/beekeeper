@@ -189,14 +189,45 @@ func parseSegment(raw, seg string) (ParsedCommand, bool) {
 // splitSegments splits a shell command on command separators (`&&`, `||`, `;`,
 // `|`, `&`, newline, carriage-return) into individual command segments. It scans
 // byte-by-byte (no sentinel substitution) so it is safe on inputs containing NUL
-// or arbitrary control bytes, and never panics. Quoting is intentionally NOT
-// honoured: for a security detector, over-splitting a quoted separator only risks
-// examining an extra (harmless) segment, whereas UNDER-splitting would miss an
-// install verb — so we err toward more segments.
+// or arbitrary control bytes, and never panics.
+//
+// Quoting IS honoured: a separator inside single or double quotes is literal text,
+// not a command boundary, so it does not split. This matches shell semantics — a
+// quoted "&& npm install" (e.g. inside a `git commit -m "..."` message) never
+// executes as a command, so it must not be detected as an install. This is what
+// keeps an enforcement block from false-positiving on commit messages / echo /
+// here-doc text that merely MENTIONS an install. Backslash escapes the next byte
+// (outside single quotes), so `\"` does not toggle quote state.
+//
+// Known limitation: within-WORD quote tricks (e.g. `n”pm install`, `npm" "install`)
+// collapse to a real install at shell exec time but are NOT detected here, because
+// segment matching is prefix-based and does not normalise intra-word quoting. This
+// exotic evasion is out of scope (it predates this change); closing it would require
+// full shell-word normalisation, which would re-introduce the quoted-text false
+// positives this function deliberately avoids.
 func splitSegments(cmd string) []string {
 	var segs []string
 	start := 0
+	var quote byte // 0 = unquoted, else the open quote char '\'' or '"'
 	for i := 0; i < len(cmd); {
+		c := cmd[i]
+		// Backslash escapes the next byte (shell: literal inside single quotes).
+		if c == '\\' && i+1 < len(cmd) && quote != '\'' {
+			i += 2
+			continue
+		}
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			i++
+			continue
+		}
 		if i+1 < len(cmd) {
 			if two := cmd[i : i+2]; two == "&&" || two == "||" {
 				segs = append(segs, cmd[start:i])
@@ -205,7 +236,7 @@ func splitSegments(cmd string) []string {
 				continue
 			}
 		}
-		switch cmd[i] {
+		switch c {
 		case ';', '|', '&', '\n', '\r':
 			segs = append(segs, cmd[start:i])
 			i++
