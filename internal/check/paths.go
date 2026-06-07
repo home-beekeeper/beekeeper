@@ -369,40 +369,69 @@ func extractBashCredentialPaths(cmd string) []string {
 	return paths
 }
 
-// extractPathTargets extracts all file-path strings from a ToolCall that should
-// be evaluated by policy.EvaluatePath.
+// pathTarget is an extracted file-path plus whether the operation that touches it
+// is a write/delete (true) or a read (false). The write flag drives the
+// write-only self-protection prefixes (e.g. the binary); credential and
+// state-dir blocking are verb-agnostic and ignore it.
+type pathTarget struct {
+	path    string
+	isWrite bool
+}
+
+// extractTypedTargets extracts every file-path a ToolCall touches, tagged with
+// read vs write, from these sources:
+//  1. ToolInput["file_path"] — Read (read) / Write|Edit|MultiEdit|NotebookEdit (write)
+//  2. ToolInput["path"] — legacy overlay key; op inferred from the tool name
+//  3. Bash "command" — read-verb targets (read) + write/redirect/delete targets (write)
 //
-// Sources (in order):
-//  1. ToolInput["file_path"] — primary key for Read/Write/Edit/MultiEdit (Claude Code)
-//  2. ToolInput["path"] — legacy key used by policyloader overlay; kept for compat
-//  3. Bash "command" value — scanned by extractBashCredentialPaths for read-verb targets (SPATH-03)
-//
-// Returns nil (not an empty slice) when no path targets are found.
-// Never panics on a nil ToolInput.
-func extractPathTargets(tc policy.ToolCall) []string {
+// Never panics on nil ToolInput; returns nil when nothing is found.
+func extractTypedTargets(tc policy.ToolCall) []pathTarget {
 	if tc.ToolInput == nil {
 		return nil
 	}
 
-	var paths []string
+	// Claude Code write tools edit/replace a file_path; Read reads it.
+	isWriteTool := false
+	switch tc.ToolName {
+	case "Write", "Edit", "MultiEdit", "NotebookEdit":
+		isWriteTool = true
+	}
 
-	// file_path: Read/Write/Edit/MultiEdit tools (Claude Code).
+	var out []pathTarget
 	if p, ok := tc.ToolInput["file_path"].(string); ok && p != "" {
-		paths = append(paths, p)
+		out = append(out, pathTarget{path: p, isWrite: isWriteTool})
 	}
-
-	// path: legacy key used by policyloader overlay; keep for backward compat.
 	if p, ok := tc.ToolInput["path"].(string); ok && p != "" {
-		paths = append(paths, p)
+		out = append(out, pathTarget{path: p, isWrite: isWriteTool})
 	}
 
-	// Bash command: scan for credential-read verb patterns (SPATH-03).
 	if tc.ToolName == "Bash" {
 		if cmd, ok := tc.ToolInput["command"].(string); ok && cmd != "" {
-			paths = append(paths, extractBashCredentialPaths(cmd)...)
+			for _, p := range extractBashCredentialPaths(cmd) {
+				out = append(out, pathTarget{path: p, isWrite: false})
+			}
+			for _, p := range extractBashWriteTargets(cmd) {
+				out = append(out, pathTarget{path: p, isWrite: true})
+			}
 		}
 	}
+	return out
+}
 
+// extractPathTargets returns just the path strings from extractTypedTargets, for
+// the verb-agnostic credential SPATH loop. Routing through extractTypedTargets
+// means Bash WRITE/redirect targets (e.g. "echo x > ~/.ssh/authorized_keys") are
+// now also evaluated against the credential blocklist — closing the prior
+// read-only-Bash gap. Returns nil when no targets are found.
+func extractPathTargets(tc policy.ToolCall) []string {
+	targets := extractTypedTargets(tc)
+	if len(targets) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(targets))
+	for _, t := range targets {
+		paths = append(paths, t.path)
+	}
 	return paths
 }
 
@@ -418,4 +447,114 @@ func mergeDecisions(base, overlay policy.Decision) policy.Decision {
 		return overlay
 	}
 	return base
+}
+
+// bashWriteVerbs are command prefixes whose argument(s) are write/delete targets.
+// Each carries a trailing space to enforce a right boundary; isShellBoundary
+// enforces the left boundary (same anchoring as bashReadVerbs). PowerShell verbs
+// are matched in their canonical capitalization (best-effort; documented).
+//
+// Over-extraction is SAFE: extracted paths only block when they resolve under a
+// protected/sensitive prefix, so capturing source args of cp/mv too is harmless.
+// Deferred bypasses (nested shells, base64, here-strings) match the read-verb
+// scope and are out of scope here.
+var bashWriteVerbs = []string{
+	"rm ", "cp ", "mv ", "tee ", "install ", "dd ", "sed ", "truncate ",
+	"Set-Content ", "Out-File ", "Add-Content ", "Remove-Item ", "ri ",
+	"del ", "erase ", "move ", "copy ",
+}
+
+// extractBashWriteTargets scans a Bash command for write/delete targets: shell
+// redirects (>, >>, 2>, &>) and the arguments of bashWriteVerbs. Returns raw
+// tokens verbatim (env-var/tilde expansion happens downstream in canonicalizePath).
+func extractBashWriteTargets(cmd string) []string {
+	var paths []string
+	paths = append(paths, extractRedirectTargets(cmd)...)
+	paths = append(paths, extractWriteVerbTargets(cmd)...)
+	return paths
+}
+
+// extractRedirectTargets returns the token following each '>' redirect operator.
+// Handles glued and spaced forms ("x>f", "> f", ">>f", "2>f", "&>f"). A token
+// beginning with '&' (fd duplication like ">&2", "2>&1") is skipped.
+func extractRedirectTargets(cmd string) []string {
+	var paths []string
+	for i := 0; i < len(cmd); i++ {
+		if cmd[i] != '>' {
+			continue
+		}
+		j := i + 1
+		for j < len(cmd) && cmd[j] == '>' { // consume ">>"
+			j++
+		}
+		tok := firstShellToken(cmd[j:])
+		if tok != "" && !strings.HasPrefix(tok, "&") {
+			paths = append(paths, tok)
+		}
+		i = j
+	}
+	return paths
+}
+
+// extractWriteVerbTargets returns the non-flag argument tokens following each
+// boundary-anchored write verb, up to the next shell separator.
+func extractWriteVerbTargets(cmd string) []string {
+	var paths []string
+	for _, verb := range bashWriteVerbs {
+		from := 0
+		for {
+			rel := strings.Index(cmd[from:], verb)
+			if rel == -1 {
+				break
+			}
+			idx := from + rel
+			if idx != 0 && !isShellBoundary(cmd[idx-1]) {
+				from = idx + 1
+				continue
+			}
+			rest := cmd[idx+len(verb):]
+			for {
+				rest = strings.TrimLeft(rest, " \t")
+				if rest == "" {
+					break
+				}
+				switch rest[0] {
+				case ';', '|', '&', '\n', '\r', ')', '>':
+					rest = ""
+					continue
+				}
+				tok, nrest := nextShellToken(rest)
+				if tok == "" {
+					break
+				}
+				rest = nrest
+				if !strings.HasPrefix(tok, "-") {
+					paths = append(paths, tok)
+				}
+			}
+			from = idx + len(verb)
+		}
+	}
+	return paths
+}
+
+// nextShellToken returns the next token (quotes stripped) and the remaining
+// string. It stops at unquoted whitespace or a shell separator, so the caller
+// can collect arguments without running past a command boundary.
+func nextShellToken(s string) (tok, rest string) {
+	if s == "" {
+		return "", ""
+	}
+	if s[0] == '"' || s[0] == '\'' {
+		q := s[0]
+		if end := strings.IndexByte(s[1:], q); end >= 0 {
+			return s[1 : 1+end], s[1+end+1:]
+		}
+		return s[1:], ""
+	}
+	end := strings.IndexAny(s, " \t\n\r;|&)>")
+	if end < 0 {
+		return s, ""
+	}
+	return s[:end], s[end:]
 }

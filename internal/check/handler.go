@@ -319,6 +319,25 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		}
 	}
 
+	// SELF-PROTECTION: block the agent from touching Beekeeper's own footprint.
+	// Runs AFTER ApplyPolicyOverlay (so a package_allowlist allow can never
+	// downgrade a self-block) and BEFORE NUDGE; mergeDecisions is most-restrictive.
+	//   (a) state dir (read+write) + binary (write) via EvaluateSelfPath;
+	//   (b) content-aware hook-entry guard (block only edits that remove our hook);
+	//   (c) CLI-mutation guard (block agent-invoked mutating beekeeper subcommands).
+	// All resolution is best-effort and never aborts the check (no lockout).
+	selfCfg := buildSelfProtectConfig()
+	for _, t := range extractTypedTargets(toolCall) {
+		for _, resolved := range canonicalizePathForms(t.path) {
+			if resolved == "" {
+				continue
+			}
+			decision = mergeDecisions(decision, policy.EvaluateSelfPath(resolved, t.isWrite, selfCfg))
+		}
+	}
+	decision = mergeDecisions(decision, evaluateHookGuard(toolCall))
+	decision = mergeDecisions(decision, evaluateCLIGuard(toolCall))
+
 	// NUDGE-03/04/08: package-manager nudge evaluation.
 	// This block runs AFTER ApplyPolicyOverlay (above) and AFTER the SPATH block so
 	// a package_allowlist allow rule CANNOT downgrade a nudge Block (CR-02 ordering,

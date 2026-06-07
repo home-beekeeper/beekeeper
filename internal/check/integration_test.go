@@ -90,6 +90,20 @@ func runCheckWithIndex(ctx context.Context, stdin io.Reader, cfg config.Config, 
 		}
 	}
 
+	// SELF-PROTECTION mirror (lockstep with handler.go) — state dir (read+write) +
+	// binary (write) + content-aware hook-entry guard + CLI-mutation guard.
+	selfCfg := buildSelfProtectConfig()
+	for _, t := range extractTypedTargets(toolCall) {
+		for _, resolved := range canonicalizePathForms(t.path) {
+			if resolved == "" {
+				continue
+			}
+			decision = mergeDecisions(decision, policy.EvaluateSelfPath(resolved, t.isWrite, selfCfg))
+		}
+	}
+	decision = mergeDecisions(decision, evaluateHookGuard(toolCall))
+	decision = mergeDecisions(decision, evaluateCLIGuard(toolCall))
+
 	// NUDGE-03/04/08: package-manager nudge evaluation — mirrors the production
 	// runCheck nudge block (handler.go) so runCheckWithIndex exercises the live
 	// nudge wiring. Runs AFTER overlay and SPATH (CR-02 ordering). Detection is

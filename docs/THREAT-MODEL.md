@@ -837,6 +837,57 @@ warning now goes to **stderr** (`internal/policyloader/enforce.go`), not stdout.
 line that could corrupt the hook's JSON/deny protocol. Regression-guarded by
 `TestLoadPolicyDirNeverWritesStdout`.
 
+### Self-Protection: Beekeeper's Own State, Binary, and Hook Entry
+
+Beekeeper guards an agent that runs with the developer's full filesystem
+permissions, so OS file permissions (0600) cannot stop the agent from tampering
+with Beekeeper itself — the agent *is* the owner. The only layer that can tell
+"this access is coming through the agent" is the tool-call hook, so `beekeeper
+check` blocks the agent's tool calls that target Beekeeper's own footprint
+(`internal/check/selfprotect.go`, `hookguard.go`; pure matcher
+`internal/policy/selfpath.go`). Enforced in `beekeeper check` only (D-03), after
+`ApplyPolicyOverlay` and before NUDGE, merged most-restrictive — so a
+`package_allowlist` allow can never downgrade a self-protection block.
+
+- **State directory (read + write).** The resolved `platform.StateDir()` prefix
+  (config.json, policies/, audit/, catalogs/, quarantine/, baselines/,
+  state.json) is treated as a secret: agent reads AND writes are blocked. This
+  closes the policy-file-injection and config-tamper escalation paths above at
+  their source — the agent cannot add a `package_allowlist` allow rule, set
+  `fail_mode:open`, or truncate the audit log.
+- **Binary (write).** The running executable is write-protected so the agent
+  cannot overwrite the guard with a no-op. Reads are allowed; `go install`
+  rebuilds from source and carries no binary-path token, so it is unaffected.
+- **Hook entry (content-aware, no collateral).** Hook-config files are shared
+  (e.g. `~/.claude/settings.json` also holds GSD and other tools' hooks), so the
+  guard does NOT lock the file. Instead, for a write/edit targeting a hook-config
+  file that currently contains Beekeeper's marker (`beekeeper check` /
+  `beekeeper audit-record`), it inspects the proposed content and blocks ONLY when
+  the change would remove that marker. Edits that touch other hooks — and edits to
+  files without a Beekeeper entry — pass untouched. Bash rewrites of a
+  Beekeeper-installed hook file are blocked conservatively (content not reliably
+  inspectable).
+- **CLI mutation.** The agent is blocked from invoking Beekeeper's mutating
+  subcommands via Bash (`config set`, `hooks install`/`uninstall`, `protect
+  install`/`uninstall`) — quote-aware, so a literal phrase inside a commit message
+  is not a false positive. Read-only subcommands (`scan`, `policy list`, …) pass.
+
+**Human channels are unaffected** (none pass through the agent tool-call hook):
+editing the files directly, running `beekeeper` yourself in a terminal, the
+`beekeeper dashboard --admin` policy editor, and `/config`. There is deliberately
+**no in-band agent bypass** — an env var or flag the agent could also set would
+defeat the protection.
+
+**Fail-safe:** self-protection prefix resolution is best-effort; a resolver error
+omits that prefix and never aborts the check (no fail-closed lockout). Beekeeper's
+own reads of its config/policies are plain `os.ReadFile` and do not route through
+the policy engine, so protecting the state dir cannot self-deadlock the guard.
+
+**Bonus hardening:** the write-aware Bash extraction added for this feature
+(`extractBashWriteTargets`) also feeds the credential sensitive-path blocklist,
+closing a prior gap where an agent could write to `~/.ssh` etc. via a shell
+redirect (`echo key >> ~/.ssh/authorized_keys`).
+
 ### Overlay Limitations: `release_age` and `lifecycle_script_allowlist` Not Enforced
 
 The declarative policy overlay (`ApplyPolicyOverlay` in `internal/policyloader/enforce.go`)
