@@ -82,12 +82,11 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 10 (v1.3.0 seed shipped)
 **Requirements**: SITE-01, SITE-02
 **Success Criteria** (what must be TRUE):
+
   1. `pnpm dev` starts in `web/` and serves a page at localhost without errors
   2. `pnpm build` completes and emits a non-empty `web/out/` directory with `index.html`
   3. `pnpm install` in `web/` never modifies `go.mod`, `go.sum`, or any Go-module file
-  4. `.next/`, `out/`, `.source/`, and `node_modules/` are all gitignored; no build artifacts appear in `git status`
-**Plans**: 1 plan (1 wave)
-
+  4. `.next/`, `out/`, `.source/`, and `node_modules/` are all gitignored; no build artifacts appear in `git status`**Plans**: 1 plan (1 wave)
 - [ ] 11-01-PLAN.md — Wave 1: create-next-app scaffold (pnpm/Tailwind v4/Biome/TS/App Router, no src) + static-export next.config.ts (transpilePackages stub) + pnpm-workspace isolation + root .gitignore/.gitattributes + Go-isolation & gitignore verify + dev-server human-verify (SITE-01, SITE-02)
 
 **UI hint**: yes
@@ -98,10 +97,12 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 11
 **Requirements**: DSYS-01, DSYS-02, DSYS-03, DSYS-04
 **Success Criteria** (what must be TRUE):
+
   1. `pnpm build` succeeds with the correct `globals.css` import order (tailwindcss → shadcn.css → preset.css → @source → @theme) and Fumadocs components render in correct colors in both light and dark themes
   2. A visitor can switch between light and dark themes via the toggle; the chosen theme persists across page reloads with no flash-of-wrong-theme
   3. Setting `prefers-reduced-motion: reduce` in browser preferences disables all animation and 3D site-wide (verified by the ReducedMotionProvider)
   4. Both light and dark themes pass WCAG 2.1 AA color-contrast ratios and all interactive elements are reachable by keyboard with visible focus indicators
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -111,10 +112,12 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 12
 **Requirements**: DOCS-01
 **Success Criteria** (what must be TRUE):
+
   1. `pnpm build` emits `out/docs/` with HTML pages for every docs route; `out/api/search/index.json` is non-empty (Orama static index generated)
   2. The docs sidebar lists all top-level sections (getting-started, installation, configuration, integration, security, cli-reference, audit-log, troubleshooting) in the correct order
   3. The table of contents panel renders correctly for a docs page with multiple headings
   4. The search dialog opens, a query returns at least one result, and clicking a result navigates to the correct page
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -124,9 +127,11 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 12
 **Requirements**: CHG-01, CHG-02, CHG-03
 **Success Criteria** (what must be TRUE):
+
   1. `pnpm build` emits `out/changelog/v1.0.0/`, `out/changelog/v1.2.0/`, and `out/changelog/v1.3.0/` as separate static HTML pages
   2. Each changelog page includes copyable cosign/SLSA verification commands and a link to the corresponding GitHub Release
   3. The v1.3.0 changelog page displays a prominently styled red callout for the exit-1 to exit-2 breaking change with a migration note
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -136,12 +141,14 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 12
 **Requirements**: HOME-01, HOME-02, HOME-03, HOME-04, HOME-05, SITE-03
 **Success Criteria** (what must be TRUE):
+
   1. The home page hero displays the headline, subhead, a copyable `go install` command chip, and a "Read the docs" link — all visible above the fold on a 1280px viewport
   2. The page explains the Nx Console compromise origin story and presents a 3-step how-it-works flow
   3. Feature cards cover only the six shipped capabilities (corroboration engine, fail-closed hooks, editor-extension defense, Sentry, LlamaFirewall, policy-as-code) with no aspirational claims
   4. The harness support matrix shows all 15 harnesses with honest tier labels and live-verification caveats, linking to the integration docs
   5. An honesty callout is visible on the home page linking to the security-posture / known-gaps documentation
   6. The static site is deployed to Cloudflare Pages and reachable at a public URL
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -151,10 +158,12 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 15
 **Requirements**: GFX-01, GFX-02, GFX-03, GFX-04
 **Success Criteria** (what must be TRUE):
+
   1. `pnpm build` succeeds with no R3F/three/drei imports visible in server-rendered output; the R3F chunk loads lazily in the browser (verified: `<canvas>` element appears only after JS hydration)
   2. With `prefers-reduced-motion: reduce` or WebGL unavailable, the hero renders the static SVG fallback and no canvas is mounted — the page is fully usable
   3. The `<canvas>` element has `aria-hidden="true"` and a visible sr-only description; keyboard navigation is unaffected by the 3D layer
   4. Lighthouse audit against `out/index.html` shows LCP < 2.5s (SVG as LCP candidate) and no WebGL context leaks across navigation cycles
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -164,9 +173,11 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 15
 **Requirements**: SEO-01
 **Success Criteria** (what must be TRUE):
+
   1. Every page in `out/` has a `<title>`, `<meta name="description">`, and canonical `<link rel="canonical">` in its static HTML
   2. Every page references the shared OG image (1200×630 PNG); social-card preview renders correctly when the URL is pasted into Twitter/LinkedIn
   3. `out/sitemap.xml` lists all public page URLs and `out/robots.txt` allows all crawlers and references the sitemap
+
 **Plans**: TBD
 **UI hint**: no
 
@@ -176,11 +187,13 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 13, Phase 14, Phase 15
 **Requirements**: DOCS-02, DOCS-03, DOCS-04, DOCS-05, DOCS-06, DOCS-07, DOCS-08, DOCS-09
 **Success Criteria** (what must be TRUE):
+
   1. A new user can follow the Getting Started quickstart from zero to a working `beekeeper check` invocation, with no steps referencing unshipped behavior
   2. The installation docs cover `go install`, binary download from GitHub Releases, and cosign + SLSA verification with copyable commands
   3. The security posture and known-gaps pages are co-located and explicitly document: Hermes fail-open, Tier-3 unguarded tools, `release_age`/`lifecycle_script_allowlist` unenforced in v1.3.0, and the `--bind 0.0.0.0` gateway caveat
   4. Every integration guide for Tier-1/2/3 harnesses includes honest caveats at point-of-use; the CLI reference covers all subcommands and flags
   5. Every MDX file that derives content from a Go-side doc has a `source_doc:` frontmatter field, and all content has been reviewed against `docs/THREAT-MODEL.md` before publish
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -190,9 +203,11 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Depends on**: Phase 16, Phase 17, Phase 18
 **Requirements**: QA-01, QA-02
 **Success Criteria** (what must be TRUE):
+
   1. The `.github/workflows/web.yml` job triggers only on `web/**` and `pnpm-workspace.yaml` changes, never on Go file changes; Go CI never triggers on web changes
   2. The CI job runs Biome lint/format check, `tsc --noEmit`, Vitest unit tests, `pnpm build`, and Playwright E2E against `out/` — all as required gates before merge
   3. Playwright E2E tests verify: home page renders with SVG hero fallback, docs navigation and search return results, theme toggle persists across reload, all three changelog version pages build and render their headings
+
 **Plans**: TBD
 **UI hint**: no
 

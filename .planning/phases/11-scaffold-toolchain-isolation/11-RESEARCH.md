@@ -638,17 +638,15 @@ git diff go.mod go.sum      # must show no output (pnpm never touches Go files)
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **pnpm version to pin in `package.json`**
+1. **pnpm version to pin in `package.json`** — RESOLVED (answered in 11-01 Task 1)
    - What we know: Local pnpm is 11.1.3; npm registry shows 11.5.2 as latest. `create-next-app --use-pnpm` writes whichever pnpm is active.
-   - What's unclear: Should we pin 11.5.2 in `package.json` and upgrade locally before scaffolding, or accept 11.1.3?
-   - Recommendation: Upgrade to pnpm 11.5.2 via `corepack prepare pnpm@11.5.2 --activate` before running `create-next-app`. Ensures lockfile is generated with the current pnpm version.
+   - Resolution: Task 1 activates pnpm 11.5.2 via `corepack enable` + `corepack prepare pnpm@11.5.2 --activate` BEFORE running `create-next-app`, so the lockfile and `packageManager` field reflect a single current pnpm version. Fallback documented in the task.
 
-2. **Root `.gitattributes` for CRLF normalization**
-   - What we know: Windows dev machine; CI runs on `ubuntu-latest`. No `.gitattributes` visible in the repo root from earlier reads.
-   - What's unclear: Do generated files have CRLF issues in the Go repo's CI?
-   - Recommendation: Add `web/* text=auto eol=lf` to a `web/.gitattributes` file during Phase 11 to normalize line endings for web/ files in CI.
+2. **Root `.gitattributes` for CRLF normalization** — RESOLVED (answered in 11-01 Task 3)
+   - What we know: Windows dev machine; CI runs on `ubuntu-latest`. No `.gitattributes` in the repo root.
+   - Resolution: Task 3 creates `web/.gitattributes` with `* text=auto eol=lf` to normalize line endings for web/ files in CI.
 
 ---
 
