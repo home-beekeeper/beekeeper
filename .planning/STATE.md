@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.3.0
-milestone_name: milestone
-status: completed
-stopped_at: Completed 10-06-PLAN.md (Phase 10 complete)
-last_updated: "2026-06-05T13:31:23.483Z"
-last_activity: 2026-06-05
+milestone_name: Web Presence & Documentation
+status: planning
+last_updated: "2026-06-07T17:18:16.707Z"
+last_activity: 2026-06-07
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 26
-  completed_plans: 25
-  percent: 83
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,20 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 10 — hook-block-protocol-compliance-and-multi-harness-enforcement
+**Current focus:** v1.3.0 — Web Presence & Documentation (defining requirements). Seed Go work (Phase 10 hook-block, self-protection, $VAR, TUI real-data) already shipped this cycle.
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-> **SUPERSEDED 2026-06-05 — read this first.** v1.2.0 is SHIPPED & ARCHIVED (tag `v1.2.0`; the "READY FOR CLOSE" lines below are stale pre-close text). **NEW critical finding:** a live dogfood proved Beekeeper's PreToolUse hook fires + decides "block" but harnesses run the tool anyway — `beekeeper check` exits `1`, but harnesses need exit `2` / a per-harness deny JSON. **The hook-block path is non-functional on every hook-based harness** (Claude Code/Cursor/Codex); shim + MCP-gateway paths are unaffected. **Phase 10 "Hook-Block Protocol Compliance & Multi-Harness Enforcement" inserted (seeds v1.3.0) — NOT yet planned.** Research + Context live in the phase folder: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/{10-RESEARCH.md, 10-CONTEXT.md}` (15-harness deny-contract matrix in 10-RESEARCH.md). **NEXT: `/gsd-plan-phase 10`** (read the research first; expect ≥2 sub-phases). The 4 prerequisite fixes are now on `main` (commits `adc1f77` nudge/timeout, `50513ae` hooks clobber→merge — fast-forward merged 2026-06-05; the `fix/windows-pnpm-timeout-and-hook-merge` branch is fully merged/redundant, deletable with `git branch -d`). **Phase 10 executes on `main`** (GSD runs the phase on the current branch; HEAD is on main). Planning artifacts (ROADMAP/STATE/phase-10 dir) remain uncommitted. Roadmap evolution: Phase 10 added 2026-06-05.
-
-Phase: 10
-Plan: Not started
-Status: Phase 10 complete — all 6 plans executed (HPC-01 through HPC-05)
-Last activity: 2026-06-05
-
-Progress (v1.2.0): [██████████] 100% (4 of 4 phases complete & verified — milestone ready for close)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-07 — Milestone v1.3.0 started
 
 ## Phase Summary (v1.1.0)
 
@@ -180,6 +175,8 @@ Items acknowledged and carried forward:
 | Phase 10 P04 | 7 minutes | 3 tasks | 6 files |
 
 ## Session Continuity
+
+Last session: 2026-06-07 (resumed) — restored from HANDOFF.json (2026-06-07T11:56). v1.3.0-seed work complete & committed (e1b907b/307fbad/999fa39/95a99e6 + wip e6962e6); tree clean. Proceeding to next action: formalize v1.3.0 milestone.
 
 Last session: 2026-06-06 (resumed)
 Stopped at: Big dogfood session. (1) handoff #9 scan→pollen E2E validated. (2) #13 scan audit-bloat FIXED. (3) Wired beekeeper as a LIVE Claude Code hook (~/.claude/settings.json, merged w/ GSD; backup .pre-beekeeper-20260606.bak). (4) Found pnpm-detect flaky on Windows (42-92%). (5) Built nudge `mode=block` (detection-INDEPENDENT enforcement, offers pnpm+bun) — PROVEN blocking live npm install via the hook. (6) Fixed pkgparse compound/env bypass (was defeating nudge AND catalog block). 3 commits on main: 6691585 fix(scan), 96f0a7b fix(pkgparse), 0028392 feat(nudge). Live config: %APPDATA%/beekeeper/config.json mode=block.

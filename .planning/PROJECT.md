@@ -26,9 +26,20 @@ Closed the three runtime-enforcement gaps live `beekeeper check` validation expo
 
 **Architecture constraint (held):** `internal/policy`, `internal/nudge`, and `internal/pkgparse` are pure function libraries — all detection/normalization I/O lives in adapters, mirroring `policy.EvaluateReleaseAge(ReleaseAgeInput, …)`.
 
-## Next Milestone
+## Current Milestone: v1.3.0 — Web Presence & Documentation
 
-To be defined — run `/gsd-new-milestone` (questioning → research → requirements → roadmap); a fresh `.planning/REQUIREMENTS.md` is created there (the v1.2.0 set is archived). Carried-forward candidates: live external `beekeeper-self` hosting + refuse-to-run E2E; independent external security review + VDP publication; the deferred nudge/corroboration follow-ups (NUDGE-F1/F2/F3, CORR-F1). **Independent of the next milestone:** v1.1.0 "Pollen" remains PARKED (see below) — its signed-tag release train resumes via `docs/release-runbook.md` when the maintainer chooses.
+**Goal:** Ship Beekeeper's public-facing Next.js site — a distinctive marketing home and a complete documentation set — that takes a developer from "what is this" to installed, configured, and confident in its security posture.
+
+**Target features:**
+- **Marketing home** — Three.js hero centerpiece (hive / agent-mediation visual) + ambient 3D/motion accents across sections, value proposition, how-it-works, install CTA.
+- **Documentation (Fumadocs)** — getting started, install (`go install` + cosign-verify), configuration customization, **security posture** (corroboration model, fail-closed defaults, threat model), CLI reference.
+- **Changelog / releases** — versioned release notes (v1.0.0, v1.2.0) with download + verification guidance.
+
+**Stack & approach:** Next.js (App Router) with **static export / SSG**; **shadcn/ui** as the design-system base (per UI-SPEC); **Fumadocs** for docs; **Three.js** for hero + ambient accents. Built with the **design-taste ("taste")**, **impeccable**, and **threejs-animation** skills (anti-generic, accessible, performance-budgeted). Lives **in-repo** under `web/` with its own Node toolchain and deploy, isolated from the Go module. Documentation content must be **accurate to the shipped product** (sourced from `docs/THREAT-MODEL.md`, real CLI/flags), not aspirational.
+
+**Also landed this cycle (v1.3.0 seed — already shipped, not re-planned):** Phase 10 multi-harness hook-block protocol compliance + 15-harness installers; config-as-secret self-protection (agent cannot read/write StateDir, overwrite the binary, or remove its hook entry); `$VAR`/`${VAR}` canonicalization hardening; the TUI real-data/honesty fix (dashboard wired to real backends, no fabricated data).
+
+> **Next milestone:** TBD. Carried-forward candidates: live external `beekeeper-self` hosting + refuse-to-run E2E; independent external security review + VDP publication; deferred nudge/corroboration follow-ups (NUDGE-F1/F2/F3, CORR-F1). **Independent of this milestone:** v1.1.0 "Pollen" remains PARKED (see below) — its signed-tag release train resumes via `docs/release-runbook.md` when the maintainer chooses.
 
 ## Parked Milestone: v1.1.0 Pollen (paused at maintainer release checkpoint — NOT closed)
 
@@ -201,4 +212,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-04 after v1.2.0 milestone — SHIPPED & ARCHIVED. Phases 6–9 (CORR/SPATH/NUDGE+BTEST + the audit-inserted Phase 9 cleanup) complete & verified; F1/F2/F3 closed; tagged `v1.2.0`. Roadmap + requirements + audit archived under `milestones/v1.2.0-*`. Next milestone TBD via `/gsd-new-milestone`. v1.1.0 "Pollen" remains PARKED at its maintainer release checkpoint (independent of this close).*
+*Last updated: 2026-06-07 — started milestone v1.3.0 "Web Presence & Documentation" (Next.js home + Fumadocs docs + Three.js, shadcn/ui, static export, in-repo `web/`). The v1.3.0 seed Go work (Phase 10 multi-harness hook-block, self-protection, $VAR hardening, TUI real-data fix) already shipped this cycle and is folded in. v1.2.0 SHIPPED & ARCHIVED (`milestones/v1.2.0-*`). v1.1.0 "Pollen" remains PARKED at its maintainer release checkpoint (independent).*
