@@ -1,0 +1,90 @@
+# Requirements: Beekeeper v1.3.0 — Web Presence & Documentation
+
+**Defined:** 2026-06-07
+**Core Value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
+**Milestone goal:** Ship Beekeeper's public-facing Next.js site — a distinctive marketing home and a complete documentation set — that takes a developer from "what is this" to installed, configured, and confident in its security posture.
+
+> Greenfield web app under `web/` (in-repo, pnpm workspace, isolated from the Go module). Static export (Next.js 16 / Tailwind v4 / shadcn/ui / Fumadocs / React-Three-Fiber). See `.planning/research/SUMMARY.md` for the locked stack and pitfalls.
+
+## v1 Requirements (this milestone)
+
+### Site Foundation (SITE)
+
+- [ ] **SITE-01**: A developer can run the `web/` app locally (`pnpm dev`) and produce a successful static build (`pnpm build` → `out/`) with no server runtime
+- [ ] **SITE-02**: The `web/` Node toolchain is isolated from the Go module (pnpm workspace; `pnpm install` never touches the Go root; `.source/` and build artifacts gitignored)
+- [ ] **SITE-03**: The static site deploys to a static host (Cloudflare Pages) and is reachable at a public URL
+
+### Design System (DSYS)
+
+- [ ] **DSYS-01**: The site uses a shadcn/ui + Tailwind v4 design system with correct Fumadocs CSS integration — a single source of design tokens, no theming conflicts
+- [ ] **DSYS-02**: A visitor can switch between light and dark themes, persisted across visits, with no flash-of-wrong-theme
+- [ ] **DSYS-03**: The site honors `prefers-reduced-motion` site-wide (a reduced-motion provider gates animation and 3D)
+- [ ] **DSYS-04**: The UI meets WCAG 2.1 AA (contrast, keyboard navigation, visible focus) across both themes
+
+### Marketing Home (HOME)
+
+- [ ] **HOME-01**: A visitor sees a home hero with headline, subhead, and a dual CTA (copyable `go install` command + "Read the docs")
+- [ ] **HOME-02**: The home page explains the origin/problem (Nx Console compromise) and how Beekeeper works in 3 steps
+- [ ] **HOME-03**: The home page presents feature highlights covering only shipped capabilities (corroboration engine, fail-closed hooks, editor-extension defense, Sentry, LlamaFirewall, policy-as-code)
+- [ ] **HOME-04**: The home page shows the 15-harness support matrix with honest tier/verification caveats, linking to the integration docs
+- [ ] **HOME-05**: The home page surfaces an honesty / known-gaps callout linking to the security-posture docs (no overclaiming)
+
+### 3D & Motion (GFX)
+
+- [ ] **GFX-01**: The home hero features an interactive Three.js centerpiece (hive / agent-mediation visual) loaded behind a client-only boundary that never breaks the static build
+- [ ] **GFX-02**: Ambient 3D/motion accents enhance marketing sections without harming readability
+- [ ] **GFX-03**: The 3D layer falls back to a static SVG (LCP-sized) under reduced-motion, low-power, or no-WebGL; the canvas is accessibility-invisible with an sr-only description
+- [ ] **GFX-04**: The home page meets a performance budget — Lighthouse LCP < 2.5s (SVG as LCP candidate), a bounded 3D bundle, and no leaked WebGL contexts across navigation
+
+### Documentation (DOCS)
+
+- [ ] **DOCS-01**: A user can browse a Fumadocs-powered docs site with sidebar navigation, table of contents, and working static (Orama) search
+- [ ] **DOCS-02**: A new user can follow a Getting Started / Quickstart guide from zero to a working `beekeeper check`
+- [ ] **DOCS-03**: A user can follow installation docs (`go install` + GitHub Releases + cosign / SLSA verification)
+- [ ] **DOCS-04**: A user can learn to customize configuration (layered config, policy-as-code, sensitive paths, package-manager nudge) with copyable examples
+- [ ] **DOCS-05**: A user can understand Beekeeper's security posture (corroboration model, fail-closed defaults, threat model) **and** its known gaps/limitations, presented together
+- [ ] **DOCS-06**: A user can follow integration guides for supported harnesses (Claude Code / Cursor / Codex hooks, MCP gateway) with honest caveats at point-of-use (Hermes fail-open, Tier-3 unguarded)
+- [ ] **DOCS-07**: A user can consult a CLI / command reference for `beekeeper` subcommands and flags
+- [ ] **DOCS-08**: A user can find troubleshooting guidance for common issues
+- [ ] **DOCS-09**: Documentation is accurate to the shipped binary — every security claim cites its source (`source_doc:`), is reviewed against `docs/THREAT-MODEL.md` before publish, and unenforced features (`release_age`, lifecycle allowlist) are explicitly labeled
+
+### Changelog & Releases (CHG)
+
+- [ ] **CHG-01**: A visitor can read a versioned changelog (v1.0.0, v1.2.0, v1.3.0) with human-written release notes
+- [ ] **CHG-02**: Each release entry includes download + verification (cosign / SLSA / SBOM) guidance
+- [ ] **CHG-03**: The v1.3.0 entry prominently flags the exit-1 → exit-2 hook breaking change (red callout)
+
+### SEO & Assets (SEO)
+
+- [ ] **SEO-01**: Each page emits correct static metadata (title / description / canonical), an OG / social card image, `sitemap.xml`, and `robots.txt`
+
+### Quality & CI (QA)
+
+- [ ] **QA-01**: A path-filtered web CI job (separate from Go CI) builds the static site and runs unit (Vitest) + E2E (Playwright against `out/`) tests + lint/format (Biome), gating merges
+- [ ] **QA-02**: E2E tests verify the critical paths — home renders with hero fallback, docs navigation + search returns results, theme toggle, changelog pages build
+
+## Future Requirements (deferred)
+
+- Interactive in-browser playground / tool-call decision demo (deferred — sandboxing an OS-hook security tool is infeasible and trust-risky)
+- Per-page dynamic OG images (`next/og`) — single static OG image in v1.3.0; per-page deferred (no runtime in static export)
+- Versioned docs (multiple product versions) — single current version for v1.3.0
+- i18n / multi-language docs
+- Community / blog section
+- Auto-generated CLI reference from the Go binary (hand-authored MDX in v1.3.0)
+
+## Out of Scope (explicit exclusions)
+
+- **Interactive demo / playground** — cannot safely sandbox a filesystem + OS-hook tool in the browser; a fake demo destroys trust for a security product
+- **Blog** — out of milestone scope
+- **AI chatbot over docs** — hallucination risk is unacceptable for security content
+- **SSR / ISR / server runtime** — static export only (locked)
+- **CMS / headless backend** — content is MDX in-repo
+- **Changing the Go product** — this milestone is web-only; product behavior is documented as-shipped, not modified
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| _(filled by the roadmapper)_ | | |
+
+**Coverage:** 31 requirements (SITE×3, DSYS×4, HOME×5, GFX×4, DOCS×9, CHG×3, SEO×1, QA×2) — to be mapped 1:1 to phases by the roadmapper.
