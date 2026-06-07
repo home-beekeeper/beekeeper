@@ -85,6 +85,36 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(filled by the roadmapper)_ | | |
+| SITE-01 | Phase 11 — Scaffold & Toolchain Isolation | Not started |
+| SITE-02 | Phase 11 — Scaffold & Toolchain Isolation | Not started |
+| SITE-03 | Phase 15 — Marketing Home | Not started |
+| DSYS-01 | Phase 12 — Design System | Not started |
+| DSYS-02 | Phase 12 — Design System | Not started |
+| DSYS-03 | Phase 12 — Design System | Not started |
+| DSYS-04 | Phase 12 — Design System | Not started |
+| HOME-01 | Phase 15 — Marketing Home | Not started |
+| HOME-02 | Phase 15 — Marketing Home | Not started |
+| HOME-03 | Phase 15 — Marketing Home | Not started |
+| HOME-04 | Phase 15 — Marketing Home | Not started |
+| HOME-05 | Phase 15 — Marketing Home | Not started |
+| GFX-01 | Phase 16 — 3D Layer | Not started |
+| GFX-02 | Phase 16 — 3D Layer | Not started |
+| GFX-03 | Phase 16 — 3D Layer | Not started |
+| GFX-04 | Phase 16 — 3D Layer | Not started |
+| DOCS-01 | Phase 13 — Docs Content Pipeline | Not started |
+| DOCS-02 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-03 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-04 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-05 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-06 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-07 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-08 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-09 | Phase 18 — Full Content Authoring | Not started |
+| CHG-01 | Phase 14 — Changelog Pipeline | Not started |
+| CHG-02 | Phase 14 — Changelog Pipeline | Not started |
+| CHG-03 | Phase 14 — Changelog Pipeline | Not started |
+| SEO-01 | Phase 17 — SEO & Static Assets | Not started |
+| QA-01 | Phase 19 — Test Suite & CI | Not started |
+| QA-02 | Phase 19 — Test Suite & CI | Not started |
 
-**Coverage:** 31 requirements (SITE×3, DSYS×4, HOME×5, GFX×4, DOCS×9, CHG×3, SEO×1, QA×2) — to be mapped 1:1 to phases by the roadmapper.
+**Coverage:** 31/31 requirements mapped — 100% coverage, no orphans.

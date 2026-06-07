@@ -1,58 +1,76 @@
-# Roadmap: Beekeeper
+# Roadmap: Beekeeper v1.3.0 — Web Presence & Documentation
+
+> Phases 1–5 = parked v1.1.0 Pollen; Phase 10 = shipped v1.3.0 seed — preserved by the orchestrator below / in git history.
 
 ## Milestones
 
-- ✅ **v1.0.0 — Comprehensive Standalone Release** — Phases 1–10 (shipped 2026-06-01)
+- ✅ **v1.0.0 — Comprehensive Standalone Release** — Phases 1–11 (shipped 2026-06-01)
   Full per-phase detail archived in [`milestones/v1.0.0-ROADMAP.md`](milestones/v1.0.0-ROADMAP.md).
   Audit: PASSED — [`milestones/v1.0.0-MILESTONE-AUDIT.md`](milestones/v1.0.0-MILESTONE-AUDIT.md).
   Summary: [`MILESTONES.md`](MILESTONES.md).
 
-- 🔄 **v1.1.0 — "Pollen"** — Phases 1–5 (in progress)
+- 🔄 **v1.1.0 — "Pollen"** — Phases 1–5 (PARKED at maintainer release checkpoint)
   Goal: Own Windows inventory compatibility via a bounded Apache-2.0 Bumblebee derivative so the Windows CI matrix goes fully green.
 
 - ✅ **v1.2.0 — "Runtime Behavioral Hardening"** — Phases 6–9 (shipped 2026-06-04)
   Full per-phase detail archived in [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
-  Audit: `tech_debt` (no blockers) — all findings cleared by the inserted Phase 9 — [`milestones/v1.2.0-MILESTONE-AUDIT.md`](milestones/v1.2.0-MILESTONE-AUDIT.md).
   Summary: [`MILESTONES.md`](MILESTONES.md).
+
+- 🚧 **v1.3.0 — "Web Presence & Documentation"** — Phases 10–19 (in progress)
+  Phase 10 (seed: hook-block + self-protection + $VAR hardening) shipped 2026-06-05.
+  Phases 11–19: greenfield Next.js site under `web/`.
 
 ## Phases
 
 <details>
-<summary>✅ v1.0.0 Comprehensive Standalone Release (Phases 1–10) — SHIPPED 2026-06-01</summary>
+<summary>✅ v1.0.0 Comprehensive Standalone Release (Phases 1–11) — SHIPPED 2026-06-01</summary>
 
-- [x] Phase 1: Foundation + Hook Handler (6/6 plans) — fail-closed `beekeeper check`, Bumblebee mmap catalog, reproducible Sigstore builds
-- [x] Phase 2: Policy Engine + Multi-Source Catalogs (9/9) — corroboration semantics, OSV + Socket adapters, lifecycle/path/egress/baseline policies, catalog watch daemon
-- [x] Phase 3: Editor Extension Defense (5/5) — agent CLI intercept, fsnotify watcher, quarantine workflow, `beekeeper scan`
-- [x] Phase 4: Integration Surfaces (5/5) — Claude Code/Cursor/Codex hook installers, MCP gateway, shim layer, multi-agent observability
-- [x] Phase 5: Linux Sentry (5/5) — privileged systemd daemon, fanotify + cilium/ebpf ingestion, 5-rule correlation, 7-day baseline
-- [x] Phase 6: LlamaFirewall + Audit Sinks (5/5) — supervised Python sidecar, syslog/OTLP/HTTPS sinks, audit query/export
-- [x] Phase 7: Cross-Platform Sentry (5/5) — macOS eslogger, Windows ETW, SLSA Level 3 + CycloneDX SBOM
-- [x] Phase 8: TUI Dashboard (9/9) — Bubble Tea v2, all panels, admin mode, Windows resize workaround
-- [x] Phase 9: Policy as Code + Self-Defense Capstone (5/5) — declarative JSON policies, layered config, `beekeeper-self` catalog, `beekeeper diag`
-- [x] Phase 10: Cross-Phase Integration Closure (1/1) — live corroboration_threshold, gateway corroboration, LlamaFirewall supervisor + scan wiring, diag sidecar latency, overlay coverage
-- [x] Phase 11: v1.0.0 PRD-Gap Closure (pre-push) — gateway PromptGuard real tool name, layered config in enforcement, eBPF build-pipeline generation, delta-triggered scan, `catalogs diff`, real Ed25519 catalog signatures
+- [x] Phase 1: Foundation + Hook Handler (6/6 plans)
+- [x] Phase 2: Policy Engine + Multi-Source Catalogs (9/9)
+- [x] Phase 3: Editor Extension Defense (5/5)
+- [x] Phase 4: Integration Surfaces (5/5)
+- [x] Phase 5: Linux Sentry (5/5)
+- [x] Phase 6: LlamaFirewall + Audit Sinks (5/5)
+- [x] Phase 7: Cross-Platform Sentry (5/5)
+- [x] Phase 8: TUI Dashboard (9/9)
+- [x] Phase 9: Policy as Code + Self-Defense Capstone (5/5)
+- [x] Phase 10: Cross-Phase Integration Closure (1/1)
+- [x] Phase 11: v1.0.0 PRD-Gap Closure (pre-push) (1/1)
 
 </details>
 
-### v1.1.0 "Pollen" — Windows Inventory Compatibility
+### v1.1.0 "Pollen" — Windows Inventory Compatibility (PARKED)
 
-- [x] **Phase 1: Fork Setup & Discipline** — Pollen module established, Apache-2.0 attribution, reproducible builds + Sigstore, differential + selftest CI green; tag `v0.1.1-pollen.1`
-- [~] **Phase 2: Windows Root Resolver** — All 8 ecosystems resolved on Windows, parity test passes (code complete & verified); tag `v0.1.1-pollen.2` **deferred to M2 close**
-- [~] **Phase 3: Windows Path Representation** — Native backslash paths and Windows endpoint record in NDJSON, round-trip verified (code complete & verified 2026-06-02); tag `v0.1.1-pollen.3` **deferred to M2 close**
-- [~] **Phase 4: Windows Extension & MCP Coverage** — Editor, browser, MCP config paths complete; beekeeper compat test runs on all 3 OSes with zero skips (code complete & verified 2026-06-02); tag `v0.1.1-pollen.4` **deferred to M2 close**
-- [ ] **Phase 5: Contribution-Back & Milestone Close** — Upstream PRs prepared, beekeeper full CI green including honeypot E2E, `pollen-self` in catalog, sync workflow documented; tag `v0.1.1-pollen.5`
+- [x] **Phase 1: Fork Setup & Discipline** — tag `v0.1.1-pollen.1` shipped
+- [~] **Phase 2: Windows Root Resolver** — code complete; tag deferred to M2 close
+- [~] **Phase 3: Windows Path Representation** — code complete & verified 2026-06-02; tag deferred
+- [~] **Phase 4: Windows Extension & MCP Coverage** — code complete & verified 2026-06-02; tag deferred
+- [ ] **Phase 5: Contribution-Back & Milestone Close** — not started (parked)
 
 <details>
 <summary>✅ v1.2.0 Runtime Behavioral Hardening (Phases 6–9) — SHIPPED 2026-06-04</summary>
 
-- [x] Phase 6: Corroboration Severity Hardening (3/3 plans) — critical malware blocks at one trusted source, anti-poisoning sanity gate (F1)
-- [x] Phase 7: Sensitive-Path Runtime Enforcement (3/3) — `EvaluatePath` wired live into `check`; canonicalization closes traversal/tilde/Windows-env bypasses (F2)
-- [x] Phase 8: Package-Manager Nudge + Behavioral Test Suite (8/8) — `pkgparse` closes F3; nudge soft-advise/hard-rewrite + CLI; hermetic live-binary E2E release gate
-- [x] Phase 9: v1.2.0 Tech-Debt Cleanup (5/5 +1 fix) — hermetic CORR E2E gate, LoadLayered Nudge merge, SPATH evasion hardening, live version_drift, Phase-6 Nyquist reconcile (inserted from audit; verified 9/9)
+- [x] Phase 6: Corroboration Severity Hardening (3/3 plans)
+- [x] Phase 7: Sensitive-Path Runtime Enforcement (3/3)
+- [x] Phase 8: Package-Manager Nudge + Behavioral Test Suite (8/8)
+- [x] Phase 9: v1.2.0 Tech-Debt Cleanup (5/5 +1 fix)
 
 Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 </details>
+
+### v1.3.0 "Web Presence & Documentation"
+
+- [x] **Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement** — SHIPPED 2026-06-05 (v1.3.0 seed)
+- [ ] **Phase 11: Scaffold & Toolchain Isolation** — pnpm workspace, Next.js static-export app, Cloudflare Pages deploy
+- [ ] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion
+- [ ] **Phase 13: Docs Content Pipeline** — fumadocs-mdx wiring, static Orama search, DocsLayout, first MDX
+- [ ] **Phase 14: Changelog Pipeline** — versioned changelog route with breaking-change callout renderer
+- [ ] **Phase 15: Marketing Home** — all marketing sections, static SVG hero, dual CTA, harness matrix
+- [ ] **Phase 16: 3D Layer** — R3F hero + ambient accents behind dynamic(ssr:false), perf/a11y gates
+- [ ] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image
+- [ ] **Phase 18: Full Content Authoring** — all docs + changelog prose, accuracy review gate
+- [ ] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/
 
 ## Phase Details
 
@@ -80,163 +98,267 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 ### Phase 2: Windows Root Resolver
 
-**Goal**: Pollen can discover all 8 package-manager roots on Windows — npm/pnpm/Yarn/Bun (JS ecosystems), PyPI, Go modules, RubyGems, and Composer — using `%APPDATA%`/`%LOCALAPPDATA%`/`%USERPROFILE%`/`%ProgramFiles%` environment variables, with the cross-platform parity test asserting equivalent detection counts against Linux.
-**Repo locus**: Primarily `bantuson/pollen` — `cmd/pollen/roots_windows.go` (//go:build windows; in-place minimal-diff per RESEARCH Option B — the PRD-draft `internal/resolver/` path does not exist in the live repo).
+**Goal**: Pollen can discover all 8 package-manager roots on Windows using Windows environment variables, with the cross-platform parity test asserting equivalent detection counts against Linux.
+**Repo locus**: Primarily `bantuson/pollen` — `cmd/pollen/roots_windows.go`
 **Depends on**: Phase 1
 **Requirements**: WRES-01, WRES-02, PTEST-01
 **Success Criteria** (what must be TRUE):
 
-  1. On a Windows CI runner with the standard fake-package fixture tree, `pollen scan` returns inventory records for all 8 ecosystems with non-empty paths under `%USERPROFILE%` and `%APPDATA%`/`%LOCALAPPDATA%` as appropriate per PRD §8.1
-  2. The cross-platform parity test passes on all three OSes: same packages detected, same severity matches, equivalent record counts (modulo OS path strings), `endpoint.os` differs correctly per platform
-  3. The differential test continues to pass on Linux and macOS — Windows resolver additions have not drifted Pollen from upstream Bumblebee on the platforms upstream supports
+  1. On a Windows CI runner with the standard fake-package fixture tree, `pollen scan` returns inventory records for all 8 ecosystems with non-empty paths
+  2. The cross-platform parity test passes on all three OSes: same packages detected, same severity matches, equivalent record counts
+  3. The differential test continues to pass on Linux and macOS
   4. `v0.1.1-pollen.2` is tagged and signed; Windows CI no longer skips root-resolver tests
 
 **Plans**: 4 plans (3 waves)
 
-- [x] 02-01-PLAN.md — Wave 1: roots_windows.go (8-ecosystem Windows root table) + case "windows": wiring in roots.go + isBroadHomeRoot drive-root branch (WRES-01, WRES-02)
-- [x] 02-02-PLAN.md — Wave 2: roots_windows_test.go (Windows unit tests) + flip the 6 Phase-2 skips in main_test.go (WRES-01, WRES-02 verification)
+- [x] 02-01-PLAN.md — Wave 1: roots_windows.go (8-ecosystem Windows root table) (WRES-01, WRES-02)
+- [x] 02-02-PLAN.md — Wave 2: roots_windows_test.go + flip the 6 Phase-2 skips (WRES-01, WRES-02)
 - [x] 02-03-PLAN.md — Wave 2: parity_test.go + testdata/parity-fixture/ 8-ecosystem fixture (PTEST-01)
-- [~] 02-04-PLAN.md — Wave 3: VERSION bump 0.1.1-pollen.2 + CHANGES.md **prepared & committed locally** (`../pollen` HEAD `c94b271`); **tag + Sigstore signing DEFERRED to M2 close** by maintainer decision (Success Criterion 4 gate)
-
-> **⏸ Pending release (future context):** Phase 2 code is complete and verified (SC1–SC3 ✅; SC4 skips-flipped ✅, signed tag deferred). The `v0.1.1-pollen.2` signed release is intentionally batched to **end of Milestone 2**. 4 commits sit unpushed on `../pollen` `main`. Cut it via: `git push origin main` → confirm 3-OS CI green → `git tag -a v0.1.1-pollen.2 …` + push → `cosign verify-blob`. Full commands in `.planning/phases/02-windows-root-resolver/02-04-SUMMARY.md` and the STATE.md Deferred Items table.
+- [~] 02-04-PLAN.md — Wave 3: VERSION bump 0.1.1-pollen.2 + CHANGES.md (tag deferred to M2 close)
 
 ### Phase 3: Windows Path Representation
 
-**Goal**: Every NDJSON record emitted by Pollen on Windows carries native Windows paths — backslash separators, drive letters, `endpoint.os="windows"`, correct `arch` and `username`, and empty `uid` — and beekeeper's audit-log consumer handles Windows-shaped endpoint records correctly on round-trip.
-**Repo locus**: `bantuson/pollen` — WPATH-01 fix lives in the ecosystem scanners `internal/ecosystem/npm/npm.go` + `internal/ecosystem/pnpm/pnpm.go` (NOT `internal/output/` — that package is a thin JSON encoder; verified in 03-RESEARCH.md), WPATH-02 in `internal/endpoint/endpoint.go`; beekeeper round-trip test co-located in `internal/scan/scanner_test.go` (NOT a new `internal/inventory/` package — that boundary is Phase 4 BKINT-01).
+**Goal**: Every NDJSON record emitted by Pollen on Windows carries native Windows paths — backslash separators, drive letters, `endpoint.os="windows"`, correct `arch` and `username`, and empty `uid`.
+**Repo locus**: `bantuson/pollen` — `internal/ecosystem/npm/npm.go`, `internal/endpoint/endpoint.go`
 **Depends on**: Phase 2
 **Requirements**: WPATH-01, WPATH-02
 **Success Criteria** (what must be TRUE):
 
-  1. A Windows CI `pollen scan` run produces NDJSON where `project_path` and `source_file` fields contain backslash separators and drive letters (`C:\Users\...`) with no Unix-to-Windows conversion artifacts
-  2. The `endpoint` record in every NDJSON output on Windows contains `os="windows"`, `arch` matching `runtime.GOARCH`, a non-empty `username`, and an empty `uid`; Linux/macOS records are unchanged
-  3. Beekeeper's audit-log consumer parses a Windows-shaped Pollen NDJSON record without error and round-trips the endpoint fields correctly; a test in `internal/scan/` asserts this (locus corrected from `internal/inventory/` per 03-RESEARCH.md — `internal/inventory/` is Phase 4's BKINT-01 boundary)
-  4. `v0.1.1-pollen.3` is tagged and signed (DEFERRED to M2 close per D-06 / Phase-2 precedent — plan 03-03 prepares VERSION + CHANGES.md locally; the signed git tag is batched to milestone close)
+  1. A Windows CI `pollen scan` run produces NDJSON where `project_path` and `source_file` contain backslash separators and drive letters
+  2. The `endpoint` record on Windows contains `os="windows"`, `arch` matching `runtime.GOARCH`, non-empty `username`, and empty `uid`
+  3. Beekeeper's audit-log consumer parses a Windows-shaped Pollen NDJSON record without error
+  4. `v0.1.1-pollen.3` is tagged and signed (deferred to M2 close)
 
 **Plans**: 3 plans (2 waves)
 
-- [x] 03-01-PLAN.md — Wave 1 (Pollen): WPATH-01 — wrap npm.go + pnpm.go projectPath join in filepath.FromSlash (backslash on Windows, Unix-identity) + Windows-gated unit tests
-- [x] 03-02-PLAN.md — Wave 1 (Pollen): WPATH-02 — guard both endpoint.Current() UID assignments with runtime.GOOS != "windows" (empty uid on Windows, unchanged on Unix) + endpoint tests
-- [x] 03-03-PLAN.md — Wave 2 (both repos): parity_test.go Windows path-shape + empty-uid assertions, beekeeper internal/scan round-trip test (D-03), VERSION/CHANGES bump to 0.1.1-pollen.3 (no tag)
+- [x] 03-01-PLAN.md — Wave 1 (Pollen): WPATH-01 — filepath.FromSlash + Windows-gated unit tests
+- [x] 03-02-PLAN.md — Wave 1 (Pollen): WPATH-02 — empty uid on Windows guard + endpoint tests
+- [x] 03-03-PLAN.md — Wave 2 (both repos): Windows path-shape assertions, beekeeper round-trip test, VERSION/CHANGES bump
 
 ### Phase 4: Windows Extension & MCP Coverage + Beekeeper Compat Test
 
-**Goal**: Pollen enumerates all Windows editor-extension directories (VS Code family), browser-extension profile paths (Chromium + Firefox), and MCP host-config files (Claude Desktop, Cursor, Windsurf, Cline, Gemini CLI); and beekeeper's Pollen compatibility test runs on all three OSes with a Windows skip count of zero.
-**Repo locus**: `bantuson/pollen` for extension/MCP paths; beekeeper `internal/inventory/` for the subprocess boundary + compat test (BKINT-01, PTEST-04).
+**Goal**: Pollen enumerates all Windows editor-extension directories, browser-extension profile paths, and MCP host-config files; and beekeeper's Pollen compatibility test runs on all three OSes with zero skips.
+**Repo locus**: `bantuson/pollen` + beekeeper `internal/scan/`
 **Depends on**: Phase 3
 **Requirements**: WEXT-01, WEXT-02, WEXT-03, BKINT-01, PTEST-04
 **Success Criteria** (what must be TRUE):
 
-  1. On Windows CI, `pollen scan` detects fake VS Code, Code Insiders, Cursor, Windsurf, and VSCodium extensions planted under `%USERPROFILE%` fixture trees; all five editor paths return inventory records
-  2. On Windows CI, `pollen scan` detects fake Chrome/Chromium/Edge/Brave (per-profile) and Firefox (per-profile `extensions.json`) browser extensions; all Chromium-family and Firefox paths return records
-  3. On Windows CI, `pollen scan` finds fake MCP config files at `%APPDATA%\Claude\`, `%USERPROFILE%\.cursor\mcp.json`, `%USERPROFILE%\.windsurf\mcp.json`, `%APPDATA%\cline\`, and `%USERPROFILE%\.gemini\settings.json`
-  4. Beekeeper's Pollen compatibility test (invoking `pollen scan`, asserting NDJSON schema-consistency, running beekeeper rules, asserting `scanner_name`) runs green on ubuntu/macos/windows with zero `t.Skip` calls — the beekeeper Windows CI skip baseline for inventory tests is zero
-  5. `v0.1.1-pollen.4` is tagged and signed (DEFERRED to M2 close per D-06 — plan 04-03 prepares VERSION + CHANGES.md locally; the signed git tag is batched to milestone close)
+  1. On Windows CI, `pollen scan` detects fake VS Code family extensions under `%USERPROFILE%` fixture trees
+  2. On Windows CI, `pollen scan` detects fake Chrome/Chromium/Edge/Brave and Firefox browser extensions
+  3. On Windows CI, `pollen scan` finds fake MCP config files at Claude, Cursor, Windsurf, Cline, and Gemini CLI paths
+  4. Beekeeper's Pollen compatibility test runs green on ubuntu/macos/windows with zero `t.Skip` calls
+  5. `v0.1.1-pollen.4` is tagged and signed (deferred to M2 close)
 
 **Plans**: 3 plans (2 waves)
 
-- [x] 04-01-PLAN.md — Wave 1 (Pollen): WEXT-01/02/03 — fill browser `case "windows":` skeletons + Windows MCP roots (%APPDATA%\Claude, %APPDATA%\cline) + unconditional .windsurf MCP root + .vscode-oss editor segment; TestWindowsExtensionMCPRoots
-- [x] 04-02-PLAN.md — Wave 1 (beekeeper): BKINT-01 in-place rename runBumblebeeFn→runPollenFn in internal/scan/scanner.go + PTEST-04 TestPollenCompatibility (5 record types, scanner_name=pollen, no double-counting, zero t.Skip)
-- [~] 04-03-PLAN.md — Wave 2 (Pollen): VERSION bump 0.1.1-pollen.4 + CHANGES.md WEXT section **prepared & committed locally** (`../pollen` HEAD `a9db7b3`); **tag + Sigstore signing DEFERRED to M2 close** per D-06 (batched with pollen.2 + pollen.3)
+- [x] 04-01-PLAN.md — Wave 1 (Pollen): WEXT-01/02/03 — browser + MCP roots + vscode-oss editor segment
+- [x] 04-02-PLAN.md — Wave 1 (beekeeper): BKINT-01 rename + PTEST-04 TestPollenCompatibility
+- [~] 04-03-PLAN.md — Wave 2 (Pollen): VERSION bump 0.1.1-pollen.4 + CHANGES.md (tag deferred)
 
 **UI hint**: no
 
 ### Phase 5: Contribution-Back & Milestone Close
 
-**Goal**: Windows additions are prepared as upstream-shaped PRs against `perplexityai/bumblebee`; beekeeper's full CI matrix is green on all three OSes including the Sentry honeypot E2E test on Windows; `pollen-self` entries protect against compromised Pollen releases; the upstream sync workflow is documented and operational.
-**Repo locus**: `bantuson/pollen` (sync workflow, UPSTREAM.md, upstream PRs); beekeeper (BKINT-02, PTEST-05, SDEF-01 entry in `beekeeper-self` catalog).
+**Goal**: Windows additions are prepared as upstream-shaped PRs against `perplexityai/bumblebee`; beekeeper's full CI matrix is green on all three OSes; `pollen-self` entries protect against compromised Pollen releases; the upstream sync workflow is documented and operational.
+**Repo locus**: `bantuson/pollen` + beekeeper
 **Depends on**: Phase 4
 **Requirements**: SYNC-01, SYNC-02, BKINT-02, PTEST-05, SDEF-01
 **Success Criteria** (what must be TRUE):
 
-  1. `UPSTREAM.md` documents a repeatable, step-by-step sync workflow (fetch upstream, diff review, test on Linux/macOS, cherry-pick preserving Windows paths, re-run differential test, update pinned commit, tag new Pollen release) that a second maintainer could follow without prior context
-  2. At least one upstream-shaped PR is open against `perplexityai/bumblebee` covering the Windows root resolver (or an existing PR such as #4/#16 is commented with test evidence and Windows CI results from this work); the PR references the Pollen tag and links parity-test output as evidence
-  3. Beekeeper's `go.mod` pins Pollen at an explicit version; beekeeper CI installs Pollen and all inventory-related tests pass on ubuntu/macos/windows with zero skips — Windows Bumblebee-dependency tests that previously required `t.Skip` now run green via Pollen
-  4. The Windows Sentry honeypot E2E test — a planted process tree reading synthetic `%USERPROFILE%\.aws\credentials` and making an outbound connection — fires beekeeper's exfil-signature-fusion rule on the Windows CI runner and the test asserts the expected alert is emitted
-  5. `beekeeper-self` catalog contains `pollen-self` entries so that a known-bad Pollen release is detectable by beekeeper's self-quarantine mechanism; `beekeeper selftest` passes with the extended catalog
+  1. `UPSTREAM.md` documents a repeatable, step-by-step sync workflow a second maintainer could follow without prior context
+  2. At least one upstream-shaped PR is open or contribution-back is documented as deferred with rationale
+  3. Beekeeper's `go.mod` pins Pollen at an explicit version; all inventory-related tests pass on ubuntu/macos/windows with zero skips
+  4. The Windows Sentry honeypot E2E test fires beekeeper's exfil-signature-fusion rule on the Windows CI runner
+  5. `beekeeper-self` catalog contains `pollen-self` entries; `beekeeper selftest` passes with the extended catalog
   6. `v0.1.1-pollen.5` is tagged and signed — the milestone-complete tag
 
 **Plans**: 5 plans (3 waves)
 
-- [x] 05-01-PLAN.md — Wave 1 (beekeeper): PTEST-05 — fix isSensitivePath (filepath.ToSlash, Windows backslash bug) + Windows honeypot E2E (TestHoneypotExfilFusion fires SENTRY-005)
-- [x] 05-02-PLAN.md — Wave 1 (beekeeper): SDEF-01 — pollen-self entries in the unified beekeeper-self catalog + selftest fixture (non-production version)
-- [x] 05-03-PLAN.md — Wave 1 (pollen): SYNC-01 UPSTREAM.md sync workflow + version history; SYNC-02 contribution-back-deferred rationale (D-2); pollen.5 VERSION/CHANGES prep
-- [x] 05-04-PLAN.md — Wave 2 (beekeeper): BKINT-02 — CI go install Pollen pin (v0.1.1-pollen.4) + PinnedPollenVersion const + D-5 release runbook
-- [ ] 05-05-PLAN.md — Wave 3 (CHECKPOINT, autonomous:false): maintainer pushes both repos + cuts four signed tags (pollen.2/.3/.4/.5) + cosign verify; CI-green confirmation; milestone close
+- [x] 05-01-PLAN.md — Wave 1 (beekeeper): PTEST-05 — Windows honeypot E2E (TestHoneypotExfilFusion)
+- [x] 05-02-PLAN.md — Wave 1 (beekeeper): SDEF-01 — pollen-self entries in beekeeper-self catalog
+- [x] 05-03-PLAN.md — Wave 1 (pollen): SYNC-01 UPSTREAM.md sync workflow; SYNC-02 contribution-back-deferred rationale
+- [x] 05-04-PLAN.md — Wave 2 (beekeeper): BKINT-02 — CI go install Pollen pin + D-5 release runbook
+- [ ] 05-05-PLAN.md — Wave 3 (CHECKPOINT, autonomous:false): maintainer pushes both repos + cuts four signed tags
 
-> **SC2 relaxed (D-2):** No upstream contribution-back PRs against perplexityai/bumblebee this milestone (upstream Windows-support path unviable; PRs #3/#4 ignored). SYNC-02 is satisfied-by-documented-deferral in UPSTREAM.md (05-03). The verifier MUST NOT flag the absence of an upstream PR as a Phase-5 gap.
+> **SC2 relaxed (D-2):** No upstream contribution-back PRs against perplexityai/bumblebee this milestone. SYNC-02 is satisfied-by-documented-deferral in UPSTREAM.md (05-03).
+
+### Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement
+
+> **v1.3.0 seed — SHIPPED 2026-06-05.** Continues the live `.planning/phases/` numbering from v1.2.0 (9).
+
+**Goal**: Beekeeper's PreToolUse hook actually blocks denied tool calls across supported agent harnesses — not merely detects and audits them. A live dogfood (2026-06-05) proved the shipped hook fires but the harness runs the tool anyway (exit 1 vs the required exit 2 / deny JSON). This phase adds the `beekeeper check --hook <harness>` deny adapter, fixes 15-harness installers, routes no-hook harnesses to the MCP gateway, and adds the missing release gate.
+**Repo locus**: `internal/check`, `cmd/beekeeper`, `internal/hooks/*`, `internal/gateway`, `docs/`
+**Depends on**: Phase 9 (shipped)
+**Requirements**: HPC-01, HPC-02, HPC-03, HPC-04, HPC-05, HPC-06
+**Success Criteria** (what must be TRUE):
+
+  1. On Claude Code, a credential-read tool call is BLOCKED live (tool does not execute), verified end-to-end
+  2. `beekeeper check --hook <harness>` emits the correct deny signal (exit 2 + per-harness JSON) for each Tier-1 harness, proven by unit tests
+  3. Installers write the correct event names + config + feature flags per harness and never clobber a user's existing hooks
+  4. No-hook harnesses (Kilo, Trae) documented + routed to the MCP gateway; OpenCode plugin shipped; Hermes/Cline/Windows caveats documented; Tier 1/2/3 support matrix published
+  5. A release-gate test asserts the harness deny contract (exit 2 / deny JSON)
+
+**Plans**: 6 plans across 5 waves
+
+- [x] 10-01-PLAN.md — RenderDeny pure adapter + --hook flag + fixed Claude installer + deny-contract regression gate (HPC-01/03/06)
+- [x] 10-02-PLAN.md — Live Claude Code end-to-end block re-proof (HPC-04)
+- [x] 10-03-PLAN.md — Fix Cursor event-name bug + Codex features flag; add Augment/CodeBuddy/Qwen installers (HPC-02/03)
+- [x] 10-04-PLAN.md — Copilot/Gemini/Antigravity/Windsurf installers, non-Claude deny families (HPC-02/03)
+- [x] 10-05-PLAN.md — Hermes (fail-open JSON-only) + Cline (no-Windows) + OpenCode plugin (HPC-02/03/05)
+- [x] 10-06-PLAN.md — Kilo/Trae MCP-gateway routing + honest Tier 1/2/3 support matrix (HPC-05)
+
+---
+
+## v1.3.0 Web Presence & Documentation — Phase Details (Phases 11–19)
+
+### Phase 11: Scaffold & Toolchain Isolation
+
+**Goal**: A developer can run and build the `web/` Next.js app locally, and the Node toolchain is fully isolated from the Go module with zero cross-contamination.
+**Depends on**: Phase 10 (v1.3.0 seed shipped)
+**Requirements**: SITE-01, SITE-02
+**Success Criteria** (what must be TRUE):
+  1. `pnpm dev` starts in `web/` and serves a page at localhost without errors
+  2. `pnpm build` completes and emits a non-empty `web/out/` directory with `index.html`
+  3. `pnpm install` in `web/` never modifies `go.mod`, `go.sum`, or any Go-module file
+  4. `.next/`, `out/`, `.source/`, and `node_modules/` are all gitignored; no build artifacts appear in `git status`
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 12: Design System
+
+**Goal**: The site has a unified design system — shadcn/ui + Tailwind v4 + Fumadocs CSS — with a working theme toggle, reduced-motion gate, and WCAG 2.1 AA compliance verified in both themes.
+**Depends on**: Phase 11
+**Requirements**: DSYS-01, DSYS-02, DSYS-03, DSYS-04
+**Success Criteria** (what must be TRUE):
+  1. `pnpm build` succeeds with the correct `globals.css` import order (tailwindcss → shadcn.css → preset.css → @source → @theme) and Fumadocs components render in correct colors in both light and dark themes
+  2. A visitor can switch between light and dark themes via the toggle; the chosen theme persists across page reloads with no flash-of-wrong-theme
+  3. Setting `prefers-reduced-motion: reduce` in browser preferences disables all animation and 3D site-wide (verified by the ReducedMotionProvider)
+  4. Both light and dark themes pass WCAG 2.1 AA color-contrast ratios and all interactive elements are reachable by keyboard with visible focus indicators
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 13: Docs Content Pipeline
+
+**Goal**: A visitor can browse a Fumadocs-powered documentation site with sidebar navigation, table of contents, and working static search — all served from pre-built static files with no server runtime.
+**Depends on**: Phase 12
+**Requirements**: DOCS-01
+**Success Criteria** (what must be TRUE):
+  1. `pnpm build` emits `out/docs/` with HTML pages for every docs route; `out/api/search/index.json` is non-empty (Orama static index generated)
+  2. The docs sidebar lists all top-level sections (getting-started, installation, configuration, integration, security, cli-reference, audit-log, troubleshooting) in the correct order
+  3. The table of contents panel renders correctly for a docs page with multiple headings
+  4. The search dialog opens, a query returns at least one result, and clicking a result navigates to the correct page
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 14: Changelog Pipeline
+
+**Goal**: A visitor can read versioned release notes (v1.0.0, v1.2.0, v1.3.0) with per-release download and verification guidance, and the v1.3.0 entry displays a red breaking-change callout.
+**Depends on**: Phase 12
+**Requirements**: CHG-01, CHG-02, CHG-03
+**Success Criteria** (what must be TRUE):
+  1. `pnpm build` emits `out/changelog/v1.0.0/`, `out/changelog/v1.2.0/`, and `out/changelog/v1.3.0/` as separate static HTML pages
+  2. Each changelog page includes copyable cosign/SLSA verification commands and a link to the corresponding GitHub Release
+  3. The v1.3.0 changelog page displays a prominently styled red callout for the exit-1 to exit-2 breaking change with a migration note
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 15: Marketing Home
+
+**Goal**: A visitor sees a complete marketing home page — hero with dual CTA, origin story, how-it-works, feature highlights for shipped capabilities, the 15-harness support matrix, and an honesty callout — all as server-rendered static content with a static SVG hero (no 3D yet).
+**Depends on**: Phase 12
+**Requirements**: HOME-01, HOME-02, HOME-03, HOME-04, HOME-05, SITE-03
+**Success Criteria** (what must be TRUE):
+  1. The home page hero displays the headline, subhead, a copyable `go install` command chip, and a "Read the docs" link — all visible above the fold on a 1280px viewport
+  2. The page explains the Nx Console compromise origin story and presents a 3-step how-it-works flow
+  3. Feature cards cover only the six shipped capabilities (corroboration engine, fail-closed hooks, editor-extension defense, Sentry, LlamaFirewall, policy-as-code) with no aspirational claims
+  4. The harness support matrix shows all 15 harnesses with honest tier labels and live-verification caveats, linking to the integration docs
+  5. An honesty callout is visible on the home page linking to the security-posture / known-gaps documentation
+  6. The static site is deployed to Cloudflare Pages and reachable at a public URL
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 16: 3D Layer
+
+**Goal**: The home hero features an interactive Three.js hive centerpiece and ambient 3D accents that load client-only behind a dynamic(ssr:false) boundary, meet the Lighthouse LCP < 2.5s budget, and fall back gracefully to a static SVG under reduced-motion, low-power, or no-WebGL conditions.
+**Depends on**: Phase 15
+**Requirements**: GFX-01, GFX-02, GFX-03, GFX-04
+**Success Criteria** (what must be TRUE):
+  1. `pnpm build` succeeds with no R3F/three/drei imports visible in server-rendered output; the R3F chunk loads lazily in the browser (verified: `<canvas>` element appears only after JS hydration)
+  2. With `prefers-reduced-motion: reduce` or WebGL unavailable, the hero renders the static SVG fallback and no canvas is mounted — the page is fully usable
+  3. The `<canvas>` element has `aria-hidden="true"` and a visible sr-only description; keyboard navigation is unaffected by the 3D layer
+  4. Lighthouse audit against `out/index.html` shows LCP < 2.5s (SVG as LCP candidate) and no WebGL context leaks across navigation cycles
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 17: SEO & Static Assets
+
+**Goal**: Every page emits correct static metadata, a shared OG/social card image, and the site produces `sitemap.xml` and `robots.txt` as part of the static build.
+**Depends on**: Phase 15
+**Requirements**: SEO-01
+**Success Criteria** (what must be TRUE):
+  1. Every page in `out/` has a `<title>`, `<meta name="description">`, and canonical `<link rel="canonical">` in its static HTML
+  2. Every page references the shared OG image (1200×630 PNG); social-card preview renders correctly when the URL is pasted into Twitter/LinkedIn
+  3. `out/sitemap.xml` lists all public page URLs and `out/robots.txt` allows all crawlers and references the sitemap
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 18: Full Content Authoring
+
+**Goal**: A developer can follow every documentation path — quickstart to CLI reference to security posture to integration guides to troubleshooting — with content that is accurate to the shipped binary: every security claim cites its source, every unenforced feature is explicitly labeled, and known gaps are presented alongside the security posture.
+**Depends on**: Phase 13, Phase 14, Phase 15
+**Requirements**: DOCS-02, DOCS-03, DOCS-04, DOCS-05, DOCS-06, DOCS-07, DOCS-08, DOCS-09
+**Success Criteria** (what must be TRUE):
+  1. A new user can follow the Getting Started quickstart from zero to a working `beekeeper check` invocation, with no steps referencing unshipped behavior
+  2. The installation docs cover `go install`, binary download from GitHub Releases, and cosign + SLSA verification with copyable commands
+  3. The security posture and known-gaps pages are co-located and explicitly document: Hermes fail-open, Tier-3 unguarded tools, `release_age`/`lifecycle_script_allowlist` unenforced in v1.3.0, and the `--bind 0.0.0.0` gateway caveat
+  4. Every integration guide for Tier-1/2/3 harnesses includes honest caveats at point-of-use; the CLI reference covers all subcommands and flags
+  5. Every MDX file that derives content from a Go-side doc has a `source_doc:` frontmatter field, and all content has been reviewed against `docs/THREAT-MODEL.md` before publish
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 19: Test Suite & CI
+
+**Goal**: A path-filtered web CI job gates merges with lint, type-check, unit tests, a static build, and E2E tests against the `out/` directory — completely isolated from Go CI.
+**Depends on**: Phase 16, Phase 17, Phase 18
+**Requirements**: QA-01, QA-02
+**Success Criteria** (what must be TRUE):
+  1. The `.github/workflows/web.yml` job triggers only on `web/**` and `pnpm-workspace.yaml` changes, never on Go file changes; Go CI never triggers on web changes
+  2. The CI job runs Biome lint/format check, `tsc --noEmit`, Vitest unit tests, `pnpm build`, and Playwright E2E against `out/` — all as required gates before merge
+  3. Playwright E2E tests verify: home page renders with SVG hero fallback, docs navigation and search return results, theme toggle persists across reload, all three changelog version pages build and render their headings
+**Plans**: TBD
+**UI hint**: no
 
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
-| 1. Foundation + Hook Handler | v1.0.0 | 4/5 | In Progress|  |
-| 2. Policy Engine + Multi-Source Catalogs | v1.0.0 | 3/4 | In Progress|  |
+| 1. Foundation + Hook Handler | v1.0.0 | 5/5 | Complete | 2026-05-26 |
+| 2. Policy Engine + Multi-Source Catalogs | v1.0.0 | 4/4 | Complete | 2026-05-27 |
 | 3. Editor Extension Defense | v1.0.0 | 5/5 | Complete | 2026-05-26 |
-| 4. Integration Surfaces | v1.0.0 | 2/3 | In Progress|  |
-| 5. Linux Sentry | v1.0.0 | 4/5 | In Progress|  |
-| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 3/3 | Complete    | 2026-06-03 |
+| 4. Integration Surfaces | v1.0.0 | 3/3 | Complete | 2026-05-27 |
+| 5. Linux Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
+| 6. LlamaFirewall + Audit Sinks | v1.0.0 | 5/5 | Complete | 2026-06-03 |
 | 7. Cross-Platform Sentry | v1.0.0 | 5/5 | Complete | 2026-05-28 |
 | 8. TUI Dashboard | v1.0.0 | 9/9 | Complete | 2026-05-29 |
 | 9. Policy as Code + Self-Defense Capstone | v1.0.0 | 5/5 | Complete | 2026-05-29 |
-| 10. Cross-Phase Integration Closure | v1.0.0 | 6/6 | Complete    | 2026-06-05 |
+| 10. Cross-Phase Integration Closure | v1.0.0 | 6/6 | Complete | 2026-06-05 |
 | 11. v1.0.0 PRD-Gap Closure (pre-push) | v1.0.0 | 1/1 | Complete | 2026-06-01 |
-| **1. Fork Setup & Discipline** | **v1.1.0** | **0/TBD** | **Not started** | **—** |
+| **1. Fork Setup & Discipline** | **v1.1.0** | **5/5** | **Complete** | **2026-05-26** |
 | **2. Windows Root Resolver** | **v1.1.0** | **3/4** | **Code complete — release deferred to M2 close** | **—** |
-| **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
-| **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred to M2 close** | **2026-06-02** |
-| **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **Planned** | **—** |
+| **3. Windows Path Representation** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred** | **2026-06-02** |
+| **4. Windows Extension & MCP Coverage** | **v1.1.0** | **3/3** | **Code complete & verified — release deferred** | **2026-06-02** |
+| **5. Contribution-Back & Milestone Close** | **v1.1.0** | **0/5** | **PARKED** | **—** |
 | **6. Corroboration Severity Hardening** | **v1.2.0** | **3/3** | **Complete** | **2026-06-03** |
 | **7. Sensitive-Path Runtime Enforcement** | **v1.2.0** | **3/3** | **Complete** | **2026-06-04** |
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **8/8** | **Complete** | **2026-06-04** |
-| **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **5/5** | **Complete & verified (9/9)** | **2026-06-04** |
-| **10. Hook-Block Protocol Compliance & Multi-Harness Enforcement** | **v1.3.0 (next)** | **6/6** | **Complete** | **2026-06-05** |
-
-### Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement
-
-> **Seeds the next milestone (v1.3.0 — proposed).** v1.2.0 is archived (phases 6–9) and v1.1.0 is parked; this phase continues the live `.planning/phases/` numbering (→ 10) but is NOT part of shipped v1.2.0. Reframe under a v1.3.0 milestone heading via `/gsd-new-milestone` if desired before planning.
-
-**Goal**: Beekeeper's PreToolUse hook must ACTUALLY block a denied tool call across supported agent harnesses — not merely detect + audit it. A live dogfood (2026-06-05) proved the shipped hook fires and decides "block" but the harness runs the tool anyway, because `beekeeper check` exits `1` (+ its own JSON) while every harness requires exit code `2` or a per-harness deny JSON. This phase adds a `beekeeper check --hook <harness>` deny adapter, fixes/extends the per-harness installers (15 harnesses), routes no-hook harnesses to the MCP gateway, and adds the missing release gate that asserts the *harness* deny contract.
-
-**Repo locus**: `internal/check` (hook-output adapter + tests), `cmd/beekeeper` (`--hook` flag), `internal/hooks/*` (per-harness installers), `internal/gateway` (routing for no-hook harnesses), `docs/` (support matrix).
-**Depends on**: Phase 9 (shipped). Folds in 4 prerequisite fixes already done & tested this session but UNCOMMITTED (detectionTimeout 2→3s, execTimeout 5→8s, `claude_code.go` clobber→merge + regression test).
-**Research**: `.planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement/10-RESEARCH.md` — the bug, live evidence, and the full 15-harness deny-contract matrix + citations. **Read it before planning.** Phase context: `10-CONTEXT.md` (same folder).
-
-**Requirements**:
-
-- **HPC-01** `beekeeper check --hook <harness>` adapter: on block emit exit 2 + stderr reason (universal baseline) plus the per-harness JSON; non-block → exit 0 (defer to the harness's own permission flow; never emit "allow"). Default (no flag) unchanged = raw Decision JSON + exit 1 (shim/gateway/tests). Pure, table-driven.
-- **HPC-02** Per-harness installer correctness: correct command (`--hook <name>`), event name(s), config format/location, feature flags. MUST fix the Cursor event-name bug (`preToolUse` → `beforeShellExecution`/`beforeMCPExecution`/`beforeReadFile`) and Codex `[features] hooks=true`; merge-not-clobber + targeted uninstall for every settings.json-style target; add the new harnesses.
-- **HPC-03** Per-harness deny-contract regression tests — the gate that was missing (assert the harness deny output + exit code, not just Beekeeper's internal exit code).
-- **HPC-04** Live re-verification on Claude Code (only locally-installed harness): a credential read is actually DENIED end-to-end after install — not just audited.
-- **HPC-05** No-hook harnesses → MCP gateway (Kilo, Trae); ship an OpenCode plugin (`tool.execute.before` → throw); document Hermes fail-open + Cline-no-Windows caveats; publish a Tier 1/2/3 support matrix (no overclaiming).
-- **HPC-06** Self-defense: a release-gate test proving the harness deny contract holds for the shipped binary.
-
-**Success Criteria** (what must be TRUE):
-
-  1. On Claude Code, a credential-read tool call is BLOCKED live (tool does not execute), verified end-to-end — not just an audit record.
-  2. `beekeeper check --hook <harness>` emits the correct deny signal (exit 2 + per-harness JSON) for each Tier-1 harness, proven by unit tests; default mode still exits 1 with raw JSON (shim/gateway/tests unbroken).
-  3. Installers write the correct event names + config + feature flags per harness and never clobber a user's existing hooks.
-  4. No-hook harnesses (Kilo, Trae) documented + routed to the MCP gateway; OpenCode plugin shipped; Hermes/Cline/Windows caveats documented; a Tier 1/2/3 support matrix published.
-  5. A release-gate test asserts the harness deny contract (exit 2 / deny JSON), closing the gap that let exit-1 ship.
-
-**Plans**: 6 plans across 5 waves (planned 2026-06-05).
-**Wave 1**
-
-- [x] 10-01-PLAN.md — RenderDeny pure adapter + --hook flag + fixed Claude installer + the missing deny-contract regression gate (HPC-01/03/06) [wave 1] ✅ 2026-06-05 (d7bffe3, 76029a3, 342d78a)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 10-02-PLAN.md — Live Claude Code end-to-end block re-proof (HPC-04) [wave 2, checkpoint]
-- [x] 10-03-PLAN.md — Fix Cursor event-name bug + Codex features flag; add Augment/CodeBuddy/Qwen installers (HPC-02/03) [wave 2] ✅ 2026-06-05 (95ee9ed, a4211d0, 978fc4e)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 10-04-PLAN.md — Copilot/Gemini/Antigravity/Windsurf installers, non-Claude deny families (HPC-02/03) [wave 3]
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 10-05-PLAN.md — Hermes (fail-open JSON-only) + Cline (no-Windows) + OpenCode plugin (HPC-02/03/05) [wave 4]
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [x] 10-06-PLAN.md — Kilo/Trae MCP-gateway routing + honest Tier 1/2/3 support matrix (HPC-05) [wave 5] ✅ 2026-06-05 (c7018e0, 8e1b50d)
+| **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **5/5** | **Complete** | **2026-06-04** |
+| **10. Hook-Block Protocol Compliance** | **v1.3.0** | **6/6** | **Complete (seed)** | **2026-06-05** |
+| **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **12. Design System** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **13. Docs Content Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **14. Changelog Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **15. Marketing Home** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **16. 3D Layer** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **17. SEO & Static Assets** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **18. Full Content Authoring** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |

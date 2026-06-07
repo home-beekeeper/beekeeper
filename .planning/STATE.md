@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-06-07T17:18:16.707Z"
 last_activity: 2026-06-07
 progress:
-  total_phases: 0
+  total_phases: 9
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,16 +20,31 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** v1.3.0 — Web Presence & Documentation (defining requirements). Seed Go work (Phase 10 hook-block, self-protection, $VAR, TUI real-data) already shipped this cycle.
+**Current focus:** v1.3.0 — Web Presence & Documentation. Roadmap created (9 phases, 11–19); ready to plan Phase 11. Seed Go work (Phase 10 hook-block, self-protection, $VAR, TUI real-data) already shipped this cycle.
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 11 — Scaffold & Toolchain Isolation (ready to plan)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-07 — Milestone v1.3.0 started
+Status: Roadmap approved — ready to plan Phase 11
+Last activity: 2026-06-07 — Milestone v1.3.0 roadmap created (9 phases, 11–19)
+
+## Phase Summary (v1.3.0)
+
+| Phase | Name | Requirements | Status |
+|-------|------|--------------|--------|
+| 10 | Hook-Block Protocol Compliance & Multi-Harness Enforcement | (seed) | ✅ Shipped 2026-06-05 (v1.3.0 seed) |
+| 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | Not started |
+| 12 | Design System | DSYS-01–04 | Not started |
+| 13 | Docs Content Pipeline | DOCS-01 | Not started |
+| 14 | Changelog Pipeline | CHG-01–03 | Not started |
+| 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |
+| 16 | 3D Layer | GFX-01–04 | Not started |
+| 17 | SEO & Static Assets | SEO-01 | Not started |
+| 18 | Full Content Authoring | DOCS-02–09 | Not started |
+| 19 | Test Suite & CI | QA-01, QA-02 | Not started |
 
 ## Phase Summary (v1.1.0)
 
