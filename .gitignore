@@ -28,3 +28,16 @@ go.work.sum
 *~
 .DS_Store
 Thumbs.db
+
+# === Node / Web toolchain (v1.3.0 web/ workspace) ===
+# Repo-root pnpm virtual store (symlinks only), created by `pnpm install`.
+# This is expected pnpm-workspace behavior — do NOT delete node_modules/.
+# (The existing `*.out` rule above matches the .out extension, not the out/ dir,
+#  so web/out/ below is still required.)
+node_modules/
+# Next.js build artifacts (web/.gitignore also covers these from inside web/).
+web/.next/
+web/out/
+# fumadocs-mdx generated types (created by `next build` once Phase 13 installs it).
+# No trailing slash so `git check-ignore web/.source` matches before the dir exists.
+web/.source
