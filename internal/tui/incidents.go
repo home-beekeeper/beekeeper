@@ -1,16 +1,20 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
+
+	audit "github.com/bantuson/beekeeper/internal/audit"
 )
 
 // IncidentAction is a containment action button shown on the incident card.
 type IncidentAction struct {
-	Key string // "Q", "I", "d"
-	Cls string // "danger", "warn", "info"
+	Key string // "a" (acknowledge), "d" (full record)
+	Cls string // "warn", "info"
 	Lbl string
 }
 
@@ -33,33 +37,116 @@ type IncidentModel struct {
 	SelAction int
 }
 
-// DefaultIncident returns the prototype "exfil-signature-fusion" demo incident.
-func DefaultIncident() IncidentModel {
+// IncidentFromRecord builds a critical-incident card from a REAL sentry_alert
+// audit record. Every field rendered (rule, process tree, files, network,
+// correlated extension) comes from the record itself — there is no fabricated
+// demo data. Missing fields degrade to honest placeholders rather than invented
+// values, so the operator never sees forensic detail that did not occur.
+//
+// The action buttons are deliberately limited to what the dashboard can honestly
+// do: acknowledge the incident, and open the full record. There is no in-TUI
+// "quarantine"/"isolate" primitive (quarantine.Move needs a real extension path
+// and there is no IPC isolate command), so the card never claims an automated
+// containment it cannot perform — remediation is directed to the CLI.
+func IncidentFromRecord(rec audit.AuditRecord) IncidentModel {
+	ts := rec.Timestamp
+	if t, err := time.Parse(time.RFC3339, rec.Timestamp); err == nil {
+		ts = t.Format("15:04:05")
+	}
+
+	ruleName := rec.SentryRuleName
+	if ruleName == "" {
+		ruleName = rec.SentryRuleID
+	}
+	if ruleName == "" {
+		ruleName = "sentry alert"
+	}
+	ruleID := rec.SentryRuleID
+	if ruleID == "" {
+		ruleID = "—"
+	}
+
 	return IncidentModel{
-		RuleID:    "R5",
-		RuleName:  "exfil-signature-fusion",
-		Timestamp: "14:21:54",
-		Desc: lipgloss.NewStyle().Foreground(colorFg).Render(
-			"A process from the VS Code extension host read three credential\n"+
-				"files and opened an outbound connection, within 4 minutes of installing\n"+
-				"an extension flagged by ") +
-			lipgloss.NewStyle().Foreground(colorRed).Bold(true).Render("2 of 3 catalogs") +
-			lipgloss.NewStyle().Foreground(colorFg).Render("."),
-		Tree: []TreeLine{
-			{Prefix: "", PrefixStyle: styleDim, Style: styleDim, Text: "Code Helper (Plugin) pid 8821"},
-			{Prefix: "└─ ", PrefixStyle: styleDim, Style: styleCoral, Text: "node extension.js pid 8847"},
-			{Prefix: "   ├─ read ", PrefixStyle: styleDim, Style: styleRed, Text: "~/.aws/credentials"},
-			{Prefix: "   ├─ read ", PrefixStyle: styleDim, Style: styleRed, Text: "~/.config/op/config"},
-			{Prefix: "   ├─ read ", PrefixStyle: styleDim, Style: styleRed, Text: "~/.ssh/id_ed25519"},
-			{Prefix: "   └─ ", PrefixStyle: styleDim, Style: styleRed, Text: "POST 185.2.x.x:443  4.2KB"},
-		},
+		RuleID:    ruleID,
+		RuleName:  ruleName,
+		Timestamp: ts,
+		Desc:      buildIncidentDesc(rec),
+		Tree:      buildIncidentTree(rec),
 		Actions: []IncidentAction{
-			{Key: "Q", Cls: "danger", Lbl: "quarantine extension"},
-			{Key: "I", Cls: "warn", Lbl: "isolate process"},
+			{Key: "a", Cls: "warn", Lbl: "acknowledge"},
 			{Key: "d", Cls: "info", Lbl: "full record"},
 		},
 		SelAction: 0,
 	}
+}
+
+// buildIncidentDesc renders a one-to-three line description composed entirely
+// from the record's real fields.
+func buildIncidentDesc(rec audit.AuditRecord) string {
+	base := lipgloss.NewStyle().Foreground(colorFg)
+	red := lipgloss.NewStyle().Foreground(colorRed).Bold(true)
+	var sb strings.Builder
+
+	sev := rec.SentrySeverity
+	if sev == "" {
+		sev = "critical"
+	}
+	sb.WriteString(base.Render("Sentry flagged a ") + red.Render(sev) + base.Render(" event"))
+	if rec.SentryProcessExe != "" {
+		sb.WriteString(base.Render(" from ") + base.Render(rec.SentryProcessExe))
+		if rec.SentryProcessPID != 0 {
+			sb.WriteString(styleDim.Render(fmt.Sprintf(" (pid %d)", rec.SentryProcessPID)))
+		}
+	}
+	sb.WriteString(base.Render("."))
+
+	nf, nn := len(rec.SentryFilesAccessed), len(rec.SentryNetworkDests)
+	if nf > 0 || nn > 0 {
+		var bits []string
+		if nf > 0 {
+			bits = append(bits, fmt.Sprintf("%d sensitive file%s read", nf, plural(nf)))
+		}
+		if nn > 0 {
+			bits = append(bits, fmt.Sprintf("%d outbound connection%s", nn, plural(nn)))
+		}
+		sb.WriteString("\n" + red.Render(strings.Join(bits, " · ")) + base.Render("."))
+	}
+	if rec.SentryCorrelatedExt != "" {
+		sb.WriteString("\n" + base.Render("Correlated extension: ") + styleCoral.Render(rec.SentryCorrelatedExt))
+	}
+	return sb.String()
+}
+
+// buildIncidentTree renders the process tree, file reads, and network
+// destinations from the record. Returns an honest placeholder when the record
+// carried none of these.
+func buildIncidentTree(rec audit.AuditRecord) []TreeLine {
+	var tree []TreeLine
+	for i, p := range rec.SentryParentChain {
+		prefix, style := "", styleDim
+		if i > 0 {
+			prefix, style = strings.Repeat("  ", i-1)+"└─ ", styleCoral
+		}
+		tree = append(tree, TreeLine{Prefix: prefix, PrefixStyle: styleDim, Style: style, Text: p})
+	}
+	for _, f := range rec.SentryFilesAccessed {
+		tree = append(tree, TreeLine{Prefix: "   read ", PrefixStyle: styleDim, Style: styleRed, Text: f})
+	}
+	for _, n := range rec.SentryNetworkDests {
+		tree = append(tree, TreeLine{Prefix: "   ", PrefixStyle: styleDim, Style: styleRed, Text: "→ " + n})
+	}
+	if len(tree) == 0 {
+		tree = append(tree, TreeLine{Prefix: "", PrefixStyle: styleDim, Style: styleDim, Text: "(no process / file / network detail in this alert)"})
+	}
+	return tree
+}
+
+// plural returns "s" for any count other than 1.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // Update handles key navigation across action buttons.

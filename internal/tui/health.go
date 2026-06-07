@@ -139,7 +139,9 @@ func probeLastBlock() string {
 		return "last block unknown"
 	}
 	auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
-	recs, _ := tailFrom(auditPath, 0)
+	// Bounded tail read — the audit log can be tens of MB; the most recent block
+	// is at the end, so reading the whole file every tick is unnecessary.
+	recs := recentAuditRecords(auditPath)
 	// Find most recent block decision
 	var lastBlockTime time.Time
 	for _, rec := range recs {

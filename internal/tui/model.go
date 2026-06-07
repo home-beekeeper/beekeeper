@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -50,22 +52,24 @@ type App struct {
 }
 
 // NewApp constructs the initial App model.
+//
+// Health and the status line are computed from REAL probes at construction time
+// (not seeded optimistically): a security dashboard must not paint every pip
+// green and claim activity counts before it has checked anything. refreshHealthState
+// fails safe — any component it cannot reach reads as degraded, not healthy — and
+// computeStatus summarises today's real audit activity (or "monitoring" when the
+// log is empty).
 func NewApp(adminMode bool) App {
 	auditDir, _ := platform.AuditDir()
+	auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
+	stateDir, _ := platform.StateDir()
 	return App{
 		mode:      modeCalm,
 		adminMode: adminMode,
-		auditPath: filepath.Join(auditDir, "beekeeper.ndjson"),
-		status:    "all systems nominal · protecting 4 agents · 0 open criticals today",
+		auditPath: auditPath,
+		status:    computeStatus(auditPath),
 		clock:     time.Now(),
-		health: HealthState{
-			HooksOK:         true,
-			GatewayOK:       true,
-			SentryOK:        true,
-			CatalogsOK:      true,
-			LlamaFirewallOK: true,
-			LastBlock:       "last block 6m ago",
-		},
+		health:    refreshHealthState(stateDir),
 	}
 }
 
@@ -100,12 +104,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.mode == modePanel {
 			a.panelM, _ = a.panelM.Update(msg)
 		}
-		// Check for critical sentry alert.
+		// Check for critical sentry alert. The incident card and status line are
+		// built from the REAL record — never a canned demo incident — so an
+		// operator never sees fabricated forensic detail during a live event.
 		for _, rec := range []audit.AuditRecord(msg) {
 			if rec.RecordType == "sentry_alert" && rec.SentrySeverity == "critical" && !a.critical {
 				a.critical = true
-				a.status = "⚠ 1 CRITICAL — credential exfiltration pattern detected"
-				a.incident = DefaultIncident()
+				a.incident = IncidentFromRecord(rec)
+				a.status = "⚠ 1 CRITICAL — " + a.incident.RuleName
 				a.health.LastBlock = "sentry firing"
 				a.health.SentryOK = false
 			}
@@ -124,7 +130,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		stateDir, _ := platform.StateDir()
 		a.health = refreshHealthState(stateDir)
+		// Refresh the calm-mode status from real audit activity. Never overwrite a
+		// live critical banner — that is owned by the incident flow.
+		if !a.critical {
+			a.status = computeStatus(a.auditPath)
+		}
 		return a, healthTickCmd()
+
+	case stepTickMsg:
+		// Scan progress animation tick — route to the open panel and re-arm.
+		if a.mode == modePanel {
+			var cmd tea.Cmd
+			a.panelM, cmd = a.panelM.Update(msg)
+			return a, cmd
+		}
+		return a, nil
+
+	case scanResultMsg:
+		// Real scan completed — deliver the result to the open scan panel.
+		if a.mode == modePanel {
+			var cmd tea.Cmd
+			a.panelM, cmd = a.panelM.Update(msg)
+			return a, cmd
+		}
+		return a, nil
 
 	case quarantineAlertMsg:
 		// Close the alerts panel and show toast (prototype: q/Q in alerts panel).
@@ -207,26 +236,10 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Critical incident card keys — only active when in calm base screen.
 	if a.critical {
 		switch k {
-		case "Q", "q":
-			a.critical = false
-			a.status = "contained · 1 item quarantined · rotate creds recommended"
-			a.incident = IncidentModel{}
-			a.health.LastBlock = "last block just now"
-			a.health.SentryOK = true
-			var cmd tea.Cmd
-			a.toast, cmd = a.toast.Show("extension quarantined", toastOK)
-			return a, cmd
-		case "I", "i":
-			a.critical = false
-			a.status = "contained · process isolated · rotate creds recommended"
-			a.incident = IncidentModel{}
-			a.health.LastBlock = "last block just now"
-			a.health.SentryOK = true
-			var cmd tea.Cmd
-			a.toast, cmd = a.toast.Show("process isolated", toastOK)
-			return a, cmd
+		case "a", "A":
+			return a.acknowledgeIncident()
 		case "d", "D":
-			// Opens full record panel WITHOUT resolving critical mode (prototype behaviour).
+			// Opens full record panel WITHOUT resolving critical mode.
 			return a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
 		case "up", "left", "down", "right":
 			var cmd tea.Cmd
@@ -249,16 +262,25 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "g", "G":
 		a.mode = modePalette
 		a.palette = PaletteModel{query: "go"}
-	case "x", "X":
-		a.critical = true
-		a.status = "⚠ 1 CRITICAL — credential exfiltration pattern detected"
-		a.incident = DefaultIncident()
-		a.health.LastBlock = "sentry firing"
-		a.health.SentryOK = false
 	case "q", "ctrl+c":
 		return a, tea.Quit
 	}
 	return a, nil
+}
+
+// acknowledgeIncident clears a live critical as an explicit operator
+// acknowledgement. It does NOT claim any automated containment: the dashboard
+// has no in-process quarantine/isolate primitive, so it tells the operator how
+// to remediate (alert log + CLI) rather than fabricating a "contained" result.
+func (a App) acknowledgeIncident() (tea.Model, tea.Cmd) {
+	a.critical = false
+	a.incident = IncidentModel{}
+	a.status = "acknowledged · review the alert log (!) and rotate any exposed credentials"
+	a.health.LastBlock = "last block just now"
+	a.health.SentryOK = true
+	var cmd tea.Cmd
+	a.toast, cmd = a.toast.Show("incident acknowledged — no automated containment; remediate via CLI", toastWarn)
+	return a, cmd
 }
 
 // doIncidentAction executes the currently selected incident action button.
@@ -268,24 +290,8 @@ func (a App) doIncidentAction() (tea.Model, tea.Cmd) {
 	}
 	sel := a.incident.Actions[a.incident.SelAction]
 	switch sel.Key {
-	case "Q":
-		a.critical = false
-		a.status = "contained · 1 item quarantined · rotate creds recommended"
-		a.incident = IncidentModel{}
-		a.health.LastBlock = "last block just now"
-		a.health.SentryOK = true
-		var cmd tea.Cmd
-		a.toast, cmd = a.toast.Show("extension quarantined", toastOK)
-		return a, cmd
-	case "I":
-		a.critical = false
-		a.status = "contained · process isolated · rotate creds recommended"
-		a.incident = IncidentModel{}
-		a.health.LastBlock = "last block just now"
-		a.health.SentryOK = true
-		var cmd tea.Cmd
-		a.toast, cmd = a.toast.Show("process isolated", toastOK)
-		return a, cmd
+	case "a":
+		return a.acknowledgeIncident()
 	case "d":
 		return a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
 	}
@@ -299,8 +305,12 @@ func (a App) openPanel(kind panelKind, content PanelContent) (tea.Model, tea.Cmd
 	if content != nil {
 		a.panelM = NewPanelModel(kind, content)
 	}
-	// ScanPanel requires an initial tick to start the step animation.
+	// ScanPanel starts the step animation AND kicks off a real scan (deep/quick).
+	// History mode reads past audit records and needs neither.
 	if kind == panelScan {
+		if sp, ok := content.(*ScanPanel); ok && sp.scanMode != "history" {
+			return a, tea.Batch(stepTickCmd(), sp.runScanCmd())
+		}
 		return a, stepTickCmd()
 	}
 	return a, nil
@@ -354,7 +364,10 @@ func (a App) runPaletteSelection() func() interface{} {
 		return func() interface{} { return m }
 
 	case "protect install":
-		newToast, _ := a.toast.Show("protect mode already active", toastOK)
+		// The dashboard cannot install elevated protection itself (it requires a
+		// privileged, out-of-band step), so it directs the operator to the CLI
+		// rather than falsely claiming protection is already active.
+		newToast, _ := a.toast.Show("run `beekeeper protect install` in a terminal to enable elevated protection", toastWarn)
 		a.toast = newToast
 		return func() interface{} { return a }
 
@@ -414,6 +427,72 @@ func Run(ctx context.Context, adminMode bool) error {
 	go watchAuditLog(p, m.auditPath)
 	_, err := p.Run()
 	return err
+}
+
+// computeStatus summarises today's REAL audit activity for the calm-mode status
+// line: distinct agents seen, block decisions, and critical sentry alerts. It
+// reads the audit tail (best-effort) and never fabricates counts — an empty or
+// unreadable log yields an honest "monitoring" line rather than invented numbers.
+func computeStatus(auditPath string) string {
+	recs := recentAuditRecords(auditPath)
+	if len(recs) == 0 {
+		return "monitoring · press : to act"
+	}
+	now := time.Now()
+	agents := make(map[string]struct{})
+	blocks, criticals := 0, 0
+	for _, rec := range recs {
+		t, terr := time.Parse(time.RFC3339, rec.Timestamp)
+		if terr != nil || !sameDay(t, now) {
+			continue
+		}
+		if rec.AgentName != "" {
+			agents[rec.AgentName] = struct{}{}
+		}
+		if rec.Decision == "block" {
+			blocks++
+		}
+		if rec.RecordType == "sentry_alert" && rec.SentrySeverity == "critical" {
+			criticals++
+		}
+	}
+	parts := make([]string, 0, 3)
+	if len(agents) > 0 {
+		parts = append(parts, fmt.Sprintf("%d agent%s today", len(agents), plural(len(agents))))
+	}
+	parts = append(parts,
+		fmt.Sprintf("%d block%s today", blocks, plural(blocks)),
+		fmt.Sprintf("%d critical%s today", criticals, plural(criticals)),
+	)
+	return strings.Join(parts, " · ")
+}
+
+// recentAuditRecords returns the audit records from the TAIL of the log, bounded
+// to the last statusScanBytes. The audit log can grow to tens of megabytes, so
+// reading it whole on startup and on every health tick would make the dashboard
+// re-parse the entire file repeatedly. Seeking near the end and letting tailFrom
+// discard the (malformed) partial first line keeps this O(window), and the most
+// recent activity — today's records and the last block — lives at the tail anyway.
+func recentAuditRecords(auditPath string) []audit.AuditRecord {
+	const statusScanBytes = 512 * 1024
+	info, err := os.Stat(auditPath)
+	if err != nil {
+		return nil
+	}
+	var offset int64
+	if info.Size() > statusScanBytes {
+		offset = info.Size() - statusScanBytes
+	}
+	recs, _ := tailFrom(auditPath, offset)
+	return recs
+}
+
+// sameDay reports whether two times fall on the same calendar day in local time.
+func sameDay(a, b time.Time) bool {
+	a, b = a.Local(), b.Local()
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
 }
 
 // viewString is a test helper to inspect model state without rendering ANSI.

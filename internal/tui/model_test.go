@@ -63,18 +63,61 @@ func TestAppClosePanel(t *testing.T) {
 	}
 }
 
+// sampleSentryRecord returns a realistic critical sentry_alert audit record for
+// driving the incident card in tests (replaces the retired DefaultIncident demo).
+func sampleSentryRecord() audit.AuditRecord {
+	return audit.AuditRecord{
+		RecordType:          "sentry_alert",
+		Timestamp:           "2026-05-28T14:21:54Z",
+		SentrySeverity:      "critical",
+		SentryRuleID:        "SLNX-08",
+		SentryRuleName:      "credential-exfil",
+		SentryProcessExe:    "node extension.js",
+		SentryProcessPID:    8847,
+		SentryParentChain:   []string{"Code Helper (Plugin)", "node extension.js"},
+		SentryFilesAccessed: []string{"~/.aws/credentials", "~/.ssh/id_ed25519"},
+		SentryNetworkDests:  []string{"185.2.0.1:443"},
+		SentryCorrelatedExt: "acme.evil-linter",
+	}
+}
+
 func TestAppCriticalTrigger(t *testing.T) {
 	a := NewApp(false)
 	if a.critical {
 		t.Fatal("expected not critical on startup")
 	}
 	a.critical = true
-	a.incident = DefaultIncident()
+	a.incident = IncidentFromRecord(sampleSentryRecord())
 	if !a.critical {
 		t.Fatal("expected critical=true after trigger")
 	}
-	if a.incident.RuleName == "" {
-		t.Fatal("expected incident to be populated")
+	if a.incident.RuleName != "credential-exfil" {
+		t.Fatalf("expected incident built from the real record, got RuleName=%q", a.incident.RuleName)
+	}
+}
+
+// TestIncidentFromRecordIsReal verifies the incident card reflects the actual
+// alert record, not fabricated demo data.
+func TestIncidentFromRecordIsReal(t *testing.T) {
+	inc := IncidentFromRecord(sampleSentryRecord())
+	if inc.RuleID != "SLNX-08" {
+		t.Errorf("expected RuleID from record, got %q", inc.RuleID)
+	}
+	var treeText string
+	for _, l := range inc.Tree {
+		treeText += l.Text + "\n"
+	}
+	if !strings.Contains(treeText, "~/.aws/credentials") {
+		t.Errorf("expected real file path in tree, got:\n%s", treeText)
+	}
+	// The retired demo incident's invented data must never appear.
+	if strings.Contains(treeText, "185.2.x.x") || strings.Contains(treeText, "pid 8821") {
+		t.Errorf("incident contains fabricated demo data: %s", treeText)
+	}
+	for _, act := range inc.Actions {
+		if act.Lbl == "quarantine extension" || act.Lbl == "isolate process" {
+			t.Errorf("incident must not offer un-wired %q action", act.Lbl)
+		}
 	}
 }
 
@@ -127,9 +170,9 @@ func TestAppCommandDispatch(t *testing.T) {
 
 func TestAppIncidentResolve(t *testing.T) {
 	a := NewApp(false)
-	// Trigger critical mode
+	// Trigger critical mode with a real incident.
 	a.critical = true
-	a.incident = DefaultIncident()
+	a.incident = IncidentFromRecord(sampleSentryRecord())
 	a.health.SentryOK = false
 	a.health.LastBlock = "sentry firing"
 
@@ -137,21 +180,22 @@ func TestAppIncidentResolve(t *testing.T) {
 		t.Fatal("setup: expected critical=true")
 	}
 
-	// Simulate Q key resolution directly
-	a.critical = false
-	a.status = "contained · 1 item quarantined · rotate creds recommended"
-	a.incident = IncidentModel{}
-	a.health.LastBlock = "last block just now"
-	a.health.SentryOK = true
+	// Acknowledge via the real handler (not by hand-setting status).
+	m, _ := a.acknowledgeIncident()
+	a = m.(App)
 
 	if a.critical {
-		t.Error("expected critical=false after Q resolve")
+		t.Error("expected critical=false after acknowledge")
 	}
 	if a.incident.RuleName != "" {
-		t.Error("expected incident cleared after resolve")
+		t.Error("expected incident cleared after acknowledge")
 	}
-	if !strings.Contains(a.status, "contained") {
-		t.Errorf("expected 'contained' in status, got: %q", a.status)
+	if !strings.Contains(a.status, "acknowledged") {
+		t.Errorf("expected 'acknowledged' in status, got: %q", a.status)
+	}
+	// Must NOT claim a containment it did not perform.
+	if strings.Contains(a.status, "contained") || strings.Contains(a.status, "quarantined") {
+		t.Errorf("acknowledge must not claim containment, got: %q", a.status)
 	}
 }
 
@@ -170,12 +214,11 @@ func TestAppHealthState(t *testing.T) {
 }
 
 func TestAppHealthLlamaFirewallPip(t *testing.T) {
-	// Cold-start: NewApp seeds LlamaFirewallOK: true so the pip is green before the
-	// first healthTick fires.
+	// Health is probed for real at construction (fail-safe — NOT seeded green).
+	// On a machine with no sidecar state.json the probe returns false; the
+	// contract is that the field is reachable and construction never panics.
 	a := NewApp(false)
-	if !a.health.LlamaFirewallOK {
-		t.Fatal("expected LlamaFirewallOK=true at cold start (NewApp default)")
-	}
+	_ = a.health.LlamaFirewallOK
 
 	// After a healthTick the field is refreshed. On a dev machine with no sidecar
 	// state.json the probe returns false — that is acceptable. The critical assertion

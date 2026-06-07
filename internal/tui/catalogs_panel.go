@@ -19,15 +19,18 @@ import (
 type syncCatalogsMsg struct{}
 
 // knownSources lists the 4 catalog sources always shown in the panel (LOCKED order from prototype).
+// Default is the honest sync line shown ONLY when no local index exists for the
+// source — never an unverified status claim. socket is a live-query API with no
+// persistent cache, so "live query" is its accurate idle state.
 var knownSources = []struct {
 	Name    string
 	Type    string
-	Default string // default sync info when state unknown
+	Default string // honest sync info when no local index is present
 }{
 	{Name: "bumblebee", Type: "threat_intel", Default: "never synced"},
 	{Name: "osv", Type: "offline db", Default: "never synced"},
-	{Name: "socket", Type: "public api", Default: "live query · rate-limited"},
-	{Name: "self", Type: "beekeeper-self", Default: "clean · this build not flagged"},
+	{Name: "socket", Type: "public api", Default: "live query"},
+	{Name: "self", Type: "beekeeper-self", Default: "not synced"},
 }
 
 // catalogExplainerText is the fixed explanatory text from the prototype.
@@ -155,22 +158,21 @@ func (p *CatalogsPanel) buildBody() string {
 		nameStr := styleWhite.Render(fmt.Sprintf("%-12s", src.Name))
 		typeStr := styleDim.Render(fmt.Sprintf("%-16s", src.Type))
 
+		// Sync info is driven by the source's REAL state — degraded flag and the
+		// index mtime/entry count from WatchState — for every source uniformly.
+		// The honest per-source Default is shown only when no local index exists.
 		var syncInfo string
-		switch src.Name {
-		case "socket":
-			syncInfo = "live query · rate-limited"
-		case "self":
-			syncInfo = "clean · this build not flagged"
+		switch {
+		case ss.Degraded:
+			syncInfo = "degraded"
+		case mtime.IsZero():
+			syncInfo = src.Default
 		default:
-			if mtime.IsZero() {
-				syncInfo = "never synced"
+			age := fmtAge(mtime)
+			if ss.Count > 0 {
+				syncInfo = fmt.Sprintf("synced %s · %d entries", age, ss.Count)
 			} else {
-				age := fmtAge(mtime)
-				if ss.Count > 0 {
-					syncInfo = fmt.Sprintf("synced %s · %d entries", age, ss.Count)
-				} else {
-					syncInfo = fmt.Sprintf("synced %s", age)
-				}
+				syncInfo = fmt.Sprintf("synced %s", age)
 			}
 		}
 		syncStr := styleDimmer.Render(syncInfo)
@@ -186,15 +188,15 @@ func (p *CatalogsPanel) Title() string { return "Catalog sources" }
 
 func (p *CatalogsPanel) Count() string {
 	total := len(knownSources)
-	// Count sources that are not degraded and have been synced.
-	enforcing := 0
+	// Count sources that are not degraded and have a local index (fresh).
+	fresh := 0
 	for _, src := range knownSources {
 		ss := p.watchState.Sources[src.Name]
 		if !ss.Degraded && !p.indexMtimes[src.Name].IsZero() {
-			enforcing++
+			fresh++
 		}
 	}
-	return fmt.Sprintf("%d sources · %d/%d to enforce", total, enforcing, 3)
+	return fmt.Sprintf("%d sources · %d fresh", total, fresh)
 }
 
 func (p *CatalogsPanel) Padded() bool { return true }

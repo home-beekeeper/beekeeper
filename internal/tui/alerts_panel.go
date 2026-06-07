@@ -18,12 +18,13 @@ type quarantineAlertMsg struct{ RecordID string }
 
 // AlertRow is a single rendered row in the alerts panel.
 type AlertRow struct {
-	Time     string // HH:MM:SS
-	Badge    string // rendered badge string (BadgeCrit, BadgeBlock, etc.)
-	Agent    string // agent identity sourced from rec.AgentName (TUI-02)
-	Label    string // event name or rule name
-	Meta     string // right-aligned detail
-	RecordID string
+	Time       string // HH:MM:SS
+	Badge      string // rendered badge string (BadgeCrit, BadgeBlock, etc.)
+	Agent      string // agent identity sourced from rec.AgentName (TUI-02)
+	Label      string // event name or rule name
+	Meta       string // right-aligned detail
+	RecordID   string
+	IsCritical bool // true for a sentry_alert with critical severity (real count source)
 	// Sentry detail slices stored for the expanded view (TUI-03).
 	// Nil for policy_decision rows — expanded view guards nil/empty slices.
 	ParentChain   []string // SentryParentChain: process tree, top-down
@@ -175,6 +176,7 @@ func (p *AlertsPanel) recordToRow(rec audit.AuditRecord) (AlertRow, bool) {
 			Label:         label,
 			Meta:          meta,
 			RecordID:      rec.RecordID,
+			IsCritical:    rec.SentrySeverity == "critical",
 			ParentChain:   rec.SentryParentChain,
 			FilesAccessed: rec.SentryFilesAccessed,
 			NetworkDests:  rec.SentryNetworkDests,
@@ -228,8 +230,14 @@ func (p *AlertsPanel) Title() string { return "Sentry alert log" }
 
 func (p *AlertsPanel) Count() string {
 	n := len(p.rows)
-	if p.critical && n > 0 {
-		return fmt.Sprintf("%d alerts · 1 active critical", n)
+	crit := 0
+	for _, r := range p.rows {
+		if r.IsCritical {
+			crit++
+		}
+	}
+	if crit > 0 {
+		return fmt.Sprintf("%d alerts · %d active critical", n, crit)
 	}
 	return fmt.Sprintf("%d alerts · today", n)
 }

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -30,23 +31,60 @@ func TestScanPanelSteps(t *testing.T) {
 	}
 }
 
-// TestScanPanelComplete: inject 5th stepTickMsg (past last step) → Body() contains "scan complete".
-func TestScanPanelComplete(t *testing.T) {
+// TestScanPanelTicksNeverComplete: the animation alone must NOT mark the scan
+// done or fabricate a completion line — completion comes only from a real result.
+func TestScanPanelTicksNeverComplete(t *testing.T) {
 	p := NewScanPanel("deep")
 	var pc PanelContent = p
-	// 5 ticks: 4 steps + 1 to trigger done
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 6; i++ {
 		pc, _ = pc.Update(stepTickMsg{})
 	}
 	sp := pc.(*ScanPanel)
-	body := sp.progressBody()
-	if !strings.Contains(body, "scan complete") {
-		t.Errorf("expected 'scan complete' in body after 5 ticks, got: %q", body)
+	if sp.done {
+		t.Error("animation ticks must not set done — only a real scanResultMsg may")
 	}
-	if !sp.done {
-		t.Error("expected done=true after 5 ticks")
+	if strings.Contains(sp.progressBody(), "scan complete") {
+		t.Error("animation must not render a fabricated 'scan complete' line")
 	}
 }
+
+// TestScanPanelComplete: a real scanResultMsg → Body() shows the REAL counts.
+func TestScanPanelComplete(t *testing.T) {
+	p := NewScanPanel("deep")
+	var pc PanelContent = p
+	pc, _ = pc.Update(scanResultMsg{res: scanResult{packages: 312, findings: 47, threats: 0}})
+	sp := pc.(*ScanPanel)
+	if !sp.done {
+		t.Error("expected done=true after scanResultMsg")
+	}
+	body := sp.progressBody()
+	if !strings.Contains(body, "scan complete") {
+		t.Errorf("expected 'scan complete' in body, got: %q", body)
+	}
+	if !strings.Contains(body, "312 packages") || !strings.Contains(body, "47 findings") {
+		t.Errorf("expected real counts in completion line, got: %q", body)
+	}
+	if !strings.Contains(body, "no threats matched") {
+		t.Errorf("expected 'no threats matched' for zero threats, got: %q", body)
+	}
+}
+
+// TestScanPanelThreatsAndError: result rendering reflects real threats and errors.
+func TestScanPanelThreatsAndError(t *testing.T) {
+	p := NewScanPanel("quick")
+	pc, _ := PanelContent(p).Update(scanResultMsg{res: scanResult{packages: 10, findings: 2, threats: 2}})
+	if body := pc.(*ScanPanel).progressBody(); !strings.Contains(body, "2 threats flagged") {
+		t.Errorf("expected threat count in body, got: %q", body)
+	}
+
+	p2 := NewScanPanel("deep")
+	pc2, _ := PanelContent(p2).Update(scanResultMsg{err: errInjectedScan})
+	if body := pc2.(*ScanPanel).progressBody(); !strings.Contains(body, "scan failed") {
+		t.Errorf("expected error surfaced in body, got: %q", body)
+	}
+}
+
+var errInjectedScan = errors.New("boom")
 
 // TestPolicyPanelContent: Body() renders the editable sections and the honest
 // read-only rows. Uses a temp-dir panel so it never touches the real policies dir.

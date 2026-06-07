@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	version "github.com/bantuson/beekeeper/internal/version"
 )
 
 // HelpPanel implements PanelContent for the help overlay.
@@ -20,8 +22,9 @@ func (p *HelpPanel) Update(msg tea.Msg) (PanelContent, tea.Cmd) { return p, nil 
 // Title implements PanelContent.
 func (p *HelpPanel) Title() string { return "Help" }
 
-// Count implements PanelContent.
-func (p *HelpPanel) Count() string { return "beekeeper v0.6.0" }
+// Count implements PanelContent. Shows the REAL build version (set via -ldflags
+// at release time) rather than a hardcoded string.
+func (p *HelpPanel) Count() string { return fmt.Sprintf("beekeeper %s", version.Version) }
 
 // Padded implements PanelContent.
 func (p *HelpPanel) Padded() bool { return true }
@@ -53,10 +56,10 @@ func (p *HelpPanel) Body(width, height int) string {
 	sb.WriteString("  " + key("esc") + explain("close any overlay") + "\n")
 	sb.WriteString("\n")
 	sb.WriteString("  " + label("CONCEPT") + "\n")
-	sb.WriteString("  " + explain("Calm mode stays quiet by design. When Sentry detects a") + "\n")
-	sb.WriteString("  " + explain("credential exfiltration pattern, the base screen escalates on") + "\n")
-	sb.WriteString("  " + explain("its own — the incident card appears with containment actions") + "\n")
-	sb.WriteString("  " + explain("ready. You don't hunt for the problem; it comes to you.") + "\n")
+	sb.WriteString("  " + explain("Calm mode stays quiet by design. When Sentry flags a critical") + "\n")
+	sb.WriteString("  " + explain("event, the base screen escalates on its own — the incident card") + "\n")
+	sb.WriteString("  " + explain("appears with the real process tree and remediation guidance.") + "\n")
+	sb.WriteString("  " + explain("You don't hunt for the problem; it comes to you.") + "\n")
 	return sb.String()
 }
 
