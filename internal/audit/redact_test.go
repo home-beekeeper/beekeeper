@@ -407,6 +407,149 @@ func TestRedactRecordSentryFields(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Exported convenience helpers: RedactString + HasSensitiveData.
+//
+// These wrap applyRedaction / the default pattern set with no caller-supplied
+// patterns, so they are the entry point for ad-hoc redaction outside audit
+// records. The assertions below prove a KNOWN secret pattern is actually masked
+// (not merely that a non-nil string is returned) and that benign text is left
+// untouched — the load-bearing security property for a redaction helper.
+// ---------------------------------------------------------------------------
+
+// TestRedactString verifies RedactString masks each default secret family and
+// leaves benign / partial input unchanged.
+func TestRedactString(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		want        string
+		mustContain string // substring that must survive (replacement marker)
+	}{
+		{
+			name:        "bearer token masked",
+			input:       "Authorization: Bearer abc123secrettoken",
+			want:        "Authorization: Bearer [REDACTED]",
+			mustContain: "[REDACTED]",
+		},
+		{
+			name:        "JWT masked",
+			input:       "token=eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.signature123",
+			want:        "token=[JWT_REDACTED]",
+			mustContain: "[JWT_REDACTED]",
+		},
+		{
+			name:        "anthropic key masked",
+			input:       "ANTHROPIC_API_KEY=sk-ant-api03-supersecretvalue",
+			want:        "ANTHROPIC_API_KEY=sk-ant-[REDACTED]",
+			mustContain: "sk-ant-[REDACTED]",
+		},
+		{
+			name:        "AWS access key masked",
+			input:       "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
+			want:        "AWS_ACCESS_KEY_ID=AKIA[REDACTED]",
+			mustContain: "AKIA[REDACTED]",
+		},
+		{
+			name:  "benign string unchanged",
+			input: "compiled 42 packages in 1.23s",
+			want:  "compiled 42 packages in 1.23s",
+		},
+		{
+			name:  "empty string unchanged",
+			input: "",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RedactString(tt.input)
+			if got != tt.want {
+				t.Errorf("RedactString(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+			if tt.mustContain != "" {
+				// Prove the raw secret is gone and the redaction marker is present.
+				if !strings.Contains(got, tt.mustContain) {
+					t.Errorf("RedactString(%q) = %q, missing marker %q", tt.input, got, tt.mustContain)
+				}
+				// The original secret payload must not survive verbatim.
+				if got == tt.input {
+					t.Errorf("RedactString(%q) returned input unchanged — secret not masked", tt.input)
+				}
+			}
+		})
+	}
+}
+
+// TestHasSensitiveData verifies the matcher flags each default secret family and
+// returns false for benign / partial-prefix input.
+func TestHasSensitiveData(t *testing.T) {
+	sensitive := []struct {
+		name  string
+		input string
+	}{
+		{"bearer token", "Authorization: Bearer abc123secrettoken"},
+		{"case-insensitive bearer", "authorization: bearer mytoken"},
+		{"JWT", "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.signature123"},
+		{"openai project key", "sk-proj-abc123XYZ"},
+		{"anthropic key", "sk-ant-api03-secret"},
+		{"aws key", "AKIAIOSFODNN7EXAMPLE"},
+		{"github pat", "ghp_1234567890abcdef"},
+		{"gitlab pat", "glpat-xyz123abc"},
+	}
+	for _, tt := range sensitive {
+		t.Run("sensitive/"+tt.name, func(t *testing.T) {
+			if !HasSensitiveData(tt.input) {
+				t.Errorf("HasSensitiveData(%q) = false, want true", tt.input)
+			}
+		})
+	}
+
+	benign := []struct {
+		name  string
+		input string
+	}{
+		{"empty", ""},
+		{"plain text", "Hello, world!"},
+		{"json no secrets", `{"status":"ok","count":5}`},
+		{"url no creds", "https://example.com/api/v1/resource"},
+		{"prefix without suffix", "sk-proj-"}, // alternation needs >=1 trailing char
+		{"basic auth not bearer", "Authorization: Basic dXNlcjpwYXNz"},
+		{"two-segment not-JWT", "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9"},
+	}
+	for _, tt := range benign {
+		t.Run("benign/"+tt.name, func(t *testing.T) {
+			if HasSensitiveData(tt.input) {
+				t.Errorf("HasSensitiveData(%q) = true, want false", tt.input)
+			}
+		})
+	}
+}
+
+// TestRedactStringHasSensitiveConsistency verifies the two helpers agree: a
+// string flagged sensitive must be changed by RedactString, and a string left
+// unchanged by RedactString must not be flagged sensitive.
+func TestRedactStringHasSensitiveConsistency(t *testing.T) {
+	inputs := []string{
+		"Authorization: Bearer xyz",
+		"sk-ant-api03-leak",
+		"ghp_1234567890abcdef",
+		"plain benign text",
+		"",
+	}
+	for _, in := range inputs {
+		t.Run(in, func(t *testing.T) {
+			sensitive := HasSensitiveData(in)
+			changed := RedactString(in) != in
+			if sensitive != changed {
+				t.Errorf("inconsistent for %q: HasSensitiveData=%v but RedactString-changed=%v",
+					in, sensitive, changed)
+			}
+		})
+	}
+}
+
 // TestRedactPathologicalInputs verifies that default patterns do not catastrophically
 // backtrack on adversarial inputs (T-04-05-07).
 // Each test case must complete in <100ms (enforced by test timeout).

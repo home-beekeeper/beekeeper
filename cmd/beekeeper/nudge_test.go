@@ -267,4 +267,56 @@ func TestEnsureNudgeBlockDefault(t *testing.T) {
 			t.Errorf("fail_mode = %v, want closed (preserved)", cfg["fail_mode"])
 		}
 	})
+
+	t.Run("unparseable config is not clobbered", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("BEEKEEPER_HOME", home)
+		cfgPath := filepath.Join(home, "beekeeper", "config.json")
+		if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// Invalid JSON — ensureNudgeBlockDefault must bail out without overwriting,
+		// so a hand-edited (but momentarily broken) config is never silently lost.
+		original := []byte(`{ this is not valid json `)
+		if err := os.WriteFile(cfgPath, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		ensureNudgeBlockDefault(&out)
+
+		after, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatalf("read config: %v", err)
+		}
+		if !bytes.Equal(after, original) {
+			t.Errorf("unparseable config was modified.\n before: %q\n after:  %q", original, after)
+		}
+		if out.String() != "" {
+			t.Errorf("expected no output when bailing on unparseable config; got %q", out.String())
+		}
+	})
+
+	t.Run("null config body gets block", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("BEEKEEPER_HOME", home)
+		cfgPath := filepath.Join(home, "beekeeper", "config.json")
+		if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// A config file whose entire body is the JSON literal `null` unmarshals to a
+		// nil map; the function must recover by treating it as an empty config and
+		// still default nudge.mode=block (not panic on a nil map write).
+		if err := os.WriteFile(cfgPath, []byte("null"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		ensureNudgeBlockDefault(&out)
+		_, nudge := read(t, cfgPath)
+		if nudge == nil || nudge["mode"] != "block" {
+			t.Errorf("nudge.mode = %v, want block (null body treated as empty)", nudge["mode"])
+		}
+		if nudge["enabled"] != true {
+			t.Errorf("nudge.enabled = %v, want true", nudge["enabled"])
+		}
+	})
 }
