@@ -48,11 +48,12 @@ func TestScanPanelComplete(t *testing.T) {
 	}
 }
 
-// TestPolicyPanelContent: Body() contains all 5 prototype rows.
+// TestPolicyPanelContent: Body() renders the editable sections and the honest
+// read-only rows. Uses a temp-dir panel so it never touches the real policies dir.
 func TestPolicyPanelContent(t *testing.T) {
-	p := NewPolicyPanel(false)
+	p, _ := newTestPolicyPanel(t, false)
 	body := p.Body(100, 40)
-	for _, expected := range []string{"corroboration", "release-age", "llamafirewall"} {
+	for _, expected := range []string{"Corroboration", "block at", "Package allowlist", "Sensitive paths", "release-age", "llamafirewall"} {
 		if !strings.Contains(body, expected) {
 			t.Errorf("expected %q in policy panel body", expected)
 		}

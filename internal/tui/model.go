@@ -140,6 +140,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.toast, sCmd = a.toast.Show("Syncing all sources…", toastOK)
 		return a, sCmd
 
+	case policyEditErrMsg:
+		// A policy edit was rejected by the validation gate — surface why; the
+		// on-disk policy file is unchanged.
+		var eCmd tea.Cmd
+		a.toast, eCmd = a.toast.Show(msg.msg, toastWarn)
+		return a, eCmd
+
+	case policySavedMsg:
+		// A policy edit persisted successfully.
+		var pCmd tea.Cmd
+		a.toast, pCmd = a.toast.Show(msg.msg, toastOK)
+		return a, pCmd
+
 	case tea.KeyPressMsg:
 		return a.handleKey(msg)
 	}
@@ -184,8 +197,11 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			a.panelM = PanelModel{}
 			return a, nil
 		}
-		a.panelM, _ = a.panelM.Update(msg)
-		return a, nil
+		// Propagate the panel's command so panel-emitted messages (e.g. the policy
+		// editor's save/reject toasts) actually fire. Previously discarded.
+		var pcmd tea.Cmd
+		a.panelM, pcmd = a.panelM.Update(msg)
+		return a, pcmd
 	}
 
 	// Critical incident card keys — only active when in calm base screen.

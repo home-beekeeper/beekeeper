@@ -30,6 +30,7 @@ package policyloader
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -202,7 +203,11 @@ func LoadPolicyDir(dir string) ([]PolicyFile, error) {
 		if len(errs) > 0 {
 			// Skip individually invalid policy files with a warning (T-09-33).
 			// This prevents a single malformed file from crashing beekeeper check.
-			fmt.Printf("beekeeper: WARNING: skipping invalid policy file %q: %v\n", s.Path, errs[0])
+			// MUST go to stderr, not stdout: beekeeper check runs LoadPolicyDir on
+			// every hook call and a stray stdout line corrupts the hook's JSON/deny
+			// protocol. (Any foreign *.json in policies/ — e.g. the retired
+			// tui_rules.json — would otherwise poison the hook output.)
+			fmt.Fprintf(os.Stderr, "beekeeper: WARNING: skipping invalid policy file %q: %v\n", s.Path, errs[0])
 			continue
 		}
 		files = append(files, pf)

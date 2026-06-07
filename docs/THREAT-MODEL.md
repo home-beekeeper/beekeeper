@@ -810,6 +810,33 @@ that a fresh catalog source incorrectly flags, or to express that a particular
 configuration. Place policy files in version-controlled directories and review
 `allow`-action rules carefully before deploying.
 
+### Dashboard Policy Editor (`beekeeper dashboard --admin`)
+
+The TUI policy panel edits a **real, enforced** policy file
+(`~/.beekeeper/policies/beekeeper-tui.json`) — a valid typed `PolicyFile` that
+`LoadPolicyDir` loads like any other. It supersedes the retired prototype
+`tui_rules.json`, whose foreign schema the engine silently skipped (so its toggles
+were cosmetic).
+
+- **Last gate:** all edits are written exclusively through `policyloader.SavePolicyFile`,
+  which runs `ValidateForPersist` (`ValidateSchema` + corroboration threshold-ordering
+  bounds) and writes **nothing** when validation fails. An invalid edit is rejected in
+  the TUI and never reaches disk, so the editor cannot put a file in `policies/` that
+  the engine would reject or clamp.
+- **Trust boundary:** the editor writes the same enforced `policies/` surface as a
+  hand-edited file, and `package_allowlist`/`sensitive_path` entries added in the TUI
+  carry the same escape-hatch semantics documented above (T-09-31). Admin-gated
+  (`--admin`); the directory keeps owner-only (0600) permissions.
+- **No-clobber:** the editor writes only `beekeeper-tui.json`; other policy files in the
+  directory are never modified.
+
+**Hook-protocol integrity fix:** `LoadPolicyDir`'s "skipping invalid policy file"
+warning now goes to **stderr** (`internal/policyloader/enforce.go`), not stdout.
+`beekeeper check` runs `LoadPolicyDir` on every hook call, so a foreign/invalid file in
+`policies/` (e.g. a leftover `tui_rules.json`) previously risked emitting a stray stdout
+line that could corrupt the hook's JSON/deny protocol. Regression-guarded by
+`TestLoadPolicyDirNeverWritesStdout`.
+
 ### Overlay Limitations: `release_age` and `lifecycle_script_allowlist` Not Enforced
 
 The declarative policy overlay (`ApplyPolicyOverlay` in `internal/policyloader/enforce.go`)
