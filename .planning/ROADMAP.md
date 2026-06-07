@@ -62,7 +62,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 ### v1.3.0 "Web Presence & Documentation"
 
 - [x] **Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement** — SHIPPED 2026-06-05 (v1.3.0 seed)
-- [ ] **Phase 11: Scaffold & Toolchain Isolation** — pnpm workspace, Next.js static-export app, Cloudflare Pages deploy
+- [x] **Phase 11: Scaffold & Toolchain Isolation** — ✅ Complete & verified 2026-06-07 — pnpm workspace + Next.js 16 static-export app under web/, Go-isolated (Cloudflare Pages deploy is SITE-03 / Phase 15)
 - [ ] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion
 - [ ] **Phase 13: Docs Content Pipeline** — fumadocs-mdx wiring, static Orama search, DocsLayout, first MDX
 - [ ] **Phase 14: Changelog Pipeline** — versioned changelog route with breaking-change callout renderer
@@ -87,7 +87,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   2. `pnpm build` completes and emits a non-empty `web/out/` directory with `index.html`
   3. `pnpm install` in `web/` never modifies `go.mod`, `go.sum`, or any Go-module file
   4. `.next/`, `out/`, `.source/`, and `node_modules/` are all gitignored; no build artifacts appear in `git status`**Plans**: 1 plan (1 wave)
-- [ ] 11-01-PLAN.md — Wave 1: create-next-app scaffold (pnpm/Tailwind v4/Biome/TS/App Router, no src) + static-export next.config.ts (transpilePackages stub) + pnpm-workspace isolation + root .gitignore/.gitattributes + Go-isolation & gitignore verify + dev-server human-verify (SITE-01, SITE-02)
+- [x] 11-01-PLAN.md — Wave 1: create-next-app scaffold (pnpm/Tailwind v4/Biome/TS/App Router, no src) + static-export next.config.ts (transpilePackages stub) + pnpm-workspace isolation + root .gitignore/.gitattributes + Go-isolation & gitignore verify + dev-server human-verify (SITE-01, SITE-02)
 
 **UI hint**: yes
 
@@ -236,7 +236,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **8. Package-Manager Nudge + Behavioral Test Suite** | **v1.2.0** | **8/8** | **Complete** | **2026-06-04** |
 | **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **5/5** | **Complete** | **2026-06-04** |
 | **10. Hook-Block Protocol Compliance** | **v1.3.0** | **6/6** | **Complete (seed)** | **2026-06-05** |
-| **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **0/1** | **Planned** | **—** |
+| **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **1/1** | **Complete** | **2026-06-07** |
 | **12. Design System** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **13. Docs Content Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **14. Changelog Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |

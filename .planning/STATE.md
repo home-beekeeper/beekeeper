@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Web Presence & Documentation
-status: planning
-stopped_at: "Phase 11 (Scaffold & Toolchain Isolation) planned — 1 plan (11-01), plan-checker PASSED (0 blockers), ready to execute via /gsd-execute-phase 11."
-last_updated: "2026-06-07T20:16:46.302Z"
-last_activity: 2026-06-07 — Phase 11 planned (1 plan, verified)
+status: phase-complete
+stopped_at: "Phase 11 (Scaffold & Toolchain Isolation) COMPLETE & verified 2026-06-07 — web/ Next.js 16 static-export app scaffolded + Go-isolated (SITE-01, SITE-02 met; 4/4 SCs, SC1 human-approved). 3 feat commits + verifier PASS. NEXT: /gsd-plan-phase 12 (Design System)."
+last_updated: "2026-06-07T20:55:00.000Z"
+last_activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go isolation)
 progress:
   total_phases: 9
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 1
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 11
 ---
 
 # Project State
@@ -27,17 +27,17 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 ## Current Position
 
-Phase: 11 — Scaffold & Toolchain Isolation (planned — ready to execute)
-Plan: 11-01 (1 plan, 4 tasks, wave 1) — plan-checker PASSED
-Status: Ready to execute — /gsd-execute-phase 11
-Last activity: 2026-06-07 — Phase 11 planned (1 plan, verified)
+Phase: 11 — Scaffold & Toolchain Isolation (✅ COMPLETE & verified 2026-06-07)
+Plan: 11-01 (1 plan, 4 tasks) — all tasks done; verifier PASS 4/4 SCs
+Status: Phase complete — NEXT: /gsd-plan-phase 12 (Design System)
+Last activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go isolation)
 
 ## Phase Summary (v1.3.0)
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 10 | Hook-Block Protocol Compliance & Multi-Harness Enforcement | (seed) | ✅ Shipped 2026-06-05 (v1.3.0 seed) |
-| 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | 📋 Planned (1 plan; checker passed) |
+| 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
 | 12 | Design System | DSYS-01–04 | Not started |
 | 13 | Docs Content Pipeline | DOCS-01 | Not started |
 | 14 | Changelog Pipeline | CHG-01–03 | Not started |
@@ -76,6 +76,15 @@ Last activity: 2026-06-07 — Phase 11 planned (1 plan, verified)
 ## Accumulated Context
 
 ### Decisions
+
+Recent decisions from Phase 11 (v1.3.0 - Scaffold & Toolchain Isolation, plan 11-01):
+
+- Phase 11-01: web/ scaffolded with create-next-app@16.2.7 — App Router at web/app/ (no src/), Tailwind v4 CSS-first, Biome (no ESLint), TS `@/*`→`./*`. @16 had moved past the RESEARCH `--help` check, driving the deviations below.
+- Phase 11-01: packageManager pinned to `pnpm@11.1.3` by hand (--use-pnpm no longer writes it). corepack `prepare pnpm@11.5.2 --activate` blocked by EPERM on C:\Program Files\nodejs → A3 fallback to active 11.1.3.
+- Phase 11-01: authoritative lockfile is the REPO-ROOT `pnpm-lock.yaml` (pnpm workspace mode), NOT web/pnpm-lock.yaml as RESEARCH assumed; stale member lockfile deleted.
+- Phase 11-01: create-next-app@16 generated a web/pnpm-workspace.yaml build-approval stub; pnpm 11.1.3 ABORTS (exit 1) a non-interactive install until the gate is decided. Resolved by deleting the web file + an explicit DENY at the root (`allowBuilds: sharp: false`, `ignoredBuiltDependencies: unrs-resolver`) — no untrusted lifecycle scripts run on install.
+- Phase 11-01: root `.gitignore` web entries — `web/.source` has NO trailing slash so `git check-ignore` matches before Phase 13 creates the dir; existing `*.out` is an extension rule (not the out/ dir), so `web/out/` is still required.
+- Phase 11-01: Geist scaffold fonts kept in layout.tsx because globals.css (left untouched) references their CSS vars; design-system fonts arrive in Phase 12.
 
 Recent decisions from Phase 10 (v1.3.0 - plan 10-06):
 

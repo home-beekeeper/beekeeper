@@ -10,8 +10,8 @@
 
 ### Site Foundation (SITE)
 
-- [ ] **SITE-01**: A developer can run the `web/` app locally (`pnpm dev`) and produce a successful static build (`pnpm build` → `out/`) with no server runtime
-- [ ] **SITE-02**: The `web/` Node toolchain is isolated from the Go module (pnpm workspace; `pnpm install` never touches the Go root; `.source/` and build artifacts gitignored)
+- [x] **SITE-01**: A developer can run the `web/` app locally (`pnpm dev`) and produce a successful static build (`pnpm build` → `out/`) with no server runtime ✅ Phase 11
+- [x] **SITE-02**: The `web/` Node toolchain is isolated from the Go module (pnpm workspace; `pnpm install` never touches the Go root; `.source/` and build artifacts gitignored) ✅ Phase 11
 - [ ] **SITE-03**: The static site deploys to a static host (Cloudflare Pages) and is reachable at a public URL
 
 ### Design System (DSYS)
@@ -85,8 +85,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SITE-01 | Phase 11 — Scaffold & Toolchain Isolation | Not started |
-| SITE-02 | Phase 11 — Scaffold & Toolchain Isolation | Not started |
+| SITE-01 | Phase 11 — Scaffold & Toolchain Isolation | ✅ Complete (2026-06-07) |
+| SITE-02 | Phase 11 — Scaffold & Toolchain Isolation | ✅ Complete (2026-06-07) |
 | SITE-03 | Phase 15 — Marketing Home | Not started |
 | DSYS-01 | Phase 12 — Design System | Not started |
 | DSYS-02 | Phase 12 — Design System | Not started |
