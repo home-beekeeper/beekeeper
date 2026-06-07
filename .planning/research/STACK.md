@@ -1,7 +1,414 @@
 # Stack Research
 
+**Domain:** Go security daemon / agent runtime safety harness (v1.0.0 + v1.2.0 — archived research below)
+**Domain (this addendum):** Next.js marketing + documentation website (v1.3.0 Web Presence)
+**Researched:** 2026-06-07 (v1.3.0 addendum); 2026-05-26 / 2026-06-03 (prior Go research)
+**Confidence:** HIGH (core stack verified against official docs and npm; version numbers cross-checked via WebSearch against live npm data as of 2026-06-07)
+
+---
+
+# v1.3.0 Web Presence — Next.js Stack
+
+**Scope:** Greenfield `web/` subdirectory only. Do NOT re-litigate the Go binary stack. The `web/` app is isolated from the Go module under its own `package.json` and `pnpm-lock.yaml`.
+
+---
+
+## Recommended Stack
+
+### Core Technologies
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Next.js | 16.2.7 (current stable LTS) | App Router SSG framework, `output: 'export'` | Greenfield baseline as of June 2026. Turbopack is default (2–5x faster builds). React 19.2 built-in. Static export fully supported and actively maintained (docs updated March 2026). Node 20.9+ minimum. |
+| React | 19.2 (via `react@latest`) | UI rendering; Server Components run at build time under static export | Next.js 16 hard minimum. Pairs with R3F v9. View Transitions API and Activity components available. |
+| TypeScript | 5.x (Next.js 16 minimum: 5.1) | Type safety throughout | Mandatory for shadcn/ui and Fumadocs typings; Next.js 16 is TypeScript-first by default. `strict: true`. |
+| Tailwind CSS | 4.3.0 (latest stable, released May 8 2026) | Utility-first styling, CSS-variable-driven theming | Fumadocs v16 requires Tailwind v4 (dropped v3 support in Fumadocs v15). CSS-first config (`@theme` directive, no `tailwind.config.js`). Incremental builds 100x faster than v3. |
+| shadcn/ui | CLI-managed (no lockable package version) | Design-system component primitives | Copy-owned components — no runtime version dependency. Full Tailwind v4 + React 19 support shipped February 2025. Canonical component set matching the Beekeeper UI-SPEC. |
+
+### Documentation Layer
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| fumadocs-ui | 16.9.3 | Docs layout shell, sidebar, TOC, built-in search dialog | Always — renders the docs section. |
+| fumadocs-core | 16.9.3 | Headless search engine, content-source adapters, link utilities | Always — fumadocs-ui depends on it. |
+| fumadocs-mdx | 14.2.11 | Build-time MDX compilation + file-system source provider | Always for local `.mdx` content files. Zero runtime overhead — runs only during `next build`. |
+| @orama/orama | latest (^3.x) | Client-side full-text search, static JSON index mode | Use **static mode** for `output: 'export'`. Index JSON emitted at build time; downloaded and queried entirely in the browser. No server required. Fits this site scale (< 50 pages). |
+
+### 3D and Animation
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| three | 0.184.0 (latest; R3F peer dep `>=0.156`) | 3D scene graph, WebGL renderer | Always — the underlying engine. Pin `^0.184.0`. |
+| @react-three/fiber | 9.6.1 | React declarative renderer for Three.js | Always for hero canvas and ambient 3D accents. React peer dep `>=19 <19.3`. Must load client-side only via `next/dynamic` with `{ ssr: false }`. |
+| @react-three/drei | 10.7.7 | R3F helper components: OrbitControls, Environment, Float, Text, etc. | Use for standard 3D elements. Import per-component, not as wildcard, to keep client bundle lean. |
+| motion | 12.40.0 (ex–Framer Motion) | Ambient CSS/JS animation: scroll-triggered, hover, entrance effects | Use for non-3D ambient motion only. Tree-shakable; use `m` component + `LazyMotion` to keep contribution < 5 KB for simple animations. Do NOT use for anything Three.js handles (camera movement, particles). |
+
+### Supporting Libraries
+
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| lucide-react | 1.17.0 | Icon set (1,655 SVG icons) | Always — shadcn/ui's default icon dependency. Import per-icon for tree-shaking. |
+| next-themes | ^0.4.x | Dark/light mode theme toggle | Needed for shadcn color-scheme switching. Wraps the app in a thin `ThemeProvider` client component. |
+| clsx | ^2.x | Conditional class merging | Always — used in shadcn's `cn()` utility. |
+| tailwind-merge | ^3.x | Tailwind class conflict resolution | Always — the other half of the `cn()` utility. |
+
+### Development Tools
+
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| pnpm 9.x | Package manager | Beekeeper nudges pnpm/bun. pnpm has strongest monorepo isolation. Use Corepack: `corepack enable && corepack prepare pnpm@latest --activate`. `pnpm-workspace.yaml` at repo root isolates `web/` from the Go module. |
+| Biome | Linting + formatting (replaces ESLint + Prettier) | Single Rust binary, 10–25x faster than ESLint+Prettier. 200+ lint rules + 97%-Prettier-compatible formatter. Next.js 16 removed `next lint` — Biome fills the gap cleanly on a new project. |
+| Vitest + @testing-library/react | Unit and component tests | Vite-native, native ESM, near-instant cold starts. Use for utility functions, MDX processing helpers, component logic. |
+| Playwright | E2E / smoke tests | Validate static `out/` directory: search, nav, theme toggle, R3F canvas load across Chrome/Firefox/Safari. |
+
+---
+
+## Static Export Critical Config
+
+`output: 'export'` removes the Next.js server runtime entirely. Every page must be statically renderable at build time.
+
+```typescript
+// web/next.config.ts
+const nextConfig = {
+  output: 'export',           // emit static HTML/CSS/JS into out/
+  trailingSlash: true,        // required for most static hosts (Nginx, CF Pages, GitHub Pages)
+  images: {
+    unoptimized: true,        // skip built-in optimizer (needs server); serve images as-is
+    // Alternative: custom loader pointing to Cloudinary/imgix for responsive images
+  },
+  transpilePackages: [
+    'three',
+    '@react-three/fiber',
+    '@react-three/drei',
+  ],
+  // Turbopack is the default bundler in Next.js 16 — no extra config needed
+};
+
+export default nextConfig;
+```
+
+`transpilePackages` is required. Three.js, R3F, and drei ship ESM-only modules that Next.js/Turbopack must transform during the Node.js build. Without this, you get import errors at build time.
+
+`images.unoptimized: true` is the zero-friction path for a static export. A marketing/docs site with a handful of images is fine with raw serving. If responsive images or CDN optimization are later needed, swap to a `loaderFile` pointing at Cloudinary/imgix.
+
+### What Static Export Cannot Do — Hard Constraints
+
+| Unsupported Feature | Impact on this Site | Mitigation |
+|---------------------|--------------------|----|
+| Server Actions | None needed (no forms with server mutations) | Client-side logic only |
+| Dynamic routes without `generateStaticParams` | Changelog `[version]` pages need it | Enumerate versions explicitly at build time — straightforward |
+| Cookies / Headers APIs at runtime | None needed (no auth, no personalization) | Not applicable |
+| Rewrites / Redirects in `next.config` | Cannot use config-level redirects | Handle at host: Nginx `rewrite`, CF Pages `_redirects` |
+| ISR / `revalidate` | None needed (content is MDX, rebuild on change) | CI triggers rebuild on content push |
+| Server-side search API route | Fumadocs default uses a `GET /api/search` API route | Use Orama **static mode** — index pre-built at build time |
+| Default `next/image` optimization | Requires a running server | Use `unoptimized: true` or a CDN custom loader |
+| `middleware.ts` (deprecated) / `proxy.ts` | Not needed for a docs/marketing site | Not applicable |
+
+---
+
+## Integration Points
+
+### shadcn + Fumadocs + Tailwind v4 Coexistence
+
+This is the most error-prone part of the setup. Follow this exact sequence.
+
+**Step 1 — Initialize Next.js and Tailwind v4:**
+
+```bash
+pnpm dlx create-next-app@latest . --typescript --tailwind --app --use-pnpm
+```
+
+`create-next-app` in Next.js 16 generates a Tailwind v4 config by default (CSS-first, no `tailwind.config.js`).
+
+**Step 2 — Run `shadcn init`:**
+
+```bash
+pnpm dlx shadcn@latest init
+```
+
+The CLI auto-detects Tailwind v4 and writes CSS variables using the `@theme` syntax into `globals.css`.
+
+**Step 3 — Install Fumadocs:**
+
+```bash
+pnpm add fumadocs-ui fumadocs-core fumadocs-mdx
+```
+
+**Step 4 — Set the CSS import order in `app/globals.css`:**
+
+```css
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/shadcn.css';    /* maps all --color-fd-* → shadcn color tokens */
+@import 'fumadocs-ui/css/preset.css';    /* Fumadocs component base styles */
+
+/* Tailwind v4 must scan Fumadocs source for its own utility usage */
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+/* Your shadcn @theme block goes here (generated by shadcn init) */
+@theme { ... }
+```
+
+**Why this order matters:** `fumadocs-ui/css/shadcn.css` remaps all `--color-fd-*` variables to read from shadcn's existing CSS variables (`--background`, `--foreground`, `--primary`, etc.). One source of truth: the shadcn theme. Fumadocs styles automatically adopt your colors. If you reverse the order (Fumadocs preset before shadcn mapping), you get orphaned variables and broken Fumadocs colors.
+
+**CSS variable conflict guard (optional):** If Fumadocs component colors bleed into the marketing pages (or vice versa), add a prefix to Fumadocs variables. This is rarely needed for a unified single-domain site because `shadcn.css` is explicitly designed for coexistence, but it is the escape hatch if visual conflicts appear.
+
+### R3F Under `output: 'export'`
+
+Three.js and R3F use browser APIs (`WebGLRenderingContext`, `window`, `requestAnimationFrame`) that crash in Node.js during `next build`. The mandatory pattern:
+
+```typescript
+// components/hero/Hero3D.tsx — never import R3F at module scope
+import dynamic from 'next/dynamic';
+
+const HeroCanvas = dynamic(
+  () => import('./HeroCanvasInner'),
+  {
+    ssr: false,         // CRITICAL — prevents Node-side execution during static build
+    loading: () => (
+      <div className="hero-placeholder aspect-video w-full" aria-hidden="true" />
+    ),
+  }
+);
+
+export default function Hero3D() {
+  return <HeroCanvas />;
+}
+```
+
+```typescript
+// components/hero/HeroCanvasInner.tsx — R3F lives entirely in this file
+'use client';
+
+import { Canvas } from '@react-three/fiber';
+import { Environment, Float } from '@react-three/drei';
+
+export default function HeroCanvasInner() {
+  return (
+    <Canvas camera={{ position: [0, 0, 5], fov: 50 }}>
+      <Environment preset="city" />
+      <Float speed={1.5} rotationIntensity={0.4}>
+        {/* your hive / agent-mediation scene geometry */}
+      </Float>
+    </Canvas>
+  );
+}
+```
+
+Do NOT import R3F in Server Components. Do NOT use it in any file without the `'use client'` directive. The `dynamic(..., { ssr: false })` boundary is the only safe integration point.
+
+### Fumadocs Static Search (Orama Static Mode)
+
+Fumadocs' default search implementation uses a `GET /api/search` Route Handler that requires a running server — incompatible with `output: 'export'`. Switch to static mode:
+
+**Route Handler (generates a static JSON index at build time):**
+
+```typescript
+// app/api/search/route.ts
+import { getDocsSearchIndex } from 'fumadocs-core/search/server';
+import { source } from '@/lib/source';
+
+export const dynamic = 'force-static';   // emit as a static file in out/
+
+export async function GET() {
+  const index = await getDocsSearchIndex(source.getPages());
+  return Response.json(index);
+}
+```
+
+**RootProvider configuration (tells the search dialog to use the static JSON):**
+
+```typescript
+// app/layout.tsx
+import { RootProvider } from 'fumadocs-ui/provider';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <RootProvider search={{ type: 'static' }}>
+          {children}
+        </RootProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+**Size consideration:** For this site (< 50 pages: getting started, install, config, security posture, CLI reference, changelog pages), the Orama static index will be well under 500 KB. Entirely acceptable. If the docs grow past ~200 pages, consider Orama Cloud or Algolia.
+
+---
+
+## Installation
+
+```bash
+# In the web/ subdirectory — isolated from Go module root
+cd web
+
+# 1. Bootstrap Next.js 16 with App Router + TypeScript + Tailwind v4
+pnpm dlx create-next-app@latest . --typescript --tailwind --app --use-pnpm
+
+# 2. Remove default ESLint (Biome replaces it; Next.js 16 removed next lint)
+pnpm remove eslint eslint-config-next
+
+# 3. Add Biome for linting + formatting
+pnpm add -D @biomejs/biome
+pnpm biome init
+
+# 4. shadcn/ui — auto-detects Tailwind v4
+pnpm dlx shadcn@latest init
+
+# 5. Fumadocs
+pnpm add fumadocs-ui fumadocs-core fumadocs-mdx
+
+# 6. Fumadocs Orama static search
+pnpm add @orama/orama
+
+# 7. Three.js + R3F ecosystem
+pnpm add three @react-three/fiber @react-three/drei
+
+# 8. Animation
+pnpm add motion
+
+# 9. Supporting utilities (may already be pulled in by shadcn)
+pnpm add next-themes clsx tailwind-merge lucide-react
+
+# 10. Testing
+pnpm add -D vitest @vitejs/plugin-react @testing-library/react @testing-library/dom
+pnpm add -D @playwright/test
+```
+
+---
+
+## Repository Layout
+
+```
+beekeeper/                   ← Go module root — untouched
+  go.mod
+  pnpm-workspace.yaml        ← add 'web' entry: packages: ['web']
+  web/                       ← isolated Node app
+    package.json             ← "packageManager": "pnpm@9.x.x"
+    pnpm-lock.yaml
+    next.config.ts
+    biome.json
+    tsconfig.json
+    public/                  ← favicon.ico, og-image.png, etc.
+    app/
+      globals.css            ← @import order matters (see Integration Points)
+      layout.tsx             ← RootProvider (Fumadocs) + ThemeProvider (next-themes)
+      page.tsx               ← marketing home (Three.js hero via dynamic import)
+      docs/
+        layout.tsx           ← Fumadocs DocsLayout + Sidebar
+        [[...slug]]/
+          page.tsx           ← dynamic MDX page rendering
+      changelog/
+        [version]/
+          page.tsx           ← generateStaticParams enumerates versions
+      api/
+        search/
+          route.ts           ← force-static Orama index (emitted as JSON)
+    components/
+      hero/
+        Hero3D.tsx           ← dynamic(..., { ssr: false }) boundary
+        HeroCanvasInner.tsx  ← 'use client' + Canvas + R3F scene
+    content/
+      docs/                  ← *.mdx (getting-started, install, config, security, CLI)
+      changelog/             ← *.mdx per version (v1.0.0.mdx, v1.2.0.mdx, ...)
+    lib/
+      source.ts              ← fumadocs-mdx source definition
+```
+
+**Isolation rule:** `web/` has its own `package.json` and `pnpm-lock.yaml`. The Go module at repo root (`go.mod`) is independent. Never hoist Node packages to the repo root — Go tooling must not pick up Node artifacts.
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | Why Not |
+|-------------|-------------|---------|
+| Next.js 16 `output: 'export'` | Astro | Excellent for static docs sites but milestone spec locks Next.js. Astro would be a valid greenfield alternative. |
+| Fumadocs | Nextra | Nextra 3 supports static export and shadcn. Fumadocs has better Tailwind v4 native integration and more active maintenance cadence in 2025–2026. Nextra 2 is effectively unmaintained. |
+| Orama static mode | Algolia DocSearch | Algolia requires a server-side crawler + API key even for static sites. Free tier requires open-source approval process. Orama is self-hosted, zero API key, zero rate limits. |
+| Orama static mode | FlexSearch (older Fumadocs option) | FlexSearch is the older Fumadocs search integration; Orama is the current default and better maintained. |
+| motion (ex–Framer Motion) | GSAP | GSAP's core is MIT but many plugins (ScrollTrigger, etc.) require a paid license for commercial use. Motion is Apache-2.0, React-native, tree-shakable. Sufficient for ambient accent animations. |
+| @react-three/fiber + drei | Vanilla Three.js | R3F's declarative JSX model integrates cleanly with React lifecycle. Vanilla Three.js in React leads to manual `useRef` juggling and imperative teardown bugs. |
+| pnpm | npm / yarn / bun | Beekeeper nudges pnpm/bun. pnpm has strongest monorepo isolation story and fastest install for mixed-language repos. |
+| Biome | ESLint + Prettier | Next.js 16 removed `next lint`. Biome is a clean single-tool default for a new greenfield web-only directory with no legacy ESLint config. |
+| Vitest | Jest | Jest requires extra Babel config for ESM/TypeScript in Next.js 16. Vitest is native ESM with near-instant cold starts. |
+
+---
+
+## What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `next-mdx-remote` | Designed for runtime / remote MDX compilation; adds server dependency. Not needed when all MDX is local. | `fumadocs-mdx` (build-time, zero runtime overhead) |
+| `@mdx-js/react` (direct) | fumadocs-mdx owns and configures the MDX pipeline. Adding `@mdx-js/react` separately creates version conflicts and duplicate processing. | Let fumadocs-mdx manage MDX entirely |
+| `framer-motion` (legacy package name) | Rebranded to `motion` in late 2024. The `framer-motion` package still resolves but is the deprecated alias. | `motion` |
+| `react-spring` | More complex physics API for needs that ambient motion handles simply. Only justified for physics-simulation animations, which this site does not need. | `motion` |
+| `gsap` | Commercial license required for ScrollTrigger and other essential plugins. Overkill for ambient accent animations. | `motion` for CSS-layer accents; R3F for 3D motion |
+| `@vercel/analytics` / `@vercel/speed-insights` | Vendor-locked to Vercel deployment. Beekeeper is a privacy-first security tool — shipping tracking scripts would undermine trust. | No analytics by default; self-hosted Plausible if ever needed |
+| `react-query` / `@tanstack/react-query` | No dynamic data fetching at runtime. All content is static MDX built at compile time. | Static fetch in Server Components at build time |
+| `axios` | No HTTP calls at runtime for this site. | Native `fetch` if any client-side data fetch becomes necessary |
+| `i18n` libraries (next-intl, etc.) | Docs are English-only for v1.3.0. i18n in static export adds significant route complexity (locale-prefixed paths, multiple Orama indexes). | English only; revisit if multi-language becomes a goal |
+| Storybook | No shared design system to document across teams. shadcn components are copy-owned per-project. Adds substantial dev overhead for marginal gain. | Playwright visual tests cover regressions |
+| `redux` / `zustand` / `jotai` | No shared client state needed. Theme toggle and search dialog are the only interactive states, handled by `next-themes` and Fumadocs internals respectively. | React built-ins or Fumadocs state |
+| `@react-three/fiber@^10` + `@react-three/drei@^11` | Both are alpha as of June 2026. R3F v10 adds WebGPU/TSL support that is not needed for the hero. Alpha APIs have breaking changes between minor versions. | R3F 9.6.1 + Drei 10.7.7 (stable) |
+| `react-icons` | Large bundle; includes hundreds of icon packs. shadcn/ui uses Lucide — stay consistent. | `lucide-react` |
+| `styled-components` or `emotion` | CSS-in-JS at runtime conflicts with Tailwind v4's CSS-variable model. Performance overhead on a static site. | Tailwind CSS utility classes + CSS variables |
+| Server-only Orama (`fumadocs-core/search/server` without `force-static`) | Requires a running Node.js server. Static export has no server. | Orama static mode with `force-static` Route Handler |
+
+---
+
+## Version Compatibility Matrix
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `next@^16.2.7` | `react@^19.2`, `react-dom@^19.2` | Next.js 16 requires React 19 minimum. Node 20.9+ minimum. |
+| `next@^16.2.7` | `typescript@>=5.1` | Hard minimum enforced at build time. |
+| `@react-three/fiber@^9.6.1` | `three@>=0.156`, `react@>=19 <19.3` | Use `three@^0.184.0`. R3F is loose on three.js minor versions; pin a specific minor to avoid surprise API breaks. |
+| `@react-three/drei@^10.7.7` | `@react-three/fiber@^9.x` | Drei 10 aligns with R3F 9. Drei 11 (alpha) aligns with R3F 10 (alpha) — do NOT mix. |
+| `fumadocs-ui@^16.9.3` | `tailwindcss@^4.x` only | Fumadocs v16 dropped Tailwind v3. Cannot mix. Node 22+ required. |
+| `fumadocs-mdx@^14.2.11` | `node@>=22` | Fumadocs requires Node 22 minimum. |
+| `motion@^12.x` | `react@^19.x` | Motion 12.x tested against React 19 / Next.js 16. |
+| `shadcn@latest CLI` | `tailwindcss@^4.x` | CLI auto-detects v4, generates `@theme` CSS-variable syntax. Do NOT create a `tailwind.config.js` — v4 is CSS-first. |
+| `lucide-react@^1.17.0` | `react@^19.x` | No known conflicts. |
+| `next-themes@^0.4.x` | `next@^16.x` | Uses a client component wrapper; compatible with App Router. |
+
+---
+
+## Sources
+
+- [Next.js Static Exports Guide](https://nextjs.org/docs/app/guides/static-exports) — verified unsupported features list, config options; updated March 2026. **HIGH confidence.**
+- [Next.js 16 Release Blog](https://nextjs.org/blog/next-16) — stable release October 2025, Turbopack default, React 19.2, Node 20.9+ minimum. **HIGH confidence.**
+- [Next.js 16.2 Blog](https://nextjs.org/blog/next-16-2) — 16.2 stable adapters API, current version 16.2.7. **HIGH confidence.**
+- [Fumadocs npm (fumadocs-ui)](https://www.npmjs.com/package/fumadocs-ui) — v16.9.3 published 9 days ago (June 2026). **HIGH confidence.**
+- [Fumadocs npm (fumadocs-core)](https://www.npmjs.com/package/fumadocs-core) — v16.9.3 confirmed. **HIGH confidence.**
+- [Fumadocs npm (fumadocs-mdx)](https://www.npmjs.com/package/fumadocs-mdx) — v14.2.11 confirmed. **HIGH confidence.**
+- [Fumadocs Orama Search Docs](https://www.fumadocs.dev/docs/search/orama) — static mode for `output: 'export'` confirmed. **HIGH confidence.**
+- [Fumadocs Theme Docs](https://www.fumadocs.dev/docs/ui/theme) — `shadcn.css` + `preset.css` import order verified; Tailwind v4 `@source` scan requirement confirmed. **HIGH confidence.**
+- [shadcn/ui Tailwind v4 Docs](https://ui.shadcn.com/docs/tailwind-v4) — Tailwind v4 + React 19 full support confirmed February 2025; OKLCH colors. **HIGH confidence.**
+- [shadcn/ui Next.js Docs](https://ui.shadcn.com/docs/installation/next) — `pnpm dlx shadcn@latest init` confirmed. **HIGH confidence.**
+- [R3F GitHub package.json](https://github.com/pmndrs/react-three-fiber) — peer deps `three@>=0.156`, `react@>=19 <19.3`. **HIGH confidence.**
+- [R3F Installation Docs](https://r3f.docs.pmnd.rs/getting-started/installation) — v9.6.1 latest, `transpilePackages` requirement. **HIGH confidence.**
+- [Drei npm — version 10.7.7](https://www.npmjs.com/package/@react-three/drei) — confirmed latest stable via WebSearch (npm returned 403 on direct fetch). **MEDIUM confidence.**
+- [three.js npm — 0.184.0](https://www.npmjs.com/package/three) — confirmed latest via WebSearch cross-check. **MEDIUM confidence.**
+- [motion npm — 12.40.0](https://www.npmjs.com/package/motion) — Framer Motion renamed to `motion` late 2024; v12.40.0 latest. **MEDIUM confidence.**
+- [Tailwind CSS v4.0 Blog](https://tailwindcss.com/blog/tailwindcss-v4) — stable release January 22, 2025. **HIGH confidence.**
+- [Tailwind CSS releases](https://github.com/tailwindlabs/tailwindcss/releases) — v4.3.0 released May 8, 2026. **HIGH confidence.**
+- [lucide-react npm — 1.17.0](https://www.npmjs.com/package/lucide-react) — confirmed via WebSearch. **MEDIUM confidence.**
+- [Fumadocs Tailwind v4 Discussion](https://github.com/fuma-nama/fumadocs/discussions/1338) — Tailwind v4 + shadcn monorepo coexistence patterns. **MEDIUM confidence.**
+
+---
+
+*v1.3.0 web stack research: 2026-06-07*
+
+---
+---
+
+# Prior Research: Go Binary Stack (v1.0.0 and v1.2.0 — archived)
+
 **Domain:** Go security daemon / agent runtime safety harness
-**Researched:** 2026-05-26
+**Researched:** 2026-05-26 (v1.0.0), 2026-06-03 (v1.2.0 addendum)
 **Confidence:** MEDIUM-HIGH (versions verified via web; some API details LOW due to doc access limits)
 
 ---
@@ -349,7 +756,7 @@ Bumblebee emits three record types: `package`, `finding`, `scan_summary`.
   "catalog_id": "...",
   "catalog_name": "...",
   "evidence": "...",
-  // ...plus all package base fields
+  "...": "plus all package base fields"
 }
 ```
 
@@ -412,10 +819,6 @@ Beekeeper can download these directly in the catalog sync daemon without invokin
 
 `github.com/google/osv-scanner/v2` is importable as a Go library. For Beekeeper's policy engine hot path, import the library rather than shelling out to the CLI. The library exposes the database query logic. Shelling out to `osv-scanner` is acceptable for the `beekeeper scan` command where latency is not critical; avoid it for per-tool-call evaluation.
 
-### File Format Inside all.zip
-
-Each ZIP contains individual vulnerability JSON files per OSV advisory ID, following the OSV schema (https://ossf.github.io/osv-schema/). Each file is one JSON object with fields: `id`, `aliases`, `related`, `published`, `modified`, `affected` (with `package.ecosystem`, `package.name`, `ranges`, `versions`), `severity`, `details`.
-
 ---
 
 ## Socket Public API
@@ -434,31 +837,9 @@ Each ZIP contains individual vulnerability JSON files per OSV advisory ID, follo
 
 **Free tier:** Socket is free for open-source use. The public website (socket.dev) shows package scores without auth. The REST API requires a token but open-source projects get free quota. Each endpoint call consumes 1 quota unit. The public MCP server at `https://mcp.socket.dev/` requires no API key at all — explore this as a zero-auth catalog source.
 
-### Supported Ecosystems (REST API)
-
-npm and PyPI have full behavioral analysis. Go, Maven, RubyGems, Cargo, NuGet have vulnerability + supply-chain coverage (less deep than npm/PyPI). The CycloneDX SBOM export endpoint supports: `crates`, `go`, `maven`, `npm`, `nuget`, `pypi`, `rubygems`.
-
-### Recommended Integration Pattern
-
-```go
-// Beekeeper catalog lookup pattern
-type SocketScoreRequest struct {
-    PURL string `json:"purl"`
-}
-
-// Use PURL endpoint for multi-ecosystem:
-// POST https://api.socket.dev/v0/purl
-// Body: {"purl": "pkg:npm/lodash@4.17.20"}
-// Auth: Bearer <token>
-```
-
-**Corroboration note:** Single Socket hit = warn only (Beekeeper's corroboration model). Two independent sources (e.g., Socket + Bumblebee) = enforce. Do not over-weight Socket results.
-
-**Rate limit mitigation:** Cache Socket API results per package+version in `~/.beekeeper/catalogs/socket/`. TTL 24h. On cache miss, query live API. This keeps daily API calls to the delta of new packages seen, not all packages.
-
 ---
 
-## Alternatives Considered
+## Alternatives Considered (Go stack)
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
@@ -471,7 +852,7 @@ type SocketScoreRequest struct {
 
 ---
 
-## What NOT to Use
+## What NOT to Use (Go stack)
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
@@ -488,38 +869,7 @@ type SocketScoreRequest struct {
 
 ---
 
-## Stack Patterns by Variant
-
-**For the hook handler (`beekeeper check`, sub-100ms, short-lived):**
-- No Bubble Tea
-- No HTTP client calls on the critical path (use cached catalog)
-- `encoding/json` for stdin parsing — do not allocate; decode into pre-allocated structs
-- Exit 0 (allow) or exit 1 (block) — no framework needed
-
-**For the gateway daemon (long-lived, `net/http`):**
-- `net/http` with `CrossOriginProtection` middleware
-- Stateless per-request design (July 2026 MCP spec)
-- Forward `Mcp-Method` and `Mcp-Name` headers; validate before forwarding
-- Per-session token via `Authorization: Bearer` even on localhost
-
-**For the Sentry daemon (Linux, privileged):**
-- `cilium/ebpf` for process + network event streams via kprobe/tracepoint
-- `golang.org/x/sys/unix` for fanotify file access events (not cilium/ebpf — fanotify is a syscall, not eBPF)
-- Embed pre-compiled eBPF bytecode via `bpf2go` + `go:generate`
-- Minimum kernel 5.15 for full feature set; degrade gracefully on older kernels
-
-**For the TUI dashboard (`beekeeper dashboard`, long-lived):**
-- `charm.land/bubbletea/v2` with resize-poll goroutine (Windows workaround)
-- `charm.land/lipgloss/v2` for styling
-- Wrap `teatest` in internal package for snapshot tests
-
-**For Windows Sentry (ETW, no eBPF):**
-- `golang.org/x/sys/windows` for ETW provider subscription
-- No `cilium/ebpf` — ETW is a separate subsystem
-
----
-
-## Version Compatibility
+## Version Compatibility (Go stack)
 
 | Package | Compatible With | Notes |
 |---------|----------------|-------|
@@ -532,28 +882,7 @@ type SocketScoreRequest struct {
 
 ---
 
-## Installation
-
-```bash
-# Core binary deps (go.mod)
-go get github.com/fsnotify/fsnotify@v1.10.1
-go get charm.land/bubbletea/v2@v2.0.6
-go get charm.land/lipgloss/v2
-go get github.com/charmbracelet/bubbles  # verify v2 compat tag
-go get github.com/cilium/ebpf@v0.21.0    # Linux Sentry only; build-tag guarded
-go get github.com/google/osv-scanner/v2@v2.3.8
-
-# eBPF toolchain (Linux CI only)
-go install github.com/cilium/ebpf/cmd/bpf2go@latest
-
-# Release toolchain (CI only, not in go.mod)
-go install github.com/sigstore/cosign/v2/cmd/cosign@latest
-# GoReleaser via goreleaser-action in GitHub Actions
-```
-
----
-
-## Sources
+## Go Stack Sources
 
 - [go.dev/doc/go1.25](https://go.dev/doc/go1.25) — Go 1.25 release notes (HIGH confidence)
 - [pkg.go.dev/github.com/fsnotify/fsnotify](https://pkg.go.dev/github.com/fsnotify/fsnotify) — v1.10.1 docs, Windows caveats (HIGH confidence)
@@ -566,13 +895,6 @@ go install github.com/sigstore/cosign/v2/cmd/cosign@latest
 - [github.com/slsa-framework/slsa-github-generator](https://github.com/slsa-framework/slsa-github-generator) — v2.1.0 Go builder README (HIGH confidence)
 - [goreleaser.com/blog/cosign-v3/](https://goreleaser.com/blog/cosign-v3/) — cosign v3 bundle migration (HIGH confidence)
 - [man7.org/linux/man-pages/man7/fanotify.7.html](https://www.man7.org/linux/man-pages/man7/fanotify.7.html) — fanotify kernel version matrix (HIGH confidence)
-- [github.com/golang/go/issues/71497](https://github.com/golang/go/issues/71497) — encoding/json/v2 adoption timeline (MEDIUM confidence)
-
----
-*Stack research for: Beekeeper — Go-based agent runtime safety harness*
-*Researched: 2026-05-26*
-
----
 
 ---
 
@@ -639,100 +961,35 @@ func normalize(v string) string {
     }
     return "v" + v
 }
-
-// Example floor check:
-func meetsFloor(version, floor string) bool {
-    return semver.Compare(normalize(version), normalize(floor)) >= 0
-}
 ```
 
-Is `golang.org/x/mod` already in the module graph? No. A check of the current `go.sum` confirms it is not a transitive dependency of any existing direct dep (`cilium/ebpf`, `cobra`, `bubbletea` — none pull it). Must be added explicitly.
+Why `golang.org/x/mod/semver` over a hand-written comparator: The drift-detection path must handle pre-release versions like `pnpm 12.0.0-rc.1`. A hand-written integer-tuple comparator handles `>=` correctly for stable versions but misorders pre-releases. `golang.org/x/mod/semver` handles pre-release ordering per spec. Zero transitive deps.
 
-Why `golang.org/x/mod/semver` over a hand-written comparator: The drift-detection path (PRD §7.1) must handle pre-release versions like `pnpm 12.0.0-rc.1`. A hand-written integer-tuple comparator handles `>=` correctly for stable versions but misorders pre-releases (RC sorts above stable in naive comparators). `golang.org/x/mod/semver` handles pre-release ordering per spec. It has zero transitive deps and is Go-team maintained.
+#### TOML / YAML Parsing for Nudge Detection
 
-Why not `Masterminds/semver/v3`: Heavier; `x/mod/semver` is sufficient and already vendored in the Go toolchain itself.
-
-#### TOML Parsing for `bunfig.toml` (`detect.go`)
-
-**Do not add a TOML library.** Use a hand-written line scanner.
-
-The nudge module needs exactly one value from `bunfig.toml`:
-
-```toml
-[install.security]
-scanner = "@socketsecurity/bun-security-scanner"
-```
-
-A 20-line scanner that:
-1. Reads the file line by line
-2. Tracks whether it is inside the `[install.security]` section
-3. Returns `true` when it finds `scanner = "@socketsecurity/bun-security-scanner"`
-
-This is simpler, has zero audit surface, and is easier to fuzz than a full TOML decode. `BurntSushi/toml` and `pelletier/go-toml/v2` are both correct choices for general TOML work, but that is not what this problem is.
-
-#### YAML Line Scanning for `pnpm-workspace.yaml` (`detect.go`)
-
-**Do not add a YAML library.** Same rationale. The two keys needed (`minimumReleaseAge:` and `blockExoticSubdeps:`) are simple scalars at the document root. `strings.HasPrefix` + `strings.TrimSpace` on each line is sufficient and fuzzable.
-
-Note: the check from PRD §6.3 is advisory-only (log a warning, do not block) — the parsing failure path is already specified as "log warning, treat as if defaults are in effect." A full YAML parse is not needed for this semantics.
+**Do not add a TOML or YAML library.** The nudge module needs exactly one scalar from `bunfig.toml` and two scalars from `pnpm-workspace.yaml`. Hand-written line scanners (20 lines each) are simpler, have zero audit surface, and are easier to fuzz than a full parser dependency.
 
 ---
 
-## PRD Version Claims — Verification Results
+## PRD Version Claims — Verification Results (v1.2.0)
 
 ### pnpm >= 11.0 requires Node >= 22
 
-**Claim status: CONFIRMED AND PRECISELY CORRECT.**
+**CONFIRMED.** pnpm 11.0.0 released 2026-04-28. Drops Node 18/19/20/21. Latest: **pnpm 11.5.1** (2026-06-02). `versionFloors.pnpm: "11.0.0"` is correct.
 
-- pnpm 11.0.0 released 2026-04-28. Drops support for Node 18, 19, 20, 21. Node 22 is the hard minimum.
-- pnpm is now pure ESM; the Node >=22 requirement is structural (not a soft recommendation).
-- Latest as of 2026-06-03: **pnpm 11.5.1** (released 2026-06-02).
-- Sources: [pnpm GitHub releases](https://github.com/pnpm/pnpm/releases), [pnpm 11.0 blog](https://pnpm.io/blog/releases/11.0)
-
-**PRD `versionFloors.pnpm: "11.0.0"` is correct.** Recommend updated user-facing message to cite "latest 11.x (currently 11.5.1)" rather than just the floor.
-
-**One PRD inaccuracy to fix:** PRD §6.3 says "if explicitly set to a value less than 60, treat as a configuration weakness." The pnpm default for `minimumReleaseAge` is **1440 minutes** (24 hours), not 60 minutes. The "60" threshold in the PRD is an arbitrary conservatism. The Beekeeper warning message in `detect.go` should state "pnpm default is 1440 minutes" not "recommended minimum is 60 minutes" — otherwise users with `minimumReleaseAge: 120` would get a spurious warning. Fix the threshold constant in the implementation or document the deliberate conservatism explicitly.
-
-**`blockExoticSubdeps` and `minimumReleaseAge` are in `pnpm-workspace.yaml` only** — not in `.npmrc`. The scanner must look in the right file. Source: [pnpm settings docs](https://pnpm.io/settings).
+**PRD inaccuracy to fix:** PRD §6.3 says threshold "less than 60 minutes" is a configuration weakness. The pnpm default for `minimumReleaseAge` is **1440 minutes** (24 hours). Fix the threshold constant or document the deliberate conservatism explicitly.
 
 ### bun >= 1.3, Security Scanner API stable
 
-**Claim status: CONFIRMED.**
-
-- Bun 1.3.0 released **2025-10-10**. Security Scanner API shipped in 1.3.0.
-- Latest as of 2026-06-03: **bun 1.3.14** (May 2026).
-- The API is stable and in active production use (Socket integration publicly deployed).
-- Sources: [bun 1.3 blog](https://bun.com/blog/bun-v1.3), [bun releases](https://github.com/oven-sh/bun/releases)
-
-**PRD `versionFloors.bun: "1.3.0"` is correct.**
+**CONFIRMED.** Bun 1.3.0 released 2025-10-10. Security Scanner API in 1.3.0. Latest: **bun 1.3.14** (May 2026). `versionFloors.bun: "1.3.0"` is correct.
 
 ### `@socketsecurity/bun-security-scanner` package name
 
-**Claim status: CONFIRMED — exact name, publisher, and config key all verified.**
-
-| Attribute | Value |
-|-----------|-------|
-| npm package name | `@socketsecurity/bun-security-scanner` |
-| Publisher / org | Socket Security (GitHub org: `SocketDev`) |
-| Install command | `bun add -d @socketsecurity/bun-security-scanner` |
-| bunfig.toml section | `[install.security]` |
-| bunfig.toml key | `scanner = "@socketsecurity/bun-security-scanner"` |
-| Auth (optional) | `SOCKET_API_KEY` env var; free mode without it |
-
-The PRD's self-defense note (§12) is accurate: recommend the package by its full name and publisher in all user-facing messages.
-
-Sources: [SocketDev/bun-security-scanner GitHub](https://github.com/SocketDev/bun-security-scanner), [Socket integration blog](https://socket.dev/blog/socket-integrates-with-bun-1-3-security-scanner-api), [bun Security Scanner API docs](https://bun.com/docs/pm/security-scanner-api).
+**CONFIRMED.** Exact npm package name `@socketsecurity/bun-security-scanner`, publisher SocketDev. `bunfig.toml` section `[install.security]`, key `scanner = "@socketsecurity/bun-security-scanner"`.
 
 ### Node.js 22 "LTS" status
 
-**Claim status: PARTIALLY ACCURATE — requires clarification in user-facing messages.**
-
-- Node 22 is in **Maintenance LTS** as of 2025-10-21 (Active LTS ended). EOL: 2027-04-30. Still supported; not the recommended new-project version.
-- **Node 24** ("Krypton") is the current **Active LTS** (entered 2025-05-06, EOL 2028-04-30).
-- pnpm 11 requires Node >= 22, so the floor in the PRD is correct. But messages should say "Node 22 or later (Node 24 is the current Active LTS)" — not just "Node 22 LTS."
-- Source: [Node.js releases page](https://nodejs.org/en/about/previous-releases), [endoflife.date/nodejs](https://endoflife.date/nodejs)
-
-**PRD `versionFloors.node: "22.0.0"` is correct for the pnpm compatibility check.** The UX copy needs the clarification above.
+**PARTIALLY ACCURATE.** Node 22 is in **Maintenance LTS** as of 2025-10-21. Node 24 ("Krypton") is current **Active LTS**. Messages should say "Node 22 or later (Node 24 is the current Active LTS)."
 
 ---
 
@@ -741,43 +998,23 @@ Sources: [SocketDev/bun-security-scanner GitHub](https://github.com/SocketDev/bu
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
 | `BurntSushi/toml` | One key from `bunfig.toml` does not justify a full parser | Hand-written 20-line line scanner |
-| `pelletier/go-toml/v2` | Same reason | Hand-written line scanner |
 | `gopkg.in/yaml.v3` | Two scalar keys from `pnpm-workspace.yaml` do not justify a YAML parser | Hand-written `strings.HasPrefix` line scan |
 | `Masterminds/semver/v3` | Heavier than needed; `x/mod/semver` is Go-team maintained with zero transitive deps | `golang.org/x/mod/semver` |
-| Any HTTP client for drift check | PRD §7.1 drift check uses `pnpm view pnpm version` subprocess, not direct registry API | `os/exec.CommandContext` |
-| External cache library (ristretto, etc.) | 60s TTL single-value cache is 5 lines of `sync.Mutex` + `time.Time` | stdlib `sync` + `time` |
-
----
-
-## v1.2.0 Installation Delta
-
-```bash
-# The only new dep for this entire milestone:
-go get golang.org/x/mod@latest
-```
-
----
-
-## Yarn `npmMinimalAge` (deferred)
-
-Yarn Berry has an `npmMinimalAge` config key analogous to pnpm's `minimumReleaseAge`. Explicitly out of scope for v1.2.0 per PRD §2.2. No research required. Flag for v1.3.0+ when Yarn nudge patterns are considered.
+| External cache library | 60s TTL single-value cache is 5 lines of `sync.Mutex` + `time.Time` | stdlib `sync` + `time` |
 
 ---
 
 ## v1.2.0 Sources
 
-- [pnpm 11.0 blog](https://pnpm.io/blog/releases/11.0) — Node >=22 requirement, `minimumReleaseAge` default 1440, `blockExoticSubdeps` default true. HIGH confidence.
-- [pnpm settings docs](https://pnpm.io/settings) — Both settings in `pnpm-workspace.yaml` only (not `.npmrc`). HIGH confidence.
-- [pnpm GitHub releases](https://github.com/pnpm/pnpm/releases) — Latest 11.5.1 (2026-06-02). HIGH confidence.
-- [Socket blog on pnpm 11](https://socket.dev/blog/pnpm-11-adds-new-supply-chain-protection-defaults) — Independent confirmation of defaults. MEDIUM confidence (secondary source).
+- [pnpm 11.0 blog](https://pnpm.io/blog/releases/11.0) — Node >=22 requirement, `minimumReleaseAge` default 1440. HIGH confidence.
+- [pnpm settings docs](https://pnpm.io/settings) — Both settings in `pnpm-workspace.yaml` only. HIGH confidence.
 - [bun 1.3 blog](https://bun.com/blog/bun-v1.3) — Bun 1.3.0 released 2025-10-10; Security Scanner API in 1.3.0. HIGH confidence.
-- [bun GitHub releases](https://github.com/oven-sh/bun/releases) — Latest 1.3.14 (May 2026). HIGH confidence.
-- [SocketDev/bun-security-scanner GitHub](https://github.com/SocketDev/bun-security-scanner) — Package name `@socketsecurity/bun-security-scanner`, publisher SocketDev. HIGH confidence.
-- [Socket bun integration blog](https://socket.dev/blog/socket-integrates-with-bun-1-3-security-scanner-api) — bunfig.toml key `[install.security] scanner = "..."`. HIGH confidence.
-- [bun Security Scanner API docs](https://bun.com/docs/pm/security-scanner-api) — Official API docs confirming `[install.security]` section. HIGH confidence.
+- [SocketDev/bun-security-scanner GitHub](https://github.com/SocketDev/bun-security-scanner) — Package name, publisher, bunfig.toml key. HIGH confidence.
 - [Node.js releases page](https://nodejs.org/en/about/previous-releases) — Node 22 Maintenance LTS, Node 24 Active LTS. HIGH confidence.
-- [endoflife.date/nodejs](https://endoflife.date/nodejs) — Node 22 EOL 2027-04-30; Node 24 EOL 2028-04-30. HIGH confidence.
-- [pkg.go.dev/golang.org/x/mod/semver](https://pkg.go.dev/golang.org/x/mod/semver) — Requires "v" prefix; `Compare(v, w)` returns -1/0/+1. HIGH confidence.
+- [pkg.go.dev/golang.org/x/mod/semver](https://pkg.go.dev/golang.org/x/mod/semver) — Requires "v" prefix; `Compare(v, w)`. HIGH confidence.
 
 ---
+
+*v1.0.0 stack researched: 2026-05-26*
 *v1.2.0 addendum researched: 2026-06-03*
+*v1.3.0 web addendum researched: 2026-06-07*

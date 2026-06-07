@@ -1,411 +1,577 @@
 # Pitfalls Research
 
-**Domain:** Agent runtime safety harness — v1.2.0 "Runtime Behavioral Hardening" (PLCY-05 sensitive-path wiring, NUDGE package-manager nudge, PLCY-07 corroboration hardening, BTEST behavioral tests)
-**Researched:** 2026-06-03
-**Confidence:** HIGH — pitfalls derived from live codebase inspection (handler.go, policy/path.go, policy/corroboration.go, catalog/verify.go, catalog/sanity.go), the NUDGE PRD spec (§11 edge cases, §12 self-defense), PROJECT.md milestone findings (F1/F2/F3 runtime-validation gaps), and CLAUDE.md constraints.
+**Domain:** Next.js static-export marketing + docs site (R3F/Three.js + shadcn + Fumadocs + Tailwind v4) added to a Go security CLI monorepo
+**Researched:** 2026-06-07
+**Confidence:** HIGH (grounded in official Next.js, Fumadocs, R3F, shadcn, and WCAG documentation; verified against GitHub issues and community discussions; specific to this stack combination)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: NUDGE Detection on the One-Shot `beekeeper check` Hot Path — The 60-Second Cache Trap
+### Pitfall 1: R3F / three / drei imported outside the ssr:false dynamic() boundary
 
 **What goes wrong:**
-
-The NUDGE PRD §4 describes a "60-second detection cache" and criterion §10.11 says "Detection cache prevents re-running `pnpm --version` more than once per 60 seconds in the **same session**." This makes sense in a long-running daemon or shim process. It is **completely meaningless** in `beekeeper check`, which is a one-shot process: every hook invocation forks a new OS process, lives for the duration of one tool call, and exits. There is no in-process cache to hit. The first time `Evaluate` is called in a fresh process, `DetectPnpm()` execs `pnpm --version`. That exec happens every single hook invocation — because there is no surviving process to hold the cache.
-
-With the exec budget unrestricted, every `beekeeper check` invocation on the hook hot path runs `pnpm --version`, `bun --version`, and `node --version` — three subprocess execs — before the policy engine can decide anything. Each `exec.Command` on Windows with the 2-second timeout specified in PRD §6.1 can take 30-80ms in practice (process startup + PATH lookup + binary load), even on a warm machine. Three execs × 50ms = 150ms overhead per tool call, before catalog lookup or policy evaluation runs. This demolishes the sub-100ms target established in CLAUDE.md.
-
-The PRD is self-consistent within a shim or gateway context (long-lived processes). The critical omission is that `internal/check/handler.go` (the `beekeeper check` one-shot process) is listed as the **first** integration point in PRD §3.3, and the cache does not help there at all.
+`next build` crashes with `ReferenceError: window is not defined` or `ReferenceError: WebGLRenderingContext is not defined`. The build aborts and emits no `out/`. In development mode the error appears as a hydration mismatch — the canvas renders fine in `next dev` (which is client-only in the browser) but explodes during build because Server Components execute in Node.js where browser globals do not exist.
 
 **Why it happens:**
+Three.js, R3F, and drei access `window`, `document`, `WebGLRenderingContext`, and `requestAnimationFrame` at module-import time (not just at call time). Any Server Component file that directly or transitively imports from these packages triggers Node.js execution of browser-only code.
 
-The PRD was drafted with a session-oriented mental model. The NUDGE feature is conceptually session-scoped ("detect once, nudge during the session"). The hook handler, however, is invocation-scoped. The mismatch is invisible at spec time because both paths call `nudge.Evaluate` through the same interface — the difference only manifests under real workload profiling.
+The error is invisible in `next dev` if you only test in a browser session — the dev server never runs those components server-side in the same way `next build` does.
 
 **How to avoid:**
-
-Pick exactly one mitigation path and commit to it in the NUDGE phase plan before writing `detect.go`:
-
-1. **File-based detection cache** (recommended for check): Write detected PM state to `~/.beekeeper/state/nudge-detect.json` with a `last_checked` timestamp. On the next `beekeeper check` invocation, if `last_checked` is within 60 seconds (or a configurable window), load the cached state rather than exec-ing version commands. The file must be written atomically (write to `.tmp` + rename) and handled gracefully on read error (fall through to live detection, no crash). This is the only approach that survives the one-shot process model. 60s TTL means a developer who changes pnpm version mid-session gets a stale detection for up to 60 seconds — acceptable trade-off vs. per-invocation exec overhead.
-
-2. **Skip detection in `check`; only nudge in gateway/shim**: The NUDGE PRD lists three integration points (check, gateway, shim). Detection in `beekeeper check` adds latency on every hook (file Read, Bash, Edit). Detection in the MCP gateway and shim adds latency once per long-lived session, where the 60-second in-process cache actually helps. A simpler v1.2.0 scope: wire nudge only into the gateway and shim, not into check. The check path gets a no-op nudge stub that always returns `Proceed`. Defer check-path nudge to v1.3.0 when the latency budget is re-evaluated.
-
-3. **Lazy/async detection with PROCEED-on-miss**: Detection runs asynchronously; the first invocation returns `Proceed` immediately while detection executes in background and stores the result to the file cache. This adds implementation complexity and leaves a window where `npm install` is not nudged (the first call in a session). Not recommended as the primary strategy.
-
-**The file-based cache is the correct default.** Build it first. Make TTL configurable in the nudge config block. Document that the in-process 60-second cache described in the PRD applies only to gateway/shim; the check path uses the file cache.
+- All three/r3f/drei imports must live exclusively in `HeroCanvasInner.tsx`, `HiveScene.tsx`, and `AmbientHex.tsx`.
+- Every one of those files must have `'use client'` as its literal first line.
+- `Hero3D.tsx` uses `next/dynamic` with `{ ssr: false }` to import `HeroCanvasInner`. It must NOT itself import from three/r3f/drei.
+- Never let a Server Component or any file without `'use client'` import (even transitively) from these packages.
+- Add a lint rule or `eslint-plugin-import` check to prevent three/r3f/drei imports outside the `components/hero/` directory.
 
 **Warning signs:**
-
-- `beekeeper check` latency benchmark showing 100ms+ on a machine with pnpm installed — the exec overhead is present
-- PRD criterion §10.11 passing in a test that creates a long-lived `detect` object in process (mocks the check invocation model, doesn't test it)
-- No `nudge-detect.json` state file in the design — means file cache was not implemented
-- `beekeeper diag` p99 regression appearing exactly after NUDGE phase is merged
+- `next build` passes in CI but the team says "it works locally" — they are testing in `next dev` only.
+- `ReferenceError: window is not defined` in build logs.
+- Hydration mismatch warning in the browser involving canvas or Three.js components.
+- Any `import { Canvas }` appearing in a file that lacks `'use client'`.
 
 **Phase to address:**
-
-NUDGE phase (v1.2.0). Must be resolved in the NUDGE detection design, not deferred. Gate the NUDGE phase plan on confirming which mitigation path is chosen before any `detect.go` implementation begins.
+Phase 6 (3D Layer) — the R3F layer is built last deliberately. All prior phases (scaffolding through marketing sections) must build and pass without R3F. When R3F is added, `next build` must be run immediately and used as the gate before any scene work proceeds.
 
 ---
 
-### Pitfall 2: PLCY-07 Corroboration Poisoning — Treating Bundled Catalog as Signed-Equivalent Creates a New Single Point of Compromise
+### Pitfall 2: Fumadocs search silently broken under output: 'export' (missing force-static)
 
 **What goes wrong:**
-
-PLCY-07's goal is to make a critical-severity catalog match block even when the bumblebee catalog is unsigned (`Signed:false`), because today a critical match from bumblebee + OSV gets `CorroborationCount:1` (only OSV is signed) and only warns. The tempting implementation is: "if severity == critical and the bundled bumblebee catalog matched, treat it as signed-equivalent for corroboration purposes."
-
-This is the self-defense trap CLAUDE.md identifies as a Phase 2 non-negotiable: **corroboration sanity bounds + catalog signature verification**. If you treat the bundled bumblebee catalog as signed-equivalent without cryptographic verification, you have just created a scenario where a single poisoned entry in the local bumblebee `threat_intel/` directory can single-handedly block any package as "critical". The bumblebee catalog is fetched from an unauthenticated GitHub raw endpoint (unless catalog signature verification is implemented). An attacker who can perform a MITM, a compromised CDN cache, or a supply-chain compromise of the bumblebee repo itself can inject a critical-severity entry for any package — say, `react` or `typescript` — and every Beekeeper user who then runs `beekeeper catalogs sync` will have that entry load as "signed-equivalent", causing every React install to be blocked with no second-source corroboration required.
-
-This is strictly worse than the current state. Today a poisoned bumblebee entry + no OSV corroboration = warn only. After the "treat bundled as signed-equivalent" shortcut, a poisoned bumblebee entry + no OSV corroboration = block. You have traded "critical CVEs only warn" for "a single poisoned catalog can block anything."
-
-The existing `catalog/verify.go` has `VerifySignatureWithKey(entry, pubKey)` already built. The existing `catalog/sanity.go` has delta sanity bounds already built. The corroboration model in `policy/corroboration.go` correctly requires `Signed:true` for escalation. The infrastructure exists; the question is whether PLCY-07 uses it correctly.
+The docs site builds successfully. All pages render. But when a user opens the search dialog and types, no results appear. The browser console shows `GET /api/search 404`. The Orama search index was never emitted to `out/` because the Route Handler was not configured as force-static.
 
 **Why it happens:**
+Fumadocs' default `RootProvider` search mode is `type: 'fetch'` — it calls `/api/search` at runtime as a live API route. Under `output: 'export'`, Next.js does not execute API route handlers at request time (there is no server). The route handler is simply skipped during build unless it is explicitly marked `export const dynamic = 'force-static'`. The missing file is silent — Next.js does not error; it just omits the file from `out/`.
 
-The symptom (critical CVEs warn-only) is real and needs fixing. The fast path — escalate severity-tagged matches regardless of signature — solves the symptom without addressing the root cause (bumblebee entries are unsigned because there is no trusted Ed25519 key configured for the bundled catalog). Severity-based escalation without signature verification inverts the trust model: the catalog's own claim of "critical" is now sufficient to block, which is exactly the attack surface the corroboration model was designed to prevent.
+A second failure mode: the Route Handler has `force-static` but `RootProvider` is not configured with `search={{ type: 'static' }}`. In this case the browser fetches the static JSON correctly but Fumadocs does not know to use it — the dialog still shows no results.
 
 **How to avoid:**
+Both sides of the integration must be set:
+1. `app/api/search/route.ts`: `export const dynamic = 'force-static'`
+2. `app/layout.tsx` RootProvider: `search={{ type: 'static' }}`
 
-There are two correct paths — choose one:
+Verify by inspecting `out/api/search/index.json` after `next build`. If the file is absent or empty, one side is misconfigured. Add a Playwright E2E test: open the search dialog, type a term that appears in a doc, assert that at least one result is returned.
 
-1. **Sign the bundled bumblebee catalog slice** (correct, higher effort): Generate an Ed25519 keypair for Beekeeper's bundled catalog. During `beekeeper catalogs sync`, verify each downloaded bumblebee entry against the public key (using the existing `VerifySignatureWithKey`). Entries that pass verification are loaded with `Signed:true`. Critical-severity signed entries then naturally reach the corroboration block threshold (1 signed source at `WarnAt:1, BlockAt:1` for critical, configurable via policy file). The bundled public key is pinned in the Beekeeper binary (not downloaded at runtime — downloaded public keys are trivially MITMed). This is the long-term correct architecture.
+**Warning signs:**
+- `out/api/search/` directory is absent or contains an empty file after build.
+- Browser console shows `404 /api/search` on the deployed site.
+- Search dialog renders but shows "No results" for any query.
+- `RootProvider` has `search={{ type: 'fetch' }}` (the default) anywhere in the codebase.
 
-2. **Per-severity corroboration threshold policy** (correct, lower effort): Keep `Signed:false` for bumblebee entries. Add a configurable per-severity corroboration override to `CorroborationThresholds`: `CriticalBlockAt: 1` means "for critical severity, block at 1 source regardless of signing." Crucially: this threshold applies only when the sanity check passes (catalog delta is within bounds, catalog signature verification is not actively failing), and the threshold is set conservatively: `CriticalBlockAt:1` with unsigned is still gated on the sanity bounds system treating the catalog as non-degraded. Document explicitly: if the bumblebee catalog fails sanity bounds (sudden delta spike), it reverts to unsigned warn-only regardless of severity, so catalog poisoning that injects many critical entries at once triggers the sanity system and fails closed. The existing `catalog/sanity.go` `BlockDeltaEntries:10000` and `AlertDeltaEntries:1000` thresholds are the backstop.
+**Phase to address:**
+Phase 3 (Content Pipeline). The first verification gate for Phase 3 is `pnpm next build` succeeding AND `out/api/search/index.json` being non-empty. Do not proceed to content authoring until search is confirmed working.
 
-**Option 2 is the right scope for v1.2.0.** Document path 1 as the v1.3.0 or v2.0.0 follow-on (catalog signing infrastructure). Include in the policy file schema:
+---
 
-```json
-{
-  "corroboration_threshold": {
-    "warn_at": 1,
-    "block_at": 2,
-    "quarantine_at": 3,
-    "critical_block_at": 1
-  }
-}
+### Pitfall 3: CSS import order silently breaks Fumadocs colors (invisible or wrong-color text)
+
+**What goes wrong:**
+Fumadocs components (sidebar, TOC, search dialog, code blocks) render in wrong colors — typically near-black-on-black in dark mode, or near-white-on-white in light mode. The home page looks fine. Only the docs section is broken. The bug only manifests visually — there are no build errors and no console warnings.
+
+**Why it happens:**
+`fumadocs-ui/css/shadcn.css` maps all `--color-fd-*` Fumadocs variables to shadcn CSS variable names (`--background`, `--foreground`, `--primary`, etc.). `fumadocs-ui/css/preset.css` reads `--color-fd-*` to style its components. If `preset.css` loads before `shadcn.css`, it reads the `--color-fd-*` variables before they are defined — they fall back to initial values (browser defaults), producing invisible or incorrectly colored elements.
+
+The bug is insidious because `next dev` with hot reload can mask it — the browser receives the CSS files piecemeal and they may load in a different order than the emitted bundle.
+
+Additionally, Tailwind v4's content scanning must be told to include Fumadocs distribution files. Without `@source '../node_modules/fumadocs-ui/dist/**/*.js'` in `globals.css`, Tailwind purges utility classes used inside Fumadocs components and docs pages render without their utility-class styling.
+
+**How to avoid:**
+Lock the import order in `globals.css` and never change it:
+```css
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/shadcn.css';   /* MUST be before preset.css */
+@import 'fumadocs-ui/css/preset.css';
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+@theme { /* shadcn-generated token block */ }
 ```
 
-Gate `critical_block_at: 1` on the source not being in degraded mode (sanity bounds not exceeded). Test this explicitly: inject a single bumblebee entry with `severity: "critical"` and zero OSV corroboration — should block. Then inject 1001 new critical entries at once (triggers alert sanity bound) — should revert to warn-only regardless of severity.
+Add a Playwright screenshot test against a docs page in both light and dark mode. Compare against a baseline to detect color regressions. This is the only reliable automated check for this class of bug.
 
 **Warning signs:**
-
-- PLCY-07 implementation adds `if severity == "critical" { forceSigned = true }` or similar shortcut in `corroborate()` without sanity-bound gating
-- No test covering the case: "critical severity match + catalog sanity bound exceeded → still warn only"
-- No test covering: "catalog with 1000 new critical entries → degraded mode, not block storm"
-- `critical_block_at` threshold is not configurable (hardcoded 1) — means it cannot be dialed back if false positives occur
+- Fumadocs sidebar text is invisible or nearly invisible in dark mode but fine in light mode (or vice versa).
+- Code blocks in docs pages have wrong background colors.
+- The search dialog has unreadable contrast.
+- Any edit to `globals.css` that changes import order without reviewing this constraint.
+- A developer follows a Fumadocs tutorial that does not mention the shadcn.css / preset.css ordering (many don't).
 
 **Phase to address:**
-
-PLCY-07 phase (v1.2.0). The sanity-bound gating is non-negotiable before the severity-escalation threshold is live. Both must ship together.
+Phase 2 (Design System). The CSS import order must be set correctly during initial setup and verified before any Fumadocs component is rendered. The Phase 2 verification gate is `pnpm next build` succeeding with the docs section rendering at correct contrast on both light and dark themes.
 
 ---
 
-### Pitfall 3: PLCY-05 Path Canonicalization — The `~` Unresolved and Windows Path Mismatch Gaps
+### Pitfall 4: Content accuracy failure — docs claim protection that the shipped binary does not enforce
 
 **What goes wrong:**
+The documentation states or implies that `release_age`, `lifecycle_script_allowlist`, or other policy-file fields actively block installations. A developer reads the docs, configures their policy file, and believes they are protected. They are not — those fields are parsed but not enforced in v1.3.0. When an unvetted package slips through, the user loses trust not just in Beekeeper but in the project's honesty.
 
-`EvaluatePath` in `policy/path.go` is a pure function that receives an "already-resolved string" — normalization is explicitly the caller's responsibility (see the doc comment: "Path normalization (resolving `~` to the home directory, converting OS separators) is the CALLER's responsibility"). The existing engine is correct and well-tested in isolation. The pitfall is in the wiring: when the hook handler calls `EvaluatePath` with a `file_path` from agent tool call JSON, the `file_path` may arrive in any of these forms:
-
-- `~/.aws/credentials` — tilde not expanded (most common in Claude Code tool calls)
-- `../../.env` — relative path with traversal
-- `.env` — relative, no traversal, but the cwd context is unknown
-- `C:\Users\user\.aws\credentials` — Windows backslash (the primary dev machine)
-- `C:/Users/user/.aws/credentials` — Windows forward-slash variant
-- `//server/share/.aws/credentials` — UNC path
-- `//?/C:/Users/user/.aws/credentials` — Win32 extended-length path prefix
-
-The existing `normalizeSlashes()` in `path.go` handles backslash→forward-slash conversion for fragment matching. But if the caller passes `~/.aws/credentials` unresolved, `strings.Contains(path, "/.aws/")` will match (the `~` prefix is irrelevant for the fragment). So the tilde case accidentally works for fragment patterns — but it will NOT work for allow patterns: if the user has an allowlist entry like `/home/user/projects/.env.test`, the tilde in the incoming path won't match `/home/user/projects/` as a prefix.
-
-The deeper problem is relative paths with `..` traversal: `../../.aws/credentials` does NOT contain `/.aws/` as a substring — it contains `.aws/credentials`. The fragment pattern `/.aws/` requires the leading slash. An agent reading `../../.aws/credentials` from within a project directory bypasses the block check entirely.
-
-On Windows, UNC paths (`\\server\share\`) and extended-length prefixes (`\\?\`) are additional cases that `normalizeSlashes()` does not handle.
+For a security tool, overclaiming is not a UX issue — it is a credibility and trust failure with security consequences.
 
 **Why it happens:**
+Docs are written while referencing the policy schema (which is complete) rather than the enforcement layer (which has gaps). The schema shows `release_age` as a valid field. A writer assumes "if it's in the schema, it works." They write the configuration guide as if it is enforced.
 
-Path normalization is handled at the caller level by design (keeping `EvaluatePath` pure). The pitfall is that the wiring in `internal/check/handler.go` may not call `filepath.Abs()` + `os.UserHomeDir()` before invoking `EvaluatePath`. If the handler just extracts `file_path` from the tool call JSON and passes it directly, all relative and tilde paths are under-normalized.
+The same failure occurs with the Hermes harness (structurally fail-OPEN — tool calls succeed even when Beekeeper is running unless the MCP gateway is also configured), Kilo and Trae (native tools are unguarded), and the `--bind 0.0.0.0` gateway option (the `allow_remote_gateway` config gate described in help text does not exist in v1.3.0).
 
 **How to avoid:**
+Every doc page that touches a configuration field or integration must be sourced directly from a shipped code reference or `docs/THREAT-MODEL.md` — not from the PRD, requirements, or the policy schema file alone. Unenforced features must carry an explicit callout:
 
-In the PLCY-05 wiring layer (not in `EvaluatePath` itself, which should remain pure):
+```
+:::warning[Not enforced in v1.3.0]
+`release_age` appears in policy files and passes validation but is not evaluated
+during `beekeeper check`. Do not rely on it for security enforcement.
+:::
+```
 
-1. **Expand `~`**: Replace leading `~` with `os.UserHomeDir()` result before path evaluation. On Windows, `os.UserHomeDir()` returns the correct `C:\Users\user` path. Handle `~/` and `~\` variants.
+Tier-2 and Tier-3 harness pages must lead with the caveat, not bury it after the installation instructions. The Hermes page first sentence should state it is structurally fail-OPEN.
 
-2. **Resolve to absolute**: Call `filepath.Abs(expandedPath)` to resolve relative paths against the process working directory. For tool calls that include a `cwd` field (Claude Code provides this in some contexts), use that cwd, not `os.Getwd()`.
-
-3. **Normalize separators**: After `filepath.Abs()`, call `filepath.ToSlash()` so the resolved path is forward-slash canonical before pattern matching. This is already what `normalizeSlashes()` does, but it needs to run on the fully-resolved path, not just the fragment patterns.
-
-4. **Handle UNC paths**: On Windows, `filepath.Abs()` preserves UNC paths but the leading `\\` needs special handling. Normalize `\\server\share\` to `/server/share/` or treat UNC as out-of-scope and log a warning.
-
-5. **Test the wiring, not just `EvaluatePath`**: Add integration tests in `check/integration_test.go` that feed raw tilde-prefixed and relative `file_path` values through `RunCheck` (stdin→decision) and assert they trigger the sensitive-path block. This is the gap the milestone's F2 finding surfaced — the engine was correct but the wiring was absent.
-
-The `EvaluatePath` function itself needs no changes. The wiring adapter that resolves paths before calling it is the PLCY-05 deliverable.
+Process control: use the `source_doc:` frontmatter field on every MDX file that makes security claims. Before shipping, do a review pass comparing every such file against the referenced source document.
 
 **Warning signs:**
-
-- PLCY-05 tests only unit-test `EvaluatePath` with already-resolved paths (no integration test feeding `~/.aws/credentials` through `RunCheck`)
-- Handler code extracting `tool_call.FilePath` and passing it directly to `EvaluatePath` without `filepath.Abs()` + tilde expansion
-- Windows CI showing pass on sensitive-path tests but the tests only use Unix-style paths with forward slashes
-- `.env` (relative, no directory component) not being matched by the `basename pattern` branch — needs a test specifically for the no-separator case
+- Any doc page that says a feature "blocks" or "prevents" without citing a specific code path or verified behavior.
+- Harness integration pages that present installation steps before caveats.
+- Policy-as-code guide that does not distinguish enforced from unenforced fields.
+- Any content written from the PRD or REQUIREMENTS.md without cross-checking against the actual implementation.
 
 **Phase to address:**
-
-PLCY-05 phase (v1.2.0). The path normalization adapter must be written and tested as part of the wiring, not treated as a caller assumption.
+Phase 8 (Content Authoring) — the content review gate. Every MDX file that makes a security claim must be explicitly reviewed against `docs/THREAT-MODEL.md` and the real CLI flags before the phase is closed. This review is not optional and cannot be deferred to a "polish" pass.
 
 ---
 
-### Pitfall 4: PLCY-05 False Negatives — Indirect Credential Access Bypasses `file_path` Inspection
+### Pitfall 5: Dynamic routes without generateStaticParams silently produce 404s
 
 **What goes wrong:**
-
-PLCY-05 evaluates the `file_path` parameter of `Read`, `Write`, and `Edit` tool calls, plus command targets for `cat`/`type`/`Get-Content` in `Bash` tool calls. This covers direct file access. It does not cover:
-
-- **Environment variable indirection**: An agent runs `echo $AWS_ACCESS_KEY_ID` or `env | grep AWS` — no file path is inspected, but credential values are now in the tool output.
-- **Shell expansion in Bash commands**: `cat ~/.aws/credentials` — the command string contains the credential path but it is embedded in a Bash command, not a standalone `file_path` parameter. PLCY-05 must parse Bash command strings, not just structured JSON fields.
-- **Python/Node one-liners**: `python -c "import configparser; c = configparser.ConfigParser(); c.read('~/.aws/credentials'); print(dict(c['default']))"` — the credential path appears only as a string literal inside an exec'd script. Command parsing at the PLCY-05 level cannot see inside exec'd scripts.
-- **`type` on Windows**: Windows `type` is the equivalent of `cat`. If the command parser for Bash tool calls only checks for `cat`, `Get-Content`, and `type` but misses `more`, `findstr`, or PowerShell `Get-Content` aliases (`gc`, `cat` on PSAlias), credential files can be read without triggering the check.
-- **Symlinks**: An agent creates a symlink from a non-sensitive path to `~/.aws/credentials` and then reads the symlink target. The `file_path` is the symlink location, not the credential file. `filepath.Abs()` does NOT resolve symlinks (use `filepath.EvalSymlinks()` for that).
-
-The existing `policy/path.go` `EvaluatePath` handles what it is given correctly. The issue is what the PLCY-05 wiring layer extracts from the tool call and passes to `EvaluatePath`.
+`/changelog/v1.2.0/` returns 404 on the deployed site. The page renders in `next dev` because the dev server resolves dynamic routes at request time. But `next build` with `output: 'export'` requires every dynamic route to enumerate its parameters at build time. If `generateStaticParams` is missing from `app/changelog/[version]/page.tsx`, Next.js cannot know which version slugs to render — it emits no HTML for those routes.
 
 **Why it happens:**
-
-A static `file_path` check is the 80% solution. It catches the most common agent patterns: explicit Read tool calls on credential files. The remaining 20% requires either deeper command parsing or output scanning — both are significantly more complex. The pitfall is shipping PLCY-05 as "credential protection is done" when it covers only direct structured tool calls, not Bash-based access patterns.
+Developers test in `next dev` where dynamic routes resolve normally. The `output: 'export'` constraint is only enforced at build time. The missing function causes no build error — Next.js simply skips those routes.
 
 **How to avoid:**
+Any route with a `[param]` or `[[...slug]]` segment must export `generateStaticParams`. For the docs `[[...slug]]` route, fumadocs-core provides `source.getPages()` to enumerate all slugs. For `changelog/[version]`, `lib/changelog.ts` enumerates MDX files at build time.
 
-- Explicitly scope PLCY-05 in its requirements: "covers `file_path` in Read/Write/Edit tool calls AND direct `cat`/`type`/`Get-Content`/PowerShell `Get-Content` (`gc`) patterns in Bash tool call command strings. Does not cover env-var indirection or exec'd script access." Document the uncovered cases in `docs/THREAT-MODEL.md` as known limitations.
-- In the PLCY-05 command parser for Bash tool calls, add patterns for Windows PowerShell variants: `Get-Content`, `gc`, `cat` (PSAlias), `type`, `more`. Test each on a Windows CI matrix.
-- For symlink resolution: call `filepath.EvalSymlinks(resolvedPath)` and re-evaluate the resolved target against the blocklist. If `EvalSymlinks` fails (path does not exist yet, for a Write), evaluate the pre-symlink path only. Log symlink resolution failures as warnings, not errors.
-- The output scanning path (catching env-var exfiltration through tool output) belongs to the LLMF/exfil detection scope, not PLCY-05. Do not conflate the two.
+After `next build`, manually check `out/changelog/` — every expected version directory with `index.html` must be present. Add this as a Playwright test: navigate to `/changelog/v1.2.0/` and assert the heading is visible.
 
 **Warning signs:**
-
-- PLCY-05 tests only cover `Read` tool calls with explicit `file_path` fields; no tests for `Bash` tool calls containing `cat ~/.aws/credentials`
-- No Windows-specific tests for `type`, `Get-Content`, `gc` patterns
-- Symlink tests absent from the PLCY-05 behavioral test suite
-- Documentation claims "credential file access is blocked" without caveat for indirect access patterns
+- A route with a `[param]` segment that lacks a `generateStaticParams` export.
+- `out/` directory missing subdirectories for expected dynamic routes after build.
+- Pages that render in `next dev` but return 404 on the static host.
+- Build succeeds with no errors but the deployed changelog or docs pages are missing.
 
 **Phase to address:**
-
-PLCY-05 phase (v1.2.0). Scope the command-string parsing explicitly in the phase plan. Add Windows-specific path and command patterns to the behavioral test suite.
+Phase 4 (Changelog Pipeline) and Phase 3 (Docs Pipeline). Both must verify `generateStaticParams` is wired before content authoring proceeds. The verification gate is inspecting `out/` after build, not just checking that build succeeds.
 
 ---
 
-### Pitfall 5: PLCY-05 False Positives — Blocking `.env.example` and Other Legitimately-Named Non-Credential Files
+### Pitfall 6: Theme flash (FOUC) from next-themes + suppressHydrationWarning omission
 
 **What goes wrong:**
-
-The default `SensitivePathConfig` in `policy/path.go` includes the pattern `.env.*` which matches "any basename with prefix `.env.`" via glob simulation. This correctly blocks `.env.production`, `.env.local`. It also matches:
-
-- `.env.example` — a committed, non-secret file that documents required environment variables. Agents legitimately read and write `.env.example` constantly.
-- `.env.test` — often committed and non-sensitive in test suites.
-- `.env.schema` — JSON schema for environment variable validation tools.
-- `.envrc` — direnv configuration, sensitive if it contains credentials but often just `export PATH=...`.
-
-Blocking access to `.env.example` on an `npm install` post-setup hook will confuse agents and developers. If the default blocklist causes false positives on the first day of use, developers will add broad allowlist entries like `"/*.env.*"` that then allow the actual `.env` files too.
-
-The `.env` exact-match pattern in the blocklist is correct — `.env` files almost always contain secrets. The `.env.*` glob is overaggressive for certain common names.
+On first page load, users see a brief flash from the wrong theme — white background flashing to dark, or vice versa. This is especially prominent on the marketing home page where the Three.js hero background color must match the page background. A flash produces a jarring visual pop. The `<html>` element also throws a React hydration mismatch warning in the console (`Warning: Prop 'class' did not match`).
 
 **Why it happens:**
+`next-themes` reads the user's theme preference from `localStorage` on the client. The static HTML is generated without knowing the theme. When React hydrates, `next-themes` injects the correct class onto `<html>` — but React sees a mismatch between the SSG-generated HTML (no class) and the client-hydrated version (with the dark class). React logs a hydration warning unless `suppressHydrationWarning` is on `<html>`.
 
-The glob `.env.*` was written to catch `.env.production` and `.env.staging` without enumerating every suffix. The failure mode is not visible in the policy engine unit tests, which test blocking, not the agent's workflow. It becomes visible only in live use when an agent tries to scaffold a new project and reads `.env.example` to populate the new `.env` file.
+The flash itself is prevented by next-themes injecting a blocking inline script in `<head>` that reads localStorage and applies the class before paint. This works correctly in production builds — but only if the ThemeProvider is configured correctly.
 
 **How to avoid:**
+```typescript
+// app/layout.tsx
+<html lang="en" suppressHydrationWarning>
+```
 
-- Add an allowlist default for `.env.example` in `DefaultSensitivePaths()` alongside the `.env.*` block pattern. The allowlist is checked first (existing behavior in `EvaluatePath`), so `.env.example` gets allowlisted before the `.env.*` block fires.
-- Also consider adding `.env.test` and `.env.schema` to the default allowlist. These are low-risk and commonly non-sensitive.
-- Add a test to the PLCY-05 behavioral suite: `EvaluatePath(".env.example", DefaultSensitivePaths())` must return allow, not block.
-- Document the default blocklist behavior in `docs/nudge.md` or a new `docs/policies.md` so users understand what they are getting out of the box and how to add project-specific allowlist entries via `.beekeeper.json`.
+```typescript
+// ThemeProvider configuration
+<ThemeProvider
+  attribute="class"
+  defaultTheme="system"
+  enableSystem
+  disableTransitionOnChange
+>
+```
+
+`suppressHydrationWarning` on `<html>` suppresses the expected class attribute mismatch. `disableTransitionOnChange` prevents a CSS transition flash when the theme switches on load.
+
+Test in production mode (`pnpm next build` and serve `out/` locally) — the flash is invisible in `next dev` but can appear in production. Check with "System preference: Dark" in DevTools emulation.
 
 **Warning signs:**
-
-- No test for `.env.example` being allowed while `.env` is blocked
-- `DefaultSensitivePaths()` has no `AllowPatterns` at all (the existing code has `AllowPatterns: nil`)
-- First live use of PLCY-05 blocks agent from reading `.env.example` in a new project scaffold
+- React hydration mismatch warning referencing the `class` attribute on `<html>`.
+- Visible flash of wrong background color on first load (especially noticeable when the system theme is dark and the page defaults to light).
+- `suppressHydrationWarning` absent from the `<html>` element.
+- `disableTransitionOnChange` absent from ThemeProvider (causes a CSS transition animation on page load).
 
 **Phase to address:**
-
-PLCY-05 phase (v1.2.0). Add the default allowlist entries to `DefaultSensitivePaths()` before the PLCY-05 wiring is live.
+Phase 2 (Design System). The ThemeProvider setup is part of `app/layout.tsx` wiring. Verify by building and serving the static `out/` locally with DevTools set to dark/light system preference, checking for flash.
 
 ---
 
-### Pitfall 6: NUDGE Hard-Mode Command Rewriting Breaks Agent Output Parsing
+### Pitfall 7: Three.js WebGL context loss and memory leak on unmount / page navigation
 
 **What goes wrong:**
-
-In hard mode, NUDGE rewrites `npm install foo` to `pnpm add foo`. The agent issued an npm command expecting npm output. It then parses that output. npm and pnpm output differ:
-
-- npm install success: `added 1 package in 0.5s` plus a JSON lockfile update note
-- pnpm add success: `Packages: +1 / Progress: resolved 1, reused 0, downloaded 1, added 1, done`
-
-An agent that issues `npm install foo` and then checks the output for `"added 1 package"` to confirm success will silently conclude the install failed. The agent may retry with the same command, creating an install loop. Or the agent may take an error-handling branch designed for npm failures when the install actually succeeded.
-
-The same class of problem applies to error messages, exit code conventions (pnpm and npm handle some error cases differently), and the shape of `--json` output when agents request machine-readable npm output.
+After navigating between pages a few times, the Three.js hero slows down, drops to single-digit FPS, or the canvas goes black. In Safari and mobile browsers this is more pronounced. Memory usage in DevTools climbs with each navigation. In development, React Strict Mode double-invokes effects — this can trigger premature context loss during development but mask disposal bugs that appear only in production.
 
 **Why it happens:**
+Three.js creates GPU-side resources (geometries, materials, textures, render targets) that must be explicitly disposed when the component unmounts. R3F does not automatically dispose scene objects — only the `WebGLRenderer` itself is cleaned up on Canvas unmount. If `HiveScene.tsx` creates geometries or materials without disposing them in a `useEffect` cleanup, the GPU memory leaks across navigations.
 
-Hard-mode rewriting is transparent to the agent at the decision layer but not at the output layer. The agent generated the original command assuming a specific output format. Rewriting the command changes the program that runs. This is a known footgun in transparent proxy architectures.
+Additionally, if multiple Canvas instances (hero + ambient accents) share a WebGL context on a device that limits context count (Safari caps at 8; Chrome at 16), exceeding the limit causes the oldest contexts to be lost — producing a black canvas.
 
 **How to avoid:**
+Every geometry, material, and texture created in scene components must be disposed in the `useEffect` cleanup or by using the `dispose` prop on R3F's `<mesh>` and `<primitive>` components.
 
-- Soft mode (advise + proceed with original command) is the safe default. PRD §5.1 correctly defaults to `mode: "soft"`. Do not make hard mode the default; do not enable hard mode in any default config shipped with Beekeeper.
-- Document hard mode explicitly as requiring the user to verify that their agent is output-agnostic with respect to npm vs pnpm output. Include this caveat in `docs/nudge.md`.
-- In the audit record for a rewrite decision, log `original_command` and `rewritten_command` both. This enables forensic reconstruction of which rewritten commands may have produced unexpected agent behavior.
-- For the `--json` flag specifically: if `npm install --json` is rewritten to `pnpm add --json`, test that pnpm's JSON output is structurally compatible with what the agent expected. If it is not (field name differences, nesting changes), this is a reason to NOT rewrite commands with `--json` flags — add a rule: "if the npm command contains `--json`, do not hard-rewrite; soft-advise only."
-- Add a behavioral test: issue `npm install foo --json` in hard mode, capture the rewritten command, verify it does NOT strip `--json` without also verifying pnpm's `--json` output is compatible.
+```typescript
+// In HiveScene.tsx
+useEffect(() => {
+  return () => {
+    geometry.dispose();
+    material.dispose();
+  };
+}, [geometry, material]);
+```
+
+Limit ambient canvas instances. The architecture calls for one hero canvas and two ambient canvases — three total. This is safe on all browsers. Do not add more without measuring context budget.
+
+Verify in Chrome DevTools Memory tab: navigate away from the home page and back three times. Heap should not grow unboundedly.
 
 **Warning signs:**
-
-- Hard mode enabled by default in any config template
-- No test verifying that hard-rewritten commands produce output the agent can parse
-- Agent emit logs showing `npm install` retry loops after NUDGE is enabled in hard mode
-- No `original_command` field in the audit record for rewrite decisions
+- Canvas goes black after several navigations.
+- Performance degrades over time (requestAnimationFrame callback takes longer on each visit).
+- Browser console: `THREE.WebGLRenderer: Context Lost.`
+- Chrome DevTools Memory heap snapshot growing across navigation cycles.
+- More than three simultaneous Canvas elements on any single page.
 
 **Phase to address:**
-
-NUDGE phase (v1.2.0). The rewrite test (behavioral compatibility with agent output parsing) must be in the NUDGE acceptance criteria, not deferred to a follow-on.
+Phase 6 (3D Layer). Disposal must be implemented from the first commit that adds scene objects — retrofitting it is error-prone because it requires auditing every resource creation call.
 
 ---
 
-### Pitfall 7: NUDGE Monorepo Dual-Lockfile Ambiguity and Docker-Exec PM Detection
+### Pitfall 8: Three.js hero blocks LCP — canvas is the largest contentful element
 
 **What goes wrong:**
-
-Two specific edge cases from PRD §11 have implementation-level failure modes beyond what the spec describes:
-
-**Dual-lockfile:** PRD §11 says "treat as pnpm project; the npm lockfile is likely stale or a CI artifact." The `detect.go` implementation must find `pnpm-lock.yaml` in the project root to make this determination. But `detect.go` needs a `projectRoot` path — and the NUDGE detect layer runs from the hook handler, where the current working directory context is the cwd of the Beekeeper process, not the agent's project root. The agent's project root is available in tool call context (Claude Code provides `cwd` in the hook stdin JSON for some tool types) but is not reliably present for all hook types. If `detect.go` defaults to `os.Getwd()` as the project root, it may check for `pnpm-lock.yaml` in the Beekeeper installation directory, not the agent's project.
-
-**Docker-exec:** PRD §11 says "Decision is logged with `context: "docker-exec"` and proceeds since the container's PM may be different." Detecting "inside a Docker exec" from the hook handler is non-trivial: the hook runs on the host, but the npm command may be running inside a container. The container's `npm` is not the host's `npm`, and the container's pnpm/bun state is invisible to the host's `exec.LookPath`. The implementation must not attempt host pnpm detection for commands that the hook context identifies as container-scoped — doing so would rewrite a container-targeted `npm install` to use the host's pnpm, which is not installed inside the container, causing the install to fail silently.
+Lighthouse and PageSpeed Insights report LCP > 2.5s. The culprit is the Three.js canvas — it is sized to take up most of the viewport and does not paint until the R3F JavaScript chunk downloads and executes. The initial HTML has only the SVG fallback (or a loading spinner) in the hero slot, which is smaller and lower-contrast than the canvas. When the canvas eventually loads, it becomes the new LCP element — but the clock started from navigation, including the JS download time.
 
 **Why it happens:**
-
-Both pitfalls stem from the detect layer running in host context while the commanded tool may be in container context, or from using the wrong working directory for lockfile detection. They are invisible in pure-unit testing (which mocks filesystem state) and only appear in realistic integration scenarios.
+`next/dynamic` with `ssr: false` defers the canvas entirely to client-side. The R3F chunk (~300KB compressed) must download, parse, and execute before the canvas paints. On 3G or in resource-constrained environments, this takes 2–6 seconds. If the canvas is the visually largest element on the page, it is the LCP candidate — and its late paint time becomes the LCP time.
 
 **How to avoid:**
+The SVG fallback in the `loading` prop of `dynamic()` must be as visually large and prominent as the canvas — styled with `w-full aspect-video` to fill the same layout space. This makes the SVG (not the canvas) the LCP element. The SVG is inlined or served as a tiny static file, so it loads instantly from the pre-rendered HTML.
 
-For dual-lockfile detection:
-- Extract the project root from the hook input's `cwd` field (Claude Code provides this in `HookInput.WorkingDirectory` or equivalent) rather than from `os.Getwd()`. If the hook input does not provide a cwd, skip lockfile-based detection and rely only on binary detection.
-- Test with a synthetic monorepo fixture (tmpdir with both `pnpm-lock.yaml` and `package-lock.json`) — not with mocked return values.
+Ensure the hero text (`<h1>`) above or beside the canvas is not gated behind the canvas load. The headline must be in the Server Component output (not inside `HeroCanvasInner`) so it is present in the initial HTML.
 
-For docker-exec:
-- Parse the Bash command string for `docker exec` or `docker run` prefixes before dispatching to the npm command parser. If detected, set `Decision.Action = Proceed` with a structured reason `"docker-exec-host-context-mismatch"` and log the audit record — do not detect host PM state or rewrite.
-- Add a test: a Bash tool call containing `docker exec mycontainer npm install foo` must return `Proceed` with the docker reason code, not `Advise` or `Rewrite`.
+Run Lighthouse against the static `out/` (not `next dev`) before Phase 6 is closed. Target: LCP < 2.5s on simulated 4G, LCP candidate is the SVG or the `<h1>`, not the canvas.
 
 **Warning signs:**
-
-- Detect tests only use `t.TempDir()` as project root, not a mock of hook-input cwd extraction
-- No test for `docker exec` prefix in the command parser
-- No test verifying `pnpm-lock.yaml` is found in the `cwd`-provided root, not the process working directory
+- Lighthouse LCP > 2.5s with the Three.js canvas identified as the LCP element.
+- The hero SVG fallback is tiny or absent — the hero space is empty until JS loads.
+- The `<h1>` headline is rendered inside `HeroCanvasInner.tsx` (inside the client component boundary) rather than in the Server Component layer.
+- The R3F JS chunk appears in the critical render path (not deferred).
 
 **Phase to address:**
-
-NUDGE phase (v1.2.0). Add docker-exec test and lockfile-root-extraction to the NUDGE acceptance criteria alongside PRD §10.
+Phase 6 (3D Layer). Run Lighthouse immediately after wiring the canvas. Do not proceed to ambient accent canvases until hero LCP passes.
 
 ---
 
-### Pitfall 8: PLCY-07 False Positives from Single-Source Critical Escalation — Severity Inflation
+### Pitfall 9: prefers-reduced-motion not respected — 3D canvas mounts for all users
 
 **What goes wrong:**
-
-Lowering `CriticalBlockAt` to 1 means a single catalog source can block a package. This is justified when the source is highly reliable and the severity classification is accurate. The risk is that catalog maintainers (including bumblebee's) have historically experienced **severity inflation**: packages are initially tagged `critical` during incident response (threat is active, time pressure) and later downgraded when the scope is better understood, or when the CVE is assigned a lower CVSS by NVD.
-
-If `CriticalBlockAt:1` is live and a package is mis-tagged `critical` in bumblebee, every developer who tries to install that package is blocked with no warning-only grace period. The only recovery path is: (1) update the catalog entry (requires upstream change to bumblebee), (2) add the package to the allowlist, or (3) reduce `CriticalBlockAt` back to 2. None of these are fast for a developer mid-sprint.
-
-A real-world example of the failure mode: `ua-parser-js` was initially flagged `critical` during the October 2021 compromise. Later analysis confirmed the window of exposure was narrow and many consumers were unaffected. A blanket block of all versions would have broken Node.js projects that didn't use the compromised version range.
+Users with vestibular disorders or motion sensitivity who have enabled "Reduce motion" in their OS settings still see the rotating Three.js hero. The animation can cause dizziness, nausea, or (for photosensitive users) seizure risk if the scene includes rapid flickering. WCAG 2.3.3 (AAA) requires that non-essential animation can be disabled. WCAG 2.3.2 (AA) applies when animation is triggered by user interaction. A continuously animating hero fails these criteria if reduced-motion is ignored.
 
 **Why it happens:**
-
-Severity is assigned during incident response under time pressure. Catalog maintainers prioritize false negatives (missing a real threat) over false positives (blocking a legitimate package). The user-visible asymmetry: a missed threat results in developer embarrassment later; a blocked legitimate package results in an angry developer right now who disables Beekeeper.
+Developers test on their own machines where system reduced-motion is not set. The `prefers-reduced-motion` media query is not automatically honored by Three.js or R3F — they animate regardless of system preference. Without an explicit check, the canvas renders and animates for all users.
 
 **How to avoid:**
+`ReducedMotionProvider` detects `window.matchMedia('(prefers-reduced-motion: reduce)')` and exposes a context value. `HeroCanvasInner.tsx` reads this context: if `true`, it returns the static SVG immediately without mounting a Canvas at all. No RAF loop runs, no WebGL context is created.
 
-- `CriticalBlockAt:1` should ONLY apply to packages where the catalog entry includes a populated `Versions` list (specific affected version ranges), not to entries with `Versions: []` or `Versions: ["*"]` (all versions). An entry claiming all versions of a major package are critical is a strong signal of mis-tagging. For all-version critical entries with a single source, still require 2-source corroboration.
-- Add a per-entry allow-override escape hatch to the policy file: `"package_allowlist": [{"ecosystem": "npm", "name": "foo", "until": "2026-06-10", "reason": "..."}]`. This already exists in the policyloader; make sure it works for corroboration-triggered blocks, not just rule-based blocks.
-- In the block message surfaced to the agent, include the catalog source, the severity, and the affected versions. A developer who sees "beekeeper blocked foo@1.2.3 (critical, bumblebee, affects 1.2.2-1.2.4)" can make an informed decision. A developer who sees "blocked by policy" cannot.
-- Add a behavioral test: a catalog entry with `severity:"critical"`, `versions:["*"]`, single unsigned source → `CriticalBlockAt:1` config → should still produce warn, not block. The all-versions guard must be enforced.
+The `motion` library (ex-Framer Motion) respects `prefers-reduced-motion` automatically when using the `m` component with `LazyMotion` — verify this is the configuration used, not the full `motion` component without the reduced-motion guard.
+
+Test by enabling "Reduce motion" in OS settings (macOS: Accessibility > Display > Reduce Motion; Windows: Ease of Access > Display > Show animations — disabled) and verifying the canvas does not mount.
 
 **Warning signs:**
-
-- `CriticalBlockAt:1` applies equally to version-specific and all-version entries
-- Block messages do not include the version range that triggered the match
-- No per-package allowlist-until-date mechanism in the policy schema
-- No community-facing issue template for "this package was incorrectly blocked"
+- `ReducedMotionProvider` exists but `HeroCanvasInner.tsx` does not import or check it.
+- The Canvas mounts unconditionally regardless of `useReducedMotion()` return value.
+- Ambient accent canvases (`AmbientHex.tsx`) do not check the reduced-motion context.
+- Any Three.js scene with particles, rapid rotation, or bright flashes — these require a PEAT tool assessment even with reduced-motion gating.
 
 **Phase to address:**
-
-PLCY-07 phase (v1.2.0). Include the all-versions guard and the block-message enrichment as acceptance criteria.
+Phase 5 (Marketing Sections — no R3F yet) establishes `ReducedMotionProvider`. Phase 6 (3D Layer) integrates the check into `HeroCanvasInner.tsx`. Both checks must be in place before the canvas is considered releasable.
 
 ---
 
-### Pitfall 9: Behavioral Tests That Mock Too Much — The Gap That Caused This Milestone
+### Pitfall 10: pnpm workspace hoisting Node packages into Go module root
 
 **What goes wrong:**
+Running `pnpm install` from the repo root creates a `node_modules/` directory at the repo root. Go tooling (`go build`, `go test`, `go mod tidy`) scans the directory tree for `.go` files and occasionally trips over non-Go content in `node_modules/`. More critically, `go mod tidy` may misinterpret `package.json` files or `.ts` files nested in `node_modules/` as signals to modify `go.sum`. In practice this is rare but the pollution of the Go module root with Node artifacts can cause surprising CI failures on the Go build jobs.
 
-The three gaps (F1/F2/F3) that define this milestone were found by **live testing with the agent as the test subject**, not by the unit test suite. This is the defining testing pitfall of the milestone: unit tests that mock `runPollenFn`-style interfaces validate that the code correctly handles the mock's return values — they do not validate that the code correctly handles the real system's output.
-
-The specific failure mode for this milestone:
-
-- `EvaluatePath` has extensive unit tests that pass pre-normalized paths. The wiring in `handler.go` was absent. The unit tests could not catch the gap because they never called through `RunCheck`.
-- The corroboration test for critical CVEs passes the policy engine in isolation. The live system has `Signed:false` from the bumblebee loader — a fact that a mocked `MultiCatalogLookup` may not faithfully represent.
-- The NUDGE cache test (PRD §10.11) passes in a long-lived test process. The one-shot `beekeeper check` process invalidates the cache assumption.
+A related failure: if `pnpm-workspace.yaml` is not at the repo root (or is incorrectly configured), `pnpm install` run from `web/` creates a root-level `node_modules/` anyway because pnpm resolves workspaces from the nearest `pnpm-workspace.yaml`. Misconfigured workspace boundaries leave hoisted packages in the wrong location.
 
 **Why it happens:**
-
-Unit tests are fast and deterministic. The natural tendency is to maximize unit test coverage and treat integration tests as expensive edge cases. For a security enforcement tool, this hierarchy is inverted: the unit tests prove correctness of components; the integration tests prove that the components are connected to the real system correctly.
+pnpm by default does not hoist to the root in workspace mode, but some older pnpm versions or certain `.npmrc` configurations (`hoist=true` or `shamefully-hoist=true`) do. If `web/package.json` is not marked with `"packageManager": "pnpm@9.x.x"` and Corepack is not enabled, a developer might accidentally run npm or yarn from `web/`, creating root-level artifacts.
 
 **How to avoid:**
-
-The BTEST phase is the explicit cross-cutting answer. For this milestone specifically:
-
-- **Every PLCY-05 acceptance criterion** must have a corresponding `check/integration_test.go` test that calls `RunCheck` with real (or realistic) stdin JSON. Not a mock. Not a unit call to `EvaluatePath`. A full stdin→exit-code pipeline.
-- **Every PLCY-07 criterion** must have a test that constructs a real `catalog.MultiIndex` (with the bumblebee `Signed:false` property preserved, not a mock that returns `Signed:true`) and asserts the correct block/warn decision.
-- **Every NUDGE criterion** that involves detection must have a test that verifies the behavior under a one-shot process model (start a test binary, exec it, check file-cache state).
-- **E2E battery**: run the live Beekeeper binary against synthetic tool call JSON, assert exit code. The PRD for the v1.2.0 milestone explicitly calls for "check-handler integration tests (stdin→decision)" and "live-binary E2E battery (catalog-backed)". These are not optional — they are the verification that the three F-gaps are actually closed.
-
-Fuzz testing (already in `policy/fuzz_test.go` and `catalog/fuzz_test.go`) covers edge-case input variation but does not verify wiring. Keep fuzz tests; add integration tests.
+- `pnpm-workspace.yaml` at repo root, listing only `'web'`.
+- `web/package.json` includes `"packageManager": "pnpm@9.x.x"` (Corepack enforces this).
+- `.npmrc` in `web/` (not repo root): do not add `shamefully-hoist=true`.
+- Add `node_modules/`, `web/.next/`, `web/out/`, `web/.source/` to repo root `.gitignore`.
+- CI Go job and web job run in separate GitHub Actions jobs with no shared working directory steps.
+- Never run `go` tooling from `web/` directory. Never run `pnpm` tooling from the Go module root without first checking that `pnpm-workspace.yaml` is configured to prevent root-level hoisting.
 
 **Warning signs:**
-
-- BTEST phase plan contains only unit tests and fuzz tests, no live-binary E2E tests
-- PLCY-05 tests import `policy` directly rather than calling through `check.RunCheck`
-- PLCY-07 tests mock `MultiCatalogLookup` with `Signed:true` rather than using the actual bumblebee catalog loader with `Signed:false` entries
-- No test file that imports `os/exec` to invoke the built binary and assert exit code
+- `node_modules/` appears at the repo root after `pnpm install`.
+- `go mod tidy` reports unexpected changes after a web dependency update.
+- `go build ./...` takes significantly longer (scanning node_modules).
+- `web/pnpm-lock.yaml` is absent (packages installed into root instead of `web/`).
 
 **Phase to address:**
-
-BTEST phase (v1.2.0) and embedded in each of PLCY-05, NUDGE, PLCY-07 phases. The E2E battery is a release gate for v1.2.0.
+Phase 1 (Scaffolding). The workspace isolation must be verified before any package installation. Run `pnpm install` from repo root and confirm that `node_modules/` appears only under `web/`, not at repo root.
 
 ---
 
-### Pitfall 10: NUDGE `bunfig.toml` Parse Failures and Corepack-Shimmed pnpm
+### Pitfall 11: GitHub Pages subpath deployment breaks all asset URLs (missing basePath / assetPrefix)
 
 **What goes wrong:**
+The site is deployed to `username.github.io/beekeeper/` (without a custom domain). All JavaScript, CSS, and image assets return 404. Navigation to any page other than the root returns 404. The `next/link` hrefs point to `/docs/...` instead of `/beekeeper/docs/...`. The site is completely broken.
 
-Two implementation-level pitfalls from the NUDGE spec that the test criteria cover but the implementation can still get wrong:
+**Why it happens:**
+Next.js generates all asset URLs relative to the domain root (`/_next/static/...`) unless `basePath` and `assetPrefix` are configured. When deployed to a subpath, the browser requests `username.github.io/_next/static/...` which does not exist — assets are at `username.github.io/beekeeper/_next/static/...`.
 
-**`bunfig.toml` parse failure (PRD §10.13):** If `bunfig.toml` exists but contains a TOML syntax error (common during developer editing), `BunScannerOK` defaults to `false` and a warning is logged. The pitfall is that a TOML parse error in Go with a naive `toml.Unmarshal` call may panic on some malformed inputs if the TOML library used does not handle all error cases. The detection must wrap the parse in a recover-or-error handler, not just check the error return. Use `github.com/BurntSushi/toml` which has well-tested error handling, not a minimal TOML parser.
-
-A second `bunfig.toml` pitfall: the spec says look for it in "project root and `~/.bunfig.toml`." The project root is subject to the same cwd ambiguity as the lockfile detection in Pitfall 7. Use the hook-input cwd, not `os.Getwd()`.
-
-**Corepack-shimmed pnpm (PRD §11):** The spec says "both detected by `exec.LookPath`. Corepack-shimmed pnpm responds to `--version` identically. No special handling needed." This is **conditionally true** on macOS and Linux. On Windows, Corepack installs shims as `.cmd` files (e.g., `pnpm.cmd`). `exec.LookPath("pnpm")` on Windows finds `pnpm.cmd` if `.CMD` is in `PATHEXT`, which it is by default. The `pnpm --version` exec through the cmd shim works but adds a cmd.exe process in between — increasing the exec latency by 20-40ms on Windows (cmd.exe startup). Under the 2-second timeout, this is fine, but it contributes to the overall detection overhead identified in Pitfall 1.
-
-The real corepack trap: if corepack is enabled but the project's `package.json` specifies a different pnpm version via `"packageManager": "pnpm@10.x"`, corepack will download pnpm 10 on first run, causing the 2-second timeout to expire while a network download is in progress. The version returned would be pnpm 10, not pnpm 11, causing `PnpmHardened:false` even though the user has pnpm 11 system-installed.
+Additionally, GitHub Pages by default applies Jekyll processing which skips any directory starting with `_`. This means `_next/` is entirely excluded from the published site unless a `.nojekyll` file is present in the output root.
 
 **How to avoid:**
+If deploying to GitHub Pages without a custom domain:
+```typescript
+// next.config.ts
+const nextConfig: NextConfig = {
+  output: 'export',
+  trailingSlash: true,
+  basePath: '/beekeeper',
+  assetPrefix: '/beekeeper/',
+  images: { unoptimized: true },
+  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
+};
+```
 
-- TOML parse: use `BurntSushi/toml` with explicit error checking; wrap in a named recover function; test with a deliberately malformed `bunfig.toml` fixture.
-- Corepack version ambiguity: after getting the version from `pnpm --version`, check if it satisfies the `versionFloors.pnpm` floor. If corepack returned an old version (< 11), log this as a warning: "pnpm detected via corepack may be using a project-pinned version older than the security floor." Do not try to detect corepack directly — that adds complexity. The version check is the right guard.
-- Test: fixture a `package.json` with `"packageManager": "pnpm@10.5.0"` and verify that NUDGE correctly identifies `PnpmHardened:false`.
+Add a `.nojekyll` file to `web/public/` — Next.js copies `public/` contents to `out/`, so `.nojekyll` ends up at the root of the deployed output, disabling Jekyll processing.
+
+Recommendation: use Cloudflare Pages with a custom domain instead — this eliminates the subpath problem entirely. `basePath` is not needed, `.nojekyll` is not needed, and the `_next/` directory is served correctly.
 
 **Warning signs:**
-
-- `bunfig.toml` parse uses a minimal library without error recovery
-- No fixture test with malformed `bunfig.toml` content
-- No test for corepack-pinned pnpm version below the security floor
-- Detection runs with a 2-second timeout on Windows without accounting for cmd.exe shim startup overhead
+- Deployed site shows broken asset loading (DevTools: 404 for `/_next/static/...`).
+- All navigation links lead to 404.
+- `basePath` and `assetPrefix` absent from `next.config.ts` when using GitHub Pages without a custom domain.
+- `.nojekyll` absent from `web/public/` for GitHub Pages deployments.
 
 **Phase to address:**
+Phase 1 (Scaffolding) — deployment target and `next.config.ts` must be decided before the first build. Phase 9 (CI) — CI deployment step must include `.nojekyll` for GitHub Pages or verify Cloudflare Pages is the target.
 
-NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance criteria.
+---
+
+## Moderate Pitfalls
+
+### Pitfall 12: next/og (ImageResponse) silently unavailable in static export
+
+**What goes wrong:**
+A developer adds per-page OG images using Next.js's `opengraph-image.tsx` file convention with `ImageResponse` from `next/og`. In `next dev` it works. In `next build` with `output: 'export'`, the OG image generation silently fails or the build errors — because `ImageResponse` uses an Edge runtime that is not available in the static export pipeline without careful `generateStaticParams` configuration.
+
+**Why it happens:**
+`next/og` with `ImageResponse` was designed for Edge runtime execution. When used without `generateStaticParams`, Next.js cannot render it at build time. The default `opengraph-image.tsx` convention works with static export only when combined with `generateStaticParams` that enumerates all slugs.
+
+**How to avoid:**
+For v1.3.0, use a single static `public/og-image.png` (1200x630) referenced in `lib/metadata.ts`. This is zero-complexity and works unconditionally with static export.
+
+If per-page OG images are needed in the future: use `opengraph-image.tsx` with `generateStaticParams` (confirmed to work with static export as of Next.js 15+), or run a `prebuild` Node.js script using `@vercel/og` in Node.js mode to generate PNGs into `public/og/`.
+
+Do not use `ImageResponse` in a Route Handler without `force-static` and `generateStaticParams`.
+
+**Warning signs:**
+- `app/[route]/opengraph-image.tsx` exists but does not export `generateStaticParams`.
+- `next build` error referencing Edge runtime modules in a static export context.
+- Social card preview shows no image when sharing docs or changelog URLs.
+
+**Phase to address:**
+Phase 7 (SEO and Static Assets). Decide the OG strategy (single static image vs. per-page) before implementing. Single static image is the correct v1.3.0 scope.
+
+---
+
+### Pitfall 13: Tailwind v4 @theme inline syntax required — shadcn form components unstyled in production
+
+**What goes wrong:**
+shadcn/ui form components (Input, FormLabel, Button) render with browser-default styles — no borders, wrong background, no focus ring. The bug is intermittent: some components look correct, others don't. It appears only in production builds, not in `next dev`.
+
+**Why it happens:**
+Tailwind v4 uses CSS-first configuration via `@theme`. When shadcn components use CSS custom properties (`hsl(var(--input))`) as color values inside Tailwind utility classes, Tailwind v4 must be told to resolve these via `@theme inline` syntax. Without it, Tailwind v4 generates the CSS with the variable reference but the utility mapping is incomplete — some utilities are emitted, some are purged or unresolved.
+
+The shadcn CLI generates the correct `@theme` block if auto-detection of Tailwind v4 works correctly. If the setup sequence is wrong (e.g., Tailwind v4 installed after shadcn init) the generated block may use the wrong syntax.
+
+**How to avoid:**
+Follow the setup sequence from STACK.md exactly: `create-next-app` first (generates Tailwind v4 config), then `shadcn@latest init` (auto-detects v4 and generates `@theme inline` syntax). Never create `tailwind.config.js` — v4 is CSS-first.
+
+If the `@theme` block generated by shadcn uses `@layer base` with `:root` and `.dark` without the `@theme` wrapper, shadcn detected Tailwind v3 — reinstall in the correct order.
+
+**Warning signs:**
+- shadcn component primitives appear unstyled in production but styled in dev.
+- `Input` component has no visible border.
+- `tailwind.config.js` file exists in `web/` — Tailwind v4 should use CSS-only config.
+
+**Phase to address:**
+Phase 2 (Design System). Verify by adding a shadcn `Button` and `Input` to a page and running `pnpm next build` — inspect the built HTML to confirm the components have Tailwind utility classes applied.
+
+---
+
+### Pitfall 14: Fumadocs @source scan missing — Tailwind purges docs utility classes
+
+**What goes wrong:**
+The docs section renders with Fumadocs layout structure (sidebar, TOC) but many utility classes are missing: wrong spacing, incorrect font sizes in code blocks, broken prose layout. The issue only manifests in production builds.
+
+**Why it happens:**
+Tailwind v4 uses content scanning to determine which utility classes to include in the output CSS. By default it scans `web/**/*.{ts,tsx}` — but Fumadocs components live in `node_modules/fumadocs-ui/dist/`, which is not scanned by default. Without `@source '../node_modules/fumadocs-ui/dist/**/*.js'`, Tailwind purges utility classes that appear only in Fumadocs components.
+
+**How to avoid:**
+Add to `globals.css` after the Fumadocs CSS imports:
+```css
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+```
+
+**Warning signs:**
+- Docs pages have correct layout structure but wrong spacing, font sizes, or code block styling in production.
+- `pnpm next build` completes but the deployed docs look different from `next dev`.
+- `globals.css` does not contain `@source` pointing to `fumadocs-ui/dist`.
+
+**Phase to address:**
+Phase 2 (Design System). Part of the CSS import order setup.
+
+---
+
+### Pitfall 15: drei imported as a wildcard blows the client bundle past the 300KB budget
+
+**What goes wrong:**
+The Three.js + R3F + drei bundle exceeds 500KB compressed, causing noticeable load delay on the home page and failing the performance budget. Lighthouse shows TBT > 200ms because the large JS chunk blocks the main thread during parse.
+
+**Why it happens:**
+`@react-three/drei` exports hundreds of helpers. A wildcard import (`import * as drei from '@react-three/drei'`) or importing many helpers from the package root can cause Turbopack to include the entire drei package in the client bundle if tree-shaking is not effective.
+
+Three.js itself does not tree-shake cleanly. But drei helpers that import optional peer dependencies (physics engines, postprocessing, etc.) add significant weight if not tree-shaken.
+
+**How to avoid:**
+Use named imports from the package root and let Turbopack tree-shake:
+```typescript
+import { Float, Environment } from '@react-three/drei';
+```
+
+Avoid importing helpers that have large optional peer dependencies unless those deps are installed and needed.
+
+After Phase 6, run `pnpm next build` and inspect `out/_next/static/chunks/` — identify any chunk above 250KB. Use `@next/bundle-analyzer` if bundle composition is unclear.
+
+**Warning signs:**
+- Lighthouse TBT > 200ms on the home page.
+- A single JS chunk in `out/_next/static/chunks/` larger than 300KB (compressed).
+- `import * as drei` anywhere in the codebase.
+
+**Phase to address:**
+Phase 6 (3D Layer). Run bundle analysis as the final step of Phase 6 before proceeding to Phase 7.
+
+---
+
+### Pitfall 16: Go CI and web CI triggering on each other's changes (missing path filters)
+
+**What goes wrong:**
+Every commit to a Go file triggers the full web CI pipeline. Every commit to a web MDX file triggers the full Go CI pipeline. Both pipelines take 5–10 minutes. On a solo project with fast iteration, this doubles CI wait time and wastes compute.
+
+The more dangerous failure: the web CI job installs Node.js on the same runner that runs Go tests, and a mis-scoped `node_modules/` or path pollution causes the Go build to fail with "package not found" errors because `$PATH` or `$GOPATH` is contaminated.
+
+**Why it happens:**
+A single workflow file (`ci.yml`) with no `paths:` filter on the trigger. Or separate workflow files with an overly broad trigger (`on: push: branches: [main]` with no path filter).
+
+**How to avoid:**
+Two separate workflow files with mutually exclusive path filters:
+
+```yaml
+# .github/workflows/go.yml
+on:
+  push:
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/go.yml'
+
+# .github/workflows/web.yml
+on:
+  push:
+    paths:
+      - 'web/**'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/web.yml'
+```
+
+Go jobs must never install Node or pnpm. Web jobs must never install Go or run `go` commands.
+
+**Warning signs:**
+- A single `ci.yml` with no `paths:` filter.
+- Go CI job steps that include `actions/setup-node`.
+- Web CI job steps that include `actions/setup-go`.
+- CI runtime doubling with each commit regardless of what changed.
+
+**Phase to address:**
+Phase 9 (CI). Path filters must be the first thing configured in the workflow files.
+
+---
+
+### Pitfall 17: Canvas has no accessible text — screen reader users see a blank element
+
+**What goes wrong:**
+Screen reader users navigating the marketing home page encounter the hero canvas element and hear nothing (or the generic fallback "canvas"). The Three.js scene that communicates Beekeeper's core value proposition is invisible to assistive technology. WCAG 1.1.1 (Level A) requires non-text content to have a text alternative.
+
+**Why it happens:**
+The HTML `<canvas>` element has no built-in accessibility semantics. R3F's `Canvas` component renders a `<canvas>` with no `aria-label`, `role`, or descriptive text content. Developers focus on the visual experience and overlook the AT experience.
+
+**How to avoid:**
+Two-pronged approach:
+1. `aria-hidden="true"` on the `<canvas>` — marks it as decorative for screen readers.
+2. A visually hidden but AT-visible description adjacent to the canvas:
+```typescript
+<canvas aria-hidden="true" />
+<p className="sr-only">
+  Diagram showing an AI agent's tool call being intercepted by Beekeeper,
+  evaluated against threat intelligence, and either allowed or blocked.
+</p>
+```
+
+The `loading` prop of `dynamic()` already renders the SVG fallback with an `alt` attribute — ensure that alt text is descriptive, not empty or generic.
+
+For `motion` library animations on section headings, ensure they do not interfere with focus order. Animated elements must not trap keyboard focus.
+
+**Warning signs:**
+- `<canvas>` element without `aria-hidden="true"` in the rendered DOM.
+- Screen reader announces "canvas" with no additional context.
+- `alt=""` on the SVG fallback image when it is the primary means of conveying the hero concept.
+- Tab order on the marketing page skips interactive elements or lands on non-interactive animated elements.
+
+**Phase to address:**
+Phase 5 (Marketing Sections) sets up the static SVG with correct alt text. Phase 6 (3D Layer) adds `aria-hidden` to the canvas and the `.sr-only` description.
+
+---
+
+### Pitfall 18: .source/ committed to git — noisy diffs and masked content changes
+
+**What goes wrong:**
+After running `next build`, the generated `.source/` directory (fumadocs-mdx output) appears as untracked files. A developer adds them with `git add .` and commits. Every subsequent content change regenerates `.source/` — PRs become unreviable with hundreds of lines of generated type changes mixed into MDX prose changes.
+
+**Why it happens:**
+fumadocs-mdx generates `.source/index.ts` and `.source/meta.ts` from the MDX content at build time. These are analogous to generated protobuf files — they should never be committed. Without a `.gitignore` entry, they appear as untracked and any `git add -A` operation includes them.
+
+**How to avoid:**
+Add to repo root `.gitignore`:
+```
+web/.source/
+web/.next/
+web/out/
+```
+
+The `pnpm dlx create-next-app` scaffold adds `.next/` automatically. `.source/` and `out/` must be added manually.
+
+**Warning signs:**
+- `.source/` directory appears in `git status` as untracked.
+- PRs include changes to `.source/index.ts` or `.source/meta.ts`.
+- `git diff` on a content-only MDX change shows hundreds of lines of generated type changes.
+
+**Phase to address:**
+Phase 1 (Scaffolding). `.gitignore` must include `.source/` before the first `next build` is run.
 
 ---
 
@@ -413,13 +579,12 @@ NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance 
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| In-process 60-second nudge cache only (no file cache) | Simpler detect.go implementation | Cache is a no-op in one-shot `beekeeper check` invocations; exec overhead on every hook call; p99 regression | Never acceptable for the check integration path |
-| `critical_block_at:1` applies to `versions:["*"]` entries | No extra logic needed | A single upstream mis-tagging of a major package blocks all installs of it across all Beekeeper users | Never acceptable; the all-versions guard is mandatory |
-| Treat bundled bumblebee as signed-equivalent without Ed25519 verification | Unblocks PLCY-07 immediately | Poisoned bundled catalog can single-handedly block any package | Never acceptable; must use sanity-bound gating or catalog signing |
-| PLCY-05 wiring passes raw `file_path` to `EvaluatePath` without normalization | Less code in handler | Tilde, relative paths, and `..` traversal bypass the blocklist silently | Never acceptable; normalization is documented as caller responsibility |
-| BTEST only contains unit and fuzz tests, no E2E binary invocations | Faster CI | Does not verify wiring gaps — precisely the class of bug that caused this milestone | Never acceptable; E2E tests are a v1.2.0 release gate |
-| NUDGE hard mode enabled as default config | Users immediately get the stronger protection | Breaks agent workflows that parse npm output; increases support burden | Never acceptable; soft mode default is a security product UX non-negotiable |
-| Skip PLCY-05 Windows path tests (forward-slash only) | CI passes without Windows-specific fixtures | Windows-primary dev box (the dogfood environment) has backslash paths; the most used environment is untested | Never acceptable; Windows CI matrix exists for exactly this reason |
+| Single static `og-image.png` for all pages | Zero implementation cost; works with static export | Social shares for docs pages show the same generic image; reduced click-through from social | Acceptable for v1.3.0; revisit when social traffic is measurable |
+| Hand-sync between `docs/THREAT-MODEL.md` and web MDX (no automation) | No build complexity | Content drift is a real risk — the source doc updates but the web doc does not | Acceptable with the `source_doc:` frontmatter convention + sync review at each release |
+| No per-page Orama index tuning | Default tokenizer and relevance weights | Search result ranking may surface less relevant pages for Beekeeper-specific terms (e.g., "corroboration") | Acceptable at < 60 pages; tune when search quality complaints arise |
+| Single R3F chunk not split by scene | Simpler imports | Ambient accents force-load the full drei package even if only Float and Environment are used | Acceptable if drei imports are per-component; revisit if bundle analysis shows disproportionate size |
+| `images.unoptimized: true` (no CDN) | No CDN config required | Images served at full resolution regardless of viewport — mobile users download unnecessarily large images | Acceptable for v1.3.0 (site has few images: OG, logo, hero SVG); revisit if image-heavy content is added |
+| No `@next/bundle-analyzer` in CI | Simpler CI | Bundle regressions not caught automatically — a bad drei import could double the bundle silently | Add as a manual verification step for Phase 6; automate if budget violations occur |
 
 ---
 
@@ -427,13 +592,16 @@ NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance 
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| PLCY-05 wiring in `handler.go` | Extracting `file_path` from tool call JSON and passing directly to `EvaluatePath` | Expand tilde, call `filepath.Abs()`, call `filepath.EvalSymlinks()`, normalize slashes, then call `EvaluatePath` |
-| NUDGE detect in `check` path | Using in-process sync.Once or time.Now()-based cache | Write detection result to `~/.beekeeper/state/nudge-detect.json` with TTL; read it on next invocation |
-| PLCY-07 per-severity threshold | Adding `forceSigned = true` shortcut in `corroborate()` | Add `CriticalBlockAt` field to `CorroborationThresholds`; gate on sanity bounds not exceeded; test with degraded-mode override |
-| NUDGE bun scanner detection | Only looking in project root `bunfig.toml` | Also check `~/.bunfig.toml`; use hook-input cwd as project root, not `os.Getwd()` |
-| NUDGE docker-exec detection | Parsing `npm install foo` inside `docker exec ... npm install foo` as a nudge candidate | Detect `docker exec` / `docker run` prefix first; return Proceed with reason code, skip PM detection |
-| PLCY-05 command parsing for Bash tool calls | Only checking `cat` prefix for credential-file access | Also check `type` (Windows cmd), `Get-Content` (PowerShell), `gc` (PSAlias), `more` (cross-platform) |
-| BTEST integration tests | Calling policy engine functions directly with pre-normalized inputs | Feed raw tool call JSON through `RunCheck`; assert on exit code and audit record |
+| shadcn + Tailwind v4 | Running `shadcn init` before `create-next-app` generates Tailwind v3-style `tailwind.config.js` | Run `create-next-app` first (generates v4 CSS-first config), then `shadcn init` (auto-detects v4) |
+| Fumadocs + shadcn CSS | `fumadocs-ui/css/preset.css` imported before `fumadocs-ui/css/shadcn.css` in globals.css | Always `shadcn.css` before `preset.css`. The order is load-bearing. |
+| Fumadocs + Tailwind v4 | Missing `@source` directive for fumadocs-ui dist — utility classes purged in production | Add `@source '../node_modules/fumadocs-ui/dist/**/*.js'` to globals.css |
+| R3F + static export | Importing three/r3f/drei in any file without `'use client'` | All R3F imports isolated in `HeroCanvasInner.tsx` and `HiveScene.tsx`; dynamic() with ssr:false is the only boundary |
+| R3F + next-themes | Canvas background color does not match page background on theme switch | Read CSS variables with `getComputedStyle(document.documentElement)` on theme change inside a `useThree` callback |
+| next-themes + RSC | `useTheme()` called in a Server Component — throws "hooks can only be called in a client component" | `ThemeToggle.tsx` must be `'use client'`; never call `useTheme` in a Server Component |
+| Fumadocs search + static export | `RootProvider` without `search={{ type: 'static' }}` — fetch mode calls /api/search at runtime | Always `type: 'static'` in RootProvider for output: 'export' |
+| pnpm workspace + Go module | Running `pnpm install` from repo root without correct pnpm-workspace.yaml — hoists to root | pnpm-workspace.yaml must be at repo root; verify node_modules location after first install |
+| next-sitemap + static deploy | sitemap.xml not in `out/` because postbuild script not configured | Add `"postbuild": "next-sitemap"` to package.json scripts |
+| Changelog [version] route | `generateStaticParams` absent — dynamic route renders in dev but 404s in static export | Every [param] route must export generateStaticParams; verify by inspecting out/ after build |
 
 ---
 
@@ -441,10 +609,11 @@ NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance 
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| NUDGE: 3× subprocess exec on every `beekeeper check` invocation | `beekeeper diag` p99 spikes 100ms+ after NUDGE phase merge; agent feels slow | File-based detection cache with 60s TTL in `~/.beekeeper/state/nudge-detect.json` | Every hook invocation on a machine with pnpm/bun installed |
-| PLCY-05: `filepath.EvalSymlinks()` on every Bash command's file targets | Extra stat/readlink syscall per path candidate in every Bash tool call | Only call `EvalSymlinks` for paths that survive the initial blocklist substring check (fail fast on the cheap check first) | Every Bash tool call that reads a file |
-| PLCY-07: `CriticalBlockAt:1` with network-fetched OSV corroboration | Extra OSV HTTP call on critical severity match, adding latency | Critical-severity escalation for bundled bumblebee should not require OSV confirmation — the whole point is to block without needing a second source | Every critical-severity npm install |
-| NUDGE: `pnpm view pnpm version` for weekly drift check on check path | Weekly drift check runs during `beekeeper check` if timer check is done in-process | Drift check belongs in the `beekeeper catalogs sync` daemon or a scheduled task, never in the one-shot check path | First check invocation after the 168h drift interval elapses |
+| Canvas as LCP element | LCP > 2.5s; canvas identified as LCP candidate | SVG fallback fills same layout space as canvas so LCP candidate is SVG (instant); `<h1>` is in server output | Breaks on 3G and slower connections; also breaks on mid-range laptops with slow JS parse |
+| drei wildcard import | Initial JS bundle > 500KB compressed; TBT > 200ms | Named imports only; run bundle analyzer after Phase 6 | Breaks the performance budget immediately; masked in dev by hot-reload chunking |
+| Multiple Canvas instances over context limit | GPU memory growth; context loss on Safari after 8 contexts | Cap at 3 Canvas instances total; dispose scene objects on unmount | Breaks on Safari (8 context limit) and on mobile GPUs (memory limited) |
+| motion animations causing CLS | Layout shift metric > 0.1 in Lighthouse | Use `initial={{ opacity: 0 }}` with `animate={{ opacity: 1 }}` — opacity changes don't cause CLS; avoid initial layout-affecting animations | Breaks CLS score on any page with entrance animations |
+| MDX compilation not cached between CI builds | CI build time grows linearly with content additions | Turbopack caches MDX compilation; ensure `.next/` is preserved in CI cache | Acceptable at < 60 pages; measure at Phase 8 when all content is authored |
 
 ---
 
@@ -452,31 +621,44 @@ NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance 
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| PLCY-07: severity-based corroboration escalation without sanity-bound gating | Poisoned catalog entry with `severity:"critical"` blocks any package without second-source corroboration | Gate `CriticalBlockAt:1` on catalog sanity result: if catalog is in `Alert` or `Block` state from `CheckSanity`, revert to unsigned warn-only regardless of severity |
-| NUDGE: recommending `@socketsecurity/bun-security-scanner` without disclosure | User may not realize Beekeeper is adding a third-party npm package to their supply chain trust | PRD §12 requires explicit disclosure text in the recommendation message: "published by Socket Inc." — enforce this as a test against the message string |
-| PLCY-05: not re-evaluating resolved symlink target | Agent creates symlink from `/tmp/safe` to `~/.aws/credentials`; reads `/tmp/safe`; PLCY-05 sees a `/tmp/safe` path and allows | Call `filepath.EvalSymlinks()` before blocklist check; evaluate both the original path and the resolved target |
-| PLCY-07: `critical_block_at` threshold stored in user-editable policy file without validation | User sets `critical_block_at: 0` (which disables all critical blocking) without understanding the implication | Validate `CriticalBlockAt >= 1` in `validateCorroborationThresholds()`; treat `CriticalBlockAt: 0` as unset (use default of 2, not 0) |
-| NUDGE: hard-mode rewriting changes signed vs unsigned npm artifact | pnpm's lockfile format and integrity fields differ from npm's; rewriting may bypass npm's lockfile integrity checks | Document that hard mode changes the lockfile format; users must regenerate lockfiles when switching; do not present hard-mode rewriting as transparent |
-| PLCY-05: normalization converts `../../.env` to a path outside the project | Absolute resolution of `../../.env` from a deep project subdirectory reaches actual `~/.env` | After `filepath.Abs()`, check that the resolved path is under the allowed project root OR evaluate against the blocklist (either hit is correct behavior — blocking is the right outcome here) |
+| Documenting unenforced features as working | Users configure policy fields that have no effect; false sense of protection | `source_doc:` frontmatter + manual review against shipped code at Phase 8 content gate |
+| Hermes fail-OPEN caveat buried in a "known gaps" section but absent from the Hermes integration page | Hermes users believe their setup is fully protected | Caveat must appear at the top of the Hermes page AND in the known-gaps section — duplication is intentional |
+| `--bind 0.0.0.0` gateway option documented without the warning that the config gate is absent | Operators expose the MCP gateway to the network believing a config guard exists | Document verbatim: "The `allow_remote_gateway` config gate described in the help text is not implemented in v1.3.0. Remote binding is unrestricted once `--bind` is set." |
+| Using `@vercel/analytics` or any third-party analytics script | Tracking scripts on a security tool undermine trust; potential data exfiltration surface | No analytics by default; if ever needed, use self-hosted Plausible via a same-origin script |
+| MDX components that render arbitrary user content | XSS risk if changelog MDX ever includes external content | All MDX is hand-authored in-repo; no external MDX sources; no dynamic remote MDX |
+| Social OG image metadata pointing to an http:// URL | Mixed content warning; image may not load in some browsers | `metadataBase` must use `https://`; verify the domain is correct before launch |
+
+---
+
+## UX Pitfalls
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| Docs pages lack breadcrumbs | Users lose orientation in deep doc sections | Fumadocs DocsLayout includes breadcrumbs automatically — ensure DocsLayout is used, not a custom layout |
+| Install CTA requires scrolling on mobile | Developer bounces without installing | Hero section must be entirely visible on mobile (375px wide) without scrolling; two CTAs stacked vertically on mobile |
+| No copy-to-clipboard on `go install` command | Developers must manually select and copy; error-prone on mobile | `CopyableCodeChip` component wraps the install command with a copy button |
+| Dark mode toggle not present in docs nav | Users cannot toggle theme while reading docs | Configure `nav.links` in DocsLayout to include a ThemeToggle component; test both sections |
+| Keyboard users cannot dismiss the search dialog | Traps focus in the search dialog | Fumadocs search dialog handles Escape to close — verify in Playwright; do not override the Fumadocs dialog with a custom implementation |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **PLCY-05 tilde expansion:** `RunCheck` with `file_path: "~/.aws/credentials"` exits 1 (block) — verify with an integration test, not just a unit test of `EvaluatePath`
-- [ ] **PLCY-05 `.env.example` allowed:** `EvaluatePath(".env.example", DefaultSensitivePaths())` returns allow — verify default `AllowPatterns` includes this
-- [ ] **PLCY-05 `..` traversal caught:** `RunCheck` with `file_path: "../../.aws/credentials"` exits 1 — requires `filepath.Abs()` in wiring
-- [ ] **PLCY-05 Windows backslash:** `RunCheck` with `file_path: "C:\\Users\\user\\.aws\\credentials"` exits 1 on Windows CI matrix
-- [ ] **PLCY-05 PowerShell `Get-Content`:** Bash tool call with `Get-Content ~/.aws/credentials` exits 1 — not just `cat` coverage
-- [ ] **NUDGE file cache:** After a `beekeeper check` invocation, `~/.beekeeper/state/nudge-detect.json` exists and contains the detected PM state
-- [ ] **NUDGE one-shot cache hit:** A second `beekeeper check` invocation within 60s does NOT exec `pnpm --version` again — verify via file modification timestamp, not in-process mock
-- [ ] **NUDGE docker-exec non-nudge:** Bash tool call containing `docker exec ... npm install foo` returns Proceed with correct reason code — not Advise or Rewrite
-- [ ] **NUDGE hard-mode soft-default:** Default config has `mode: "soft"` — verify by loading default config and asserting mode
-- [ ] **PLCY-07 sanity-bound gate:** `CriticalBlockAt:1` + degraded catalog (>1000 new entries) → warn-only, not block — E2E test with injected large catalog delta
-- [ ] **PLCY-07 all-versions guard:** Single-source `critical` + `versions:["*"]` → warn-only even with `CriticalBlockAt:1`
-- [ ] **PLCY-07 block message:** Block decision includes catalog source name, severity, and affected version range in `Reason` field
-- [ ] **BTEST E2E battery:** A test file execs the compiled Beekeeper binary with synthetic tool call JSON on stdin and asserts exit code — not just `go test ./...`
-- [ ] **BTEST catalog-backed E2E:** At least one E2E test uses a real (or real-format) bumblebee catalog slice with `Signed:false` entries to verify corroboration behavior matches production
+- [ ] **Static export**: Run `pnpm next build` in CI (not just `next dev`) — build must succeed; inspect `out/` structure manually.
+- [ ] **Search**: `out/api/search/index.json` must be non-empty; open search dialog in Playwright and verify results are returned.
+- [ ] **Dynamic routes**: `out/changelog/v1.0.0/index.html`, `out/changelog/v1.2.0/index.html`, `out/docs/getting-started/quickstart/index.html` must all exist after build.
+- [ ] **R3F isolation**: Grep for `from '@react-three/fiber'` in `web/components/` — only `HeroCanvasInner.tsx` and its direct imports should appear.
+- [ ] **Reduced motion**: Enable OS reduced-motion setting; reload home page; canvas must not mount (verify with DevTools: no `<canvas>` element in DOM).
+- [ ] **Canvas a11y**: `<canvas>` in DOM has `aria-hidden="true"`; adjacent `.sr-only` text is present and descriptive.
+- [ ] **Fumadocs dark mode**: Docs section tested with both light and dark theme; sidebar, TOC, and code blocks have correct contrast.
+- [ ] **Content accuracy**: Every MDX file with `source_doc:` frontmatter has been reviewed against the referenced source document before Phase 8 closes.
+- [ ] **Hermes caveat**: Open `web/content/docs/integration/hermes.mdx`; the fail-OPEN warning must appear before the first configuration step.
+- [ ] **Unenforced features**: Policy-as-code guide explicitly states which fields are enforced and which are recognized but unenforced in v1.3.0.
+- [ ] **Node isolation**: After `pnpm install` from repo root, `node_modules/` must not exist at repo root — only under `web/`.
+- [ ] **OG image**: Share a docs page URL in a social preview tool; the correct OG image must appear.
+- [ ] **trailingSlash**: Navigate to `/docs` (no trailing slash) on the deployed site — must redirect to `/docs/` (with trailing slash), not 404.
+- [ ] **Suppressed hydration warning**: No React hydration warnings in browser console on the home page with system dark mode enabled.
+- [ ] **.source/ not in git**: `git status` shows no `.source/` files after `next build`.
 
 ---
 
@@ -484,13 +666,16 @@ NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance 
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| NUDGE detection exec overhead discovered post-merge (p99 regression) | MEDIUM | Implement file-based detection cache; add latency regression gate to CI; one-commit fix but requires re-verification of one-shot behavior |
-| PLCY-07 false positive blocks a widely-used package | LOW-MEDIUM | Add to `package_allowlist` in policy file (immediate relief); upstream catalog correction (longer-term); `CriticalBlockAt` → 2 as emergency rollback |
-| PLCY-07 catalog poisoning via single critical entry | MEDIUM | Emergency: set `CriticalBlockAt` back to 2 in shipped config; publish updated Beekeeper with sanity-bound gate reinforced; requires users to update |
-| PLCY-05 `.env.example` false positive discovered in production | LOW | Add to default `AllowPatterns`; release patch; users can add local allowlist immediately as workaround |
-| NUDGE hard-mode rewrite breaks agent output parsing | MEDIUM | Disable hard mode (config change); add `--json` guard to hard-mode rewrite logic; re-enable after testing |
-| BTEST gaps discovered during v1.2.0 milestone audit | HIGH | Cannot close milestone without E2E coverage; add integration tests before closing; may delay release |
-| PLCY-05 `..` traversal bypass discovered post-release | HIGH | SECURITY.md disclosure; patch release with `filepath.Abs()` in handler wiring; advise users to update immediately |
+| R3F in server component (build crash) | LOW | Move all R3F imports to `HeroCanvasInner.tsx`; add `'use client'`; verify build |
+| CSS import order wrong (docs colors broken) | LOW | Reorder `globals.css`; `pnpm next build`; visual check |
+| Search returning 404 | LOW | Add `export const dynamic = 'force-static'`; add `search={{ type: 'static' }}` to RootProvider; rebuild |
+| Content accuracy failure discovered post-launch | HIGH | Emergency MDX update + redeploy; add public errata notice on the page; implement content review gate retroactively for all remaining pages |
+| Bundle budget exceeded | MEDIUM | Run `@next/bundle-analyzer`; convert wildcard drei imports to named; remove unused drei helpers |
+| Theme flash in production | LOW | Add `suppressHydrationWarning` to `<html>`; add `disableTransitionOnChange` to ThemeProvider |
+| WebGL context loss | MEDIUM | Add `useEffect` cleanup with `.dispose()` for all scene objects; reduce Canvas instance count |
+| pnpm hoisting to Go root | LOW | Add / fix `pnpm-workspace.yaml`; remove stray root `node_modules/`; re-run `pnpm install` from workspace root |
+| GitHub Pages 404s (missing basePath) | LOW | Add `basePath` and `assetPrefix` to `next.config.ts`; add `.nojekyll` to `public/`; redeploy |
+| generateStaticParams missing (404 on dynamic routes) | LOW | Add `generateStaticParams` to route; inspect `out/`; redeploy |
 
 ---
 
@@ -498,33 +683,54 @@ NUDGE phase (v1.2.0). Add corepack and TOML error tests to the NUDGE acceptance 
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| NUDGE detection exec overhead (one-shot cache trap) | NUDGE phase plan — must resolve mitigation path before implementation | `beekeeper diag` p99 does not regress after NUDGE merge; file cache exists on disk after first invocation |
-| PLCY-07 corroboration poisoning (signed-equivalent shortcut) | PLCY-07 phase — sanity-bound gating required before `CriticalBlockAt` goes live | E2E: 1001 new critical entries → degraded mode, not block storm; behavioral test: critical + sanity alert → warn |
-| PLCY-05 path normalization gaps (tilde, `..`, Windows) | PLCY-05 phase — normalization adapter in handler wiring | Integration tests: tilde/relative/backslash paths through `RunCheck` all exit 1 as expected |
-| PLCY-05 false negatives (indirect access via Bash) | PLCY-05 phase — command parser for Bash tool calls | Tests covering `cat`, `type`, `Get-Content`, `gc` patterns in Bash tool call command strings |
-| PLCY-05 false positives (`.env.example`) | PLCY-05 phase — update `DefaultSensitivePaths()` allow list | Unit test: `.env.example` → allow; `.env.production` → block |
-| NUDGE hard-mode agent output breakage | NUDGE phase — rewrite compatibility notes; no hard-mode default | Config assert: default mode is soft; `--json` flag guard in rewrite logic |
-| NUDGE docker-exec PM detection mismatch | NUDGE phase — docker-exec prefix detection in command parser | Test: `docker exec ... npm install` → Proceed with docker reason code |
-| PLCY-07 false positives from severity inflation | PLCY-07 phase — all-versions guard; block message enrichment | Test: `versions:["*"]` critical + single source → warn even with `CriticalBlockAt:1` |
-| Behavioral tests mocking too much | BTEST phase — live-binary E2E battery requirement | BTEST phase plan includes exec-based E2E tests as acceptance criterion; milestone audit checks for these tests |
-| NUDGE TOML parse errors and corepack version trap | NUDGE phase — error handling in `bunfig.toml` parse; corepack version check | Fixture tests with malformed TOML; fixture `package.json` with pnpm@10 corepack pin |
+| R3F SSR crash | Phase 6 (3D Layer) | `pnpm next build` succeeds; grep confirms R3F imports isolated |
+| Fumadocs search broken | Phase 3 (Content Pipeline) | `out/api/search/index.json` non-empty; Playwright search test passes |
+| CSS import order (invisible text) | Phase 2 (Design System) | Visual check: docs in light + dark mode at correct contrast |
+| Content accuracy / overclaiming | Phase 8 (Content Authoring) | source_doc review gate before phase closes |
+| generateStaticParams missing | Phase 3 + 4 | Inspect `out/` for all expected route directories |
+| Theme flash / FOUC | Phase 2 (Design System) | Build + serve `out/` with system dark mode; no visible flash |
+| WebGL context loss | Phase 6 (3D Layer) | Navigate home then docs then home three times; no black canvas or perf degradation |
+| LCP blocked by canvas | Phase 6 (3D Layer) | Lighthouse LCP < 2.5s; LCP candidate is SVG or `<h1>` |
+| prefers-reduced-motion ignored | Phase 5 + 6 | Enable OS reduced-motion; verify no canvas in DOM |
+| pnpm hoisting to Go root | Phase 1 (Scaffolding) | Verify `node_modules/` location after install |
+| GitHub Pages subpath / missing basePath | Phase 1 (Scaffolding) + Phase 9 (CI) | Deploy to target host; verify all assets load |
+| next/og not supported in static export | Phase 7 (SEO) | OG image renders in social preview tool |
+| Tailwind v4 @theme syntax wrong | Phase 2 (Design System) | shadcn Input/Button styled correctly in production build |
+| @source scan missing (Fumadocs purge) | Phase 2 (Design System) | Docs pages in production have correct spacing and code block styling |
+| drei wildcard bundle blowup | Phase 6 (3D Layer) | Bundle analyzer shows R3F chunk < 300KB compressed |
+| Go/web CI cross-triggering | Phase 9 (CI) | Commit a `.go` file; verify web CI does not trigger |
+| Canvas a11y (screen reader blank) | Phase 5 + 6 | Screen reader test; `aria-hidden` + `.sr-only` text present |
+| .source/ committed to git | Phase 1 (Scaffolding) | `git status` clean after `next build` |
 
 ---
 
 ## Sources
 
-- Live codebase: `internal/policy/path.go` — caller-normalization contract documented in EvaluatePath doc comment; `DefaultSensitivePaths()` has `AllowPatterns: nil`
-- Live codebase: `internal/policy/corroboration.go` — `Signed:false` entries go to unsigned warn-only path; `CriticalBlockAt` field does not yet exist
-- Live codebase: `internal/catalog/verify.go` — `VerifySignatureWithKey` exists and is correct; bundled catalog uses `VerifySignature` (presence-only)
-- Live codebase: `internal/catalog/sanity.go` — `CheckSanity` is pure, correct, and already enforces delta bounds
-- Live codebase: `internal/check/handler.go` — path normalization is absent before `policy.Evaluate`; nudge integration point does not yet exist
-- PROJECT.md — F1/F2/F3 runtime-validation findings that define this milestone; "runtime-validation findings exposed by live testing, not unit tests"
-- NUDGE PRD §4 — 60-second detection cache defined for in-process context; §3.3 lists `internal/check` as first integration point without noting the one-shot contradiction
-- NUDGE PRD §6.1 — 2-second hard timeout on all detection commands; all detection commands exec subprocesses
-- NUDGE PRD §10.11 — "Detection cache prevents re-running `pnpm --version` more than once per 60 seconds in the same session" — the "session" assumption is broken in one-shot check
-- NUDGE PRD §11 — docker-exec and monorepo edge cases; §12 — supply-chain trust disclosure requirement for Socket scanner recommendation
-- CLAUDE.md — "Corroboration sanity bounds + catalog signature verification" listed as Phase 2 self-defense non-negotiables; "Fail closed by default" as architecture constraint; adversarial corpus + fuzz + OS-specific build tag requirements
+- [Next.js Static Exports — Unsupported Features](https://nextjs.org/docs/app/guides/static-exports) — confirmed ISR, middleware, next/og without generateStaticParams, Route Handlers without force-static are all unavailable. HIGH confidence.
+- [Next.js API Routes in Static Export Warning](https://nextjs.org/docs/messages/api-routes-static-export) — Route Handler must use force-static. HIGH confidence.
+- [OG image generation doesn't work with Static Export — Next.js Discussion #55890](https://github.com/vercel/next.js/discussions/55890) — confirmed ImageResponse requires generateStaticParams for static export. HIGH confidence.
+- [Fumadocs Static Build Guide](https://www.fumadocs.dev/docs/deploying/static) — force-static Route Handler + `type: 'static'` RootProvider. HIGH confidence.
+- [Fumadocs Orama Search Docs](https://www.fumadocs.dev/docs/ui/search/orama) — static mode configuration. HIGH confidence.
+- [Fumadocs Theme Docs](https://www.fumadocs.dev/docs/ui/theme) — shadcn.css then preset.css import order; @source scan requirement. HIGH confidence.
+- [Fumadocs Tailwind v4 Discussion #1338](https://github.com/fuma-nama/fumadocs/discussions/1338) — monorepo coexistence, variable mapping. MEDIUM confidence.
+- [shadcn/ui Tailwind v4 Docs](https://ui.shadcn.com/docs/tailwind-v4) — @theme inline syntax, setup order. HIGH confidence.
+- [shadcn/ui Troubleshooting — CSS Variable Conflicts](https://eastondev.com/blog/en/posts/dev/20260402-shadcn-ui-troubleshooting/) — form components unstyled in production with Tailwind v4. MEDIUM confidence.
+- [R3F — Leaking WebGLRenderer Issue #3093](https://github.com/pmndrs/react-three-fiber/issues/3093) — disposal requirements on unmount. HIGH confidence.
+- [R3F — WebGL Context Loss Discussion #723](https://github.com/pmndrs/react-three-fiber/discussions/723) — context loss on unmount; browser context limits. HIGH confidence.
+- [R3F — Too many active WebGL contexts on Safari Discussion #2457](https://github.com/pmndrs/react-three-fiber/discussions/2457) — Safari 8-context limit. HIGH confidence.
+- [next-themes GitHub README](https://github.com/pacocoursey/next-themes) — suppressHydrationWarning requirement; flash prevention via blocking script. HIGH confidence.
+- [Fixing Dark Mode Flickering (FOUC) in Next.js](https://notanumber.in/blog/fixing-react-dark-mode-flickering) — disableTransitionOnChange recommendation. MEDIUM confidence.
+- [WCAG C39 — prefers-reduced-motion](https://www.w3.org/WAI/WCAG21/Techniques/css/C39) — CSS media query technique for motion reduction. HIGH confidence.
+- [web.dev — Animation and Motion Accessibility](https://web.dev/learn/accessibility/motion) — WCAG 2.3.3, seizure risk, vestibular disorder impact. HIGH confidence.
+- [Next.js basePath and assetPrefix for GitHub Pages](https://wallis.dev/blog/next-js-basepath-and-assetprefix) — basePath + assetPrefix + .nojekyll requirement. HIGH confidence.
+- [Three.js tree-shaking state — three.js forum](https://discourse.threejs.org/t/what-is-the-state-of-tree-shaking/33168) — three.js does not tree-shake cleanly; drei named imports help. MEDIUM confidence.
+- [GitHub Actions monorepo path filtering](https://oneuptime.com/blog/post/2025-12-20-monorepo-path-filters-github-actions/view) — separate workflow files with paths: filters. HIGH confidence.
+- `.planning/research/STACK.md` — locked stack, integration sequences, force-static pattern, transpilePackages requirement.
+- `.planning/research/ARCHITECTURE.md` — component boundaries, R3F isolation, CSS layer composition.
+- `.planning/research/FEATURES.md` — content accuracy requirements, known gaps, anti-features.
+- `docs/THREAT-MODEL.md` — security posture facts, known gaps, fail-OPEN/fail-closed status per harness tier (authoritative).
 
 ---
-*Pitfalls research for: Beekeeper v1.2.0 "Runtime Behavioral Hardening" — PLCY-05, NUDGE, PLCY-07, BTEST*
-*Researched: 2026-06-03*
+
+*Pitfalls research for: Beekeeper v1.3.0 Web Presence & Documentation — Next.js static-export site (R3F + shadcn + Fumadocs + Tailwind v4) in a Go security CLI monorepo*
+*Researched: 2026-06-07*

@@ -1,572 +1,292 @@
 # Feature Research
 
-**Domain:** Agent runtime safety harness / developer workstation security — Milestone v1.2.0 "Runtime Behavioral Hardening"
-**Researched:** 2026-06-03
-**Confidence:** HIGH (command mappings verified against pnpm/bun official docs; severity conventions verified against OSV schema spec + pnpm 11 release notes; sensitive-path blocklist grounded in Claude Code issue tracker and AI agent security literature)
+**Domain:** Developer-tool marketing + documentation website (OSS security CLI)
+**Project:** Beekeeper v1.3.0 — Web Presence & Documentation
+**Researched:** 2026-06-07
+**Confidence:** HIGH (grounded in actual shipped product — PROJECT.md, THREAT-MODEL.md, harness-support-matrix.md — plus dev-tool landing page research and doc IA patterns from comparable OSS security tools)
 
-> **Scope note:** This file covers the three v1.2.0 features: PLCY-05 (sensitive-path enforcement wiring), NUDGE (package-manager nudge), and PLCY-07 (corroboration hardening). The v1.0.0 milestone feature landscape is preserved at the bottom of this file. The downstream consumer for this research is `rewrite.go` authors and roadmap planners deriving REQ-IDs and success criteria.
-
----
-
-## Part I: v1.2.0 Feature Research
-
-### 1. npm → pnpm/bun Command Equivalence Mapping
-
-**Confidence:** HIGH. Verified directly against pnpm `pnpm add` docs (pnpm.io/cli/add), bun `bun add` docs (bun.sh/docs/cli/add), and bun `bunx` docs (bun.sh/docs/cli/bunx). Sources agree on all flag mappings below.
-
-#### 1.1 Install-with-packages (`npm install <pkg>` / `npm i <pkg>` / `npm add <pkg>`)
-
-| npm command | pnpm equivalent | bun equivalent | Notes |
-|-------------|-----------------|----------------|-------|
-| `npm install <pkg>` | `pnpm add <pkg>` | `bun add <pkg>` | Production dep; both default to production |
-| `npm i <pkg>` | `pnpm add <pkg>` | `bun add <pkg>` | `npm i` is a first-class alias |
-| `npm add <pkg>` | `pnpm add <pkg>` | `bun add <pkg>` | `npm add` is a first-class alias |
-| `npm install --save-dev <pkg>` | `pnpm add --save-dev <pkg>` | `bun add --dev <pkg>` | pnpm: `--save-dev` or `-D`; bun: `--dev`, `-d`, `-D`, `--development` |
-| `npm install -D <pkg>` | `pnpm add -D <pkg>` | `bun add -D <pkg>` | Short flag; `-D` is valid for all three |
-| `npm install --save-optional <pkg>` | `pnpm add --save-optional <pkg>` | `bun add --optional <pkg>` | pnpm: `--save-optional` or `-O`; bun: `--optional` |
-| `npm install -O <pkg>` | `pnpm add -O <pkg>` | `bun add --optional <pkg>` | bun has no `-O` short form; expand to `--optional` |
-| `npm install --global <pkg>` | `pnpm add --global <pkg>` | `bun add --global <pkg>` | Both support `--global` and `-g` |
-| `npm install -g <pkg>` | `pnpm add -g <pkg>` | `bun add -g <pkg>` | Short flag identical |
-| `npm install --save-exact <pkg>` | `pnpm add --save-exact <pkg>` | `bun add --exact <pkg>` | pnpm: `--save-exact` or `-E`; bun: `--exact` or `-E` |
-| `npm install -E <pkg>` | `pnpm add -E <pkg>` | `bun add -E <pkg>` | Short flag identical |
-| `npm install <pkg>@1.2.3` | `pnpm add <pkg>@1.2.3` | `bun add <pkg>@1.2.3` | Version spec syntax identical across all three |
-| `npm install <pkg>@latest` | `pnpm add <pkg>@latest` | `bun add <pkg>@latest` | Tag spec syntax identical; this is the risky unpin case (see §3) |
-| `npm install <pkg>@^1.2.0` | `pnpm add <pkg>@^1.2.0` | `bun add <pkg>@^1.2.0` | Range spec syntax identical; also a risky case |
-
-**Implementation note for `rewrite.go`:** Flag preservation is straightforward for the flags above. The only flag that requires transformation is `--save-optional`/`-O` (pnpm keeps it as-is; bun must expand to `--optional`). All other flags either pass through identically or have the same short form.
-
-**Flag preservation implementation guidance:**
-- Strip `npm install`, `npm i`, or `npm add` as the command verb. Replace with target PM verb.
-- For pnpm: pass all remaining flags and package args through unchanged (pnpm flag names are very close to npm's).
-- For bun: handle these specific transforms:
-  - `--save-dev` → `--dev` (or keep `-D` unchanged)
-  - `--save-optional` → `--optional`
-  - `--save-exact` → `--exact`
-  - `-O` → `--optional`
-  - `-o` → `--optional`
-  - All other flags that pnpm/bun do not support: drop and log to audit as `flag_dropped`.
-
-#### 1.2 No-argument install (`npm install` / `npm i`)
-
-`npm install` with no arguments installs all dependencies from the existing `package.json`, restoring `node_modules` from the lockfile. This is the "lockfile install" pattern used in CI and after git pull.
-
-| npm command | pnpm equivalent | bun equivalent | Notes |
-|-------------|-----------------|----------------|-------|
-| `npm install` | `pnpm install` | `bun install` | Both restore from lockfile |
-| `npm i` | `pnpm install` | `bun install` | `npm i` maps to `pnpm install` / `bun install` not `pnpm add` / `bun add` |
-| `npm install --production` | `pnpm install --prod` | `bun install --production` | Production-only; pnpm uses `--prod`, bun uses `--production` |
-| `npm install --frozen-lockfile` | `pnpm install --frozen-lockfile` | `bun install --frozen-lockfile` | CI-mode lockfile enforcement; flag identical |
-| `npm ci` | `pnpm install --frozen-lockfile` | `bun ci` | `bun ci` is a first-class alias for `bun install --frozen-lockfile` |
-
-**UX treatment for no-argument form:** The NUDGE-PRD specifies "still nudge candidate, but a softer message because the lockfile already pins versions." This is correct. The no-argument form does not add new packages; it hydrates from a lockfile that was presumably pinned when written. The nudge message should differ:
-- **With packages:** "Agent is installing `chalk@latest` via npm. pnpm with `minimumReleaseAge` enabled provides supply-chain protection. Consider: `pnpm add chalk@latest`"
-- **Without packages (lockfile restore):** "Agent is running `npm install` to restore dependencies. If you migrate this project to pnpm, supply-chain defaults apply on every future install. No action required for this run."
-
-Reason code for no-argument form: `npm-lockfile-restore` (distinct from `npm-install-package`).
-
-#### 1.3 `npx <package>` → pnpm dlx / bun x
-
-`npx` fetches and executes a package binary without permanently installing it. Both pnpm and bun have direct equivalents.
-
-| npx command | pnpm equivalent | bun equivalent | Notes |
-|-------------|-----------------|----------------|-------|
-| `npx <pkg>` | `pnpm dlx <pkg>` | `bun x <pkg>` or `bunx <pkg>` | Both auto-fetch from registry if not cached |
-| `npx <pkg>@version` | `pnpm dlx <pkg>@version` | `bun x <pkg>@version` | Version pinning syntax identical |
-| `npx -y <pkg>` | `pnpm dlx <pkg>` | `bun x <pkg>` | `-y` (skip prompt) is the default for pnpm dlx and bun x |
-| `npx --package=<pkg> <cmd>` | `pnpm dlx --package=<pkg> <cmd>` | `bunx --package <pkg> <cmd>` | When binary name differs from package name |
-| `npx create-<x> [args]` | `pnpm dlx create-<x> [args]` | `bun x create-<x> [args]` or `bun create <x> [args]` | Scaffolding pattern |
-
-**pnpm dlx security note (HIGH confidence):** pnpm dlx inherits pnpm 11's `minimumReleaseAge` and `trustPolicy` settings (confirmed by pnpm.io/cli/dlx). This means `pnpm dlx some-scaffolder` refuses to execute packages published less than 24 hours ago by default. `npx` has no such gate. This is the concrete security argument for the rewrite.
-
-**bun x security note:** `bunx` (alias for `bun x`) auto-installs and caches the package globally. It inherits bun's lifecycle script policy (no scripts by default unless in `trustedDependencies`). This is the security gain over npx.
-
-**pnpm dlx alias:** pnpm also accepts `pnpx` and `pnx` as aliases for `pnpm dlx`. `rewrite.go` should emit `pnpm dlx` (canonical form), not the aliases.
-
-#### 1.4 Complete rewrite.go decision table
-
-The following is the complete parser → rewriter decision table. Implement each row as a case in the command rewriter.
-
-```
-Input pattern                         → pnpm rewrite                    → bun rewrite
-─────────────────────────────────────────────────────────────────────────────────────
-npm install                           → pnpm install                    → bun install
-npm i                                 → pnpm install                    → bun install
-npm install <flags> <pkgs>            → pnpm add <mapped-flags> <pkgs>  → bun add <mapped-flags> <pkgs>
-npm i <flags> <pkgs>                  → pnpm add <mapped-flags> <pkgs>  → bun add <mapped-flags> <pkgs>
-npm add <flags> <pkgs>                → pnpm add <mapped-flags> <pkgs>  → bun add <mapped-flags> <pkgs>
-npx <flags> <pkg>[@ver] [args]        → pnpm dlx <pkg>[@ver] [args]    → bun x <pkg>[@ver] [args]
-```
-
-Flag mapping (applies to the `<mapped-flags>` column):
-
-```
-npm flag            → pnpm flag         → bun flag
-────────────────────────────────────────────────────
---save-dev          → --save-dev        → --dev
--D                  → -D                → -D
--d                  → -d                → -d
---development       → (drop)            → --development
---save-optional     → --save-optional   → --optional
--O                  → -O                → --optional
--o                  → -o                → --optional
---save-exact        → --save-exact      → --exact
--E                  → -E                → -E
---global            → --global          → --global
--g                  → -g                → -g
---production        → --prod            → --production
--P (install only)   → --prod            → --production
---frozen-lockfile   → --frozen-lockfile → --frozen-lockfile
---ignore-scripts    → --ignore-scripts  → --ignore-scripts
---workspace         → --workspace       → (no equiv — drop, log)
---save-peer         → --save-peer       → --peer
-```
-
-Flags not in this table: preserve for pnpm (likely recognized), drop for bun with `flag_dropped` audit entry.
+> **Scope note:** This file supersedes the v1.2.0 runtime-hardening feature research. It covers the three new web surfaces: Marketing Home, Documentation (Fumadocs), and Changelog / Releases. The downstream consumer is the requirements definition and roadmap planner for v1.3.0. All content claims are anchored to shipped product facts.
 
 ---
 
-### 2. Version Pinning Conventions and the Risky Spec Cases
+## Surface 1: Marketing Home
 
-**Confidence:** HIGH. Grounded in the 2026 Axios compromise postmortem (Microsoft Security Blog, April 2026), the Mini Shai-Hulud/TeamPCP wave, and the arxiv paper "Pinning Is Futile" (2502.06662) which documents npm ecosystem pinning failure modes at scale.
-
-#### 2.1 Why exact pinning matters for supply-chain safety
-
-The core risk: npm's version resolution algorithm resolves ranges at install time, not at lockfile creation time. When `package.json` contains `"axios": "^1.14.0"` and an attacker publishes `axios@1.14.1` with a backdoor, every developer and CI run that does `npm install` (without a lockfile, or with a stale lockfile) installs the backdoor automatically.
-
-The 2026 Axios compromise is the canonical example. The attacker hijacked the lead maintainer's npm account and published two poisoned versions across both the 1.x and legacy 0.x release branches within 39 minutes. Caret ranges (`^1.14.0`) silently pulled the next minor/patch. The same blast-radius strategy appeared in the Mini Shai-Hulud campaign: publishing across two major version lines simultaneously maximizes coverage across `~9.1.x`, `~9.2.x`, `^9`, `^12`, `~12.0` pinners.
-
-**Version spec risk ranking (for NUDGE to surface):**
-
-| Spec pattern | Risk level | Why |
-|---|---|---|
-| `pkg@latest` | CRITICAL | Resolves to whatever is newest at install time. No pinning whatsoever. One poisoned publish → immediate exposure. |
-| `pkg` (no version) | CRITICAL | npm defaults to `@latest`. Identical risk to explicit `@latest`. |
-| `pkg@^major.minor.patch` | HIGH | Allows any minor or patch bump. The Axios and Mini Shai-Hulud attacks exploited this. |
-| `pkg@~major.minor.patch` | MEDIUM | Allows patch bumps only. Narrower blast radius, but patch-bump attacks exist (e.g., node-ipc 10.1.2 protestware). |
-| `pkg@major.minor.patch` | LOW | Exact pinning. Attacker must overwrite the specific version or attack the lockfile. |
-| `pkg@major.minor.patch` + lockfile committed + `npm ci` | LOWEST | npm ci refuses to install if package.json and lockfile disagree. Integrity verification on every install. |
-
-**NUDGE should flag:** `@latest`, bare package name (no `@version`), and caret ranges (`^`). Tilde ranges are a medium concern — do not block on tilde alone, but include in the advisory message.
-
-#### 2.2 What the nudge message should say for pinning
-
-The message should be:
-1. Specific about what risk was detected (not generic security lecture)
-2. Actionable (exact command to fix)
-3. Non-blocking by default (soft-advise mode)
-
-**Good nudge message pattern (for unpinned spec):**
-```
-[NUDGE] npm install chalk@latest — version @latest is unresolved at install time.
-Supply-chain risk: any package published between now and your next install can be
-resolved automatically. Consider pinning:
-  pnpm add chalk@5.4.0      (resolve current @latest, then pin exact version)
-  bun add chalk@5.4.0 -E    (--exact flag enforces no-range in package.json)
-Proceeding with original npm command.
-```
-
-**Good nudge message pattern for hardened PM not installed:**
-```
-[NUDGE] npm install detected. pnpm 11+ provides structural supply-chain protection
-(minimumReleaseAge=24h, lifecycle script allowlisting). pnpm is not installed.
-To enable protection: install pnpm v11+ (https://pnpm.io/installation), then
-re-run: pnpm add chalk@latest
-Proceeding with npm.
-```
-
-The message must never say "blocked" when the action is `Advise` — it proceeds. The word "blocked" in a soft-advise message trains agents to interpret nudges as failures.
-
-#### 2.3 OSV/CVSS severity alignment for PLCY-07
-
-OSV schema severity field (verified against ossf.github.io/osv-schema):
-
-```json
-"severity": [
-  { "type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" },
-  { "type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N" }
-]
-```
-
-OSV does not define a textual mapping from CVSS score to critical/high/medium/low. Individual databases map in their `database_specific` fields. The industry standard CVSS → severity mapping (FIRST.org, NVD, used by GitHub Advisory Database, Bumblebee):
-
-| CVSS v3.x score | Severity label |
-|-----------------|----------------|
-| 9.0 – 10.0 | Critical |
-| 7.0 – 8.9 | High |
-| 4.0 – 6.9 | Medium |
-| 0.1 – 3.9 | Low |
-
-Bumblebee catalog entries use a direct `"severity": "critical"` / `"high"` / `"medium"` / `"low"` string field (not the CVSS vector). The OSV-sourced advisories carry CVSS vectors; Beekeeper's catalog normalizer must parse the CVSS score and map to the Bumblebee severity enum.
-
-**For PLCY-07 purposes:** a `severity: "critical"` catalog match from ANY catalog source (including Bumblebee with `Signed: false`) must escalate to block. The reasoning: the existing `BlockAt: 2` threshold was designed for the case where we cannot trust any single source. But a `severity: "critical"` designation is a qualitatively different signal — it means the catalog author has assessed the package as actively malicious with maximum impact. In the Shai-Hulud case, the OSV advisory `MAL-2026-4126` carried CVSS 9.8 (Critical, Remote, No Auth). Blocking on a single critical advisory from a trusted-ish source is the industry norm.
-
----
-
-### 3. Soft-Advise vs Hard-Rewrite UX Norms
-
-**Confidence:** MEDIUM-HIGH. Verified against npq behavior (github.com/lirantal/npq), Socket safe-npm FAQ, and Claude Code hooks documentation.
-
-#### 3.1 The spectrum of interception tools
-
-**npq (lirantal/npq):** Two-tier enforcement:
-- **Errors → Block**: Hard block, install halts until user explicitly proceeds. Used for high-confidence bad signals.
-- **Warnings → 15-second countdown with abort option**: Auto-continue after timeout. Respects developer time while ensuring visibility.
-- `--disable-auto-continue` flag for strict environments.
-
-The 15-second countdown is a key UX insight: it creates a forced pause (visibility) without requiring manual override for every package in a bulk install.
-
-**Socket safe-npm:** Intercepts pre-install via PATH wrapping. For confirmed malware (Socket's human-reviewed set): blocks hard. For AI-flagged but unconfirmed: warns and prompts. The distinction between "confirmed malware (block)" and "suspicious signal (warn + prompt)" is the right mental model for Beekeeper too.
-
-**Claude Code hooks (exit code semantics, verified against code.claude.com/docs/en/agent-sdk/hooks):**
-- Exit 0: allow, agent proceeds
-- Exit 2: block, agent receives structured error message and cannot retry the same tool call
-- Non-zero exit other than 2: block (fail-closed)
-- Stdout from hook handler becomes the message shown to the agent/user
-
-There is **no native "rewrite" exit code** in Claude Code hooks. The hook can block (exit 2) and put the rewritten command in the output, which the agent can then re-issue. This means "hard rewrite" in Beekeeper's model is implemented as: block original command + emit rewritten command in output, trusting the agent to re-issue. This is the practical constraint that makes "Rewrite" a distinct action type even though hooks only have Allow/Block.
-
-**For the NUDGE module, the UX implications are:**
-
-| NUDGE action | Hook exit code | Stdout content | Agent behavior |
-|---|---|---|---|
-| Proceed | 0 | (empty or info-only) | Runs original command |
-| Advise | 0 | Advisory message | Runs original command; agent sees message but proceeds |
-| Rewrite | 2 (block) | Rewritten command text | Agent cannot run original; expected to run rewritten command |
-| Block | 2 (block) | Explanation + install guidance | Agent cannot run npm install at all |
-
-**Advise is the least intrusive.** It respects agent agency completely: the agent runs what it requested, and the human operator sees the advisory in the audit log and TUI. This is the correct default for a tool used in autonomous agent sessions where interruptions are costly.
-
-**Rewrite requires trust.** Rewriting the command means Beekeeper is making a functional change to what the agent does. The agent asked for `npm install chalk`, Beekeeper runs `pnpm add chalk`. The semantics should be equivalent, but edge cases exist (different lockfile format, different `node_modules` layout for bun isolated installs vs npm hoisted). Hard-rewrite must be opt-in.
-
-#### 3.2 Agent-specific UX considerations
-
-In autonomous agent sessions, advisory messages in hook output are visible to the agent's context. A well-formed advisory message can itself guide the agent: "Consider re-issuing as `pnpm add chalk@5.4.0`" functions as a suggestion the agent can act on voluntarily. This is softer than a forced rewrite and more appropriate when the agent has a task to complete.
-
-**Anti-pattern to avoid:** Do not emit a wall of security text on every `npm install`. In a session where an agent installs 50 packages, 50 advisory messages create noise that trains developers to disable the nudge. The advisory message must be concise (3-5 lines max) and appear once per session per package manager (after first advisory, subsequent npm installs in the same session get abbreviated: `[NUDGE] npm detected (advised). See first advisory. Proceeding.`).
-
----
-
-### 4. Sensitive-Path Detection Norms
-
-**Confidence:** HIGH. Blocklist derived from: the Claude Code issue #46741 community request (credential paths explicitly named); the AI agent security guardrails article (dev.to/maxkrivich); the MCP config path research (mcpplaygroundonline.com); and cross-referenced with pnpm supply-chain security documentation which names the specific files malware targets.
-
-#### 4.1 Canonical sensitive-path blocklist
-
-These paths are credential-bearing across the industry consensus. Every path below appears in at least two independent sources.
-
-**Cloud credentials:**
-- `~/.aws/credentials` — AWS access key ID + secret
-- `~/.aws/config` — AWS profile configuration (may contain credential references)
-- `~/.azure/` — Azure CLI credentials (token cache)
-- `~/.config/gcloud/` — Google Cloud authentication tokens
-- `~/.config/gcloud/application_default_credentials.json` — ADC credentials
-
-**SSH:**
-- `~/.ssh/` (entire directory) — Private keys, authorized_keys, known_hosts
-- `~/.ssh/id_rsa`, `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa` — Private key files
-- `~/.ssh/config` — SSH configuration (may reveal targets)
-
-**GPG:**
-- `~/.gnupg/` — GPG private keys, trustdb
-
-**Container / Kubernetes:**
-- `~/.kube/config` — Kubernetes cluster credentials, bearer tokens
-- `~/.docker/config.json` — Docker registry auth tokens
-
-**Version control / source hosting:**
-- `~/.git-credentials` — git credential store (plaintext tokens)
-- `~/.config/gh/` — GitHub CLI auth tokens (via `gh auth login`)
-- `~/.config/hub` — Hub CLI credentials
-
-**Package registries:**
-- `~/.npmrc` — npm auth token (`//registry.npmjs.org/:_authToken=...`)
-- `~/.pypirc` — PyPI upload credentials
-- `~/.netrc` — Multi-service credential file (username/password pairs)
-
-**Terraform / secrets managers:**
-- `~/.terraform.d/` — Terraform credentials file with token
-- `~/.vault-token` — HashiCorp Vault token
-
-**Project-local (relative path patterns):**
-- `.env` — Root .env file (most common credential store in dev projects)
-- `.env.*` — `.env.local`, `.env.production`, `.env.test`, etc.
-- `*.pem` — PEM-encoded certificates/private keys
-- `*.key` — Private key files (broad pattern)
-- `**/secrets/**` — Any file under a `secrets/` directory
-
-**MCP config files (agent-specific, HIGH priority for Beekeeper's use case):**
-- `~/.claude.json` — Claude Code MCP server configuration (may contain tokens, server URLs)
-- `~/Library/Application Support/Claude/claude_desktop_config.json` — macOS
-- `%APPDATA%\Claude\claude_desktop_config.json` — Windows
-- `~/.config/Claude/claude_desktop_config.json` — Linux
-- `~/.cursor/mcp.json` — Cursor MCP config
-- `.cursor/mcp.json` — Project-level Cursor MCP config
-- `~/.codeium/windsurf/mcp_config.json` — Windsurf MCP config
-- `~/.mcp.json` — Generic MCP config
-
-#### 4.2 Platform-specific path normalization
-
-The blocklist is written in Unix notation. For Windows, Beekeeper's sensitive-path engine must expand:
-- `~` → `%USERPROFILE%` (e.g., `C:\Users\<user>`)
-- `~/.aws/` → `C:\Users\<user>\.aws\` (AWS CLI on Windows uses the same path)
-- `~/Library/...` → not applicable on Windows (skip macOS-specific paths)
-- `%APPDATA%\Claude\...` → add Windows-specific MCP paths
-
-The existing `EvaluatePath`/`DefaultSensitivePaths` engine already does this normalization per the CLAUDE.md architecture. The research confirms the blocklist is correct; the wiring gap is that the engine output is not being used in the live check handler.
-
-#### 4.3 Allowlist patterns
-
-The blocklist must have an allowlist escape hatch for legitimate agent workflows:
-
-**Legitimate accesses that should NOT be blocked:**
-- Reading `~/.kube/config` by a DevOps tool explicitly configured to manage clusters
-- Reading `~/.npmrc` by a task that is publishing a package (npm publish workflow)
-- Reading `.env` to validate env var presence (not to exfiltrate content)
-
-**Allowlist mechanism:** The policy overlay (`~/.beekeeper/policies/`) can override the default blocklist per path and per agent tool. An allowlist entry should require:
-- Specific path (not a broad glob)
-- Optional: specific tool (Read/Write/Edit/Bash)
-- Optional: specific reason (stored in audit record)
-
-**Warn vs block conventions:**
-
-| Scenario | Recommended action | Rationale |
-|---|---|---|
-| Agent reads `~/.ssh/id_rsa` | Block | Private key has no legitimate read use case for an agent. Exfiltration risk is existential. |
-| Agent reads `~/.aws/credentials` | Block | Same. The malware pattern from the Shai-Hulud postmortem is exactly this. |
-| Agent reads `.env` | Warn (first time), then block if no allowlist | `.env` has legitimate uses (validate env vars exist). First access warns; subsequent reads without allowlist escalate to block. |
-| Agent writes to `~/.npmrc` | Block | Writing to npmrc changes package registry auth — almost certainly not a legitimate agent task. |
-| Agent writes to `~/.ssh/authorized_keys` | Block | Backdoor installation. |
-| Agent reads MCP config files | Warn | MCP configs may be legitimate for tooling; warn and audit but do not block by default. |
-
-Default enforcement: Block for SSH/cloud credentials/GPG/git-credentials/netrc/vault-token. Warn for `.env`/MCP configs/package registry configs. This matches the layered severity model in the existing sensitive-path engine.
-
----
-
-### 5. Severity → Enforcement Mapping Conventions (PLCY-07)
-
-**Confidence:** HIGH. Based on CVSS v3.1/v4.0 specification (FIRST.org), OSV schema spec (ossf.github.io/osv-schema), and Bumblebee catalog schema. Corroborated by industry practice from Socket (human-reviewed malware → hard block) and npq (errors → block, warnings → countdown).
-
-#### 5.1 CVSS severity definitions (authoritative)
-
-CVSS v3.x score ranges (FIRST.org, NVD, GitHub Advisory Database standard):
-
-| Score range | Label | Enforcement implication |
-|---|---|---|
-| 9.0 – 10.0 | **Critical** | Auto-block on single high-confidence source |
-| 7.0 – 8.9 | **High** | Block at corroboration threshold (2+ sources) |
-| 4.0 – 6.9 | **Medium** | Warn at 1 source; block at 2+ sources |
-| 0.1 – 3.9 | **Low** | Audit only; no enforcement default |
-
-The 9.0+ Critical threshold is where OSV `MAL-*` advisories for actively exploited malware consistently land. `MAL-2026-4126` (Shai-Hulud worm, the specific incident that surfaced the PLCY-07 gap) is CVSS 9.8.
-
-#### 5.2 The PLCY-07 problem and fix
-
-**Current state:** Bumblebee catalog entries have `Signed: false` because they are unsigned (the Bumblebee project does not sign individual entries). Beekeeper's corroboration engine treats unsigned sources as weight 1 out of 2 required to block. Result: a single Bumblebee match for a critical-severity package produces `CorroborationCount: 1 < BlockAt: 2` → WARN, not BLOCK. This allowed `npm install ai-figure` (Shai-Hulud, CVSS 9.8) to pass with a warning.
-
-**Fix options and recommendation:**
-
-Option A — Per-severity escalation (recommended):
-- When `severity == "critical"` in the catalog match, set `BlockAt = 1` regardless of source trust.
-- Rationale: The catalog author has made a high-confidence determination. Critical malware should block on a single catalog source. The `Signed` flag addresses impersonation risk, not catalog accuracy risk.
-- Sanity bounds required: add a `MaxCriticalBlockPerSyncCycle` limit (e.g., 20 new critical blocks per sync) to detect a compromised catalog pushing mass false positives.
-- False-positive rigor: document in `docs/threat-model.md` that critical-severity escalation is the tradeoff, and that the sanity bound is the backstop.
-
-Option B — Treat bundled catalog as signed-equivalent:
-- Flip the internal `Signed` flag for the bundled Bumblebee catalog entries.
-- Simpler but changes the trust model more broadly (affects high/medium too).
-- Not recommended: creates the impression that all Bumblebee entries are "trusted" when the goal is per-severity escalation specifically.
-
-Option C — OSV as second source for critical advisories:
-- When severity is critical and Bumblebee matches, auto-query OSV for the same package+version. If OSV also has a record, escalate to block.
-- Adds network call on the hot path. Violates the sub-100ms target for `beekeeper check`. Not recommended for the sync hot path; could work as a background corroboration enrichment.
-
-**Recommended implementation (Option A + sanity bounds):**
-
-```go
-// In internal/policy/policy.go (pseudo-code, keep pure)
-type CorroborationConfig struct {
-    WarnAt                  int  // default: 1
-    BlockAt                 int  // default: 2
-    QuarantineAt            int  // default: 3
-    CriticalBlockAtSingle   bool // default: true (PLCY-07 fix)
-    CriticalSanityBound     int  // default: 20 new critical blocks per sync cycle
-}
-
-func Corroborate(matches []CatalogMatch, cfg CorroborationConfig) Decision {
-    if cfg.CriticalBlockAtSingle {
-        for _, m := range matches {
-            if m.Severity == "critical" {
-                return Decision{Action: Block, Reason: "critical-single-source"}
-            }
-        }
-    }
-    // existing corroboration logic...
-}
-```
-
-#### 5.3 What "critical" means in OSV/Bumblebee context
-
-For the npm/PyPI/cargo ecosystems, `severity: "critical"` in the Bumblebee catalog means actively exploited malware, not theoretical vulnerability. Bumblebee follows the OSV `MAL-*` advisory prefix specifically for malware (as opposed to `GHSA-*` for vulnerabilities). The distinction:
-- `MAL-*`: Malicious package (backdoor, infostealer, cryptominer). CVSS 9.0+ common. Block immediately.
-- `GHSA-*` Critical: Critical CVE in a legitimate package (RCE, auth bypass). Block at 2-source corroboration (the package may have patched versions).
-- `GHSA-*` High: Block at 2-source corroboration per existing policy.
-
-The PLCY-07 fix should target `MAL-*` or `severity: "critical"` specifically, not all high-severity advisories. This keeps the false-positive surface narrow.
-
----
-
-## Part II: v1.2.0 Feature Landscape
-
-### Table Stakes (Users Expect These for v1.2.0)
+### Table Stakes (Users Expect These)
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Sensitive-path engine wired into live check handler | Engine exists and tests pass. Users who read CLAUDE.md see it listed as a requirement. The gap (returns ALLOW for credential reads) is a bug, not a missing feature. | LOW | Pure wiring work: call `EvaluatePath()`/`DefaultSensitivePaths()` from `internal/check/handler.go`. Allowlist + policy-overlay merge already specced. |
-| `npm install` → pnpm/bun nudge (soft-advise mode) | Any tool that claims supply-chain defense and does not intercept `npm install` is visibly incomplete post-2026 Axios/Shai-Hulud. Developers who read pnpm 11 release notes expect this capability. | MEDIUM | `internal/nudge/` new package. Decision is pure function over detected PMState. I/O in `detect.go`. |
-| Critical-severity catalog match blocks (not warns) | After the Shai-Hulud postmortem made it into agent community Discords, the expectation is set: known malware = block, not warn. Any tool that warns on CVSS 9.8 packages is broken by definition. | LOW | Policy engine change: per-severity escalation in `internal/policy/policy.go`. Sanity bound required. |
-| Behavioral test suite (BTEST) | Without tests exercising these new behaviors end-to-end, the fixes are not trustworthy. Integration tests that replay the exact check inputs that exposed F1/F2/F3 are the proof. | MEDIUM | Table-driven pure-policy tests + stdin→decision integration tests + live-binary E2E battery. |
-| Audit records for nudge decisions | The audit log is already established as the source of truth. A new NUDGE action with no audit record is a gap in the forensic trail. | LOW | New `record_type: "nudge"` with the schema from NUDGE-PRD §9. Fits into existing `internal/audit/` without structural change. |
+| Hero with headline + one-liner value prop | Any marketing page must answer "what is this?" in under 5 seconds; absence means bounce | LOW | "Real-time safety harness for autonomous coding agents." Already ship-ready from README.md line 3. |
+| Primary install CTA in hero | Dev-tool users want an on-ramp without scrolling; dual CTA (install + docs) is the documented best practice for OSS tools (Evil Martians study) | LOW | Two CTAs: `go install github.com/bantuson/beekeeper@latest` (copy-to-clipboard chip) + "Read the docs" secondary. Primary styled boldly; secondary text-link. |
+| Problem / origin story section | Grounds the tool in a concrete threat event rather than generic "AI safety" positioning | MEDIUM | The Nx Console compromise (May 2026, TeamPCP, ~3,800 GitHub-internal repos exfiltrated via trojanized extension) is a named, verifiable incident. Pull from PROJECT.md §Context. One paragraph, not a wall of text. |
+| How-it-works section | Developers need the mental model before trusting a security interceptor | MEDIUM | 3-step linear flow: (1) Agent invokes tool call → (2) Beekeeper evaluates against corroborated threat intel → (3) Allow / Warn / Block / Quarantine. Short prose + icon-based step diagram. |
+| Feature highlights (capability cards) | Visitors scan for specific capabilities; if they don't see "MCP gateway" or "audit log" they assume the feature doesn't exist | MEDIUM | Ground in shipped features only. Eight cards: hook interception, MCP gateway, corroboration engine, sensitive-path SPATH, LlamaFirewall, Sentry daemon, audit log, TUI dashboard. |
+| Harness support matrix | Developers work with a specific agent; if their harness isn't listed they won't install | MEDIUM | 15 harnesses across 3 tiers already documented in `docs/harness-support-matrix.md`. Show tier icons. Include honest caveat: "Claude Code is the only live-verified harness." |
+| Footer with GitHub, license, SECURITY.md links | Developers check license and disclosure policy before adopting OSS security tooling | LOW | Apache 2.0, GitHub repo, SECURITY.md, docs. |
+| Responsive + accessible | Any 2026 web page is expected to work on mobile and for screen-reader users | LOW | shadcn/ui provides accessible primitives. Three.js hero needs `prefers-reduced-motion` static fallback and `aria-hidden` on the canvas element. |
 
-### Differentiators (v1.2.0 Specific)
+### Differentiators (Competitive Advantage)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Hard-rewrite mode for npm→pnpm/bun (opt-in) | No existing tool rewrites agent package manager commands to hardened alternatives. Socket safe-npm wraps the install but does not change the package manager. pnpm's own `minimumReleaseAge` only applies when pnpm is already used. Beekeeper hard-rewrite is the only mechanism that bridges this gap for `npm`-using agents. | MEDIUM | Requires rewrite.go flag-mapping table (see §1.4). Opt-in via `nudge.mode: "hard"`. Block-then-emit-rewrite pattern for Claude Code hook compatibility. |
-| `beekeeper nudge status` / `nudge check` CLI | Operators need to verify their setup without running a real install. No competing tool provides a dry-run PM nudge inspector. | LOW | New subcommand group. Reads config and detected PMState. Human-readable output. |
-| Node.js 22 compatibility gate for pnpm 11 | Surfacing the pnpm 11 / Node 22 dependency honestly and early avoids silent failures in mixed-version environments. No other tool does this check. | LOW | `detect.go` checks node version; `nudge_node_incompatible_with_pnpm_11` reason code. |
-| Weekly major-version drift check for pnpm/bun | Alerts when pnpm 12 or bun 2 releases, so Beekeeper can validate new defaults and update floors before users hit behavior changes silently. | LOW | Background check via version metadata fetch. Audit record + TUI badge. |
+| Three.js hero: hive / agent-mediation visual | Makes "intercept between agent and action" tangible; signals craft and intentionality — differentiates from the README-as-website pattern common in OSS security tools | HIGH | Hive metaphor: hexagonal cells (each a tool call), agents (bees) routed through a central node (Beekeeper). Animation: packets route in → green glow on allow, red flash on deny. Lazy-load canvas. Static SVG fallback for `prefers-reduced-motion`. `aria-hidden` on canvas. Performance budget: <300KB compressed Three.js bundle, 60fps on mid-range GPU. |
+| "Why corroboration?" explainer section | The 2FA principle for threat intel (1 source = warn, 2 = block, 3 = block+quarantine) is architecturally distinctive and easy to explain with a concrete scenario | MEDIUM | Use the "single attacker-controlled catalog" framing from THREAT-MODEL.md §3. Visual: three source logos (Bumblebee, OSV, Socket) + a corroboration score meter that fills as sources agree. No competitor has this specific design decision. |
+| "Fail-closed by default" trust signal | Most security tools fail open; making fail-closed a headline feature reassures security-conscious users before they read the docs | LOW | Pull quote: "Any crash, timeout, or unavailability results in block, not allow. Benchmarked at ~3.58ms/op on Celeron N4020." Both the posture and the performance number are real. |
+| Honesty / transparency block | Documenting known gaps on the marketing site is rare and builds developer trust faster than claiming perfection | MEDIUM | 3-4 bullet points: Tier-3 native tools are unguarded, Hermes is structurally fail-OPEN, command-chaining parse evasion exists, fanotify mmap gap on Linux. Each links to the full THREAT-MODEL.md entry. Rare for a marketing site; signals the project is trustworthy about its limits. |
+| Supply-chain integrity callout | SLSA Level 3 + Sigstore + CycloneDX SBOM is a meaningful differentiator; most OSS doesn't have this | LOW | Visual badges with verification commands. Link to releases page for full cosign / slsa-verifier steps from THREAT-MODEL.md §7. |
+| Three.js ambient accents in non-hero sections | Maintains visual identity across the page without re-loading the full hero scene | MEDIUM | Subtle: slow hex-grid particle field behind the corroboration section. A low-speed rotating node graph in the harness matrix header. Each is a small, isolated Three.js canvas — not the full hero renderer. |
 
-### Anti-Features (Explicitly Out of Scope for v1.2.0)
+### Anti-Features (Deliberately Exclude)
 
-| Feature | Why Requested | Why Problematic / Out of Scope | Better Approach |
-|---------|---------------|--------------------------------|-----------------|
-| Yarn Berry nudge | Yarn Berry has `npmMinimalAge`. Developers using Yarn might want the same nudge. | "Yarn Berry has different enough install patterns" (NUDGE-PRD §2.2). The command surface (`yarn add` vs `yarn dlx` vs `yarn exec`) is sufficiently different that getting it wrong has a higher risk than deferring. | v1.3.0 consideration after pnpm/bun nudge is validated. |
-| pip/cargo/gem/composer nudge | JavaScript is not the only ecosystem attacked. Supply-chain attacks in PyPI and cargo are documented. | The Nudge feature is JavaScript-first because that is where the 2026 threat data is most active (Shai-Hulud, TeamPCP, Axios). Multi-ecosystem nudge requires per-ecosystem hardened-PM research that does not exist in clean form yet. | v1.3.0 if agent-triggered PyPI/cargo attacks are documented. |
-| Auto-install of pnpm/bun | Reducing friction to zero. If pnpm is better, just install it. | Beekeeper installing additional tools on the user's machine without explicit consent is an overreach that mirrors the attack pattern it defends against. | Document install path in nudge advisory message; do not execute. |
-| Beekeeper editing `pnpm-workspace.yaml` or `bunfig.toml` | Auto-configure the hardened PM on the user's behalf. | Same overreach concern. Users own their PM configuration. Beekeeper detects and reports configuration weaknesses but never edits PM config. | Surface config weakness in `beekeeper nudge status`. |
-| Weighted corroboration for critical advisories | "Bumblebee should count as 1.5 votes if the severity is critical." | Option A (per-severity escalation to block at 1 source) is simpler, auditable, and achieves the same goal without weighted math. Weighted systems are harder to reason about and audit. | Flat per-severity escalation (PLCY-07 fix). |
-| Blocking on `@latest` in soft-advise mode | `@latest` is risky; block it by default. | Blocking `npm install react@latest` in soft-advise mode contradicts the feature's own design principle (soft = advise + proceed). Hard blocking on version spec alone, without a catalog hit, generates false positives on every legitimately maintained package that publishes regularly. | Flag as risky in the advisory message. Block only when `requireHardened: true` AND no hardened PM is installed, not based on version spec alone. |
+| Feature | Why Requested | Why Avoid | Alternative |
+|---------|--------------|-----------|-------------|
+| In-browser demo / playground | Users want to try before installing | Beekeeper requires filesystem access, a running catalog, and OS hooks — impossible to sandbox in a browser; a fake demo destroys trust for a security tool | Terminal GIF or 30-second screen recording of the credential-read block, embedded as a `<video>` below the hero fold |
+| Blog section on home page | Signals active project | Out of scope per v1.3.0 milestone decision; adds content-maintenance burden with no clear ROI at this stage | GitHub releases and changelog page are the "active project" signal |
+| GitHub star count / download badges | Social proof | Beekeeper has not been pushed to GitHub yet (local-only, never pushed); fabricating or inflating numbers is dishonest | Use the origin story (named incident) + supply-chain verification chain as trust signals; add star count after public launch |
+| Pricing section | SaaS pattern | Apache 2.0 OSS; no pricing model | Single clear statement: "Free. Open source. Apache 2.0." in the footer or hero eyebrow |
+| Newsletter / email capture | Lead generation | Not a SaaS company; introduces privacy obligations; adds nothing for an OSS CLI tool | GitHub "Watch" and "Star" as the follow mechanism; link to GitHub from hero |
+| Animated background on every section | Visual richness | Performance regression on low-end machines, vestibular accessibility concern, distraction from content | Reserve Three.js for hero + 2 targeted ambient accents; all other sections are clean shadcn/ui |
+| Video autoplay with sound | Modern feel | Autoplaying with audio is a UX anti-pattern; without audio it duplicates the Three.js animation | Click-to-play `<video>` element beneath the hero fold if a screen recording is needed |
+
+---
+
+## Surface 2: Documentation
+
+### Information Architecture (recommended structure)
+
+```
+Getting Started
+  └── Quickstart (< 5 minutes to first block)
+  └── How Beekeeper works (conceptual)
+Installation
+  └── go install (recommended)
+  └── GitHub Releases binary
+  └── Reproducible build verification (make verify-release)
+  └── Cosign / SLSA verification
+Configuration
+  └── Layered config (system → user → project → env → CLI flags)
+  └── Config reference (all fields, defaults, valid values)
+  └── fail_mode and its security implications
+  └── Policy-as-code (policy files, beekeeper policy validate/test)
+  └── Sensitive paths (DefaultSensitivePaths, extend / allowlist)
+Integration Guides
+  └── Tier 1 harnesses (Claude Code, Codex, Cursor, Augment, CodeBuddy, Qwen, Gemini CLI, Copilot, Antigravity, Windsurf)
+  └── Tier 2 harnesses (Hermes, Cline, OpenCode) — caveats first
+  └── Tier 3 harnesses (Kilo, Trae) — unguarded native tools warning first
+  └── MCP gateway (start/stop, auth, localhost binding, remote-bind warning)
+Security Posture
+  └── Corroboration model (the 2FA principle)
+  └── Fail-closed defaults
+  └── Self-protection (agent cannot tamper with Beekeeper)
+  └── Build and release pipeline (SLSA L3, Sigstore, SBOM, reproducible builds)
+  └── beekeeper-self catalog
+  └── Known gaps and explicit non-defenses
+CLI Reference
+  └── check
+  └── catalogs (sync, watch)
+  └── hooks (install, uninstall)
+  └── gateway (start, token)
+  └── audit (tail, query, export)
+  └── policy (list, validate, test)
+  └── scan
+  └── diag
+  └── selftest
+  └── protect (install, uninstall)
+  └── dashboard
+  └── nudge
+  └── version
+Audit Log
+  └── NDJSON schema
+  └── Sinks (local, syslog, OTLP, HTTPS)
+  └── Redaction scope and limitations
+  └── beekeeper audit tail / query / export
+Troubleshooting
+  └── Hook not firing
+  └── Catalog stale or degraded
+  └── Self-quarantine event (verification steps)
+  └── beekeeper diag output reference
+  └── Windows state dir (%APPDATA%/beekeeper vs ~/.beekeeper)
+```
+
+### Table Stakes (Users Expect These)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Getting Started / Quickstart (< 5 min to first block) | First goal of any developer doc: get the user to a working state fast | MEDIUM | Three steps: (1) install, (2) `beekeeper catalogs sync`, (3) `beekeeper hooks install --target <harness>`. Must end with a verifiable outcome: paste the credential-read tool call JSON and see the block in terminal output. |
+| Installation guide (all methods) | Multiple install paths serve different sub-audiences; missing any path alienates that group | LOW | Three paths: `go install` (recommended, Go developers), GitHub Releases binary download (non-Go users), `make verify-release` (reproducible build verification). `curl \| sh` documented as NOT recommended with honest trade-off explanation from PROJECT.md. |
+| Cosign + SLSA verification steps | Security-conscious adopters verify binaries before running; a security tool that doesn't document this is self-undermining | LOW | Copy-paste commands from THREAT-MODEL.md §7 Steps 2 and 3: `cosign verify ...` and `slsa-verifier verify-artifact ...`. |
+| Configuration reference (all fields) | Users need to know every config option with defaults and valid values; the layered config model must be explained explicitly | HIGH | Keys: `fail_mode` (default `closed`; explicit note that `open` reduces security), `corroboration_threshold`, `self_catalog.*`, `nudge.*`, per-ecosystem settings. Precedence order: system → user → project → env → CLI. Warning about project-layer relaxation from THREAT-MODEL.md §8. |
+| Policy-as-code guide | Policy files are the primary customization surface and a selling-point differentiator | HIGH | Covers: `~/.beekeeper/policies/*.json` structure, `package_allowlist` rules, `sensitive_path` rules, `beekeeper policy validate`, `beekeeper policy test <file>`, escape-hatch semantics from THREAT-MODEL.md §9. Honest note: `release_age` and `lifecycle_script_allowlist` are declared in policy files but NOT enforced in v1 — do not imply otherwise. |
+| Sensitive paths guide (SPATH) | Users want to know what credential paths are blocked by default and how to extend the list | LOW | `DefaultSensitivePaths` list: `~/.ssh`, `~/.aws`, `~/.cargo/credentials`, `.env` globs, editor MCP config dirs (Cursor/Windsurf). Windows ADS normalization and trailing-dot evasion noted. Allowlist escape hatch documented. |
+| CLI command reference (all subcommands) | A CLI tool without a command reference is unusable for non-trivial configuration | HIGH | Every subcommand with flags, examples, and expected output format. At minimum: `check`, `catalogs sync/watch`, `hooks install/uninstall`, `gateway start/token`, `audit tail/query/export`, `policy list/validate/test`, `scan`, `diag`, `selftest`, `protect install`, `dashboard`, `nudge`, `version`. |
+| Harness integration guide (all 15 harnesses) | Developers need per-harness setup instructions; 15-harness support is a selling point but also a complexity burden | HIGH | One sub-page per tier. Tier-1: full hook install with `--dry-run` preview. Tier-2: caveat-first (Hermes fail-OPEN warning must appear before config instructions; Cline Windows-only limitation must appear before config instructions). Tier-3: explicit "native tools UNGUARDED" warning in a red callout block before any config instructions. |
+| MCP gateway guide | The gateway is the only enforcement path for Tier-3 harnesses and an alternative for others | MEDIUM | Start/stop, auth token flow, `127.0.0.1` default binding. Explicit warning about `--bind 0.0.0.0` from THREAT-MODEL.md §8: the `allow_remote_gateway` config gate is not yet implemented — the help text promises a gate that does not exist. |
+| Troubleshooting guide | Users get stuck; without a troubleshooting section they abandon the tool | MEDIUM | Common scenarios: hook not firing (settings.json not merged), catalog index stale (`beekeeper catalogs sync`), self-quarantine event (point to THREAT-MODEL.md §7 verification steps), Windows `%APPDATA%/beekeeper` vs `~/.beekeeper` state dir confusion. |
+| Full-text search | Any doc site over ~10 pages needs search to be usable | LOW | Fumadocs ships built-in search. Enable it. No additional implementation cost. |
+
+### Differentiators (Competitive Advantage)
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Security posture page (dedicated) | Most CLI tools bury security info in a single README section; a dedicated page signals the project treats this seriously and makes it easy to cite in a security review | MEDIUM | Covers: corroboration model (2FA principle), fail-closed defaults, self-protection (state dir, binary, hook entry), `beekeeper-self` catalog, build pipeline (SLSA L3, Sigstore, SBOM). Source content from THREAT-MODEL.md §1-7 and §9. |
+| Known gaps / honest limitations (own sub-section of security posture) | Rare for a marketing-facing doc; builds trust with security-savvy readers who will find the gaps regardless | MEDIUM | Direct prose summaries of THREAT-MODEL.md §8: Tier-3 unguarded native tools, Hermes fail-OPEN, `--bind 0.0.0.0` gate not implemented, project-layer config can relax fail-closed, command-chaining parse evasion (TM-B-06), fanotify mmap gap (§5). Frame as "what we don't claim to do" — not as failures. |
+| Self-protection documentation (dedicated section) | Unique shipped feature: the agent cannot tamper with Beekeeper's own config, binary, or hook entry. Operators need to understand what is and is not protected. | LOW | Content from THREAT-MODEL.md §9 "Self-Protection": state dir read+write block, binary write-block, content-aware hook-entry guard, CLI mutation block (config set, hooks install/uninstall, protect install/uninstall). Explicit note: human channels are unaffected (terminal, dashboard, /config). |
+| Corroboration model conceptual explainer | The "2FA for threat intel" framing is the core architectural insight; explaining it in docs (not just marketing) helps operators set `corroboration_threshold` correctly | LOW | Short prose + threshold table from THREAT-MODEL.md §3. Include: per-severity CORR thresholds (CORR-01/02), degraded-source suppression, sanity bounds, the coordinated false-positive poisoning attack surface (§4) with mitigations. |
+| Audit log guide with redaction scope honesty | Operators forwarding logs off-host need to know the redaction scope; the limitation (field-scoped, not content-scanning) is documented in THREAT-MODEL.md §8 | MEDIUM | Cover: local 0600 NDJSON, syslog/OTLP/HTTPS opt-in sinks with "data leaving this machine" warning, `audit tail/query/export`, redaction limitation (Sentry-derived fields and network destinations are written verbatim; behavioral-watch path does not route through RedactRecord). |
+| Per-OS notes surfaced inline (not in a separate "Windows" page) | Windows state dir is `%APPDATA%/beekeeper`. ETW vs fanotify vs eslogger. Cline Windows limitation. These should appear at the point of use. | LOW | Inline callout blocks (`:::note[Windows]`) in relevant sections. Cost is authoring discipline. |
+
+### Anti-Features (Deliberately Exclude)
+
+| Feature | Why Requested | Why Avoid | Alternative |
+|---------|--------------|-----------|-------------|
+| Aspirational / not-yet-shipped feature documentation | Completeness | THREAT-MODEL.md and PROJECT.md explicitly flag deferred items: weighted corroboration, `beekeeper-self` live hosting E2E, `allow_remote_gateway` config gate. Documenting these as present creates false confidence and is a security risk | Mark deferred items "planned" in a callout, or omit until shipped; update docs on release |
+| Interactive config builder | Developer UX | High complexity for low gain; the config schema is simple enough to document as a reference table + example JSON | Copyable JSON examples with inline comments |
+| Version-switcher (multi-version docs) | Completeness | Only two shipped milestones; version-switching adds nav complexity before it is warranted | Single current docs + changelog page; add version-switcher when there are 3+ major versions with breaking changes |
+| AI chatbot / "ask the docs" widget | Discoverability | Significant ongoing cost (API fees, hallucination risk); especially dangerous for a security tool where a wrong answer can leave users unprotected | Excellent search (Fumadocs built-in) + clear IA |
+| Downloadable PDF of docs | Enterprise compliance | PDF goes stale immediately; adds a build step with no clear consumer | Link to the GitHub repo for offline access |
+
+---
+
+## Surface 3: Changelog / Releases
+
+### Table Stakes (Users Expect These)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Per-version release notes (prose) | Developers need to know what changed before upgrading a security tool; a raw git log is not acceptable | LOW | v1.0.0 and v1.2.0 notes. Write prose summaries from `milestones/` archives: what shipped, what was fixed, what changed. Use REQ-IDs in a footnote for cross-reference; lead with user-facing language. |
+| Download table per release (all platforms) | Binary distribution is the product; missing a platform entry leaves that group stranded | LOW | Linux amd64/arm64, macOS Intel + Apple Silicon, Windows amd64. Link to GitHub Releases page. Do not host binaries on the marketing site. |
+| Cosign verification command per release | Security-conscious users verify before running; a security tool that buries this is self-undermining | LOW | Static code block per release. Command from THREAT-MODEL.md §7 Step 2: `cosign verify --certificate-identity=... --certificate-oidc-issuer=...`. |
+| SLSA provenance link + verification command per release | SLSA Level 3 is a meaningful supply-chain security signal; it should be surfaced at the point of download | LOW | `slsa-verifier verify-artifact ...` + link to `.intoto.jsonl` on GitHub Releases. THREAT-MODEL.md §7 Step 3. |
+| SBOM link per release | Enterprise adopters often require SBOM for compliance | LOW | Link to `beekeeper.cyclonedx.json` on GitHub Releases with a one-line `jq` inspection command from THREAT-MODEL.md §7 Step 4. |
+| Release date and version number as headings | Basic navigation — users scan for "latest" and "the version I'm on" | LOW | Heading format: `v1.2.0 — Runtime Behavioral Hardening — 2026-06-04`. |
+
+### Differentiators (Competitive Advantage)
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| "Security changes in this release" callout block | Security tools have security-relevant changes that need to stand apart from feature changes; operators need to prioritize upgrades | LOW | Distinct visual callout (amber/warning) per release entry. v1.0.0: fail-closed landed (top-level panic-recover → block), SLSA L3 + Sigstore shipped. v1.2.0: F1 critical-malware warn→block, F2 credential-reads ALLOW→BLOCK, F3 pnpm/bun catalog bypass closed. v1.3.0: exit-1→exit-2 fix (silent-allow defect that affected all harnesses). |
+| "Known gaps in this release" subsection | Mirrors the threat model's honesty; helps operators decide whether gaps are acceptable for their threat model before upgrading | LOW | Per-release list of accepted gaps from the relevant threat model version. Short bullets, each linking to THREAT-MODEL.md for the full description. |
+| Reproducible build verification instructions | Allows any user to confirm the released binary matches the tagged source — this is the most rigorous supply-chain verification | LOW | `make verify-release VERSION=X.Y.Z` from THREAT-MODEL.md §7 Step 1. |
+| Migration notes (breaking changes explicitly flagged) | Operators need to know if upgrading requires config changes | LOW | v1.0.0: no prior version to migrate from. v1.2.0: no breaking config changes. v1.3.0: **breaking change** — hook exit code changed from 1 to 2; any wrapper script that tested for exit 1 to detect a block will no longer work. Must be called out prominently in a red callout block. |
+
+### Anti-Features (Deliberately Exclude)
+
+| Feature | Why Requested | Why Avoid | Alternative |
+|---------|--------------|-----------|-------------|
+| Auto-generated changelog from commit messages | Low effort, looks complete | Commit messages are written for developers, not for operators deciding whether to upgrade a security tool; raw git log is noise | Hand-authored prose summaries with REQ-ID footnotes |
+| RSS feed for releases (hosted) | Automation / monitoring | Adds implementation complexity; GitHub Releases already provides an Atom feed at the standard URL | Link to the GitHub Releases Atom feed from the releases page |
+| "What's coming" / roadmap section on releases page | Transparency | Beekeeper has no committed public roadmap for future milestones; speculative roadmaps create expectation debt and can mislead users about security posture | Link to GitHub Discussions or open issues instead |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[PLCY-05 sensitive-path wiring]
-    └──requires──> [EvaluatePath() in internal/policy] (already built; pure function)
-    └──requires──> [DefaultSensitivePaths() blocklist] (already built)
-    └──wires-into──> [internal/check/handler.go] (the gap being closed)
-    └──wires-into──> [internal/gateway/] (MCP tool calls that access files)
-    └──enables──> [BTEST: F2 integration tests]
+Marketing Home
+    └── Three.js hero ──requires──> performance budget decision + static SVG fallback (build-time)
+    └── Harness matrix ──pulls-from──> docs/harness-support-matrix.md (content already exists)
+    └── Corroboration explainer ──content-from──> THREAT-MODEL.md §3
+    └── Supply-chain callout ──links-to──> Releases page (verification commands)
+    └── Honesty block ──links-to──> Security Posture doc page
 
-[NUDGE package-manager nudge]
-    └──requires──> [internal/nudge/detect.go] (binary detection, new)
-    └──requires──> [internal/nudge/parse.go] (command parsing, new)
-    └──requires──> [internal/nudge/rewrite.go] (flag mapping, new)
-    └──requires──> [internal/nudge/nudge.go] (pure Evaluate(), new)
-    └──wires-into──> [internal/check/handler.go] (hook handler)
-    └──wires-into──> [internal/gateway/] (MCP proxy)
-    └──wires-into──> [internal/shim/shim.go] (npm PATH shim)
-    └──writes-to──> [internal/audit/] (record_type: "nudge")
-    └──enables──> [beekeeper nudge status|check|audit CLI]
-    └──enables──> [BTEST: F3 integration tests]
-    └──conflicts-with──> [pnpm/bun not installed] (degrades to Proceed gracefully)
+Documentation
+    └── Getting Started ──requires──> Installation guide (prerequisite; do not merge)
+    └── Installation guide ──links-to──> Releases page (download links)
+    └── Policy-as-code guide ──requires──> Configuration reference (layered config must come first)
+    └── Harness integration guide ──requires──> MCP gateway guide (Tier-3 harness pages reference gateway)
+    └── Security posture page ──requires──> Known gaps section (ship together — honesty requires both)
+    └── Sentry guide ──requires──> Installation guide (protect install is a post-install step)
 
-[PLCY-07 corroboration hardening]
-    └──requires──> [internal/policy/policy.go] (CorroborationConfig, pure function)
-    └──requires──> [catalog severity field parsing] (Bumblebee "severity": "critical")
-    └──requires──> [sanity bound: MaxCriticalBlockPerSyncCycle]
-    └──enables──> [BTEST: F1 integration tests]
-    └──documents-in──> [docs/threat-model.md] (critical escalation rationale)
-
-[BTEST behavioral test suite]
-    └──requires──> [PLCY-05, NUDGE, PLCY-07 implementations] (what to test)
-    └──requires──> [fixture: ai-figure catalog entry] (F1 regression)
-    └──requires──> [fixture: ~/.aws/credentials read attempt] (F2 regression)
-    └──requires──> [fixture: npm install ai-figure command] (F3 regression)
-    └──enhances──> [CI release gate] (fuzz + behavioral tests)
+Releases Page
+    └── Per-version notes ──pulls-from──> milestones/ archive in repo
+    └── Verification commands ──content-from──> THREAT-MODEL.md §7
+    └── v1.3.0 migration note ──documents──> exit-1→exit-2 breaking change
 ```
 
 ### Dependency Notes
 
-- **NUDGE purity constraint (CLAUDE.md):** `internal/policy` must remain a pure function library. Therefore `nudge.Evaluate()` takes a caller-resolved `PMState` as argument; detection I/O lives in `detect.go`. This mirrors the existing `policy.EvaluateReleaseAge(ReleaseAgeInput, …)` pattern. Do not let `Evaluate()` exec subprocesses.
-- **PLCY-05 is pure wiring:** The engine already exists and its tests pass. The scope is `handler.go` + `gateway/` call sites. Risk is low; the main complexity is ensuring the allowlist policy overlay is correctly merged before the call.
-- **PLCY-07 requires sanity bounds:** The critical escalation is a trust expansion. The sanity bound (`MaxCriticalBlockPerSyncCycle`) is the backstop against a compromised catalog pushing mass critical entries. This must be implemented alongside the escalation, not deferred.
-- **BTEST is cross-cutting:** Every phase in v1.2.0 must include the behavioral test that proves the gap is closed. BTEST is not a separate phase; it is a required deliverable within each of F1/F2/F3.
+- **Security posture page requires known gaps section:** Publishing security properties without the limitations creates false confidence. These must ship together; do not ship the posture page as a stub while the gaps section is in progress.
+- **Getting Started requires Installation as a prerequisite page:** Quickstart references the install; keep them separate so users can return to Installation independently (e.g., to run cosign verify on a new machine).
+- **Three.js hero requires a static SVG fallback:** The canvas is an enhancement. For `prefers-reduced-motion` users and slow connections the page must be fully usable without it. Build the SVG first; add the Three.js canvas on top.
+- **Tier-3 harness pages require the MCP gateway guide to exist:** Kilo and Trae integration pages must link to the gateway guide as the enforcement path. The gateway guide cannot be deferred while harness pages are being written.
+- **Honest limitations must appear at the point of use, not only in the threat model:** The Hermes fail-OPEN caveat belongs in the Hermes integration page header — not just in a separate "known gaps" section. Duplication is intentional.
 
 ---
 
-## MVP Definition for v1.2.0
+## MVP Definition
 
-### Ship with v1.2.0 (all three gaps closed, all tested)
+### Launch With (v1.3.0 target)
 
-- [ ] PLCY-05: `EvaluatePath()` called from `internal/check/handler.go` for `file_path` fields and `cat`/`type`/`Get-Content` command targets; fail-closed; allowlist + policy-overlay merged. F2 behavioral test passes.
-- [ ] NUDGE: `internal/nudge/` package complete with detect/parse/rewrite/evaluate; soft-advise default; wired into check + gateway + shim; `record_type: "nudge"` audit records; `beekeeper nudge status|check|audit` CLI. F3 acceptance criteria from NUDGE-PRD §10 (all 17 tests) pass.
-- [ ] PLCY-07: Per-severity escalation (`severity: "critical"` → block at 1 source); sanity bound on new critical blocks per sync cycle; documented in threat model. F1 behavioral test (`npm install ai-figure` → BLOCK, not WARN) passes.
-- [ ] BTEST: Table-driven pure-policy unit tests + stdin→decision integration tests + live-binary E2E battery covering all three gaps.
+- [x] Marketing home — hero (Three.js), value prop, problem/origin, how-it-works, feature highlights, harness matrix, install CTA, fail-closed + corroboration callouts, supply-chain integrity callout, honesty block
+- [x] Documentation — Getting Started, Installation (all methods + cosign + SLSA verify), Configuration reference (layered config + fail_mode warning), Policy-as-code guide (with v1 enforcement limitations noted), Sensitive paths, CLI reference (all subcommands), Harness integration (all 15 with tier caveats at point-of-use), MCP gateway (with remote-bind warning), Security posture page (corroboration + fail-closed + self-protection + build pipeline + known gaps), Troubleshooting, Audit log guide
+- [x] Releases page — v1.0.0 and v1.2.0 prose notes, download table (all platforms), cosign/SLSA/SBOM per release, security-changes callout, v1.3.0 exit-code migration note
 
-### Defer to v1.3.0
+### Add After Validation (v1.x)
 
-- [ ] Hard-rewrite mode (`nudge.mode: "hard"`) — soft-advise must be validated in production before enabling command rewrites. Ship after v1.2.0 has run against real agent sessions.
-- [ ] Yarn Berry nudge — defer pending pattern research.
-- [ ] Pip/cargo/gem nudge — defer pending threat data.
-- [ ] OSV as second source for auto-corroboration of critical advisories (Option C) — defer; adds network latency on hot path. Evaluate after PLCY-07 Option A is in production.
+- [ ] Sentry / protected mode guide — complex, OS-specific content requiring stable feature; add when Sentry is live-verified cross-platform and the fanotify mmap gap (THREAT-MODEL.md §5) has a definitive status update
+- [ ] `beekeeper diag` output field reference — low priority until adoption drives questions
+- [ ] Per-OS callout discipline audit — review all pages for Windows-specific notes after first user feedback cycle
+
+### Future Consideration (v2+)
+
+- [ ] Version-switcher for docs — when there are 3+ major versions with breaking changes
+- [ ] AI-assisted search — only if a solution exists that cannot hallucinate dangerous security advice
 
 ---
 
-## Feature Prioritization Matrix (v1.2.0)
+## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| PLCY-05 sensitive-path wiring | HIGH | LOW | P1 |
-| PLCY-07 critical-severity block | HIGH | LOW | P1 |
-| NUDGE detect + parse + evaluate (soft mode) | HIGH | MEDIUM | P1 |
-| BTEST per-feature behavioral tests | HIGH | MEDIUM | P1 |
-| NUDGE audit records | HIGH | LOW | P1 |
-| NUDGE hard-rewrite mode (opt-in) | MEDIUM | MEDIUM | P2 |
-| `beekeeper nudge status|check|audit` CLI | MEDIUM | LOW | P2 |
-| Node 22 compatibility gate surfacing | MEDIUM | LOW | P2 |
-| Weekly major-version drift check | LOW | LOW | P2 |
-| Yarn/pip/cargo nudge | LOW | HIGH | P3 |
-| OSV auto-corroboration for critical | MEDIUM | HIGH | P3 |
+| Hero with headline + install CTA | HIGH | LOW | P1 |
+| Getting Started / Quickstart | HIGH | MEDIUM | P1 |
+| CLI command reference | HIGH | HIGH | P1 |
+| Harness integration guide (all 15) | HIGH | HIGH | P1 |
+| Security posture page + known gaps | HIGH | MEDIUM | P1 |
+| Releases page with verification per release | HIGH | LOW | P1 |
+| Configuration + policy-as-code guide | HIGH | HIGH | P1 |
+| Problem / origin story | MEDIUM | LOW | P1 |
+| Corroboration + fail-closed callouts on home | MEDIUM | LOW | P1 |
+| Three.js hero visual | MEDIUM | HIGH | P1 (brand differentiator — in-scope per milestone) |
+| Harness support matrix on home | MEDIUM | MEDIUM | P1 |
+| MCP gateway guide | MEDIUM | MEDIUM | P1 |
+| Troubleshooting guide | HIGH | MEDIUM | P1 |
+| Audit log guide + redaction scope honesty | MEDIUM | MEDIUM | P2 |
+| Honesty / transparency block on home | MEDIUM | LOW | P2 |
+| Three.js ambient accents (non-hero) | LOW | MEDIUM | P2 |
+| Security changes callout on releases page | MEDIUM | LOW | P2 |
+| Sentry / protected-mode guide | MEDIUM | HIGH | P3 |
+| `beekeeper diag` output reference | LOW | LOW | P3 |
+
+---
+
+## Competitor Reference (Documentation IA Patterns)
+
+| Pattern | Seen In | Beekeeper Approach |
+|---------|---------|-------------------|
+| "Getting Started" as first doc page with a verifiable end state | Trivy, Gemini CLI, AWS CLI, cosign | Same — explicit 5-minute quickstart ending with a confirmed block in the terminal |
+| Per-harness / per-platform integration sub-pages | Trivy (CI integrations), Sigstore (per-registry) | Per-harness sub-pages under "Integration Guides" with tier labeling and caveats at the top of each page |
+| Dedicated security / threat model page | cosign (signing model), Sigstore (security model) | Dedicated "Security Posture" page sourced from THREAT-MODEL.md |
+| "Known limitations" in docs (not hidden in a footnote) | OWASP tools, Falco | Integrated into Security Posture as a required sub-section — not a footnote |
+| Releases page with per-release verification commands | cosign GitHub, SLSA tooling | Same pattern — per-release cosign + SLSA + SBOM |
+| Dual CTA in hero (primary + secondary) | Trivy, Tailscale, Neon | `go install` (primary) + "Read the docs" (secondary) |
+| Trust via concrete incident rather than logos | n/a (uncommon) | Origin story (Nx Console, May 2026) plays the same role as a customer logo strip — more compelling for a new project with no named users yet |
+| Per-OS inline callout blocks | Homebrew docs, Nix manual | `:::note[Windows]` callout blocks in relevant sections rather than a separate "Windows" page |
 
 ---
 
 ## Sources
 
-**pnpm command reference (verified June 2026):**
-- pnpm add: https://pnpm.io/cli/add
-- pnpm install: https://pnpm.io/cli/install
-- pnpm dlx: https://pnpm.io/cli/dlx
-- pnpm 11.0 release notes: https://pnpm.io/blog/releases/11.0
-- pnpm supply chain security: https://pnpm.io/supply-chain-security
-- pnpm 11 security analysis (Socket): https://socket.dev/blog/pnpm-11-adds-new-supply-chain-protection-defaults
-
-**bun command reference (verified June 2026):**
-- bun add: https://bun.sh/docs/cli/add
-- bun install: https://bun.sh/docs/cli/install
-- bunx: https://bun.sh/docs/cli/bunx
-
-**Version pinning and supply chain incidents:**
-- 2026 Axios supply chain compromise (Microsoft Security Blog): https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/
-- Mini Shai-Hulud / TeamPCP analysis: https://safeheron.com/blog/npm-supply-chain-news-lessons-from-attacks-2026/
-- Microsoft typosquatting campaign (May 2026): https://www.microsoft.com/en-us/security/blog/2026/05/28/typosquatted-npm-packages-used-steal-cloud-ci-cd-secrets/
-- Dependency pinning for npm: https://exploitr.com/articles/dependency-pinning-npm-supply-chain-attacks/
-- "Pinning Is Futile" paper: https://arxiv.org/pdf/2502.06662
-
-**Sensitive path blocklist sources:**
-- Claude Code issue #46741 (credential paths community request): https://github.com/anthropics/claude-code/issues/46741
-- AI coding agent security guardrails: https://dev.to/maxkrivich/ai-coding-agent-security-practical-guardrails-for-claude-code-copilot-and-codex-och
-- MCP config file paths guide: https://mcpplaygroundonline.com/blog/complete-guide-mcp-config-files-claude-desktop-cursor-lovable
-
-**Severity and enforcement conventions:**
-- OSV schema specification: https://ossf.github.io/osv-schema/
-- CVSS v4.0 specification (FIRST.org): https://www.first.org/cvss/specification-document
-- npq behavior reference: https://github.com/lirantal/npq
-- Socket safe-npm FAQ: https://docs.socket.dev/docs/safe-npm-faq
-- Claude Code hooks documentation: https://code.claude.com/docs/en/agent-sdk/hooks
+- PROJECT.md (Beekeeper project context, shipped features, origin story, constraints)
+- docs/THREAT-MODEL.md (security posture content, verification path §7, known gaps §8)
+- docs/harness-support-matrix.md (15-harness tier structure, deny mechanisms, honest caveats)
+- README.md (harness tier table, quick start commands)
+- [Evil Martians: We studied 100 dev tool landing pages](https://evilmartians.com/chronicles/we-studied-100-devtool-landing-pages-here-is-what-actually-works-in-2025) — hero/trust/feature section patterns (2025, still current)
+- [Trivy landing page](https://trivy.dev/) — OSS security CLI site structure reference
+- [Fumadocs documentation framework](https://www.fumadocs.dev/docs) — docs IA and search capability
+- [Three.js forum — hero section patterns](https://discourse.threejs.org/t/website-interactive-3d-hero-scene-and-more/28004) — visual role of 3D hero, performance considerations
+- [LogRocket — hero section best practices](https://blog.logrocket.com/ux-design/hero-section-examples-best-practices/) — dual CTA pattern
 
 ---
-*Feature research for: Beekeeper v1.2.0 Runtime Behavioral Hardening (PLCY-05, NUDGE, PLCY-07)*
-*Researched: 2026-06-03*
+
+*Feature research for: Beekeeper v1.3.0 Web Presence & Documentation*
+*Researched: 2026-06-07*
