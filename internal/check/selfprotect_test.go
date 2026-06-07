@@ -85,6 +85,8 @@ func TestSelfProtectE2E(t *testing.T) {
 		{"write policy blocked", "Write", map[string]string{"file_path": polPath}, true},
 		{"bash redirect to config blocked", "Bash", map[string]string{"command": "echo pwned > " + cfgPath}, true},
 		{"bash cat config blocked", "Bash", map[string]string{"command": "cat " + cfgPath}, true},
+		{"bash $VAR path to config blocked", "Bash", map[string]string{"command": "cat $BEEKEEPER_HOME/beekeeper/config.json"}, true},
+		{"bash ${VAR} path to config blocked", "Bash", map[string]string{"command": "cat ${BEEKEEPER_HOME}/beekeeper/config.json"}, true},
 		{"write binary blocked", "Write", map[string]string{"file_path": exe}, true},
 		{"bash overwrite binary blocked", "Bash", map[string]string{"command": "cp evil " + exe}, true},
 		{"read binary allowed", "Read", map[string]string{"file_path": exe}, false},

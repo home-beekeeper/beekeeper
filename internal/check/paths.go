@@ -109,6 +109,82 @@ func expandWinEnvVars(raw string) string {
 	return b.String()
 }
 
+// expandShellEnvVars performs a targeted $VAR / ${VAR} → os.Getenv replacement
+// for shell-style environment variable forms (git-bash on Windows uses $APPDATA;
+// Unix shells use $HOME). It mirrors expandWinEnvVars: a single left-to-right
+// pass that NEVER re-scans substituted content, and fail-closed handling — an
+// unresolved variable keeps its raw literal ($VAR / ${VAR}) so a real credential
+// or self path substring can still be detected rather than collapsing to empty
+// (which is why os.ExpandEnv is NOT used: it replaces unknown vars with "").
+//
+// This is matching-only expansion; the string is never passed to a shell.
+func expandShellEnvVars(raw string) string {
+	if !strings.Contains(raw, "$") {
+		return raw
+	}
+	var b strings.Builder
+	i := 0
+	for i < len(raw) {
+		if raw[i] != '$' {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		// At a '$'. Distinguish ${NAME}, $NAME, or a bare literal '$'.
+		if i+1 < len(raw) && raw[i+1] == '{' {
+			if end := strings.IndexByte(raw[i+2:], '}'); end >= 0 {
+				name := raw[i+2 : i+2+end]
+				b.WriteString(resolveEnvOrLiteral(name, "${"+name+"}"))
+				i = i + 2 + end + 1 // advance past the closing '}'
+				continue
+			}
+			// No closing brace — treat '$' as a literal.
+			b.WriteByte('$')
+			i++
+			continue
+		}
+		if i+1 < len(raw) && isEnvNameStart(raw[i+1]) {
+			j := i + 2
+			for j < len(raw) && isEnvNameChar(raw[j]) {
+				j++
+			}
+			name := raw[i+1 : j]
+			b.WriteString(resolveEnvOrLiteral(name, "$"+name))
+			i = j
+			continue
+		}
+		// Bare '$' not introducing a variable — literal.
+		b.WriteByte('$')
+		i++
+	}
+	return b.String()
+}
+
+// resolveEnvOrLiteral returns os.Getenv(name) (trying an upper-cased variant too,
+// matching expandWinEnvVars), or the supplied literal when the var is unset
+// (fail-closed).
+func resolveEnvOrLiteral(name, literal string) string {
+	if name == "" {
+		return literal
+	}
+	val := os.Getenv(name)
+	if val == "" {
+		val = os.Getenv(strings.ToUpper(name))
+	}
+	if val == "" {
+		return literal
+	}
+	return val
+}
+
+func isEnvNameStart(b byte) bool {
+	return b == '_' || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
+}
+
+func isEnvNameChar(b byte) bool {
+	return isEnvNameStart(b) || (b >= '0' && b <= '9')
+}
+
 // canonicalizePath resolves a raw path string into a normalized, absolute,
 // forward-slash path suitable for policy.EvaluatePath matching.
 //
@@ -138,6 +214,11 @@ func canonicalizePath(raw string) string {
 
 	// Step 1: Windows %VAR% expansion (D-01). Must precede expandHome/Abs.
 	p := expandWinEnvVars(raw)
+
+	// Step 1b: shell-style $VAR / ${VAR} expansion (fail-closed). Closes the
+	// dodge where a path written with a shell variable (git-bash `$APPDATA/...`,
+	// Unix `$HOME/.ssh/...`) would otherwise bypass canonicalization and matching.
+	p = expandShellEnvVars(p)
 
 	// Step 2: tilde expansion.
 	p = expandHome(p)
