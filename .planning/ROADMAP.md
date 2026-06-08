@@ -65,7 +65,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 11: Scaffold & Toolchain Isolation** — ✅ Complete & verified 2026-06-07 — pnpm workspace + Next.js 16 static-export app under web/, Go-isolated (Cloudflare Pages deploy is SITE-03 / Phase 15)
 - [x] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion (completed 2026-06-08)
 - [x] **Phase 13: Docs Content Pipeline** — ✅ Complete & verified 2026-06-08 — Fumadocs static-export pipeline (fumadocs-mdx wiring, static Orama search, DocsLayout, 8-section skeleton); verifier 4/4 SCs + FOWT UAT passed
-- [ ] **Phase 14: Changelog Pipeline** — versioned changelog route with breaking-change callout renderer
+- [x] **Phase 14: Changelog Pipeline** — ✅ Complete & verified 2026-06-08 — second fumadocs-mdx changelog collection + per-version static pages (v1.0.0/v1.2.0/v1.3.0) + cosign/SLSA verify commands + red exit-1→exit-2 breaking-change callout; verifier 7/7 must-haves, 3/3 SCs
 - [ ] **Phase 15: Marketing Home** — all marketing sections, static SVG hero, dual CTA, harness matrix
 - [ ] **Phase 16: 3D Layer** — R3F hero + ambient accents behind dynamic(ssr:false), perf/a11y gates
 - [ ] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image
@@ -159,11 +159,11 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 2 plans (2 waves)
 **Wave 1**
 
-- [ ] 14-01-PLAN.md — Wave 1: changelog pipeline + v1.0.0/v1.2.0 — second fumadocs-mdx `changelog` collection + lib/changelog-source.ts loader (baseUrl /changelog) + app/changelog/[[...slug]] catch-all route + DocsLayout; VerifyCommands (cosign+SLSA, capital-B Bantuson per release-runbook Pitfall 4) + ReleaseLinks (canonical github.com/bantuson/beekeeper release tag) + BreakingChangeCallout (red, dual-theme tokens) components + MDX map; accurate v1.0.0 + v1.2.0 release notes (from MILESTONES.md); docs-nav Changelog link; build emits the two static pages (CHG-01, CHG-02)
+- [x] 14-01-PLAN.md — Wave 1: changelog pipeline + v1.0.0/v1.2.0 — second fumadocs-mdx `changelog` collection + lib/changelog-source.ts loader (baseUrl /changelog) + app/changelog/[[...slug]] catch-all route + DocsLayout; VerifyCommands (cosign+SLSA, capital-B Bantuson per release-runbook Pitfall 4) + ReleaseLinks (canonical github.com/bantuson/beekeeper release tag) + BreakingChangeCallout (red, dual-theme tokens) components + MDX map; accurate v1.0.0 + v1.2.0 release notes (from MILESTONES.md); docs-nav Changelog link; build emits the two static pages (CHG-01, CHG-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 14-02-PLAN.md — Wave 2: v1.3.0 + phase-complete gate — accurate v1.3.0 release notes + prominent red BreakingChangeCallout (exit-1→exit-2 hook protocol change + accurate migration note: upgrade, re-run `hooks install --hook <harness>`, restart session; only Claude Code live-verified) + VerifyCommands/ReleaseLinks; pnpm build emits all three out/changelog/vX.Y.Z/index.html; SC-1/2/3 validated (grep + Playwright-on-static-export, red callout in both themes) (CHG-01, CHG-03)
+- [x] 14-02-PLAN.md — Wave 2: v1.3.0 + phase-complete gate — accurate v1.3.0 release notes + prominent red BreakingChangeCallout (exit-1→exit-2 hook protocol change + accurate migration note: upgrade, re-run `hooks install --hook <harness>`, restart session; only Claude Code live-verified) + VerifyCommands/ReleaseLinks; pnpm build emits all three out/changelog/vX.Y.Z/index.html; SC-1/2/3 validated (grep + Playwright-on-static-export, red callout in both themes) (CHG-01, CHG-03)
 
 **UI hint**: yes
 
@@ -271,7 +271,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **1/1** | **Complete** | **2026-06-07** |
 | **12. Design System** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
 | **13. Docs Content Pipeline** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
-| **14. Changelog Pipeline** | **v1.3.0** | **0/2** | **Planned** | **—** |
+| **14. Changelog Pipeline** | **v1.3.0** | **2/2** | **Complete** | **2026-06-08** |
 | **15. Marketing Home** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **16. 3D Layer** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **17. SEO & Static Assets** | **v1.3.0** | **0/TBD** | **Not started** | **—** |

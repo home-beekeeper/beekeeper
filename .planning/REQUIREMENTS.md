@@ -50,9 +50,9 @@
 
 ### Changelog & Releases (CHG)
 
-- [ ] **CHG-01**: A visitor can read a versioned changelog (v1.0.0, v1.2.0, v1.3.0) with human-written release notes
-- [ ] **CHG-02**: Each release entry includes download + verification (cosign / SLSA / SBOM) guidance
-- [ ] **CHG-03**: The v1.3.0 entry prominently flags the exit-1 → exit-2 hook breaking change (red callout)
+- [x] **CHG-01**: A visitor can read a versioned changelog (v1.0.0, v1.2.0, v1.3.0) with human-written release notes ✅ Phase 14 (2026-06-08)
+- [x] **CHG-02**: Each release entry includes download + verification (cosign / SLSA / SBOM) guidance ✅ Phase 14 (2026-06-08)
+- [x] **CHG-03**: The v1.3.0 entry prominently flags the exit-1 → exit-2 hook breaking change (red callout) ✅ Phase 14 (2026-06-08)
 
 ### SEO & Assets (SEO)
 
@@ -110,9 +110,9 @@
 | DOCS-07 | Phase 18 — Full Content Authoring | Not started |
 | DOCS-08 | Phase 18 — Full Content Authoring | Not started |
 | DOCS-09 | Phase 18 — Full Content Authoring | Not started |
-| CHG-01 | Phase 14 — Changelog Pipeline | Not started |
-| CHG-02 | Phase 14 — Changelog Pipeline | Not started |
-| CHG-03 | Phase 14 — Changelog Pipeline | Not started |
+| CHG-01 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
+| CHG-02 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
+| CHG-03 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
 | SEO-01 | Phase 17 — SEO & Static Assets | Not started |
 | QA-01 | Phase 19 — Test Suite & CI | Not started |
 | QA-02 | Phase 19 — Test Suite & CI | Not started |

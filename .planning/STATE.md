@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: "Web Presence & Documentation"
 status: executing
-stopped_at: "Phase 14 (Changelog Pipeline, CHG-01/02/03) ✅ PLANNED 2026-06-08 — ready to execute. 2 plans / 2 waves written (gsd-planner, opus) and committed (4590849). Plan-checker (sonnet) returned VERIFICATION PASSED — 0 blockers / 0 warnings across 12 dimensions (Nyquist/research/patterns dims correctly SKIPPED: research was deliberately skipped by maintainer, so NO RESEARCH.md/VALIDATION.md/CONTEXT.md for this phase — accepted tradeoff). Reqs coverage 3/3 (CHG-01 in 14-01+14-02, CHG-02 in 14-01, CHG-03 in 14-02). Architecture chosen & documented in 14-01 (research skipped): SECOND fumadocs-mdx `defineDocs` collection (content/changelog/) mirroring the proven Phase-13 docs pipeline — lib/changelog-source.ts loader (baseUrl /changelog) + app/changelog/[[...slug]] catch-all (generateStaticParams → 3 versions) + DocsLayout; per-version static dirs out/changelog/vX.Y.Z/ under trailingSlash; ZERO new deps. 3 reusable MDX components (VerifyCommands cosign+SLSA, ReleaseLinks, BreakingChangeCallout red). Correctness anchors baked in: cosign/SLSA cmds match docs/release-runbook.md with capital-B `Bantuson` OIDC identity; red callout uses raw theme token var(--red) NOT dark-only --color-bk-* (the 12-03 dual-theme bug), verified red in BOTH themes via Playwright-on-static-export; migration note accurate to Phase-10 exit-1→exit-2 seed fix (re-run hooks install --hook <harness> + restart; only Claude Code live-verified). Wave 1 = 14-01 (pipeline + components + v1.0.0/v1.2.0 notes + docs-nav link); Wave 2 = 14-02 (v1.3.0 notes + red callout + phase-complete gate). Planned sequential-inline on main (use_worktrees=false) — discuss/research/UI-SPEC all skipped by maintainer choice (matches Phase 13 precedent). NEXT: /gsd-execute-phase 14."
-last_updated: "2026-06-08T16:30:00Z"
-last_activity: 2026-06-08 — Phase 14 (Changelog Pipeline) ✅ PLANNED: 2 plans/2 waves, checker VERIFICATION PASSED (0 blk/0 warn), 3/3 reqs covered. Research/discuss/UI-SPEC skipped (Phase-13 precedent). Next: /gsd-execute-phase 14.
+stopped_at: "Phase 14 (Changelog Pipeline, CHG-01/02/03) ✅ COMPLETE & verified 2026-06-08 — 2/2 plans executed sequential-inline on main (use_worktrees=false), 7 commits. Verifier 7/7 must-haves + 3/3 ROADMAP SCs PASSED (14-VERIFICATION.md status=passed). Architecture: SECOND fumadocs-mdx `defineDocs` changelog collection (content/changelog/) mirroring the Phase-13 docs pipeline — lib/changelog-source.ts loader (baseUrl /changelog) + app/changelog/[[...slug]] catch-all + DocsLayout; per-version static dirs out/changelog/{v1.0.0,v1.2.0,v1.3.0}/index.html + a /changelog landing index; ZERO new deps. 3 reusable MDX components: VerifyCommands (cosign verify-blob + slsa-verifier), ReleaseLinks, BreakingChangeCallout (red, var(--red), dual-theme verified Playwright dark rgb(248,81,73)/light rgb(192,57,43)). CODE REVIEW (14-REVIEW.md, 2 crit/3 warn/2 info) — ALL remediated inline (c3073a0) BEFORE verification: CR-01 SLSA --source-uri capital-B→lowercase github.com/bantuson/beekeeper (SLSA attests the lowercase Go-module URI per THREAT-MODEL.md); CR-02 --provenance-path ${version}.intoto.jsonl→beekeeper.intoto.jsonl; WR-03 /changelog 404 (no index under static export)→added content/changelog/index.mdx landing; WR-02 docs [[...slug]] <MDX/> now passes useMDXComponents({}); WR-01 clipboard .catch. cosign --certificate-identity-regexp correctly KEEPS capital-B `Bantuson` (release-runbook.md Pitfall 4 — OIDC canonical casing). GitHub Release links rendered canonical (github.com/bantuson/beekeeper/releases/tag/vX.Y.Z), honestly framed (repo not yet pushed — parked v1.1.0 runbook). pnpm build green (5 changelog pages incl. landing), biome clean. discuss/research/UI-SPEC all skipped by maintainer choice (Phase-13 precedent → no CONTEXT/RESEARCH/VALIDATION.md, accepted tradeoff). SDK state verbs skipped (phase.complete frontmatter-corruption caveat); STATE/ROADMAP/REQUIREMENTS hand-updated. NEXT: /gsd-plan-phase 15 (or /gsd-discuss-phase 15) — Marketing Home (HOME-01..05, SITE-03)."
+last_updated: "2026-06-08T18:00:00Z"
+last_activity: 2026-06-08 — Phase 14 (Changelog Pipeline) ✅ COMPLETE: 2/2 plans, verifier 7/7 must-haves + 3/3 SCs PASSED, code review 2-crit/3-warn ALL fixed inline (SLSA cmd casing/path + /changelog 404 landing). Next: Phase 15 (Marketing Home).
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 7
-  percent: 33
+  completed_plans: 9
+  percent: 44
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 14 (Changelog Pipeline) ✅ PLANNED 2026-06-08 — 2 plans/2 waves, checker VERIFICATION PASSED (0 blk/0 warn), ready to execute. Next: /gsd-execute-phase 14.
+**Current focus:** Phase 14 (Changelog Pipeline) ✅ COMPLETE & verified 2026-06-08 (versioned changelog pipeline live: 3 version pages + landing, cosign/SLSA verify commands, red breaking-change callout). Next: Phase 15 (Marketing Home) — not started.
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 14 — Changelog Pipeline (✅ PLANNED 2026-06-08, ready to execute; Phase 13 ✅ complete & verified 2026-06-08)
-Plan: 14-01 (Wave 1: pipeline + 3 MDX components + v1.0.0/v1.2.0 notes + docs-nav link, CHG-01/02) → 14-02 (Wave 2, depends_on 14-01: v1.3.0 notes + red breaking-change callout + phase-complete gate, CHG-01/03)
-Status: Phase 14 planned (2 plans/2 waves) — checker VERIFICATION PASSED 0 blk/0 warn, reqs 3/3 — NEXT: /gsd-execute-phase 14
-Last activity: 2026-06-08 — Phase 14 PLANNED (2 plans, checker passed clean; research/discuss/UI-SPEC skipped per Phase-13 precedent)
+Phase: 15 — Marketing Home (not started; Phase 14 ✅ complete & verified 2026-06-08)
+Plan: 14-01/14-02 (2/2 complete) — verifier 7/7 must-haves + 3/3 ROADMAP SCs PASSED; code review 2-crit/3-warn ALL fixed inline before verify
+Status: Phase 14 complete — NEXT: /gsd-plan-phase 15 (or /gsd-discuss-phase 15) — Marketing Home (HOME-01..05, SITE-03)
+Last activity: 2026-06-08 — Phase 14 complete (2 plans, verifier 7/7 + 3/3 SCs, code review remediated inline; SLSA cmd casing/path corrected, /changelog landing added)
 
 ## Phase Summary (v1.3.0)
 
@@ -40,7 +40,7 @@ Last activity: 2026-06-08 — Phase 14 PLANNED (2 plans, checker passed clean; r
 | 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
 | 12 | Design System | DSYS-01–04 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 8/8 must-haves, 4/4 reqs; Playwright-verified both themes) |
 | 13 | Docs Content Pipeline | DOCS-01 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 4/4 SCs PASSED; FOWT UAT passed; code review 0-crit/3-warn) |
-| 14 | Changelog Pipeline | CHG-01–03 | 📋 Planned 2026-06-08 (2/2 plans written, 2 waves; checker VERIFICATION PASSED 0 blk/0 warn; ready to execute) |
+| 14 | Changelog Pipeline | CHG-01–03 | ✅ Complete & verified 2026-06-08 (2/2 plans; verifier 7/7 must-haves + 3/3 SCs PASSED; code review 2-crit/3-warn ALL fixed inline before verify) |
 | 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |
 | 16 | 3D Layer | GFX-01–04 | Not started |
 | 17 | SEO & Static Assets | SEO-01 | Not started |
