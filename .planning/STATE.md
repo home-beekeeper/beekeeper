@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: "Web Presence & Documentation"
 status: executing
-stopped_at: "Phase 13 (Docs Content Pipeline) EXECUTED 2026-06-08 — 3/3 plans on main (sequential, use_worktrees=false). Verifier: 4/4 ROADMAP SCs VERIFIED, status=human_needed (1 non-blocking visual check: FOWT/theme-bridge non-regression on /docs/, pre-declared manual-only in 13-VALIDATION). Fumadocs static-export pipeline live: out/docs/ for all 8 sections, 93KB/80-doc Orama static index at out/api/search (flat file — trailingSlash:true), sidebar forced order, TOC, search→result→navigate all proven (SC-1 direct + build; SC-2/3 from static HTML; SC-4 Playwright). Code review 0-crit/3-warn/2-info (07eebd2, advisory). Notable deviation: 13-02 had to create the 8 seed sections early (empty content/docs fails generateStaticParams under output:export); 13-03 reconciled+validated. SDK state verbs skipped (frontmatter-corruption caveat); STATE/ROADMAP hand-updated. NOT complete until UAT passes. NEXT: /gsd-verify-work 13."
-last_updated: "2026-06-08T13:09:40Z"
-last_activity: 2026-06-08 — Phase 13 (Docs Content Pipeline) EXECUTED: 3/3 plans; verifier 4/4 SCs PASSED, status human_needed (1 FOWT visual check → /gsd-verify-work 13); code review 0-crit/3-warn.
+stopped_at: "Phase 13 (Docs Content Pipeline, DOCS-01) ✅ COMPLETE & verified 2026-06-08 — 3/3 plans on main (sequential, use_worktrees=false). Verifier 4/4 ROADMAP SCs VERIFIED; the single human_needed item (FOWT/theme-bridge non-regression on /docs/) PASSED 2026-06-08 — maintainer reviewed the served production build (out/) at localhost:3000 and approved (no flash-of-wrong-theme, theme persists via bk-theme, single theme owner / Fumadocs toggle disabled). Fumadocs static-export pipeline live: out/docs/ for all 8 sections, 93KB/80-doc Orama static index at flat out/api/search (trailingSlash:true), sidebar forced order, TOC, search→result→navigate all proven. Code review 0-crit/3-warn/2-info (07eebd2, advisory; WR-01 pnpm-workspace comment + WR-02 Cloudflare extensionless-JSON deploy risk noted for follow-up). SDK state verbs skipped (frontmatter-corruption caveat); STATE/ROADMAP/REQUIREMENTS hand-updated. NEXT: /gsd-plan-phase 14 (or /gsd-discuss-phase 14) — Changelog Pipeline."
+last_updated: "2026-06-08T14:07:02Z"
+last_activity: 2026-06-08 — Phase 13 (Docs Content Pipeline) ✅ COMPLETE: 3/3 plans, verifier 4/4 SCs, FOWT UAT PASSED (maintainer-approved), code review 0-crit/3-warn. Next: Phase 14 (Changelog).
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
   completed_plans: 7
-  percent: 22
+  percent: 33
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 12 (Design System) ✅ COMPLETE & verified 2026-06-08. Next: Phase 13 (Docs Content Pipeline) — not started.
+**Current focus:** Phase 13 (Docs Content Pipeline) ✅ COMPLETE & verified 2026-06-08 (Fumadocs static-export docs pipeline live). Next: Phase 14 (Changelog Pipeline) — not started.
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 13 — Docs Content Pipeline (EXECUTED 2026-06-08; awaiting UAT — NOT complete)
-Plan: 13-01/02/03 (3/3 executed) — verifier 4/4 ROADMAP SCs VERIFIED, status human_needed (1 FOWT visual check)
-Status: Phase 13 executed, pending UAT — NEXT: /gsd-verify-work 13 (then phase completes)
-Last activity: 2026-06-08 — Phase 13 executed (3/3 plans), verified 4/4 SCs, code-reviewed (0-crit/3-warn); FOWT visual check pending
+Phase: 14 — Changelog Pipeline (not started; Phase 13 ✅ complete & verified 2026-06-08)
+Plan: 13-01/02/03 (3/3 complete) — verifier 4/4 ROADMAP SCs VERIFIED; FOWT UAT PASSED (maintainer-approved)
+Status: Phase 13 complete — NEXT: /gsd-plan-phase 14 (or /gsd-discuss-phase 14)
+Last activity: 2026-06-08 — Phase 13 complete (3/3 plans, 4/4 SCs, FOWT UAT passed, code-reviewed 0-crit/3-warn)
 
 ## Phase Summary (v1.3.0)
 
@@ -39,7 +39,7 @@ Last activity: 2026-06-08 — Phase 13 executed (3/3 plans), verified 4/4 SCs, c
 | 10 | Hook-Block Protocol Compliance & Multi-Harness Enforcement | (seed) | ✅ Shipped 2026-06-05 (v1.3.0 seed) |
 | 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
 | 12 | Design System | DSYS-01–04 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 8/8 must-haves, 4/4 reqs; Playwright-verified both themes) |
-| 13 | Docs Content Pipeline | DOCS-01 | ◷ Executed 2026-06-08 (3/3 plans; verifier 4/4 SCs PASSED, human_needed: 1 FOWT visual check) — awaiting `/gsd-verify-work 13` |
+| 13 | Docs Content Pipeline | DOCS-01 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 4/4 SCs PASSED; FOWT UAT passed; code review 0-crit/3-warn) |
 | 14 | Changelog Pipeline | CHG-01–03 | Not started |
 | 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |
 | 16 | 3D Layer | GFX-01–04 | Not started |

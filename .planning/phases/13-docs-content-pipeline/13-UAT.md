@@ -1,9 +1,9 @@
 ---
-status: testing
+status: passed
 phase: 13-docs-content-pipeline
 source: [13-VERIFICATION.md]
 started: 2026-06-08T13:09:40Z
-updated: 2026-06-08T13:09:40Z
+updated: 2026-06-08T14:07:02Z
 ---
 
 ## Current Test
@@ -16,7 +16,7 @@ expected: |
   appearance — no double-toggle and no Fumadocs-owned theme controller competing.
   (Code is correctly wired: RootProvider theme={{ enabled: false }}, single ThemeProvider
   owner — this confirms the runtime visual behavior.)
-awaiting: user response
+awaiting: none — PASSED (maintainer approved 2026-06-08 after live review of the served production build at localhost:3000)
 
 ## Tests
 
@@ -37,15 +37,17 @@ why_human: |
   (theme={{ enabled: false }} on RootProvider, single ThemeProvider owner); only the
   runtime visual behavior in a live browser remains to confirm. Pre-declared as a
   manual-only verification in 13-VALIDATION.md.
-result: [pending]
+result: PASSED — maintainer reviewed the served production build (out/) at http://localhost:3000/docs/getting-started/ on 2026-06-08 and approved: no flash-of-wrong-theme on load/reload, theme choice persists (bk-theme), single theme owner (Fumadocs toggle disabled).
 
 ## Summary
 
 total: 1
-passed: 0
+passed: 1
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+None — all human verification items passed.

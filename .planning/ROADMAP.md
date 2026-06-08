@@ -64,7 +64,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement** — SHIPPED 2026-06-05 (v1.3.0 seed)
 - [x] **Phase 11: Scaffold & Toolchain Isolation** — ✅ Complete & verified 2026-06-07 — pnpm workspace + Next.js 16 static-export app under web/, Go-isolated (Cloudflare Pages deploy is SITE-03 / Phase 15)
 - [x] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion (completed 2026-06-08)
-- [ ] **Phase 13: Docs Content Pipeline** — fumadocs-mdx wiring, static Orama search, DocsLayout, first MDX
+- [x] **Phase 13: Docs Content Pipeline** — ✅ Complete & verified 2026-06-08 — Fumadocs static-export pipeline (fumadocs-mdx wiring, static Orama search, DocsLayout, 8-section skeleton); verifier 4/4 SCs + FOWT UAT passed
 - [ ] **Phase 14: Changelog Pipeline** — versioned changelog route with breaking-change callout renderer
 - [ ] **Phase 15: Marketing Home** — all marketing sections, static SVG hero, dual CTA, harness matrix
 - [ ] **Phase 16: 3D Layer** — R3F hero + ambient accents behind dynamic(ssr:false), perf/a11y gates
@@ -262,7 +262,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **10. Hook-Block Protocol Compliance** | **v1.3.0** | **6/6** | **Complete (seed)** | **2026-06-05** |
 | **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **1/1** | **Complete** | **2026-06-07** |
 | **12. Design System** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
-| **13. Docs Content Pipeline** | **v1.3.0** | **3/3** | **Executed — verifier 4/4 SCs (human_needed: FOWT check); awaiting UAT** | **—** |
+| **13. Docs Content Pipeline** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
 | **14. Changelog Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **15. Marketing Home** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **16. 3D Layer** | **v1.3.0** | **0/TBD** | **Not started** | **—** |

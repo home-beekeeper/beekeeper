@@ -38,7 +38,7 @@
 
 ### Documentation (DOCS)
 
-- [ ] **DOCS-01**: A user can browse a Fumadocs-powered docs site with sidebar navigation, table of contents, and working static (Orama) search
+- [x] **DOCS-01**: A user can browse a Fumadocs-powered docs site with sidebar navigation, table of contents, and working static (Orama) search ✅ Phase 13 (2026-06-08)
 - [ ] **DOCS-02**: A new user can follow a Getting Started / Quickstart guide from zero to a working `beekeeper check`
 - [ ] **DOCS-03**: A user can follow installation docs (`go install` + GitHub Releases + cosign / SLSA verification)
 - [ ] **DOCS-04**: A user can learn to customize configuration (layered config, policy-as-code, sensitive paths, package-manager nudge) with copyable examples
@@ -101,7 +101,7 @@
 | GFX-02 | Phase 16 — 3D Layer | Not started |
 | GFX-03 | Phase 16 — 3D Layer | Not started |
 | GFX-04 | Phase 16 — 3D Layer | Not started |
-| DOCS-01 | Phase 13 — Docs Content Pipeline | Not started |
+| DOCS-01 | Phase 13 — Docs Content Pipeline | ✅ Complete (2026-06-08) |
 | DOCS-02 | Phase 18 — Full Content Authoring | Not started |
 | DOCS-03 | Phase 18 — Full Content Authoring | Not started |
 | DOCS-04 | Phase 18 — Full Content Authoring | Not started |

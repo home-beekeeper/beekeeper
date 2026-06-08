@@ -1,7 +1,8 @@
 ---
 phase: 13-docs-content-pipeline
 verified: 2026-06-08T16:00:00Z
-status: human_needed
+status: passed
+human_verification_resolved: "2026-06-08T14:07:02Z — FOWT/theme-bridge item PASSED; maintainer reviewed the served production build (out/) at localhost:3000 and approved. See 13-UAT.md."
 score: 4/4 must-haves verified
 overrides_applied: 0
 human_verification:
@@ -14,7 +15,7 @@ human_verification:
 
 **Phase Goal:** A visitor can browse a Fumadocs-powered documentation site with sidebar navigation, table of contents, and working STATIC (Orama) search — all served from pre-built static files with NO server runtime (`output: "export"`).
 **Verified:** 2026-06-08T16:00:00Z
-**Status:** human_needed
+**Status:** passed (FOWT human-verification item resolved 2026-06-08 — maintainer approved; see 13-UAT.md)
 **Re-verification:** No — initial verification
 
 ---
