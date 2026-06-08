@@ -148,7 +148,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 ### Phase 14: Changelog Pipeline
 
 **Goal**: A visitor can read versioned release notes (v1.0.0, v1.2.0, v1.3.0) with per-release download and verification guidance, and the v1.3.0 entry displays a red breaking-change callout.
-**Depends on**: Phase 12
+**Depends on**: Phase 12 (Design System) — reuses the Phase 13 docs-pipeline pattern (Phase 13 complete) as the implementation analog
 **Requirements**: CHG-01, CHG-02, CHG-03
 **Success Criteria** (what must be TRUE):
 
@@ -156,7 +156,15 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   2. Each changelog page includes copyable cosign/SLSA verification commands and a link to the corresponding GitHub Release
   3. The v1.3.0 changelog page displays a prominently styled red callout for the exit-1 to exit-2 breaking change with a migration note
 
-**Plans**: TBD
+**Plans**: 2 plans (2 waves)
+**Wave 1**
+
+- [ ] 14-01-PLAN.md — Wave 1: changelog pipeline + v1.0.0/v1.2.0 — second fumadocs-mdx `changelog` collection + lib/changelog-source.ts loader (baseUrl /changelog) + app/changelog/[[...slug]] catch-all route + DocsLayout; VerifyCommands (cosign+SLSA, capital-B Bantuson per release-runbook Pitfall 4) + ReleaseLinks (canonical github.com/bantuson/beekeeper release tag) + BreakingChangeCallout (red, dual-theme tokens) components + MDX map; accurate v1.0.0 + v1.2.0 release notes (from MILESTONES.md); docs-nav Changelog link; build emits the two static pages (CHG-01, CHG-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 14-02-PLAN.md — Wave 2: v1.3.0 + phase-complete gate — accurate v1.3.0 release notes + prominent red BreakingChangeCallout (exit-1→exit-2 hook protocol change + accurate migration note: upgrade, re-run `hooks install --hook <harness>`, restart session; only Claude Code live-verified) + VerifyCommands/ReleaseLinks; pnpm build emits all three out/changelog/vX.Y.Z/index.html; SC-1/2/3 validated (grep + Playwright-on-static-export, red callout in both themes) (CHG-01, CHG-03)
+
 **UI hint**: yes
 
 ### Phase 15: Marketing Home
@@ -263,7 +271,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **1/1** | **Complete** | **2026-06-07** |
 | **12. Design System** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
 | **13. Docs Content Pipeline** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
-| **14. Changelog Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **14. Changelog Pipeline** | **v1.3.0** | **0/2** | **Planned** | **—** |
 | **15. Marketing Home** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **16. 3D Layer** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **17. SEO & Static Assets** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
