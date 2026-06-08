@@ -63,7 +63,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 - [x] **Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement** — SHIPPED 2026-06-05 (v1.3.0 seed)
 - [x] **Phase 11: Scaffold & Toolchain Isolation** — ✅ Complete & verified 2026-06-07 — pnpm workspace + Next.js 16 static-export app under web/, Go-isolated (Cloudflare Pages deploy is SITE-03 / Phase 15)
-- [ ] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion
+- [x] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion (completed 2026-06-08)
 - [ ] **Phase 13: Docs Content Pipeline** — fumadocs-mdx wiring, static Orama search, DocsLayout, first MDX
 - [ ] **Phase 14: Changelog Pipeline** — versioned changelog route with breaking-change callout renderer
 - [ ] **Phase 15: Marketing Home** — all marketing sections, static SVG hero, dual CTA, harness matrix
@@ -106,15 +106,15 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 3 plans (3 waves)
 **Wave 1**
 
-- [ ] 12-01-PLAN.md — Wave 1: shadcn foundation — package-legitimacy gate + `shadcn init` (new-york/zinc/CSS-first, registry-clean) + add button/badge/separator/tooltip + install next-themes (DSYS-01)
+- [x] 12-01-PLAN.md — Wave 1: shadcn foundation — package-legitimacy gate + `shadcn init` (new-york/zinc/CSS-first, registry-clean) + add button/badge/separator/tooltip + install next-themes (DSYS-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 12-02-PLAN.md — Wave 2: providers — ReducedMotionProvider + `useReducedMotion()` hook + next-themes ThemeProvider (bk-theme, class strategy, disableTransitionOnChange) with Phase 13 RootProvider marker (DSYS-02, DSYS-03)
+- [x] 12-02-PLAN.md — Wave 2: providers — ReducedMotionProvider + `useReducedMotion()` hook + next-themes ThemeProvider (bk-theme, class strategy, disableTransitionOnChange) with Phase 13 RootProvider marker (DSYS-02, DSYS-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 12-03-PLAN.md — Wave 3: integration — canonical Beekeeper globals.css token cascade (overwrites CLI output; Fumadocs commented) + layout.tsx Inter/JetBrains fonts (opsz fallback) + suppressHydrationWarning + skip link + Providers wrap + manual smoke verify (DSYS-01–04)
+- [x] 12-03-PLAN.md — Wave 3: integration — canonical Beekeeper globals.css token cascade (overwrites CLI output; Fumadocs commented) + layout.tsx Inter/JetBrains fonts (opsz fallback) + suppressHydrationWarning + skip link + Providers wrap + manual smoke verify (DSYS-01–04)
 
 **UI hint**: yes
 

@@ -16,10 +16,10 @@
 
 ### Design System (DSYS)
 
-- [ ] **DSYS-01**: The site uses a shadcn/ui + Tailwind v4 design system with correct Fumadocs CSS integration — a single source of design tokens, no theming conflicts
-- [ ] **DSYS-02**: A visitor can switch between light and dark themes, persisted across visits, with no flash-of-wrong-theme
-- [ ] **DSYS-03**: The site honors `prefers-reduced-motion` site-wide (a reduced-motion provider gates animation and 3D)
-- [ ] **DSYS-04**: The UI meets WCAG 2.1 AA (contrast, keyboard navigation, visible focus) across both themes
+- [x] **DSYS-01**: The site uses a shadcn/ui + Tailwind v4 design system with correct Fumadocs CSS integration — a single source of design tokens, no theming conflicts
+- [x] **DSYS-02**: A visitor can switch between light and dark themes, persisted across visits, with no flash-of-wrong-theme
+- [x] **DSYS-03**: The site honors `prefers-reduced-motion` site-wide (a reduced-motion provider gates animation and 3D)
+- [x] **DSYS-04**: The UI meets WCAG 2.1 AA (contrast, keyboard navigation, visible focus) across both themes
 
 ### Marketing Home (HOME)
 
@@ -88,10 +88,10 @@
 | SITE-01 | Phase 11 — Scaffold & Toolchain Isolation | ✅ Complete (2026-06-07) |
 | SITE-02 | Phase 11 — Scaffold & Toolchain Isolation | ✅ Complete (2026-06-07) |
 | SITE-03 | Phase 15 — Marketing Home | Not started |
-| DSYS-01 | Phase 12 — Design System | Not started |
-| DSYS-02 | Phase 12 — Design System | Not started |
-| DSYS-03 | Phase 12 — Design System | Not started |
-| DSYS-04 | Phase 12 — Design System | Not started |
+| DSYS-01 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
+| DSYS-02 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
+| DSYS-03 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
+| DSYS-04 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | HOME-01 | Phase 15 — Marketing Home | Not started |
 | HOME-02 | Phase 15 — Marketing Home | Not started |
 | HOME-03 | Phase 15 — Marketing Home | Not started |
