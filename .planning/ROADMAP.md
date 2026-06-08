@@ -181,7 +181,19 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   5. An honesty callout is visible on the home page linking to the security-posture / known-gaps documentation
   6. *(DEFERRED)* The static site is deployed to **Vercel** and reachable at a public URL — carried forward (SITE-03); Phase 15 verifies the page is built (`pnpm build` → `out/`), not a live URL
 
-**Plans**: TBD
+**Plans**: 3 plans (3 waves)
+**Wave 1**
+
+- [ ] 15-01-PLAN.md — Wave 1: marketing chrome + hero — Section/SectionHead primitives, sticky SiteHeader (Docs/Changelog nav), SiteFooter, the go-install copy chip (InstallChip, client), Hero (headline + subhead + dual CTA), replace scaffold page.tsx; build emits out/index.html (HOME-01)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 15-02-PLAN.md — Wave 2: content body — OriginStory (Nx Console origin + documented-2026-campaigns threat list), HowItWorks (reactive/proactive two-layer + 3-step quickstart), FeatureCards reconciled to the six SHIPPED capabilities; wire into page.tsx (HOME-02, HOME-03)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 15-03-PLAN.md — Wave 3: added sections + gate — HarnessMatrix (all 15 harnesses, honest tiers/caveats → /docs/integration), HonestyCallout (4 known gaps → /docs/security), final page assembly + build gate + both-theme/above-the-fold Playwright proof (HOME-04, HOME-05)
+
 **UI hint**: yes
 
 ### Phase 16: 3D Layer
