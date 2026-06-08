@@ -14,3 +14,4 @@ allowBuilds:
 
 ignoredBuiltDependencies:
   - unrs-resolver
+  - msw
