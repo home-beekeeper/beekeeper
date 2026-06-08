@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: "Web Presence & Documentation"
 status: executing
-stopped_at: "Phase 13 (Docs Content Pipeline, DOCS-01) ✅ COMPLETE & verified 2026-06-08 — 3/3 plans on main (sequential, use_worktrees=false). Verifier 4/4 ROADMAP SCs VERIFIED; the single human_needed item (FOWT/theme-bridge non-regression on /docs/) PASSED 2026-06-08 — maintainer reviewed the served production build (out/) at localhost:3000 and approved (no flash-of-wrong-theme, theme persists via bk-theme, single theme owner / Fumadocs toggle disabled). Fumadocs static-export pipeline live: out/docs/ for all 8 sections, 93KB/80-doc Orama static index at flat out/api/search (trailingSlash:true), sidebar forced order, TOC, search→result→navigate all proven. Code review 0-crit/3-warn/2-info (07eebd2, advisory; WR-01 pnpm-workspace comment + WR-02 Cloudflare extensionless-JSON deploy risk noted for follow-up). SDK state verbs skipped (frontmatter-corruption caveat); STATE/ROADMAP/REQUIREMENTS hand-updated. NEXT: /gsd-plan-phase 14 (or /gsd-discuss-phase 14) — Changelog Pipeline."
-last_updated: "2026-06-08T14:07:02Z"
-last_activity: 2026-06-08 — Phase 13 (Docs Content Pipeline) ✅ COMPLETE: 3/3 plans, verifier 4/4 SCs, FOWT UAT PASSED (maintainer-approved), code review 0-crit/3-warn. Next: Phase 14 (Changelog).
+stopped_at: "Phase 14 (Changelog Pipeline, CHG-01/02/03) ✅ PLANNED 2026-06-08 — ready to execute. 2 plans / 2 waves written (gsd-planner, opus) and committed (4590849). Plan-checker (sonnet) returned VERIFICATION PASSED — 0 blockers / 0 warnings across 12 dimensions (Nyquist/research/patterns dims correctly SKIPPED: research was deliberately skipped by maintainer, so NO RESEARCH.md/VALIDATION.md/CONTEXT.md for this phase — accepted tradeoff). Reqs coverage 3/3 (CHG-01 in 14-01+14-02, CHG-02 in 14-01, CHG-03 in 14-02). Architecture chosen & documented in 14-01 (research skipped): SECOND fumadocs-mdx `defineDocs` collection (content/changelog/) mirroring the proven Phase-13 docs pipeline — lib/changelog-source.ts loader (baseUrl /changelog) + app/changelog/[[...slug]] catch-all (generateStaticParams → 3 versions) + DocsLayout; per-version static dirs out/changelog/vX.Y.Z/ under trailingSlash; ZERO new deps. 3 reusable MDX components (VerifyCommands cosign+SLSA, ReleaseLinks, BreakingChangeCallout red). Correctness anchors baked in: cosign/SLSA cmds match docs/release-runbook.md with capital-B `Bantuson` OIDC identity; red callout uses raw theme token var(--red) NOT dark-only --color-bk-* (the 12-03 dual-theme bug), verified red in BOTH themes via Playwright-on-static-export; migration note accurate to Phase-10 exit-1→exit-2 seed fix (re-run hooks install --hook <harness> + restart; only Claude Code live-verified). Wave 1 = 14-01 (pipeline + components + v1.0.0/v1.2.0 notes + docs-nav link); Wave 2 = 14-02 (v1.3.0 notes + red callout + phase-complete gate). Planned sequential-inline on main (use_worktrees=false) — discuss/research/UI-SPEC all skipped by maintainer choice (matches Phase 13 precedent). NEXT: /gsd-execute-phase 14."
+last_updated: "2026-06-08T16:30:00Z"
+last_activity: 2026-06-08 — Phase 14 (Changelog Pipeline) ✅ PLANNED: 2 plans/2 waves, checker VERIFICATION PASSED (0 blk/0 warn), 3/3 reqs covered. Research/discuss/UI-SPEC skipped (Phase-13 precedent). Next: /gsd-execute-phase 14.
 progress:
   total_phases: 9
   completed_phases: 3
-  total_plans: 7
+  total_plans: 9
   completed_plans: 7
   percent: 33
 ---
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 13 (Docs Content Pipeline) ✅ COMPLETE & verified 2026-06-08 (Fumadocs static-export docs pipeline live). Next: Phase 14 (Changelog Pipeline) — not started.
+**Current focus:** Phase 14 (Changelog Pipeline) ✅ PLANNED 2026-06-08 — 2 plans/2 waves, checker VERIFICATION PASSED (0 blk/0 warn), ready to execute. Next: /gsd-execute-phase 14.
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 14 — Changelog Pipeline (not started; Phase 13 ✅ complete & verified 2026-06-08)
-Plan: 13-01/02/03 (3/3 complete) — verifier 4/4 ROADMAP SCs VERIFIED; FOWT UAT PASSED (maintainer-approved)
-Status: Phase 13 complete — NEXT: /gsd-plan-phase 14 (or /gsd-discuss-phase 14)
-Last activity: 2026-06-08 — Phase 13 complete (3/3 plans, 4/4 SCs, FOWT UAT passed, code-reviewed 0-crit/3-warn)
+Phase: 14 — Changelog Pipeline (✅ PLANNED 2026-06-08, ready to execute; Phase 13 ✅ complete & verified 2026-06-08)
+Plan: 14-01 (Wave 1: pipeline + 3 MDX components + v1.0.0/v1.2.0 notes + docs-nav link, CHG-01/02) → 14-02 (Wave 2, depends_on 14-01: v1.3.0 notes + red breaking-change callout + phase-complete gate, CHG-01/03)
+Status: Phase 14 planned (2 plans/2 waves) — checker VERIFICATION PASSED 0 blk/0 warn, reqs 3/3 — NEXT: /gsd-execute-phase 14
+Last activity: 2026-06-08 — Phase 14 PLANNED (2 plans, checker passed clean; research/discuss/UI-SPEC skipped per Phase-13 precedent)
 
 ## Phase Summary (v1.3.0)
 
@@ -40,7 +40,7 @@ Last activity: 2026-06-08 — Phase 13 complete (3/3 plans, 4/4 SCs, FOWT UAT pa
 | 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
 | 12 | Design System | DSYS-01–04 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 8/8 must-haves, 4/4 reqs; Playwright-verified both themes) |
 | 13 | Docs Content Pipeline | DOCS-01 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 4/4 SCs PASSED; FOWT UAT passed; code review 0-crit/3-warn) |
-| 14 | Changelog Pipeline | CHG-01–03 | Not started |
+| 14 | Changelog Pipeline | CHG-01–03 | 📋 Planned 2026-06-08 (2/2 plans written, 2 waves; checker VERIFICATION PASSED 0 blk/0 warn; ready to execute) |
 | 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |
 | 16 | 3D Layer | GFX-01–04 | Not started |
 | 17 | SEO & Static Assets | SEO-01 | Not started |
