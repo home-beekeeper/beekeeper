@@ -23,11 +23,11 @@
 
 ### Marketing Home (HOME)
 
-- [ ] **HOME-01**: A visitor sees a home hero with headline, subhead, and a dual CTA (copyable `go install` command + "Read the docs")
-- [ ] **HOME-02**: The home page explains the origin/problem (Nx Console compromise) and how Beekeeper works in 3 steps
-- [ ] **HOME-03**: The home page presents feature highlights covering only shipped capabilities (corroboration engine, fail-closed hooks, editor-extension defense, Sentry, LlamaFirewall, policy-as-code)
-- [ ] **HOME-04**: The home page shows the 15-harness support matrix with honest tier/verification caveats, linking to the integration docs
-- [ ] **HOME-05**: The home page surfaces an honesty / known-gaps callout linking to the security-posture docs (no overclaiming)
+- [x] **HOME-01**: A visitor sees a home hero with headline, subhead, and a dual CTA (copyable `go install` command + "Read the docs") ✅ Phase 15 (2026-06-08)
+- [x] **HOME-02**: The home page explains the origin/problem (Nx Console compromise) and how Beekeeper works in 3 steps ✅ Phase 15 (2026-06-08)
+- [x] **HOME-03**: The home page presents feature highlights covering only shipped capabilities (corroboration engine, fail-closed hooks, editor-extension defense, Sentry, LlamaFirewall, policy-as-code) ✅ Phase 15 (2026-06-08)
+- [x] **HOME-04**: The home page shows the 15-harness support matrix with honest tier/verification caveats, linking to the integration docs ✅ Phase 15 (2026-06-08)
+- [x] **HOME-05**: The home page surfaces an honesty / known-gaps callout linking to the security-posture docs (no overclaiming) ✅ Phase 15 (2026-06-08)
 
 ### 3D & Motion (GFX)
 
@@ -92,11 +92,11 @@
 | DSYS-02 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-03 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-04 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
-| HOME-01 | Phase 15 — Marketing Home | Not started |
-| HOME-02 | Phase 15 — Marketing Home | Not started |
-| HOME-03 | Phase 15 — Marketing Home | Not started |
-| HOME-04 | Phase 15 — Marketing Home | Not started |
-| HOME-05 | Phase 15 — Marketing Home | Not started |
+| HOME-01 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
+| HOME-02 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
+| HOME-03 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
+| HOME-04 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
+| HOME-05 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
 | GFX-01 | Phase 16 — 3D Layer | Not started |
 | GFX-02 | Phase 16 — 3D Layer | Not started |
 | GFX-03 | Phase 16 — 3D Layer | Not started |

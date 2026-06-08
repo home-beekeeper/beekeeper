@@ -66,7 +66,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion (completed 2026-06-08)
 - [x] **Phase 13: Docs Content Pipeline** — ✅ Complete & verified 2026-06-08 — Fumadocs static-export pipeline (fumadocs-mdx wiring, static Orama search, DocsLayout, 8-section skeleton); verifier 4/4 SCs + FOWT UAT passed
 - [x] **Phase 14: Changelog Pipeline** — ✅ Complete & verified 2026-06-08 — second fumadocs-mdx changelog collection + per-version static pages (v1.0.0/v1.2.0/v1.3.0) + cosign/SLSA verify commands + red exit-1→exit-2 breaking-change callout; verifier 7/7 must-haves, 3/3 SCs
-- [ ] **Phase 15: Marketing Home** — all marketing sections, static SVG hero, dual CTA, harness matrix
+- [x] **Phase 15: Marketing Home** — ✅ Complete & verified 2026-06-08 (HOME-01..05) — hero+dual CTA+go-install chip, Nx origin story, 3-step how-it-works, 6 shipped-capability feature cards, 15-harness matrix, honesty/known-gaps callout; verifier 5/5 must-haves; code review 2-crit/3-warn fixed inline; both-theme Playwright proof. **SITE-03 (live deploy) DEFERRED → Vercel.**
 - [ ] **Phase 16: 3D Layer** — R3F hero + ambient accents behind dynamic(ssr:false), perf/a11y gates
 - [ ] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image
 - [ ] **Phase 18: Full Content Authoring** — all docs + changelog prose, accuracy review gate
@@ -184,15 +184,15 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 3 plans (3 waves)
 **Wave 1**
 
-- [ ] 15-01-PLAN.md — Wave 1: marketing chrome + hero — Section/SectionHead primitives, sticky SiteHeader (Docs/Changelog nav), SiteFooter, the go-install copy chip (InstallChip, client), Hero (headline + subhead + dual CTA), replace scaffold page.tsx; build emits out/index.html (HOME-01)
+- [x] 15-01-PLAN.md — Wave 1: marketing chrome + hero — Section/SectionHead primitives, sticky SiteHeader (Docs/Changelog nav), SiteFooter, the go-install copy chip (InstallChip, client), Hero (headline + subhead + dual CTA), replace scaffold page.tsx; build emits out/index.html (HOME-01)
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 15-02-PLAN.md — Wave 2: content body — OriginStory (Nx Console origin + documented-2026-campaigns threat list), HowItWorks (reactive/proactive two-layer + 3-step quickstart), FeatureCards reconciled to the six SHIPPED capabilities; wire into page.tsx (HOME-02, HOME-03)
+- [x] 15-02-PLAN.md — Wave 2: content body — OriginStory (Nx Console origin + documented-2026-campaigns threat list), HowItWorks (reactive/proactive two-layer + 3-step quickstart), FeatureCards reconciled to the six SHIPPED capabilities; wire into page.tsx (HOME-02, HOME-03)
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 15-03-PLAN.md — Wave 3: added sections + gate — HarnessMatrix (all 15 harnesses, honest tiers/caveats → /docs/integration), HonestyCallout (4 known gaps → /docs/security), final page assembly + build gate + both-theme/above-the-fold Playwright proof (HOME-04, HOME-05)
+- [x] 15-03-PLAN.md — Wave 3: added sections + gate — HarnessMatrix (all 15 harnesses, honest tiers/caveats → /docs/integration), HonestyCallout (4 known gaps → /docs/security), final page assembly + build gate + both-theme/above-the-fold Playwright proof (HOME-04, HOME-05)
 
 **UI hint**: yes
 
@@ -284,7 +284,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **12. Design System** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
 | **13. Docs Content Pipeline** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
 | **14. Changelog Pipeline** | **v1.3.0** | **2/2** | **Complete** | **2026-06-08** |
-| **15. Marketing Home** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **15. Marketing Home** | **v1.3.0** | **3/3** | **Complete** (SITE-03 deferred→Vercel) | **2026-06-08** |
 | **16. 3D Layer** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **17. SEO & Static Assets** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **18. Full Content Authoring** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
