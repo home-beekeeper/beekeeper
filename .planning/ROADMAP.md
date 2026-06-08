@@ -62,7 +62,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 ### v1.3.0 "Web Presence & Documentation"
 
 - [x] **Phase 10: Hook-Block Protocol Compliance & Multi-Harness Enforcement** — SHIPPED 2026-06-05 (v1.3.0 seed)
-- [x] **Phase 11: Scaffold & Toolchain Isolation** — ✅ Complete & verified 2026-06-07 — pnpm workspace + Next.js 16 static-export app under web/, Go-isolated (Cloudflare Pages deploy is SITE-03 / Phase 15)
+- [x] **Phase 11: Scaffold & Toolchain Isolation** — ✅ Complete & verified 2026-06-07 — pnpm workspace + Next.js 16 static-export app under web/, Go-isolated (Vercel deploy is SITE-03 / Phase 15 — retargeted from Cloudflare 2026-06-08, deferred)
 - [x] **Phase 12: Design System** — shadcn/ui + Tailwind v4 + Fumadocs CSS + theme toggle + reduced-motion (completed 2026-06-08)
 - [x] **Phase 13: Docs Content Pipeline** — ✅ Complete & verified 2026-06-08 — Fumadocs static-export pipeline (fumadocs-mdx wiring, static Orama search, DocsLayout, 8-section skeleton); verifier 4/4 SCs + FOWT UAT passed
 - [x] **Phase 14: Changelog Pipeline** — ✅ Complete & verified 2026-06-08 — second fumadocs-mdx changelog collection + per-version static pages (v1.0.0/v1.2.0/v1.3.0) + cosign/SLSA verify commands + red exit-1→exit-2 breaking-change callout; verifier 7/7 must-haves, 3/3 SCs
@@ -171,7 +171,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 **Goal**: A visitor sees a complete marketing home page — hero with dual CTA, origin story, how-it-works, feature highlights for shipped capabilities, the 15-harness support matrix, and an honesty callout — all as server-rendered static content with a static SVG hero (no 3D yet).
 **Depends on**: Phase 12
-**Requirements**: HOME-01, HOME-02, HOME-03, HOME-04, HOME-05, SITE-03
+**Requirements**: HOME-01, HOME-02, HOME-03, HOME-04, HOME-05 *(SITE-03 DEFERRED — deploy retargeted Cloudflare→Vercel, pending repo push / Vercel setup; page build-verified locally this phase)*
 **Success Criteria** (what must be TRUE):
 
   1. The home page hero displays the headline, subhead, a copyable `go install` command chip, and a "Read the docs" link — all visible above the fold on a 1280px viewport
@@ -179,7 +179,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   3. Feature cards cover only the six shipped capabilities (corroboration engine, fail-closed hooks, editor-extension defense, Sentry, LlamaFirewall, policy-as-code) with no aspirational claims
   4. The harness support matrix shows all 15 harnesses with honest tier labels and live-verification caveats, linking to the integration docs
   5. An honesty callout is visible on the home page linking to the security-posture / known-gaps documentation
-  6. The static site is deployed to Cloudflare Pages and reachable at a public URL
+  6. *(DEFERRED)* The static site is deployed to **Vercel** and reachable at a public URL — carried forward (SITE-03); Phase 15 verifies the page is built (`pnpm build` → `out/`), not a live URL
 
 **Plans**: TBD
 **UI hint**: yes

@@ -12,7 +12,7 @@
 
 - [x] **SITE-01**: A developer can run the `web/` app locally (`pnpm dev`) and produce a successful static build (`pnpm build` → `out/`) with no server runtime ✅ Phase 11
 - [x] **SITE-02**: The `web/` Node toolchain is isolated from the Go module (pnpm workspace; `pnpm install` never touches the Go root; `.source/` and build artifacts gitignored) ✅ Phase 11
-- [ ] **SITE-03**: The static site deploys to a static host (Cloudflare Pages) and is reachable at a public URL
+- [ ] **SITE-03**: The static site deploys to a static host (**Vercel** — retargeted from Cloudflare Pages, maintainer decision 2026-06-08) and is reachable at a public URL — *DEFERRED out of Phase 15 (page build-verified locally; live deploy pending repo push / Vercel setup; static export retained)*
 
 ### Design System (DSYS)
 
@@ -87,7 +87,7 @@
 |-------------|-------|--------|
 | SITE-01 | Phase 11 — Scaffold & Toolchain Isolation | ✅ Complete (2026-06-07) |
 | SITE-02 | Phase 11 — Scaffold & Toolchain Isolation | ✅ Complete (2026-06-07) |
-| SITE-03 | Phase 15 — Marketing Home | Not started |
+| SITE-03 | Phase 15 — Marketing Home (deploy deferred; retargeted Cloudflare→Vercel) | Deferred (page in Phase 15; live deploy pending) |
 | DSYS-01 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-02 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-03 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
