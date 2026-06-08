@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Web Presence & Documentation
-status: phase-complete
-stopped_at: "Phase 11 (Scaffold & Toolchain Isolation) COMPLETE & verified 2026-06-07 — web/ Next.js 16 static-export app scaffolded + Go-isolated (SITE-01, SITE-02 met; 4/4 SCs, SC1 human-approved). 3 feat commits + verifier PASS. NEXT: /gsd-plan-phase 12 (Design System)."
-last_updated: "2026-06-07T20:55:00.000Z"
-last_activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go isolation)
+status: planning
+stopped_at: "Phase 12 (Design System) UI-SPEC APPROVED 2026-06-08 (ui-checker 6/6, dual-theme AA-verified, codifies beekeeper-docs.html). Phase 11 shipped 2026-06-07. NEXT: /gsd-plan-phase 12."
+last_updated: "2026-06-08T05:40:00.000Z"
+last_activity: 2026-06-08 — Phase 12 UI-SPEC created + approved (ui-researcher → ui-checker 6/6)
 progress:
   total_phases: 9
   completed_phases: 1
@@ -38,7 +38,7 @@ Last activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go i
 |-------|------|--------------|--------|
 | 10 | Hook-Block Protocol Compliance & Multi-Harness Enforcement | (seed) | ✅ Shipped 2026-06-05 (v1.3.0 seed) |
 | 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
-| 12 | Design System | DSYS-01–04 | Not started |
+| 12 | Design System | DSYS-01–04 | 📋 UI-SPEC approved 2026-06-08 (ready to plan) |
 | 13 | Docs Content Pipeline | DOCS-01 | Not started |
 | 14 | Changelog Pipeline | CHG-01–03 | Not started |
 | 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |

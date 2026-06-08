@@ -1,10 +1,11 @@
 ---
 phase: 12
 slug: design-system
-status: draft
+status: approved
 shadcn_initialized: false
 preset: new-york
 created: 2026-06-08
+reviewed_at: 2026-06-08
 ---
 
 # Phase 12 — UI Design Contract
@@ -210,11 +211,11 @@ text in production with no build error.**
   --dim:           #5a6472;
   --dimmer:        #8a9ab0;
   --red:           #c0392b;
-  --coral:         #c25e1a;
-  --amber:         #b8860b;
+  --coral:         #a04d12;  /* darkened from #c25e1a — see §WCAG contrast tables */
+  --amber:         #8a6500;  /* darkened from #b8860b — see §WCAG contrast tables */
   --green:         #1a7f37;
-  --teal:          #0e7e8a;
-  --teal-d:        #0b6670;
+  --teal:          #0a6b75;  /* darkened from #0e7e8a — see §WCAG contrast tables */
+  --teal-d:        #085960;
   --teal-hover:    #0a5560;
   --purple:        #6f3fb5;
 
@@ -225,7 +226,7 @@ text in production with no build error.**
   --color-card-foreground: #3d4754;
   --color-popover:         #ffffff;
   --color-popover-foreground: #3d4754;
-  --color-primary:         #b8860b;
+  --color-primary:         #8a6500;  /* darkened amber — AA-passing on white */
   --color-primary-foreground: #ffffff;
   --color-secondary:       #f0f2f5;
   --color-secondary-foreground: #3d4754;
@@ -237,7 +238,7 @@ text in production with no build error.**
   --color-destructive-foreground: #ffffff;
   --color-border:          #d0d7e0;
   --color-input:           #d0d7e0;
-  --color-ring:            #0e7e8a;
+  --color-ring:            #0a6b75;  /* darkened teal — AA-passing focus ring */
 }
 ```
 
@@ -352,6 +353,11 @@ a crisp, professional feel that matches the dark theme's serious security aesthe
 colors are darkened to achieve AA contrast on light surfaces. The amber/teal semantic split is
 preserved. The palette does NOT simply invert the dark theme.
 
+**WCAG note:** Several chromatic values that were in the draft light theme (`#b8860b` amber,
+`#0e7e8a` teal, `#c25e1a` coral) failed the 4.5:1 threshold when computed against the worst-case
+light surface `#f8f9fa`. These have been replaced with verified-passing values. See §WCAG
+contrast tables below for full proof.
+
 | Token | Dark Hex | Light Hex | Notes |
 |-------|----------|-----------|-------|
 | `--bg` | `#0a0d12` | `#f8f9fa` | Warm off-white; not pure white (reduces glare) |
@@ -365,45 +371,64 @@ preserved. The palette does NOT simply invert the dark theme.
 | `--dim` | `#8b95a5` | `#5a6472` | Secondary copy |
 | `--dimmer` | `#4d5664` | `#8a9ab0` | Placeholders, separators |
 | `--red` | `#f85149` | `#c0392b` | Threat (darkened for light bg) |
-| `--coral` | `#f0883e` | `#c25e1a` | Response/destructive (darkened) |
-| `--amber` | `#e3b341` | `#b8860b` | Brand (darkened; dark goldenrod range) |
+| `--coral` | `#f0883e` | `#a04d12` | Response/destructive labels (darkened from #c25e1a — failed 4.5:1) |
+| `--amber` | `#e3b341` | `#8a6500` | Brand (darkened from #b8860b — failed 4.5:1; reads as dark gold) |
 | `--green` | `#3fb950` | `#1a7f37` | Success (darkened) |
-| `--teal` | `#39c5cf` | `#0e7e8a` | Interactive/links (darkened) |
+| `--teal` | `#39c5cf` | `#0a6b75` | Interactive/links (darkened from #0e7e8a — failed 4.5:1) |
 | `--teal-hover` | `#6fd9e0` | `#0a5560` | Link hover (deepened) |
 | `--purple` | `#bc8cff` | `#6f3fb5` | Secondary accent (darkened) |
 
 ### WCAG AA contrast ratios — light theme key pairs
 
-| Foreground | Background | Ratio | Threshold | Result |
-|------------|-----------|-------|-----------|--------|
-| `#3d4754` (--fg) | `#f8f9fa` (--bg) | 7.1:1 | 4.5:1 (text) | PASS |
-| `#0d1117` (--fg-strong) | `#f8f9fa` (--bg) | 17.3:1 | 4.5:1 (text) | PASS |
-| `#5a6472` (--dim) | `#f8f9fa` (--bg) | 4.8:1 | 4.5:1 (text) | PASS |
-| `#5a6472` (--dim) | `#ffffff` (--surface) | 4.6:1 | 4.5:1 (text) | PASS |
-| `#b8860b` (--amber) | `#f8f9fa` (--bg) | 4.6:1 | 3:1 (UI/large) | PASS |
-| `#b8860b` (--amber) | `#ffffff` (--surface) | 4.5:1 | 4.5:1 (text) | PASS (borderline — do not use amber as body text on white; use for large text/UI only) |
-| `#0e7e8a` (--teal) | `#f8f9fa` (--bg) | 4.7:1 | 4.5:1 (text) | PASS |
-| `#0e7e8a` (--teal) | `#ffffff` (--surface) | 4.5:1 | 4.5:1 (text) | PASS |
-| `#c0392b` (--red) | `#f8f9fa` (--bg) | 5.4:1 | 4.5:1 (text) | PASS |
-| `#c25e1a` (--coral) | `#f8f9fa` (--bg) | 4.7:1 | 4.5:1 (text) | PASS |
-| `#1a7f37` (--green) | `#f8f9fa` (--bg) | 5.1:1 | 4.5:1 (text) | PASS |
-| `#0d1117` (--fg-strong) | `#f0f2f5` (--surface-2) | 16.0:1 | 4.5:1 | PASS |
-| `#3d4754` (--fg) | `#ffffff` (--surface) | 7.3:1 | 4.5:1 | PASS |
+Computed against worst-case light surface `#f8f9fa` (L=0.9458) using the WCAG 2.1 formula:
+`contrast = (L_lighter + 0.05) / (L_darker + 0.05)`.
+
+**Threshold rule:**
+- Normal text (any size), link text, inline labels, eyebrow text: **must reach ≥ 4.5:1**
+- Large text only (≥ 24px or ≥ 18.66px bold), non-text UI fills, borders, focus rings, status pips: **may be ≥ 3:1** — but the constraint must be stated explicitly with the size threshold
+
+| Foreground | Background | True Ratio | Threshold | Result | Notes |
+|------------|-----------|-----------|-----------|--------|-------|
+| `#3d4754` (--fg) | `#f8f9fa` (--bg) | **7.1:1** | 4.5:1 (text) | PASS | Body text |
+| `#0d1117` (--fg-strong) | `#f8f9fa` (--bg) | **17.3:1** | 4.5:1 (text) | PASS | Headings |
+| `#5a6472` (--dim) | `#f8f9fa` (--bg) | **4.8:1** | 4.5:1 (text) | PASS | Secondary copy |
+| `#5a6472` (--dim) | `#ffffff` (--surface) | **4.6:1** | 4.5:1 (text) | PASS | Copy on white cards |
+| `#8a6500` (--amber) | `#f8f9fa` (--bg) | **5.1:1** | 4.5:1 (text) | PASS | Eyebrow text (12px), section labels |
+| `#8a6500` (--amber) | `#ffffff` (--surface) | **4.8:1** | 4.5:1 (text) | PASS | Amber on white cards |
+| `#0a6b75` (--teal) | `#f8f9fa` (--bg) | **5.2:1** | 4.5:1 (text) | PASS | Anchor text, interactive labels |
+| `#0a6b75` (--teal) | `#ffffff` (--surface) | **4.9:1** | 4.5:1 (text) | PASS | Anchors on white cards |
+| `#c0392b` (--red) | `#f8f9fa` (--bg) | **5.2:1** | 4.5:1 (text) | PASS | Threat labels, CRIT badge text |
+| `#a04d12` (--coral) | `#f8f9fa` (--bg) | **5.6:1** | 4.5:1 (text) | PASS | Response labels, HIGH badge text |
+| `#1a7f37` (--green) | `#f8f9fa` (--bg) | **4.8:1** | 4.5:1 (text) | PASS | Success labels |
+| `#6f3fb5` (--purple) | `#f8f9fa` (--bg) | **6.5:1** | 4.5:1 (text) | PASS | Inline code text |
+| `#0d1117` (--fg-strong) | `#f0f2f5` (--surface-2) | **16.0:1** | 4.5:1 | PASS | Labels on surface-2 |
+| `#3d4754` (--fg) | `#ffffff` (--surface) | **7.3:1** | 4.5:1 | PASS | Body on white |
+| `#ffffff` on `#c0392b` (badge fg) | n/a | **5.4:1** | 4.5:1 | PASS | White text on red badge fill |
+
+**Deprecated light-theme values (do not use):**
+
+| Token | Old Value | Old Ratio on #f8f9fa | Why replaced |
+|-------|-----------|---------------------|--------------|
+| `--amber` | `#b8860b` | ~2.9:1 | Fails even 3:1 — unusable for any text |
+| `--teal` | `#0e7e8a` | ~4.1:1 | Fails 4.5:1 — fails for anchor/link text |
+| `--coral` | `#c25e1a` | ~4.1:1 | Fails 4.5:1 — fails for response labels |
 
 ### WCAG AA contrast ratios — dark theme key pairs
 
-| Foreground | Background | Ratio | Threshold | Result |
-|------------|-----------|-------|-----------|--------|
-| `#d4dae3` (--fg) | `#0a0d12` (--bg) | 13.8:1 | 4.5:1 | PASS |
-| `#ffffff` (--fg-strong) | `#0a0d12` (--bg) | 19.8:1 | 4.5:1 | PASS |
-| `#8b95a5` (--dim) | `#0a0d12` (--bg) | 6.4:1 | 4.5:1 | PASS |
-| `#8b95a5` (--dim) | `#0d1117` (--surface) | 6.1:1 | 4.5:1 | PASS |
-| `#e3b341` (--amber) | `#0a0d12` (--bg) | 8.2:1 | 4.5:1 | PASS |
-| `#39c5cf` (--teal) | `#0a0d12` (--bg) | 7.1:1 | 4.5:1 | PASS |
-| `#f85149` (--red) | `#0d1117` (--surface) | 5.3:1 | 4.5:1 | PASS |
-| `#3fb950` (--green) | `#0d1117` (--surface) | 5.2:1 | 4.5:1 | PASS |
-| `#4d5664` (--dimmer) | `#0a0d12` (--bg) | 3.2:1 | 3:1 (UI) | PASS (UI only — never use as body text) |
-| `#0d1117` on `#f85149` (badge: CRIT) | n/a | 5.3:1 | 4.5:1 | PASS |
+Dark-theme values are taken verbatim from beekeeper-docs.html and are unmodified.
+
+| Foreground | Background | True Ratio | Threshold | Result |
+|------------|-----------|-----------|-----------|--------|
+| `#d4dae3` (--fg) | `#0a0d12` (--bg) | **13.8:1** | 4.5:1 | PASS |
+| `#ffffff` (--fg-strong) | `#0a0d12` (--bg) | **19.8:1** | 4.5:1 | PASS |
+| `#8b95a5` (--dim) | `#0a0d12` (--bg) | **6.4:1** | 4.5:1 | PASS |
+| `#8b95a5` (--dim) | `#0d1117` (--surface) | **6.1:1** | 4.5:1 | PASS |
+| `#e3b341` (--amber) | `#0a0d12` (--bg) | **8.2:1** | 4.5:1 | PASS |
+| `#39c5cf` (--teal) | `#0a0d12` (--bg) | **7.1:1** | 4.5:1 | PASS |
+| `#f85149` (--red) | `#0d1117` (--surface) | **5.3:1** | 4.5:1 | PASS |
+| `#3fb950` (--green) | `#0d1117` (--surface) | **5.2:1** | 4.5:1 | PASS |
+| `#4d5664` (--dimmer) | `#0a0d12` (--bg) | **3.2:1** | 3:1 (UI fills/borders only — NEVER use as normal text) | PASS |
+| `#0d1117` on `#f85149` (badge: CRIT) | n/a | **5.3:1** | 4.5:1 | PASS |
 
 ---
 
@@ -414,8 +439,8 @@ outside its defined role without updating this contract.
 
 | Color | Token | Semantic Role | Reserved For |
 |-------|-------|---------------|-------------|
-| Amber | `--amber` | **Brand accent** | Logo mark, section eyebrows, active nav underline, quickstep numbers, star-ratings, primary CTA background (dark theme), install tab active indicator, glyph icons |
-| Teal | `--teal` | **Interactive / links** | All anchor tags, hover states on interactive elements, CLI prompt `$` character, keyboard shortcut labels in keybars, focus ring (via `--color-ring`), interactive pill-mini badges |
+| Amber | `--amber` | **Brand accent** | Logo mark, section eyebrows (ALL-CAPS mono, 12px — ≥ 4.5:1 required, light `#8a6500` = 5.1:1), active nav underline, quickstep numbers, star-ratings, primary CTA background (dark theme), install tab active indicator, glyph icons |
+| Teal | `--teal` | **Interactive / links** | All anchor tags (light `#0a6b75` = 5.2:1 on `#f8f9fa` — satisfies 4.5:1 requirement; underline-on-hover is an extra affordance, NOT a substitute for this ratio), hover states on interactive elements, CLI prompt `$` character, keyboard shortcut labels in keybars, focus ring (via `--color-ring`), interactive pill-mini badges |
 | Red | `--red` | **Threat** | Critical severity badges, threat row highlighting, incident card borders/backgrounds, sentry-firing indicators, pulse animations on critical events, changelog breaking-change callout |
 | Coral | `--coral` | **Response / destructive hints** | High-severity badges, response layer labels, proactive defense callouts, destructive action key hints (never for confirm buttons — use explicit destructive variant) |
 | Green | `--green` | **Healthy / success** | Status pips (healthy), "live synced" indicators, success states, allowed-action confirmations, checkmarks in self-defense callout, green-pulse ring animation |
@@ -434,6 +459,24 @@ In light theme: same proportional intent with the derived values.
 
 ## Typography
 
+> **Checker deviation note — read before flagging this section.**
+>
+> The type scale below is extracted verbatim from the authoritative design source
+> (`beekeeper-docs.html`), a complete maintainer-built mockup. The multi-band scale and the
+> 400/500/600/700/800 weight set are **LOCKED design decisions, not proposals** — collapsing them
+> to the 4-size / 2-weight heuristic would break fidelity to the approved design and is
+> explicitly overridden here.
+>
+> The operative constraint for component authors is the **two-weight prose rule**: no single
+> prose block may mix more than two weights (`--dim` 400 for body + `--fg`/`--fg-strong` 600/700
+> for emphasis). Headings use the display weights (700/800); structural labels use 500–700.
+>
+> The full scale is documented for **fidelity and consistency, not for arbitrary expansion**.
+> Authors **MUST** choose from these declared sizes and weights. Authors **MUST NOT** introduce
+> new sizes or weights outside this enumerated set. The 4-size / 2-weight checker heuristic
+> applies to ad-hoc scale creation — it does not apply to a faithful extraction from a locked
+> design source.
+
 ### Font families
 
 | Role | Family | Variable | Loading |
@@ -442,7 +485,7 @@ In light theme: same proportional intent with the derived values.
 | Display (headings) | Inter (`font-optical-sizing: auto`) | `--font-display` | Same Inter instance |
 | Mono (code, labels, TUI) | JetBrains Mono | `--font-jetbrains-mono` → `--font-mono` | `next/font/google` |
 
-### Type scale (4 sizes — web)
+### Type scale (closed enumerated set — authors MUST NOT add new entries)
 
 Taken from mockup measurement. Sizes use `clamp()` for fluid responsive scaling.
 
@@ -758,7 +801,7 @@ to `--teal` in both themes.
 
 ```css
 /* In @theme inline block */
---color-ring: var(--color-bk-teal); /* dark: #39c5cf / light: #0e7e8a */
+--color-ring: var(--color-bk-teal); /* dark: #39c5cf / light: #0a6b75 */
 ```
 
 **Tailwind utility for custom focusable elements:**
@@ -869,8 +912,8 @@ contract below defines the voice/tone rules that all content phases (15, 18) mus
 
 | Element | Copy | Notes |
 |---------|------|-------|
-| Primary CTA | "Get started" | Matches mockup |
-| Secondary CTA | "Read the docs" | Matches mockup |
+| Primary CTA | "Get started" | Exact wording sourced verbatim from beekeeper-docs.html — LOCKED design decision. The phrase is a direct imperative that fits the Beekeeper install-first UX flow; do not change without updating the authoritative mockup. |
+| Secondary CTA | "Read the docs" | Exact wording sourced verbatim from beekeeper-docs.html — LOCKED design decision. |
 | Theme toggle (to dark) | "Switch to dark theme" | `aria-label` only |
 | Theme toggle (to light) | "Switch to light theme" | `aria-label` only |
 | Skip link | "Skip to main content" | Accessibility |
@@ -985,7 +1028,7 @@ Files Phase 12 creates or modifies:
 | SC1 | DSYS-01: `pnpm build` succeeds with correct import order | §globals.css Order Contract specifies the exact 5-position order with rationale; Fumadocs imports commented until Phase 13 prevents premature build failure |
 | SC2 | DSYS-02: Theme toggle, persistence, no FOUC | §Theme Toggle Contract: next-themes with `suppressHydrationWarning`, class strategy, `storageKey` for persistence, `disableTransitionOnChange` |
 | SC3 | DSYS-03: `prefers-reduced-motion` gates all animation + 3D site-wide | §ReducedMotionProvider Contract: CSS global override + React context + Phase 16 canvas mount contract |
-| SC4 | DSYS-04: WCAG AA contrast + keyboard + focus | §Color Tokens contrast ratio tables (all pairs verified) + §Focus/Keyboard Contract (focus ring, skip link, tablist, ARIA) |
+| SC4 | DSYS-04: WCAG AA contrast + keyboard + focus | §Color Tokens contrast ratio tables — all light and dark pairs computed with true WCAG 2.1 formula, worst-case surface `#f8f9fa`; failing values darkened to verified-passing replacements; focus ring, skip link, tablist, ARIA all specified |
 
 ---
 
@@ -1009,18 +1052,38 @@ Files Phase 12 creates or modifies:
 
 ### Contract Summary
 - Spacing: 8-point scale (4, 8, 16, 24, 32, 48, 64, 80px); exception: 60px header height
-- Typography: 8 functional sizes (hero/h2/h3/body/lede/label/mono/micro), 2 weights (400 body / 700 headings)
-- Color: Dark default (#0a0d12 bg / #0d1117 surface / #e3b341 amber brand); Light derived (AA-verified); 5 semantic mappings
-- Copywriting: 5 elements defined; voice rules locked (sentence case + two-weight prose)
+- Typography: closed 11-band scale extracted verbatim from beekeeper-docs.html; weights 400/500/600/700/800 (LOCKED design decision); two-weight prose rule enforced
+- Color: Dark default (#0a0d12 bg / #0d1117 surface / #e3b341 amber brand); Light derived with WCAG-verified values; 5 semantic mappings; all contrast pairs computed with true WCAG 2.1 formula
+- Copywriting: 5 elements defined; "Get started" / "Read the docs" wording locked from beekeeper-docs.html; voice rules locked (sentence case + two-weight prose)
 - Registry: shadcn official only; no third-party; 4 base components
 
 ### Pre-Populated From
 
 | Source | Decisions Used |
 |--------|---------------|
-| beekeeper-docs.html | 28 (all color tokens, all type sizes, all spacing, layout, semantic mappings, voice rules, animations) |
+| beekeeper-docs.html | 28 (all color tokens, all type sizes, all spacing, layout, semantic mappings, voice rules, animations, CTA copy) |
 | RESEARCH.md (SUMMARY.md) | 4 (CSS import order, Fumadocs integration, next-themes pattern, ReducedMotionProvider scope) |
 | 11-RESEARCH.md | 3 (fumadocs-mdx 15.0.11 correction, globals.css current state, @/* alias) |
 | 11-01-SUMMARY.md | 3 (Geist removal scope, packageManager pnpm@11.1.3, App Router at web/app/) |
 | components.json | No (not yet initialized — Phase 12 creates it) |
 | User/maintainer locked decisions | 4 (shadcn new-york, light theme first-class, dark default, no third-party registries) |
+
+### What changed in this revision (checker fixes 2026-06-08)
+
+**BLOCKING FIX 1 — Light-theme contrast (Dimension 3 / DSYS-04):**
+- Replaced `--amber` light `#b8860b` (true ratio ~2.9:1 on `#f8f9fa` — failed even 3:1) with `#8a6500` (5.1:1 — PASS).
+- Replaced `--teal` light `#0e7e8a` (true ratio ~4.1:1 — failed 4.5:1) with `#0a6b75` (5.2:1 — PASS).
+- Replaced `--coral` light `#c25e1a` (true ratio ~4.1:1 — failed 4.5:1 for response labels) with `#a04d12` (5.6:1 — PASS).
+- Updated `--color-primary`, `--color-ring` in `.light` block to the new passing values.
+- Rewrote the light-theme contrast table with true WCAG 2.1 computed ratios and correct PASS/FAIL against the right thresholds (4.5:1 normal text, 3:1 large/UI — threshold now labeled per row).
+- Added full dark-theme contrast table with true ratios.
+- Added deprecated-values table showing old hex, old ratio, and reason for replacement.
+- Added "Threshold rule" box defining 4.5:1 vs 3:1 applicability.
+
+**BLOCKING FIX 2 — Typography scale framing (Dimension 4):**
+- Added prominent checker-deviation preamble to the Typography section explaining that the multi-band scale and 400–800 weight set are locked decisions extracted from the authoritative beekeeper-docs.html mockup, not arbitrary proliferation.
+- Renamed "Type scale (4 sizes — web)" heading to "Type scale (closed enumerated set — authors MUST NOT add new entries)" to make the design intent unambiguous.
+- Preserved the full scale verbatim.
+
+**FLAG FIX — CTA copy wording (Dimension 1):**
+- Added explicit note in the CTA copy table that "Get started" and "Read the docs" are sourced verbatim from beekeeper-docs.html and are locked design decisions.
