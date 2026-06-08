@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: "Web Presence & Documentation"
 status: executing
-stopped_at: "Phase 13 (Docs Content Pipeline) PLANNED 2026-06-08 — 3 plans / 3 sequential waves (toolchain → pipeline body → seed skeleton). RESEARCH (HIGH conf; corrected fumadocs-mdx 15.0.11 + provider/next + createFromSource/staticGET/toFumadocsSource vs stale STACK.md) + VALIDATION (Nyquist) + PATTERNS written; plan-checker VERIFICATION PASSED (12 dimensions + goal-backward, 0 BLOCKER/0 WARNING). Planner committed plans+ROADMAP (ac401e6); STATE hand-updated (SDK state verbs skipped per frontmatter-corruption caveat). NEXT: /gsd-execute-phase 13."
-last_updated: "2026-06-08T11:55:07.000Z"
-last_activity: 2026-06-08 — Phase 13 (Docs Content Pipeline) PLANNED: research+validation+patterns+3 plans; plan-checker VERIFICATION PASSED (0 issues). Ready to execute.
+stopped_at: "Phase 13 (Docs Content Pipeline) EXECUTED 2026-06-08 — 3/3 plans on main (sequential, use_worktrees=false). Verifier: 4/4 ROADMAP SCs VERIFIED, status=human_needed (1 non-blocking visual check: FOWT/theme-bridge non-regression on /docs/, pre-declared manual-only in 13-VALIDATION). Fumadocs static-export pipeline live: out/docs/ for all 8 sections, 93KB/80-doc Orama static index at out/api/search (flat file — trailingSlash:true), sidebar forced order, TOC, search→result→navigate all proven (SC-1 direct + build; SC-2/3 from static HTML; SC-4 Playwright). Code review 0-crit/3-warn/2-info (07eebd2, advisory). Notable deviation: 13-02 had to create the 8 seed sections early (empty content/docs fails generateStaticParams under output:export); 13-03 reconciled+validated. SDK state verbs skipped (frontmatter-corruption caveat); STATE/ROADMAP hand-updated. NOT complete until UAT passes. NEXT: /gsd-verify-work 13."
+last_updated: "2026-06-08T13:09:40Z"
+last_activity: 2026-06-08 — Phase 13 (Docs Content Pipeline) EXECUTED: 3/3 plans; verifier 4/4 SCs PASSED, status human_needed (1 FOWT visual check → /gsd-verify-work 13); code review 0-crit/3-warn.
 progress:
   total_phases: 9
   completed_phases: 2
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 7
   percent: 22
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 ## Current Position
 
-Phase: 13 — Docs Content Pipeline (PLANNED 2026-06-08; ready to execute)
-Plan: 13-01/02/03 (0/3 executed) — 3 sequential waves; plan-checker VERIFICATION PASSED (12 dims + goal-backward, 0 issues)
-Status: Phase 13 planned — NEXT: /gsd-execute-phase 13
-Last activity: 2026-06-08 — Phase 13 planned (research+validation+patterns+3 plans, checker PASSED)
+Phase: 13 — Docs Content Pipeline (EXECUTED 2026-06-08; awaiting UAT — NOT complete)
+Plan: 13-01/02/03 (3/3 executed) — verifier 4/4 ROADMAP SCs VERIFIED, status human_needed (1 FOWT visual check)
+Status: Phase 13 executed, pending UAT — NEXT: /gsd-verify-work 13 (then phase completes)
+Last activity: 2026-06-08 — Phase 13 executed (3/3 plans), verified 4/4 SCs, code-reviewed (0-crit/3-warn); FOWT visual check pending
 
 ## Phase Summary (v1.3.0)
 
@@ -39,7 +39,7 @@ Last activity: 2026-06-08 — Phase 13 planned (research+validation+patterns+3 p
 | 10 | Hook-Block Protocol Compliance & Multi-Harness Enforcement | (seed) | ✅ Shipped 2026-06-05 (v1.3.0 seed) |
 | 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
 | 12 | Design System | DSYS-01–04 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 8/8 must-haves, 4/4 reqs; Playwright-verified both themes) |
-| 13 | Docs Content Pipeline | DOCS-01 | ✅ Planned 2026-06-08 (3 plans/3 waves; plan-checker PASSED) — ready to execute |
+| 13 | Docs Content Pipeline | DOCS-01 | ◷ Executed 2026-06-08 (3/3 plans; verifier 4/4 SCs PASSED, human_needed: 1 FOWT visual check) — awaiting `/gsd-verify-work 13` |
 | 14 | Changelog Pipeline | CHG-01–03 | Not started |
 | 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |
 | 16 | 3D Layer | GFX-01–04 | Not started |

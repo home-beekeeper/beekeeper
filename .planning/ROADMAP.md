@@ -133,15 +133,15 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 3 plans (3 waves)
 **Wave 1**
 
-- [ ] 13-01-PLAN.md — Wave 0/1 toolchain: install pinned fumadocs deps (ui/core/mdx + @types/mdx) + postinstall codegen; rename next.config.ts -> next.config.mjs with createMDX (preserve output:export/trailingSlash/images.unoptimized/transpilePackages); source.config.ts; tsconfig collections/* alias; pnpm build green + .source/ generated (DOCS-01)
+- [x] 13-01-PLAN.md — Wave 0/1 toolchain: install pinned fumadocs deps (ui/core/mdx + @types/mdx) + postinstall codegen; rename next.config.ts -> next.config.mjs with createMDX (preserve output:export/trailingSlash/images.unoptimized/transpilePackages); source.config.ts; tsconfig collections/* alias; pnpm build green + .source/ generated (DOCS-01)
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 13-02-PLAN.md — Wave 2 pipeline body: lib/source.ts loader (toFumadocsSource); docs DocsLayout + [[...slug]] page (generateStaticParams, Next-16 async params); static-search route (createFromSource/staticGET -> out/api/search/index.json); RootProvider wired (theme disabled, static search options); globals.css Section-3 @source glob restore (DOCS-01)
+- [x] 13-02-PLAN.md — Wave 2 pipeline body: lib/source.ts loader (toFumadocsSource); docs DocsLayout + [[...slug]] page (generateStaticParams, Next-16 async params); static-search route (createFromSource/staticGET -> out/api/search/index.json); RootProvider wired (theme disabled, static search options); globals.css Section-3 @source glob restore (DOCS-01)
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 13-03-PLAN.md — Wave 3 seed skeleton (phase-complete gate): top-level + 8 section meta.json (forced sidebar order) + 8 seed index.mdx (getting-started = 4-heading TOC page); pnpm build emits all 8 out/docs/<section>/index.html + non-empty out/api/search/index.json; SC-2/3/4 Playwright-Python pass (DOCS-01)
+- [x] 13-03-PLAN.md — Wave 3 seed skeleton (phase-complete gate): top-level + 8 section meta.json (forced sidebar order) + 8 seed index.mdx (getting-started = 4-heading TOC page); pnpm build emits all 8 out/docs/<section>/index.html + non-empty out/api/search/index.json; SC-2/3/4 Playwright-Python pass (DOCS-01)
 
 **UI hint**: yes
 
@@ -262,7 +262,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **10. Hook-Block Protocol Compliance** | **v1.3.0** | **6/6** | **Complete (seed)** | **2026-06-05** |
 | **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **1/1** | **Complete** | **2026-06-07** |
 | **12. Design System** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
-| **13. Docs Content Pipeline** | **v1.3.0** | **0/3** | **Planned** | **—** |
+| **13. Docs Content Pipeline** | **v1.3.0** | **3/3** | **Executed — verifier 4/4 SCs (human_needed: FOWT check); awaiting UAT** | **—** |
 | **14. Changelog Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **15. Marketing Home** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **16. 3D Layer** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
