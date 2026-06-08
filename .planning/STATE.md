@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Web Presence & Documentation
-status: executing
-stopped_at: "Big dogfood session. (1) handoff #9 scan→pollen E2E validated. (2) #13 scan audit-bloat FIXED. (3) Wired beekeeper as a LIVE Claude Code hook (~/.claude/settings.json, merged w/ GSD; backup .pre-beekeeper-20260606.bak). (4) Found pnpm-detect flaky on Windows (42-92%). (5) Built nudge `mode=block` (detection-INDEPENDENT enforcement, offers pnpm+bun) — PROVEN blocking live npm install via the hook. (6) Fixed pkgparse compound/env bypass (was defeating nudge AND catalog block). 3 commits on main: 6691585 fix(scan), 96f0a7b fix(pkgparse), 0028392 feat(nudge). Live config: %APPDATA%/beekeeper/config.json mode=block."
+status: planning
+stopped_at: "Phase 12 (Design System) PLANNED 2026-06-08 — 3 plans / 3 waves, plan-checker PASSED (12/12 dimensions, all DSYS-01–04 covered). RESEARCH + VALIDATION + PATTERNS written. NEXT: /gsd-execute-phase 12."
 last_updated: "2026-06-08T07:44:16.795Z"
-last_activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go isolation)
+last_activity: 2026-06-08 — Phase 12 (Design System) planned (research → plan → verify; 3 plans/3 waves, checker passed)
 progress:
   total_phases: 9
   completed_phases: 1
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** v1.3.0 — Web Presence & Documentation. Phase 11 (Scaffold & Toolchain Isolation) PLANNED (1 plan, plan-checker passed) — ready to execute. Seed Go work (Phase 10 hook-block, self-protection, $VAR, TUI real-data) already shipped this cycle.
+**Current focus:** v1.3.0 — Web Presence & Documentation. Phase 11 (Scaffold) ✅ complete & verified. Phase 12 (Design System) PLANNED 2026-06-08 (3 plans / 3 waves, plan-checker passed) — ready to execute. Seed Go work (Phase 10 hook-block, self-protection, $VAR, TUI real-data) already shipped this cycle.
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 11 — Scaffold & Toolchain Isolation (✅ COMPLETE & verified 2026-06-07)
-Plan: 11-01 (1 plan, 4 tasks) — all tasks done; verifier PASS 4/4 SCs
-Status: Ready to execute
-Last activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go isolation)
+Phase: 12 — Design System (📋 PLANNED 2026-06-08 — ready to execute)
+Plan: 12-01/02/03 (3 plans, 3 waves) — plan-checker PASSED 12/12 dimensions; DSYS-01–04 all covered
+Status: Ready to execute — NEXT: /gsd-execute-phase 12
+Last activity: 2026-06-08 — Phase 12 planned (research → plan → verify); Phase 11 ✅ complete & verified 2026-06-07
 
 ## Phase Summary (v1.3.0)
 
@@ -38,7 +38,7 @@ Last activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go i
 |-------|------|--------------|--------|
 | 10 | Hook-Block Protocol Compliance & Multi-Harness Enforcement | (seed) | ✅ Shipped 2026-06-05 (v1.3.0 seed) |
 | 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
-| 12 | Design System | DSYS-01–04 | 📋 UI-SPEC approved 2026-06-08 (ready to plan) |
+| 12 | Design System | DSYS-01–04 | 📋 Planned 2026-06-08 (3 plans/3 waves; checker PASSED 12/12) — ready to execute |
 | 13 | Docs Content Pipeline | DOCS-01 | Not started |
 | 14 | Changelog Pipeline | CHG-01–03 | Not started |
 | 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |
