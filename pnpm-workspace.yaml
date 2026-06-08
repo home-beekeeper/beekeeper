@@ -10,6 +10,7 @@ packages:
 # posture). The explicit `false` / ignore decisions resolve pnpm's build-approval
 # gate, which otherwise aborts a non-interactive `pnpm install`.
 allowBuilds:
+  esbuild: true
   sharp: false
 
 ignoredBuiltDependencies:
