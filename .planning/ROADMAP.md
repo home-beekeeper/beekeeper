@@ -261,7 +261,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **9. v1.2.0 Tech-Debt Cleanup** | **v1.2.0** | **5/5** | **Complete** | **2026-06-04** |
 | **10. Hook-Block Protocol Compliance** | **v1.3.0** | **6/6** | **Complete (seed)** | **2026-06-05** |
 | **11. Scaffold & Toolchain Isolation** | **v1.3.0** | **1/1** | **Complete** | **2026-06-07** |
-| **12. Design System** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **12. Design System** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
 | **13. Docs Content Pipeline** | **v1.3.0** | **0/3** | **Planned** | **—** |
 | **14. Changelog Pipeline** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **15. Marketing Home** | **v1.3.0** | **0/TBD** | **Not started** | **—** |

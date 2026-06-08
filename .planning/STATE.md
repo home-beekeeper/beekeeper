@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: "Web Presence & Documentation"
 status: executing
-stopped_at: "Phase 12 (Design System) COMPLETE & verified 2026-06-08 — 3/3 plans, verifier PASSED 8/8 must-haves + 4/4 DSYS reqs; code review resolved (4 warnings fixed); light/dark theme switch + reduced-motion gate + WCAG AA all Playwright-verified in both themes (a theme-switch architecture bug + body-paint gap were caught by the smoke test and fixed). NEXT: /gsd-plan-phase 13 (Docs Content Pipeline)."
-last_updated: "2026-06-08T10:41:52.106Z"
-last_activity: 2026-06-08 — Phase 12 (Design System) executed, verified PASSED 8/8, code-reviewed & Playwright-smoke-verified; 3/3 plans complete
+stopped_at: "Phase 13 (Docs Content Pipeline) PLANNED 2026-06-08 — 3 plans / 3 sequential waves (toolchain → pipeline body → seed skeleton). RESEARCH (HIGH conf; corrected fumadocs-mdx 15.0.11 + provider/next + createFromSource/staticGET/toFumadocsSource vs stale STACK.md) + VALIDATION (Nyquist) + PATTERNS written; plan-checker VERIFICATION PASSED (12 dimensions + goal-backward, 0 BLOCKER/0 WARNING). Planner committed plans+ROADMAP (ac401e6); STATE hand-updated (SDK state verbs skipped per frontmatter-corruption caveat). NEXT: /gsd-execute-phase 13."
+last_updated: "2026-06-08T11:55:07.000Z"
+last_activity: 2026-06-08 — Phase 13 (Docs Content Pipeline) PLANNED: research+validation+patterns+3 plans; plan-checker VERIFICATION PASSED (0 issues). Ready to execute.
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 4
+  total_plans: 7
   completed_plans: 4
   percent: 22
 ---
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 ## Current Position
 
-Phase: 13 — Docs Content Pipeline (not started; Phase 12 ✅ complete & verified 2026-06-08)
-Plan: 12-01/02/03 (3/3 complete) — verifier PASSED 8/8 must-haves, 4/4 DSYS reqs
-Status: Phase 12 complete — NEXT: /gsd-plan-phase 13
-Last activity: 2026-06-08 — Phase 12 executed + verified (8/8) + code-reviewed; Playwright smoke: themes/reduced-motion/AA all pass
+Phase: 13 — Docs Content Pipeline (PLANNED 2026-06-08; ready to execute)
+Plan: 13-01/02/03 (0/3 executed) — 3 sequential waves; plan-checker VERIFICATION PASSED (12 dims + goal-backward, 0 issues)
+Status: Phase 13 planned — NEXT: /gsd-execute-phase 13
+Last activity: 2026-06-08 — Phase 13 planned (research+validation+patterns+3 plans, checker PASSED)
 
 ## Phase Summary (v1.3.0)
 
@@ -39,7 +39,7 @@ Last activity: 2026-06-08 — Phase 12 executed + verified (8/8) + code-reviewed
 | 10 | Hook-Block Protocol Compliance & Multi-Harness Enforcement | (seed) | ✅ Shipped 2026-06-05 (v1.3.0 seed) |
 | 11 | Scaffold & Toolchain Isolation | SITE-01, SITE-02 | ✅ Complete & verified 2026-06-07 (1/1 plan; 4/4 SCs) |
 | 12 | Design System | DSYS-01–04 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 8/8 must-haves, 4/4 reqs; Playwright-verified both themes) |
-| 13 | Docs Content Pipeline | DOCS-01 | Not started |
+| 13 | Docs Content Pipeline | DOCS-01 | ✅ Planned 2026-06-08 (3 plans/3 waves; plan-checker PASSED) — ready to execute |
 | 14 | Changelog Pipeline | CHG-01–03 | Not started |
 | 15 | Marketing Home | HOME-01–05, SITE-03 | Not started |
 | 16 | 3D Layer | GFX-01–04 | Not started |
