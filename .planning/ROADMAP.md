@@ -104,9 +104,18 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   4. Both light and dark themes pass WCAG 2.1 AA color-contrast ratios and all interactive elements are reachable by keyboard with visible focus indicators
 
 **Plans**: 3 plans (3 waves)
+**Wave 1**
+
 - [ ] 12-01-PLAN.md — Wave 1: shadcn foundation — package-legitimacy gate + `shadcn init` (new-york/zinc/CSS-first, registry-clean) + add button/badge/separator/tooltip + install next-themes (DSYS-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 12-02-PLAN.md — Wave 2: providers — ReducedMotionProvider + `useReducedMotion()` hook + next-themes ThemeProvider (bk-theme, class strategy, disableTransitionOnChange) with Phase 13 RootProvider marker (DSYS-02, DSYS-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 12-03-PLAN.md — Wave 3: integration — canonical Beekeeper globals.css token cascade (overwrites CLI output; Fumadocs commented) + layout.tsx Inter/JetBrains fonts (opsz fallback) + suppressHydrationWarning + skip link + Providers wrap + manual smoke verify (DSYS-01–04)
+
 **UI hint**: yes
 
 ### Phase 13: Docs Content Pipeline

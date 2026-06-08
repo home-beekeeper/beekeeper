@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Web Presence & Documentation
-status: planning
-stopped_at: "Phase 12 (Design System) UI-SPEC APPROVED 2026-06-08 (ui-checker 6/6, dual-theme AA-verified, codifies beekeeper-docs.html). Phase 11 shipped 2026-06-07. NEXT: /gsd-plan-phase 12."
-last_updated: "2026-06-08T05:40:00.000Z"
-last_activity: 2026-06-08 — Phase 12 UI-SPEC created + approved (ui-researcher → ui-checker 6/6)
+status: executing
+stopped_at: "Big dogfood session. (1) handoff #9 scan→pollen E2E validated. (2) #13 scan audit-bloat FIXED. (3) Wired beekeeper as a LIVE Claude Code hook (~/.claude/settings.json, merged w/ GSD; backup .pre-beekeeper-20260606.bak). (4) Found pnpm-detect flaky on Windows (42-92%). (5) Built nudge `mode=block` (detection-INDEPENDENT enforcement, offers pnpm+bun) — PROVEN blocking live npm install via the hook. (6) Fixed pkgparse compound/env bypass (was defeating nudge AND catalog block). 3 commits on main: 6691585 fix(scan), 96f0a7b fix(pkgparse), 0028392 feat(nudge). Live config: %APPDATA%/beekeeper/config.json mode=block."
+last_updated: "2026-06-08T07:44:16.795Z"
+last_activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go isolation)
 progress:
   total_phases: 9
   completed_phases: 1
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 Phase: 11 — Scaffold & Toolchain Isolation (✅ COMPLETE & verified 2026-06-07)
 Plan: 11-01 (1 plan, 4 tasks) — all tasks done; verifier PASS 4/4 SCs
-Status: Phase complete — NEXT: /gsd-plan-phase 12 (Design System)
+Status: Ready to execute
 Last activity: 2026-06-07 — Phase 11 executed & verified (web/ scaffold + Go isolation)
 
 ## Phase Summary (v1.3.0)
