@@ -345,5 +345,5 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **16. 3D Layer** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **17. SEO & Static Assets** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
-| **18.1 Docs Theme Restyle** | **v1.3.0** | **0/TBD** | **Inserted — not started** | **—** |
+| **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Restyle landed (borders/accents/duplication); command-card copy split pending** | **2026-06-09** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |

@@ -93,7 +93,7 @@
 | DSYS-02 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-03 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-04 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
-| DSYS-05 | Phase 18.1 — Docs Theme Restyle | Not started (inserted 2026-06-09) |
+| DSYS-05 | Phase 18.1 — Docs Theme Restyle | In progress (restyle quick-fixes landed 2026-06-09; command-card copy split pending) |
 | HOME-01 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
 | HOME-02 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
 | HOME-03 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
