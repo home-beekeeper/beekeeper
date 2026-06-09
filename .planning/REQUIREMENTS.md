@@ -39,14 +39,14 @@
 ### Documentation (DOCS)
 
 - [x] **DOCS-01**: A user can browse a Fumadocs-powered docs site with sidebar navigation, table of contents, and working static (Orama) search ✅ Phase 13 (2026-06-08)
-- [ ] **DOCS-02**: A new user can follow a Getting Started / Quickstart guide from zero to a working `beekeeper check`
-- [ ] **DOCS-03**: A user can follow installation docs (`go install` + GitHub Releases + cosign / SLSA verification)
-- [ ] **DOCS-04**: A user can learn to customize configuration (layered config, policy-as-code, sensitive paths, package-manager nudge) with copyable examples
-- [ ] **DOCS-05**: A user can understand Beekeeper's security posture (corroboration model, fail-closed defaults, threat model) **and** its known gaps/limitations, presented together
-- [ ] **DOCS-06**: A user can follow integration guides for supported harnesses (Claude Code / Cursor / Codex hooks, MCP gateway) with honest caveats at point-of-use (Hermes fail-open, Tier-3 unguarded)
-- [ ] **DOCS-07**: A user can consult a CLI / command reference for `beekeeper` subcommands and flags
-- [ ] **DOCS-08**: A user can find troubleshooting guidance for common issues
-- [ ] **DOCS-09**: Documentation is accurate to the shipped binary — every security claim cites its source (`source_doc:`), is reviewed against `docs/THREAT-MODEL.md` before publish, and unenforced features (`release_age`, lifecycle allowlist) are explicitly labeled
+- [x] **DOCS-02**: A new user can follow a Getting Started / Quickstart guide from zero to a working `beekeeper check`
+- [x] **DOCS-03**: A user can follow installation docs (`go install` + GitHub Releases + cosign / SLSA verification)
+- [x] **DOCS-04**: A user can learn to customize configuration (layered config, policy-as-code, sensitive paths, package-manager nudge) with copyable examples
+- [x] **DOCS-05**: A user can understand Beekeeper's security posture (corroboration model, fail-closed defaults, threat model) **and** its known gaps/limitations, presented together
+- [x] **DOCS-06**: A user can follow integration guides for supported harnesses (Claude Code / Cursor / Codex hooks, MCP gateway) with honest caveats at point-of-use (Hermes fail-open, Tier-3 unguarded)
+- [x] **DOCS-07**: A user can consult a CLI / command reference for `beekeeper` subcommands and flags
+- [x] **DOCS-08**: A user can find troubleshooting guidance for common issues
+- [x] **DOCS-09**: Documentation is accurate to the shipped binary — every security claim cites its source (`source_doc:`), is reviewed against `docs/THREAT-MODEL.md` before publish, and unenforced features (`release_age`, lifecycle allowlist) are explicitly labeled
 
 ### Changelog & Releases (CHG)
 
@@ -102,14 +102,14 @@
 | GFX-03 | Phase 16 — 3D Layer | ✅ Complete (2026-06-09) |
 | GFX-04 | Phase 16 — 3D Layer | ✅ Complete (2026-06-09) |
 | DOCS-01 | Phase 13 — Docs Content Pipeline | ✅ Complete (2026-06-08) |
-| DOCS-02 | Phase 18 — Full Content Authoring | Not started |
-| DOCS-03 | Phase 18 — Full Content Authoring | Not started |
-| DOCS-04 | Phase 18 — Full Content Authoring | Not started |
-| DOCS-05 | Phase 18 — Full Content Authoring | Not started |
-| DOCS-06 | Phase 18 — Full Content Authoring | Not started |
-| DOCS-07 | Phase 18 — Full Content Authoring | Not started |
-| DOCS-08 | Phase 18 — Full Content Authoring | Not started |
-| DOCS-09 | Phase 18 — Full Content Authoring | Not started |
+| DOCS-02 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
+| DOCS-03 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
+| DOCS-04 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
+| DOCS-05 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
+| DOCS-06 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
+| DOCS-07 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
+| DOCS-08 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
+| DOCS-09 | Phase 18 — Full Content Authoring | ✅ Complete (2026-06-09) |
 | CHG-01 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
 | CHG-02 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
 | CHG-03 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
