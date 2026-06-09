@@ -7,11 +7,11 @@ stopped_at: "Phase 18 (Full Content Authoring, DOCS-02–09) ✅ COMPLETE & veri
 last_updated: "2026-06-09T22:30:00.000Z"
 last_activity: "2026-06-09 — Phase 18 (Full Content Authoring) COMPLETE & verified: all 8 docs sections authored, accuracy_spec AC-1..3 green, maintainer AC-5 sign-off vs THREAT-MODEL.md. DOCS-02..09 done. Next: /gsd-plan-phase 19 (Test Suite & CI — last v1.3.0 phase)."
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 8
   total_plans: 24
   completed_plans: 24
-  percent: 89
+  percent: 80
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 18 (Full Content Authoring, DOCS-02–09) ✅ COMPLETE & verified 2026-06-09 — replaced the 8 thin Phase-13 docs stubs with the complete, ACCURATE doc set (quickstart, install, config, security+gaps, integration, CLI ref, troubleshooting, audit-log). 6/6 plans executed inline on main; accuracy_spec AC-1..3 green; maintainer AC-5 sign-off vs THREAT-MODEL.md. Docs styling (stock Fumadocs theme) kept SEPARATE → still deferred (`.planning/todos/pending/docs-styling-polish.md`). **NEXT: /gsd-plan-phase 19 (Test Suite & CI, QA-01/02) — the LAST v1.3.0 phase.** (SITE-03 live deploy still DEFERRED → Vercel.) Milestone 8/9 phases (89%).
+**Current focus:** Phase 18 (Full Content Authoring, DOCS-02–09) ✅ COMPLETE & verified 2026-06-09 — replaced the 8 thin Phase-13 docs stubs with the complete, ACCURATE doc set (quickstart, install, config, security+gaps, integration, CLI ref, troubleshooting, audit-log). 6/6 plans executed inline on main; accuracy_spec AC-1..3 green; maintainer AC-5 sign-off vs THREAT-MODEL.md. **Phase 18.1 (Docs Theme Restyle, DSYS-05) was then INSERTED 2026-06-09** (maintainer "insert phase 18.1 doc restyle now") — the docs-styling-polish backlog item is now a real phase between 18 and 19: restyle the stock Fumadocs chrome to the Phase-12 brand (dual-theme/reduced-motion/WCAG-AA), no content changes. **NEXT: drive Phase 18.1 (UI design contract → plan → execute → ui-review), then Phase 19 (Test Suite & CI, QA-01/02 — last v1.3.0 phase).** (SITE-03 live deploy still DEFERRED → Vercel.) Milestone 8/10 phases (80%).
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `.planning/phases/05-contribution-back-milestone-close/.continue-here.md` and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 Phase: 18 — Full Content Authoring (✅ COMPLETE & verified 2026-06-09 — executed inline on main; 6/6 plans; DOCS-02–09 done)
 Plan: 18-01 ✅ / 18-02 ✅ / 18-03 ✅ / 18-04 ✅ / 18-05 ✅ / 18-06 ✅ (6/6). W1 18-01 accuracy_spec.py + UnenforcedCallout + register → W2 18-02..05 all 8 docs sections authored (getting-started, installation, configuration, cli-reference, security, integration, troubleshooting, audit-log) → W3 18-06 full suite GREEN (pnpm build + accuracy_spec AC-1..3 + seo/home/gfx) + maintainer AC-5 sign-off vs docs/THREAT-MODEL.md. Stub inaccuracies corrected (--target/check-input/hooks-status/catalogs-rebuild/audit-rotation). KEY DEVIATION: nudge mode:block documented as valid/settable (verified config.go legalNudgeModes={soft,hard,block}) — RESEARCH OQ-1 + nudge.md were wrong; code wins (D-04). Docs STYLING kept separate (still deferred).
-Status: ✅ Complete & verified — NEXT: /gsd-plan-phase 19 (Test Suite & CI, QA-01/02 — last v1.3.0 phase)
-Last activity: 2026-06-09 — Phase 18 COMPLETE (all 8 docs authored; accuracy gate green; maintainer AC-5 approved). Phase 17 ✅ COMPLETE earlier same day.
+Status: ✅ Complete & verified — **Phase 18.1 (Docs Theme Restyle, DSYS-05) INSERTED 2026-06-09** between 18 and 19 (from the docs-styling-polish backlog, maintainer request). NEXT: drive Phase 18.1 (UI-SPEC → plan → execute → ui-review), then /gsd-plan-phase 19.
+Last activity: 2026-06-09 — Phase 18 COMPLETE; then INSERTED Phase 18.1 (Docs Theme Restyle, DSYS-05) per maintainer "insert phase 18.1 doc restyle now". Phase 17 ✅ COMPLETE earlier same day.
 
 ## Phase Summary (v1.3.0)
 
@@ -44,7 +44,8 @@ Last activity: 2026-06-09 — Phase 18 COMPLETE (all 8 docs authored; accuracy g
 | 15 | Marketing Home | HOME-01–05 (SITE-03 deferred→Vercel) | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 5/5 must-haves + SC-1..5; code review 2-crit/3-warn fixed inline; both-theme Playwright proof) |
 | 16 | 3D Layer | GFX-01–04 | ✅ Complete & verified 2026-06-09 (3/3 plans; GFX-01..04 green on prod build, FCP 560ms; maintainer UAT approved after 3 hive rounds) |
 | 17 | SEO & Static Assets | SEO-01 | ✅ Complete & verified 2026-06-09 (3/3 plans; seo_spec SC-1..3 + gfx + home green; maintainer-approved flat-hive OG card) |
-| 18 | Full Content Authoring | DOCS-02–09 | ✅ Complete & verified 2026-06-09 (6/6 plans; accuracy_spec AC-1..3 green; maintainer AC-5 sign-off vs THREAT-MODEL.md; nudge mode:block deviation per D-04; styling deferred) |
+| 18 | Full Content Authoring | DOCS-02–09 | ✅ Complete & verified 2026-06-09 (6/6 plans; accuracy_spec AC-1..3 green; maintainer AC-5 sign-off vs THREAT-MODEL.md; nudge mode:block deviation per D-04) |
+| 18.1 | Docs Theme Restyle | DSYS-05 | ◆ Inserted 2026-06-09 (from docs-styling-polish backlog) — restyle Fumadocs chrome to Phase-12 brand; NOT started |
 | 19 | Test Suite & CI | QA-01, QA-02 | Not started |
 
 ## Phase Summary (v1.1.0)

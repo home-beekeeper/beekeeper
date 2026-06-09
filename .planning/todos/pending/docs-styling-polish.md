@@ -1,11 +1,15 @@
 ---
 type: todo
-status: pending
+status: promoted
 captured: 2026-06-09
+promoted: 2026-06-09
+promoted_to: Phase 18.1 — Docs Theme Restyle (DSYS-05)
 source: maintainer (Phase 17 live review)
 area: web/ docs (Fumadocs)
 priority: medium
 ---
+
+> **✅ PROMOTED 2026-06-09 → Phase 18.1 "Docs Theme Restyle" (DSYS-05).** Inserted into the v1.3.0 roadmap between Phase 18 (content) and Phase 19 (CI) on maintainer request. See `.planning/ROADMAP.md` Phase 18.1 and `.planning/phases/18.1-docs-theme-restyle/`. This file is retained for the capture/audit trail.
 
 # Docs styling looks old / basic — polish the Fumadocs docs theme
 
