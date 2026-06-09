@@ -626,22 +626,27 @@ docParams.map(({ slug }) => ({
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All three were resolved at planning time and the resolutions are implemented by the Phase 17 plans (17-01/02/03). Retained here for traceability.
 
 1. **`source.getPages()` vs `source.generateParams()` API shape**
    - What we know: Both exist on the Fumadocs `loader()` return; `generateParams()` is used in `generateStaticParams()` already
    - What's unclear: The exact property name for the slug array on objects returned by `getPages()` — is it `.slugs`, `.slug`, or another property?
    - Recommendation: In `sitemap.ts`, use `source.generateParams()` (returns `{slug: string[]}[]`) for consistency with the existing codebase — this is verified to work since `app/docs/[[...slug]]/page.tsx` already uses it.
+   - **RESOLVED: use `source.generateParams()`** (the proven path) — implemented in 17-03 (sitemap.ts enumerates docs/changelog via `generateParams()`, not `getPages()`).
 
 2. **OG image PNG authoring tool**
    - What we know: Must be a 1200×630 PNG committed to `web/app/opengraph-image.png`; cannot be auto-generated at build time under `output: 'export'`
    - What's unclear: Whether the maintainer prefers to design it in Figma, or whether a one-off Node.js `canvas`/`sharp` generation script is acceptable
    - Recommendation: Planner should include a `checkpoint:human-verify` task for maintainer to author and commit the PNG. The plan can stub `web/app/opengraph-image.png` with a placeholder and the maintainer replaces it. SC-2 should pass once any 1200×630 PNG is present.
+   - **RESOLVED: `checkpoint:human-verify` + placeholder stub** — implemented in 17-02 Task 3 (a placeholder 1200×630 PNG lands first; the maintainer authors/approves the final card at a blocking human checkpoint).
 
 3. **`changelog/index` page canonical path**
    - What we know: The changelog landing page is at `out/changelog/index.html` (URL: `/changelog/`). The source has a `content/changelog/index.mdx` with `generateStaticParams()` producing an empty slug.
    - What's unclear: Whether `source.generateParams()` for the changelog source returns `{slug: []}` (empty array, representing the landing) or omits it (since the landing may be the `index.mdx`)
    - Recommendation: Test in the plan by inspecting what `changelogSource.generateParams()` returns. For the sitemap, add the `/changelog/` entry as a hardcoded static entry (safe regardless).
+   - **RESOLVED: hardcoded `/changelog/` static entry in sitemap.ts** — implemented in 17-03 (the landing URL is enumerated explicitly so it is present regardless of how `generateParams()` represents the empty slug).
 
 ---
 
