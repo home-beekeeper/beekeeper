@@ -1,9 +1,9 @@
 ---
 phase: 18
 slug: full-content-authoring
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-09
 ---
 
@@ -98,4 +98,4 @@ created: 2026-06-09
 - [ ] Feedback latency < 70s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-06-09 (full suite green; maintainer AC-5 sign-off — see 18-06-SUMMARY.md)
