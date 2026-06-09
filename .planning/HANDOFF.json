@@ -1,42 +1,45 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-07T11:56:36.040Z",
-  "phase": "10",
-  "phase_name": "hook-block-protocol-compliance-and-multi-harness-enforcement",
-  "phase_dir": ".planning/phases/10-hook-block-protocol-compliance-and-multi-harness-enforcement",
-  "plan": null,
-  "task": null,
-  "total_tasks": null,
+  "timestamp": "2026-06-09",
+  "phase": "16",
+  "phase_name": "3D Layer",
+  "phase_dir": ".planning/phases/16-3d-layer",
+  "plan": 3,
+  "task": 3,
+  "total_tasks": 3,
   "status": "paused",
-  "context": "Un-phased v1.3.0-seed feature work on main (Phase 10 long since complete). This session shipped 4 atomic commits + 1 live-dogfood proof. Working tree CLEAN (only .claude/ + beekeeper-tui-prototype.html untracked, intentionally left). v1.3.0 milestone STILL not formalized.",
-  "head": "95a99e6",
+  "head": "1096b75",
   "branch": "main",
+  "context": "Phase 16 (3D Layer) executed inline on main; all GFX-01..04 automated assertions green. Two rounds of maintainer hero-redesign feedback applied. NOT finalized (no 16-03-SUMMARY, phase not marked complete) pending maintainer's nod on the redesigned hive.",
   "completed_tasks": [
-    {"id": 1, "name": "Coverage audit + hardening: added/extended unit tests for block-mode deny path, evaluateBun, scan generateScanID, config accessors+applyEnvVars, audit redact, llamafirewall cross-platform fail-closed supervisor. Module 58.3%->~60%. No prod changes.", "status": "done", "commit": "e1b907b"},
-    {"id": 2, "name": "TUI policy editor made REAL: panel now edits enforced policies/beekeeper-tui.json (corroboration thresholds + package_allowlist + sensitive_path), validated via policyloader.SavePolicyFile/ValidateForPersist BEFORE write (last gate). Deleted cosmetic tui_rules.json layer. FIXED hook-protocol bug: LoadPolicyDir skip-warning stdout->stderr. model.go now propagates panel cmds (toasts fire).", "status": "done", "commit": "307fbad"},
-    {"id": 3, "name": "SELF-PROTECTION (config-as-secret): beekeeper check blocks agent read+write of StateDir, write of the binary, content-aware hook-entry guard (blocks ONLY edits removing beekeeper's hook marker -> GSD/other hooks untouched), and CLI-mutation guard (config set / hooks (un)install / protect (un)install). Bonus: write-aware Bash extraction also closes the credential write gap. Human channels (direct edit / beekeeper CLI / --admin TUI / /config) unaffected.", "status": "done", "commit": "999fa39"},
-    {"id": 4, "name": "PROVEN LIVE: with the new binary go-installed as the Claude Code hook, `cat %APPDATA%/beekeeper/config.json` was DENIED by self-protection end-to-end (deny msg names the human channel); literal ~/.beekeeper not over-blocked.", "status": "done"},
-    {"id": 5, "name": "$VAR/${VAR} canonicalization hardening (fail-closed): closed the shell-variable dodge ($APPDATA/$HOME) for self-protection AND credential matching. expandShellEnvVars in canonicalizePath.", "status": "done", "commit": "95a99e6"}
+    {"id": "plan-16-01", "name": "Foundation: install pinned 3D stack + public/hero-hive.svg + tests/gfx_spec.py harness", "status": "done", "commit": "ce8eb4f", "summary": "16-01-SUMMARY.md written"},
+    {"id": "plan-16-02", "name": "3D layer: dynamic(ssr:false) wrapper + capability-gated canvas + hero.tsx SVG slot + GFX-02/03 assertions", "status": "done", "commit": "426cbed", "summary": "16-02-SUMMARY.md written"},
+    {"id": "plan-16-03-t1t2", "name": "GFX-04 LCP-proxy + no-context-leak; lighthouse install SKIPPED (Playwright proxy is the gate)", "status": "done", "commit": "0e801ed"},
+    {"id": "redesign-r1", "name": "UAT round 1: two-panel living-hive lattice + multilayer architecture reframe + Layer 1 expansion + auto-mode origin story", "status": "done", "commit": "bfd0314, 45e7b2a"},
+    {"id": "tui-screenshots", "name": "Part C TUI screenshots via charm freeze", "status": "skipped", "progress": "freeze --execute HANGS on Windows (PTY); render harness produced real panel ANSI but PNG step failed; maintainer said skip; harness removed"},
+    {"id": "redesign-r2", "name": "UAT round 2: single animated honeycomb (dropped 2nd layer+pulses), top-aligned/lifted, SVG fade, left-col alignment fix, copy icons on all command fields, em-dashes stripped, extension-watcher->privileged tier", "status": "done", "commit": "1096b75"}
   ],
   "remaining_tasks": [
-    {"id": 6, "name": "Formalize v1.3.0 milestone (/gsd-new-milestone) — Phase 10 + the 5 earlier seed commits (6691585..87ffd66) + these 4 new commits (e1b907b,307fbad,999fa39,95a99e6) are its content; milestone never created.", "status": "not_started", "priority": "primary"},
-    {"id": 7, "name": "PRODUCT DECISION (still open from prior handoff): block-as-default via installer (current) vs hard CODE default (DefaultNudgeConfig->block, ~12 test updates).", "status": "not_started", "priority": "secondary"},
-    {"id": 8, "name": "Optional: /gsd-code-review for the new commits (advisory gate never run on this session's work).", "status": "not_started", "priority": "optional"}
+    {"id": "hive-position-confirm", "name": "Maintainer confirms redesigned hive vertical position ('same row as header') on localhost:3000; dial in lift offset if needed", "status": "not_started", "priority": "primary"},
+    {"id": "finalize-phase-16", "name": "Write 16-03-SUMMARY.md, mark Phase 16 complete, hand-reconcile STATE.md/ROADMAP.md/REQUIREMENTS.md (GFX-01..04 done), stop dev servers", "status": "not_started", "priority": "primary"}
   ],
-  "blockers": [],
+  "blockers": [
+    {"description": "GSD resolver bug: extractPhaseToken('16-3d-layer') greedily reads the digit-led '3d' token -> returns '16-3d', so phase-plan-index / init.execute-phase / any phase-resolving GSD verb report 'Phase not found' for Phase 16", "type": "technical", "workaround": "Execute inline + hand-manage STATE.md/ROADMAP.md/REQUIREMENTS.md (project precedent). Do NOT rely on gsd state.* / verify-work tooling resolving this phase. Renaming the dir would diverge the slug + break 35 in-plan path refs."},
+    {"description": "charmbracelet/freeze --execute hangs on Windows (PTY capture) -> real TUI screenshots blocked", "type": "external", "workaround": "TUI screenshots dropped per maintainer. If revisited: render TUI panels as HTML terminal blocks or have maintainer run beekeeper dashboard."}
+  ],
   "human_actions_pending": [
-    {"action": "Run `go install ./cmd/beekeeper` to refresh the LIVE hook binary so it enforces the $VAR hardening (commit 95a99e6).", "context": "User go-installed AFTER self-protection (999fa39) but BEFORE the $VAR fix (95a99e6), so the live hook currently has self-protection but NOT $VAR expansion. After reinstall, a git-bash `$APPDATA/beekeeper/config.json` read will also be blocked.", "blocking": false},
-    {"action": "Optional: rotate/truncate %APPDATA%/beekeeper/audit/beekeeper.ndjson if it's still large (pre-#13 pollen-inventory bloat; #13 stopped growth, did not shrink existing).", "context": "user's data, not done unilaterally", "blocking": false}
+    {"action": "Review the redesigned hive on http://localhost:3000 and confirm vertical position / look (or request a tweak)", "context": "Maintainer was 'not impressed' twice; the new single animated honeycomb + top-align is the third iteration. Hive lift is a fixed +0.45 nudge so alignment with the headline is approximate.", "blocking": true},
+    {"action": "Give the go-ahead to finalize Phase 16 (or keep tweaking the hive)", "context": "Phase 16 is NOT marked complete; finalization is gated on the maintainer's nod since the hero was replaced after the original UAT approval.", "blocking": true}
   ],
   "decisions": [
-    {"decision": "Treat Beekeeper's own state dir as a SECRET from the agent (block read AND write), not just write.", "rationale": "config/policies/audit are a privilege-escalation surface against the guard; OS perms don't help because the agent runs as the user. The tool-call hook is the only layer that can distinguish agent access.", "phase": "v1.3.0-seed"},
-    {"decision": "Hook-entry protection is CONTENT-AWARE, not file-locking.", "rationale": "the hook-config file (~/.claude/settings.json) is SHARED with GSD and other tools; locking the whole file would block GSD hook edits. Content-aware blocks only edits that remove beekeeper's own marker.", "phase": "v1.3.0-seed"},
-    {"decision": "No in-band agent bypass for self-protection.", "rationale": "any env/flag the agent could also set would defeat the protection; mutation stays human-only via out-of-band channels (direct edit, beekeeper CLI, --admin TUI).", "phase": "v1.3.0-seed"},
-    {"decision": "$VAR expansion is fail-closed (unset var keeps literal, NOT os.ExpandEnv empty-collapse).", "rationale": "collapsing an unset var to empty could shorten a path out of a sensitive fragment and allow it; keeping the literal preserves detection.", "phase": "v1.3.0-seed"},
-    {"decision": "TUI writes its own beekeeper-tui.json only; validate-before-persist via SavePolicyFile is the single write path (last gate).", "rationale": "an invalid edit must be rejected in the TUI and never reach disk; never clobber other users' policy files.", "phase": "v1.3.0-seed"},
-    {"decision": "Committed one commit per phase on main; nothing pushed (repo stays local per convention).", "rationale": "clean per-phase history; this project has always been local-only on main.", "phase": "v1.3.0-seed"}
+    {"decision": "3D = single animated honeycomb (1 center + 6 ring); NO second layer, NO particle pulses", "rationale": "Maintainer rejected the dual-layer+pulses design twice as too busy", "phase": "16"},
+    {"decision": "Explicit three.js lights instead of drei <Environment preset='city'>", "rationale": "Avoids a runtime ~1MB HDRI CDN fetch; self-contained/offline bundle", "phase": "16"},
+    {"decision": "GFX-04 gated by Playwright performance LCP proxy; lighthouse skipped", "rationale": "lighthouse-on-Windows unproven; proxy works (FCP 840ms < 2500)", "phase": "16"},
+    {"decision": "Server SVG (#hero-hive-svg) fades opacity->0 once the real canvas mounts", "rationale": "Lifting the hive would otherwise reveal the centered SVG through the transparent canvas (double-image); SVG stays the LCP element", "phase": "16"},
+    {"decision": "Editor-extension watcher = Opt-in/privileged tier, not Default", "rationale": "Maintainer correction", "phase": "16"},
+    {"decision": "No em-dashes in marketing copy", "rationale": "Maintainer preference; swept all 13 home components", "phase": "16"}
   ],
   "uncommitted_files": [],
-  "next_action": "Run /gsd-new-milestone to formalize v1.3.0 (its content = Phase 10 + the 5 seed commits + the 4 new commits e1b907b/307fbad/999fa39/95a99e6). Then optionally resolve the block-as-code-default decision and/or /gsd-code-review the new commits.",
-  "context_notes": "All session work is committed + green (go build + full `go test ./...` ALL PASS + go vet, Windows + Linux). Module coverage ~58.3%->61.7% across the session. New prod files: internal/policy/selfpath.go, internal/check/selfprotect.go, internal/check/hookguard.go, internal/hooks/protected.go, internal/policyloader/persist.go; edits to check/paths.go+handler.go, policyloader/enforce.go, tui/policy_panel.go+model.go (policy_rules.go deleted). ARCHITECTURE INTEL still applies: Windows state dir = %APPDATA%/beekeeper (NOT ~/.beekeeper); internal/policy is pure (self-path matcher is pure; all I/O in check); no check<->hooks import cycle. GOTCHA: beekeeper canonicalizePath expands %VAR%, $VAR/${VAR}, and ~ but NOT other shell constructs (nested shells, base64) — documented deferred bypasses. The plan file C:/Users/Bantu/.claude/plans/playful-sauteeing-kay.md currently holds the self-protection plan (was overwritten from the TUI plan). v1.1.0 Pollen still PARKED (separate, see m2-pollen memory). Live config: %APPDATA%/beekeeper/config.json nudge.mode=block; beekeeper hook installed in ~/.claude/settings.json."
+  "next_action": "Ask the maintainer whether the redesigned hive (localhost:3000) is positioned/looking right. If yes: finalize Phase 16 (write 16-03-SUMMARY.md, mark complete, hand-reconcile STATE/ROADMAP/REQUIREMENTS GFX-01..04, stop dev servers). If no: tweak the lift in web/components/home/hero-canvas.tsx (Hive useFrame: g.position.y base = 0.45) and/or group scale (1.25).",
+  "context_notes": "Phase 16 executed inline on main (use_worktrees=false; spawned subagents lack node/git/pnpm so they CANNOT build -> DO NOT spawn gsd-executor, run inline). All GFX-01..04 green (pnpm build + web/tests/gfx_spec.py + web/tests/home_spec.py). Working tree clean as of 1096b75 (untracked, all pre-existing: .claude/, AGENTS.md, beekeeper-docs.html, beekeeper-tui-prototype.html, .planning/phases/16-3d-layer/16-PATTERNS.md). Hero is two-panel (copy left / hive right). Key files: web/components/home/{hero,hero-canvas,hero-canvas-wrapper,command-field,install-chip,how-it-works,origin-story}.tsx. Background dev server: pnpm dev on :3000."
 }
