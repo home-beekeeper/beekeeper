@@ -42,7 +42,7 @@ The project already has `ReducedMotionProvider` + `useReducedMotion()` wired in 
 | Capability detection (WebGL / reduced-motion / saveData) | Browser / Client | — | All three probes are client-only APIs; run inside `useEffect` on mount |
 | `"use client"` wrapper boundary | Browser / Client | — | `dynamic(ssr:false)` must sit inside a Client Component; this is the isolation boundary |
 | Ambient section accents (GFX-02) | Browser / Client (CSS) | — | CSS radial-gradient accents already exist in globals.css §7; no additional WebGL context needed |
-| Accessibility sr-only description | Frontend Server (SSR/SSG) | — | The sr-only sibling `<p>` is plain HTML — render it in the server-side SVG fallback branch |
+| Accessibility sr-only description | Browser / Client | — | The sr-only sibling `<p>` lives next to `<Canvas>` inside the client-only `hero-canvas.tsx` and describes the *interactive 3D viz* — it only needs to exist when the canvas mounts. In the no-canvas fallback the SVG is decorative (`alt=""` + `aria-hidden`) and the hero's own server-rendered headline/text is the accessible content. (Corrected from an earlier "Frontend Server" note that contradicted all code examples below.) |
 | Performance measurement (Lighthouse LCP) | CI / Test harness | — | Lighthouse CLI audit against `out/index.html` via local http.server |
 
 ---
@@ -538,9 +538,14 @@ node -e "
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Theme-aware colors in Three.js materials**
+> All four carried an inline recommendation that the Phase 16 plans implement directly
+> (theme colors via `useTheme()`, hex-pair hive cells, `ref`+`setAttribute` aria fallback,
+> Playwright `performance` LCP proxy as the Windows-safe primary). None block execution —
+> each is **RESOLVED** by its recommendation below.
+
+1. **Theme-aware colors in Three.js materials** — **RESOLVED** (use `useTheme()` + pinned hex pairs)
    - What we know: `THREE.Color` takes hex/name/number, not CSS vars.
    - What's unclear: Whether to use `useTheme()` from `next-themes` to switch between dark teal (`#39c5cf`) and light teal (`#0a6b75`) in the hive mesh material, or to pick a single intermediate color.
    - Recommendation: Use `useTheme()` — the hook is already available in the project via `next-themes@0.4.6`. Reactive material color changes inside R3F work naturally via `useEffect` + `mesh.material.color.set(...)`.
