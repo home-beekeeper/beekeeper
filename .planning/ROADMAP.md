@@ -215,7 +215,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 16-02-PLAN.md — Wave 2: 3D layer — hero-canvas-wrapper.tsx (use-client dynamic ssr:false boundary) + hero-canvas.tsx (useCanMount3D capability gate: reduced-motion/WebGL/saveData; single aria-hidden Canvas frameloop=demand; HiveMesh/HexCell theme-aware teal/amber; sr-only sibling) + hero.tsx modify (server-rendered SVG LCP img + wrapper slot); gfx_spec.py GFX-02/03 assertions (GFX-01, GFX-02, GFX-03)
+- [x] 16-02-PLAN.md — Wave 2: 3D layer — hero-canvas-wrapper.tsx (use-client dynamic ssr:false boundary) + hero-canvas.tsx (useCanMount3D capability gate: reduced-motion/WebGL/saveData; single aria-hidden Canvas frameloop=demand; HiveMesh/HexCell theme-aware teal/amber; sr-only sibling) + hero.tsx modify (server-rendered SVG LCP img + wrapper slot); gfx_spec.py GFX-02/03 assertions (GFX-01, GFX-02, GFX-03)
 
 **Wave 3** *(blocked on Wave 2)*
 
