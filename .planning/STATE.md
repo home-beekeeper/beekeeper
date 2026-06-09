@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Web Presence & Documentation
 status: executing
-stopped_at: "Phase 16 (3D Layer) ✅ COMPLETE & verified 2026-06-09. Maintainer approved the hive at UAT round 3 (reworked: darker back depth ring + short amber center→cone light-streaks; defense-in-depth cards reordered Default→Privileged→Optional; ugly command-field scrollbars removed via a no-scrollbar @utility). Full gate GREEN on the production build: pnpm build exit 0, gfx_spec.py GFX-01..04 ALL PASS (FCP 560ms < 2500ms; canvas count 0→0 across nav), home_spec.py ALL PASS. 16-03-SUMMARY.md written; STATE/ROADMAP/REQUIREMENTS hand-reconciled (GFX-01..04 done); HANDOFF.json + 16-3d-layer/.continue-here.md removed (one-shot artifacts); dev servers stopped. Round-3 redesign + finalization committed inline on main."
-last_updated: "2026-06-09T15:20:00.000Z"
-last_activity: "2026-06-09 — Phase 16 (3D Layer) COMPLETE: maintainer-approved hive (round 3), GFX-01..04 green on production static build, tracking reconciled. Next: Phase 17 (SEO & Static Assets, SEO-01)."
+stopped_at: "Phase 17 (SEO & Static Assets, SEO-01) ✅ PLANNED & verified 2026-06-09 — research-first (discuss skipped, maintainer choice; UI-SPEC skipped, ROADMAP UI-hint:no + design system locked). Pipeline ran: inline CONTEXT (D-01 base URL https://beekeeper.vercel.app; D-03 static-export OG-without-Edge) → researcher (sonnet, HIGH conf) → Nyquist VALIDATION (seo_spec.py file-walk) → pattern-map → planner (opus) 3 plans/2 waves → plan-checker PASSED 12/12 dims (1 Dim-11 RESEARCH annotation blocker, fixed inline, no plan change). Plans: 17-01 Wave 1 (web/lib/metadata.ts BASE_URL + seo_spec.py harness) → 17-02 + 17-03 Wave 2 parallel (metadata+static app/opengraph-image.png 1200×630; sitemap.ts+robots.ts force-static). 17-02 Task 3 = blocking OG-card human-verify. Tracking hand-managed (STATE/ROADMAP) — did NOT run state.planned-phase (documented frontmatter-corruption caveat). NEXT: /gsd-execute-phase 17 (after /clear)."
+last_updated: "2026-06-09T17:40:00.000Z"
+last_activity: "2026-06-09 — Phase 17 (SEO & Static Assets) PLANNED & verified: research-first, 3 plans/2 waves, plan-checker PASSED 12/12, SEO-01 covered. Next: /gsd-execute-phase 17."
 progress:
   total_phases: 9
   completed_phases: 6
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 16 (3D Layer) ✅ COMPLETE & verified 2026-06-09 — interactive Three.js hive hero behind a client-only `dynamic(ssr:false)` boundary, static-SVG LCP fallback, no WebGL-context leak, FCP 560ms < 2500ms; maintainer approved the reworked hive (depth ring + center→cone light-streaks) at UAT round 3. GFX-01..04 all done. **NEXT: Phase 17 (SEO & Static Assets, SEO-01).** (SITE-03 live deploy still DEFERRED → Vercel.)
+**Current focus:** Phase 17 (SEO & Static Assets, SEO-01) ✅ PLANNED & verified 2026-06-09 — per-page static metadata (title/description/canonical) + a shared 1200×630 OG card + sitemap.xml/robots.txt, all under the existing Next.js 16 static export (no Edge runtime). 3 plans/2 waves, plan-checker PASSED 12/12. Canonical base URL locked = `https://beekeeper.vercel.app`. **NEXT: `/gsd-execute-phase 17`** (17-02 Task 3 = blocking OG-card human-verify). (Phase 16 ✅ complete 2026-06-09; SITE-03 live deploy still DEFERRED → Vercel.)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `.planning/phases/05-contribution-back-milestone-close/.continue-here.md` and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 16 — 3D Layer (✅ COMPLETE & verified 2026-06-09 — 3/3 plans; GFX-01..04 green on the production static build; maintainer UAT approved after 3 hive redesign rounds)
-Plan: 16-01 ✅ / 16-02 ✅ / 16-03 ✅ (3/3 complete) — Wave 1 foundation (pinned three/R3F/drei + hero-hive.svg LCP fallback + gfx_spec.py harness), Wave 2 3D layer (use-client dynamic ssr:false wrapper + capability-gated R3F Canvas + hero.tsx SVG slot), Wave 3 perf+a11y gate (Playwright LCP/FCP 560ms<2500 proxy + no-context-leak) + maintainer UAT (hive reworked to final: darker depth ring + center→cone light-streaks; tier-ordered cards; no command scrollbars).
-Status: ✅ Complete & verified — NEXT: Phase 17 (SEO & Static Assets, SEO-01)
-Last activity: 2026-06-09 — Phase 16 COMPLETE (maintainer-approved hive round 3; full GFX gate green; 16-03-SUMMARY + tracking reconciled; HANDOFF/.continue-here removed; servers stopped).
+Phase: 17 — SEO & Static Assets (✅ PLANNED & verified 2026-06-09 — 3 plans/2 waves; research + Nyquist validation + pattern-map done; plan-checker PASSED 12/12 dims, SEO-01 covered)
+Plan: 17-01 / 17-02 / 17-03 (0/3 complete) — Wave 1: 17-01 foundation (web/lib/metadata.ts BASE_URL=https://beekeeper.vercel.app + seo_spec.py SC-1..3 file-walk harness). Wave 2 (parallel, share no files): 17-02 per-page metadata + static app/opengraph-image.png 1200×630 (metadataBase/title-template/canonical on layout+home+docs+changelog; OG card = blocking checkpoint:human-verify at Task 3); 17-03 sitemap.ts + robots.ts with `force-static` (routes via source.generateParams() + hardcoded /changelog/; trailing-slash <loc>). All static-export-safe (no Edge ImageResponse).
+Status: ✅ Planned & verified — NEXT: /gsd-execute-phase 17 (17-02 Task 3 is a blocking OG-card human checkpoint)
+Last activity: 2026-06-09 — Phase 17 PLANNED (research-first; plan-checker PASSED 12/12; Dim-11 RESEARCH annotation fixed inline, no plan change). Phase 16 ✅ COMPLETE earlier same day.
 
 ## Phase Summary (v1.3.0)
 
@@ -43,7 +43,7 @@ Last activity: 2026-06-09 — Phase 16 COMPLETE (maintainer-approved hive round 
 | 14 | Changelog Pipeline | CHG-01–03 | ✅ Complete & verified 2026-06-08 (2/2 plans; verifier 7/7 must-haves + 3/3 SCs PASSED; code review 2-crit/3-warn ALL fixed inline before verify) |
 | 15 | Marketing Home | HOME-01–05 (SITE-03 deferred→Vercel) | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 5/5 must-haves + SC-1..5; code review 2-crit/3-warn fixed inline; both-theme Playwright proof) |
 | 16 | 3D Layer | GFX-01–04 | ✅ Complete & verified 2026-06-09 (3/3 plans; GFX-01..04 green on prod build, FCP 560ms; maintainer UAT approved after 3 hive rounds) |
-| 17 | SEO & Static Assets | SEO-01 | Not started |
+| 17 | SEO & Static Assets | SEO-01 | ◆ Planned & verified 2026-06-09 (3 plans/2 waves; plan-checker PASSED 12/12) — ready to execute |
 | 18 | Full Content Authoring | DOCS-02–09 | Not started |
 | 19 | Test Suite & CI | QA-01, QA-02 | Not started |
 
@@ -200,6 +200,8 @@ Items acknowledged and carried forward:
 | Phase 10 P04 | 7 minutes | 3 tasks | 6 files |
 
 ## Session Continuity
+
+Last session: 2026-06-09 (continued → PLANNED Phase 17). After finalizing Phase 16, ran `/gsd-plan-phase 17` (SEO & Static Assets). Maintainer chose: skip discuss / capture inline, research-first, canonical base URL = `https://beekeeper.vercel.app` (the Vercel project URL; SITE-03 deploy still deferred). Pipeline: 17-CONTEXT.md (inline, D-01..D-05) → researcher (sonnet, HIGH conf — confirmed: static `app/opengraph-image.png` not Edge `ImageResponse`; `sitemap.ts`/`robots.ts` need `export const dynamic='force-static'`; `metadataBase` is the one missing root change; canonical/og on Fumadocs catch-all routes; pure-Python `seo_spec.py` file-walk for verification) → 17-VALIDATION.md → 17-PATTERNS.md → planner (opus) 3 plans/2 waves → plan-checker PASSED (12/12 dims; the only blocker was the recurring Dim-11 RESEARCH `## Open Questions (RESOLVED)` annotation gap — fixed inline, NO plan change, re-verified clean). Commits: 4ec560c CONTEXT, eda3615 RESEARCH, fc862a5 VALIDATION, 9d87f80 PATTERNS, d4c880f plans, + RESEARCH annotation fix. ROADMAP + STATE hand-updated (did NOT run state.planned-phase — frontmatter-corruption caveat). UI-SPEC gate false-positived (ROADMAP UI-hint:no) → proceeded as --skip-ui. **NEXT: `/gsd-execute-phase 17`** (17-02 Task 3 = blocking OG-card human checkpoint; execute INLINE on main — subagents lack node/pnpm; phase-resolver is fine for slug `seo-static-assets`, unlike `16-3d-layer`).
 
 Last session: 2026-06-09 (resumed → FINALIZED Phase 16). Restored from HANDOFF.json + 16-3d-layer/.continue-here.md: Phase 16 was executed & green but paused at the finalization gate. Maintainer requested a hive rework (round 3) — applied: darker back depth ring + short amber center→cone light-streaks (`Spoke`) in hero-canvas.tsx, defense-in-depth cards reordered Default→Privileged→Optional (how-it-works.tsx), command-field scrollbars removed (no-scrollbar @utility in globals.css). Maintainer approved on :3000 ("Good → finalize"). Full gate re-run GREEN on the production build (pnpm build exit 0; gfx_spec.py GFX-01..04 PASS, FCP 560ms; home_spec.py PASS). 16-03-SUMMARY.md written; STATE/ROADMAP/REQUIREMENTS reconciled (GFX-01..04 done); HANDOFF.json + 16-3d-layer/.continue-here.md deleted (one-shot); dev servers stopped. Committed inline on main. **Phase 16 COMPLETE. NEXT: Phase 17 (SEO & Static Assets, SEO-01).** NOTE for future sessions: GSD phase-resolver can't find "16-3d-layer" (greedy `3d` token) → tracking is hand-managed; do NOT spawn gsd-executor (subagents lack node/pnpm).
 
