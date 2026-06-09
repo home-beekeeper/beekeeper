@@ -68,7 +68,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 14: Changelog Pipeline** — ✅ Complete & verified 2026-06-08 — second fumadocs-mdx changelog collection + per-version static pages (v1.0.0/v1.2.0/v1.3.0) + cosign/SLSA verify commands + red exit-1→exit-2 breaking-change callout; verifier 7/7 must-haves, 3/3 SCs
 - [x] **Phase 15: Marketing Home** — ✅ Complete & verified 2026-06-08 (HOME-01..05) — hero+dual CTA+go-install chip, Nx origin story, 3-step how-it-works, 6 shipped-capability feature cards, 15-harness matrix, honesty/known-gaps callout; verifier 5/5 must-haves; code review 2-crit/3-warn fixed inline; both-theme Playwright proof. **SITE-03 (live deploy) DEFERRED → Vercel.**
 - [x] **Phase 16: 3D Layer** — R3F hive hero + ambient accents behind dynamic(ssr:false), perf/a11y gates — **✅ complete & verified 2026-06-09 (3/3 plans; GFX-01..04 green; maintainer UAT approved after 3 hive rounds)**
-- [ ] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image — **3 plans planned & verified 2026-06-09 (plan-checker PASSED)**
+- [x] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image — **✅ complete & verified 2026-06-09 (3/3 plans; SEO-01; seo_spec SC-1..3 green; maintainer-approved OG card)**
 - [ ] **Phase 18: Full Content Authoring** — all docs + changelog prose, accuracy review gate
 - [ ] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/
 
@@ -237,12 +237,12 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 3 plans (2 waves) — planned & verified 2026-06-09 (plan-checker PASSED, 12/12 dims; SEO-01 covered)
 **Wave 1**
 
-- [ ] 17-01-PLAN.md — Wave 1 foundation: BASE_URL constant (web/lib/metadata.ts = https://beekeeper.vercel.app) + seo_spec.py SC-1..3 file-walk harness (Wave 0 deliverable) (SEO-01)
+- [x] 17-01-PLAN.md — Wave 1 foundation: BASE_URL constant (web/lib/metadata.ts = https://beekeeper.vercel.app) + seo_spec.py SC-1..3 file-walk harness (Wave 0 deliverable) (SEO-01)
 
 **Wave 2** *(blocked on Wave 1; 17-02 and 17-03 run in parallel — they share no files, both consume BASE_URL read-only)*
 
-- [ ] 17-02-PLAN.md — Wave 2: per-page metadata (SC-1) + shared OG card (SC-2) — metadataBase/title-template/canonical on layout+home+docs+changelog routes + static app/opengraph-image.png (1200×630, no Edge ImageResponse); OG-card visual is a blocking checkpoint:human-verify (SEO-01)
-- [ ] 17-03-PLAN.md — Wave 2: crawler assets (SC-3) — app/sitemap.ts + app/robots.ts with `export const dynamic = 'force-static'`; sitemap enumerates routes via source.generateParams() + hardcoded /changelog/; trailing-slash `<loc>` URLs (SEO-01)
+- [x] 17-02-PLAN.md — Wave 2: per-page metadata (SC-1) + shared OG card (SC-2) — metadataBase/title-template/canonical on layout+home+docs+changelog routes + static app/opengraph-image.png (1200×630, no Edge ImageResponse); maintainer approved the flat hero-hive card after 3 rounds (SEO-01)
+- [x] 17-03-PLAN.md — Wave 2: crawler assets (SC-3) — app/sitemap.ts + app/robots.ts with `export const dynamic = 'force-static'`; sitemap enumerates routes via source.generateParams() + hardcoded /changelog/ (13 trailing-slash `<loc>` URLs) (SEO-01)
 
 **Cross-cutting constraints:** the `web/lib/metadata.ts` BASE_URL constant (17-01) is the single source of truth consumed by both Wave-2 plans; `python tests/seo_spec.py` green on the production `out/` build is the shared gate for all three plans.
 
@@ -309,6 +309,6 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **14. Changelog Pipeline** | **v1.3.0** | **2/2** | **Complete** | **2026-06-08** |
 | **15. Marketing Home** | **v1.3.0** | **3/3** | **Complete** (SITE-03 deferred→Vercel) | **2026-06-08** |
 | **16. 3D Layer** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
-| **17. SEO & Static Assets** | **v1.3.0** | **0/3** | **Planned** | **—** |
+| **17. SEO & Static Assets** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **18. Full Content Authoring** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |

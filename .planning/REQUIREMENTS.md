@@ -56,7 +56,7 @@
 
 ### SEO & Assets (SEO)
 
-- [ ] **SEO-01**: Each page emits correct static metadata (title / description / canonical), an OG / social card image, `sitemap.xml`, and `robots.txt`
+- [x] **SEO-01**: Each page emits correct static metadata (title / description / canonical), an OG / social card image, `sitemap.xml`, and `robots.txt`
 
 ### Quality & CI (QA)
 
@@ -113,7 +113,7 @@
 | CHG-01 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
 | CHG-02 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
 | CHG-03 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
-| SEO-01 | Phase 17 — SEO & Static Assets | Not started |
+| SEO-01 | Phase 17 — SEO & Static Assets | ✅ Complete (2026-06-09) |
 | QA-01 | Phase 19 — Test Suite & CI | Not started |
 | QA-02 | Phase 19 — Test Suite & CI | Not started |
 

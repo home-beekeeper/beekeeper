@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Web Presence & Documentation
 status: executing
-stopped_at: "Phase 17 (SEO & Static Assets, SEO-01) ✅ PLANNED & verified 2026-06-09 — research-first (discuss skipped, maintainer choice; UI-SPEC skipped, ROADMAP UI-hint:no + design system locked). Pipeline ran: inline CONTEXT (D-01 base URL https://beekeeper.vercel.app; D-03 static-export OG-without-Edge) → researcher (sonnet, HIGH conf) → Nyquist VALIDATION (seo_spec.py file-walk) → pattern-map → planner (opus) 3 plans/2 waves → plan-checker PASSED 12/12 dims (1 Dim-11 RESEARCH annotation blocker, fixed inline, no plan change). Plans: 17-01 Wave 1 (web/lib/metadata.ts BASE_URL + seo_spec.py harness) → 17-02 + 17-03 Wave 2 parallel (metadata+static app/opengraph-image.png 1200×630; sitemap.ts+robots.ts force-static). 17-02 Task 3 = blocking OG-card human-verify. Tracking hand-managed (STATE/ROADMAP) — did NOT run state.planned-phase (documented frontmatter-corruption caveat). NEXT: /gsd-execute-phase 17 (after /clear)."
-last_updated: "2026-06-09T17:40:00.000Z"
-last_activity: "2026-06-09 — Phase 17 (SEO & Static Assets) PLANNED & verified: research-first, 3 plans/2 waves, plan-checker PASSED 12/12, SEO-01 covered. Next: /gsd-execute-phase 17."
+stopped_at: "Phase 17 (SEO & Static Assets, SEO-01) ✅ COMPLETE & verified 2026-06-09 — executed inline on main (3/3 plans). 17-01: web/lib/metadata.ts BASE_URL/SITE_NAME + web/tests/seo_spec.py SC-1..3 file-walk harness. 17-02: metadataBase + title template + canonical on layout/home/docs/changelog + static app/opengraph-image.png 1200×630 (DEVIATION: dropped openGraph.url from nested routes — it wiped the inherited file-convention og:image; SC-2 > og:url). 17-03: sitemap.ts (13 trailing-slash locs) + robots.ts, both force-static, flat out/ files (A1 fallback unneeded). OG card took 3 maintainer rounds → approved the FLAT hero-hive.svg design. Maintainer also directed 2 live hero tweaks (removed v1.3.0 shipped pill; moved 'Read the docs' onto the install-chip row). Final gate GREEN: pnpm build exit 0, seo_spec/gfx_spec/home_spec ALL exit 0, 13 sitemap locs. Docs-styling concern captured to .planning/todos/pending/docs-styling-polish.md (deferred). NEXT: Phase 18 (Full Content Authoring, DOCS-02–09)."
+last_updated: "2026-06-09T19:30:00.000Z"
+last_activity: "2026-06-09 — Phase 17 (SEO & Static Assets) COMPLETE: SEO-01 done, seo_spec SC-1..3 green on prod build, maintainer-approved OG card (flat hero hive) + 2 hero tweaks. Next: Phase 18 (Full Content Authoring)."
 progress:
   total_phases: 9
-  completed_phases: 6
-  total_plans: 15
-  completed_plans: 15
-  percent: 67
+  completed_phases: 7
+  total_plans: 18
+  completed_plans: 18
+  percent: 78
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 17 (SEO & Static Assets, SEO-01) ✅ PLANNED & verified 2026-06-09 — per-page static metadata (title/description/canonical) + a shared 1200×630 OG card + sitemap.xml/robots.txt, all under the existing Next.js 16 static export (no Edge runtime). 3 plans/2 waves, plan-checker PASSED 12/12. Canonical base URL locked = `https://beekeeper.vercel.app`. **NEXT: `/gsd-execute-phase 17`** (17-02 Task 3 = blocking OG-card human-verify). (Phase 16 ✅ complete 2026-06-09; SITE-03 live deploy still DEFERRED → Vercel.)
+**Current focus:** Phase 17 (SEO & Static Assets, SEO-01) ✅ COMPLETE & verified 2026-06-09 — per-page static metadata (title/description/canonical) + a shared 1200×630 OG card (flat hero-hive design, maintainer-approved) + sitemap.xml (13 locs) / robots.txt, all under the Next.js 16 static export. seo_spec SC-1..3 + gfx + home all green. Base URL locked = `https://beekeeper.vercel.app`. **NEXT: Phase 18 (Full Content Authoring, DOCS-02–09)** — and a captured backlog item: polish the Docs (Fumadocs) styling (`.planning/todos/pending/docs-styling-polish.md`). (SITE-03 live deploy still DEFERRED → Vercel.)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `.planning/phases/05-contribution-back-milestone-close/.continue-here.md` and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 17 — SEO & Static Assets (✅ PLANNED & verified 2026-06-09 — 3 plans/2 waves; research + Nyquist validation + pattern-map done; plan-checker PASSED 12/12 dims, SEO-01 covered)
-Plan: 17-01 / 17-02 / 17-03 (0/3 complete) — Wave 1: 17-01 foundation (web/lib/metadata.ts BASE_URL=https://beekeeper.vercel.app + seo_spec.py SC-1..3 file-walk harness). Wave 2 (parallel, share no files): 17-02 per-page metadata + static app/opengraph-image.png 1200×630 (metadataBase/title-template/canonical on layout+home+docs+changelog; OG card = blocking checkpoint:human-verify at Task 3); 17-03 sitemap.ts + robots.ts with `force-static` (routes via source.generateParams() + hardcoded /changelog/; trailing-slash <loc>). All static-export-safe (no Edge ImageResponse).
-Status: ✅ Planned & verified — NEXT: /gsd-execute-phase 17 (17-02 Task 3 is a blocking OG-card human checkpoint)
-Last activity: 2026-06-09 — Phase 17 PLANNED (research-first; plan-checker PASSED 12/12; Dim-11 RESEARCH annotation fixed inline, no plan change). Phase 16 ✅ COMPLETE earlier same day.
+Phase: 17 — SEO & Static Assets (✅ COMPLETE & verified 2026-06-09 — 3/3 plans executed inline on main; SEO-01 done; seo_spec SC-1..3 + gfx + home all green on the production build)
+Plan: 17-01 ✅ / 17-02 ✅ / 17-03 ✅ (3/3 complete) — 17-01 web/lib/metadata.ts BASE_URL/SITE_NAME + web/tests/seo_spec.py harness; 17-02 metadataBase + title template + canonical (layout/home/docs/changelog) + static app/opengraph-image.png 1200×630 (flat hero-hive card, maintainer-approved round 3); 17-03 sitemap.ts (13 trailing-slash locs) + robots.ts, force-static, flat out/ files. Key deviation: nested docs/changelog routes set ONLY alternates.canonical (no openGraph) — a nested openGraph wipes the inherited file-convention og:image (SC-2). Plus 2 maintainer hero tweaks (removed v1.3.0 shipped pill; 'Read the docs' onto the install row).
+Status: ✅ Complete & verified — NEXT: Phase 18 (Full Content Authoring, DOCS-02–09)
+Last activity: 2026-06-09 — Phase 17 COMPLETE (SEO-01; seo_spec green; OG card approved; tracking reconciled; docs-styling backlog captured; dev server stopped). Phase 16 ✅ COMPLETE earlier same day.
 
 ## Phase Summary (v1.3.0)
 
@@ -43,7 +43,7 @@ Last activity: 2026-06-09 — Phase 17 PLANNED (research-first; plan-checker PAS
 | 14 | Changelog Pipeline | CHG-01–03 | ✅ Complete & verified 2026-06-08 (2/2 plans; verifier 7/7 must-haves + 3/3 SCs PASSED; code review 2-crit/3-warn ALL fixed inline before verify) |
 | 15 | Marketing Home | HOME-01–05 (SITE-03 deferred→Vercel) | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 5/5 must-haves + SC-1..5; code review 2-crit/3-warn fixed inline; both-theme Playwright proof) |
 | 16 | 3D Layer | GFX-01–04 | ✅ Complete & verified 2026-06-09 (3/3 plans; GFX-01..04 green on prod build, FCP 560ms; maintainer UAT approved after 3 hive rounds) |
-| 17 | SEO & Static Assets | SEO-01 | ◆ Planned & verified 2026-06-09 (3 plans/2 waves; plan-checker PASSED 12/12) — ready to execute |
+| 17 | SEO & Static Assets | SEO-01 | ✅ Complete & verified 2026-06-09 (3/3 plans; seo_spec SC-1..3 + gfx + home green; maintainer-approved flat-hive OG card) |
 | 18 | Full Content Authoring | DOCS-02–09 | Not started |
 | 19 | Test Suite & CI | QA-01, QA-02 | Not started |
 
@@ -200,6 +200,8 @@ Items acknowledged and carried forward:
 | Phase 10 P04 | 7 minutes | 3 tasks | 6 files |
 
 ## Session Continuity
+
+Last session: 2026-06-09 (continued → EXECUTED + COMPLETED Phase 17). Ran `/gsd-execute-phase 17` inline on main (use_worktrees=false; subagents lack node/pnpm). 3/3 plans + atomic commits. 17-01: BASE_URL/SITE_NAME const + seo_spec.py harness (ran red Wave-0 then green). 17-02: layout metadataBase + title template + shared OG/twitter; home + docs + changelog canonicals. 17-03: sitemap.ts (13 locs) + robots.ts force-static (flat out/ files; A1 fallback unneeded). **KEY DEVIATION (reusable Next.js fact):** nested catch-all routes must set ONLY `alternates.canonical` and NOT return `openGraph` — a nested route's openGraph REPLACES the inherited one wholesale (shallow merge), stripping the root `app/opengraph-image.png` file-convention og:image from every doc/changelog page (SC-2 failed on 12 pages until openGraph.url was removed). **OG card:** 3 maintainer rounds (animated-style rejected → legibility fix → flat hero-hive.svg approved); authored as HTML + rendered to a 1200×630 PNG via the installed Playwright (no new dep); Next dev server caches the generated OG image so a `.next` clear + restart was needed for live review. **+2 maintainer hero tweaks** (committed separately, style(home) `b162e92`): removed the 'v1.3.0 shipped: self-protection + TUI policy editor' pill; moved 'Read the docs' onto the go-install chip's row. Final gate GREEN (build + seo_spec + gfx_spec + home_spec all exit 0). Docs-styling concern (maintainer: docs 'look old and basic') captured to `.planning/todos/pending/docs-styling-polish.md` (deferred, NOT a Phase-17 redesign). Tracking hand-managed (skipped state.begin-phase/phase.complete — frontmatter caveat). Resolver fine for slug `seo-static-assets`. **NEXT: Phase 18 (Full Content Authoring, DOCS-02–09).**
 
 Last session: 2026-06-09 (continued → PLANNED Phase 17). After finalizing Phase 16, ran `/gsd-plan-phase 17` (SEO & Static Assets). Maintainer chose: skip discuss / capture inline, research-first, canonical base URL = `https://beekeeper.vercel.app` (the Vercel project URL; SITE-03 deploy still deferred). Pipeline: 17-CONTEXT.md (inline, D-01..D-05) → researcher (sonnet, HIGH conf — confirmed: static `app/opengraph-image.png` not Edge `ImageResponse`; `sitemap.ts`/`robots.ts` need `export const dynamic='force-static'`; `metadataBase` is the one missing root change; canonical/og on Fumadocs catch-all routes; pure-Python `seo_spec.py` file-walk for verification) → 17-VALIDATION.md → 17-PATTERNS.md → planner (opus) 3 plans/2 waves → plan-checker PASSED (12/12 dims; the only blocker was the recurring Dim-11 RESEARCH `## Open Questions (RESOLVED)` annotation gap — fixed inline, NO plan change, re-verified clean). Commits: 4ec560c CONTEXT, eda3615 RESEARCH, fc862a5 VALIDATION, 9d87f80 PATTERNS, d4c880f plans, + RESEARCH annotation fix. ROADMAP + STATE hand-updated (did NOT run state.planned-phase — frontmatter-corruption caveat). UI-SPEC gate false-positived (ROADMAP UI-hint:no) → proceeded as --skip-ui. **NEXT: `/gsd-execute-phase 17`** (17-02 Task 3 = blocking OG-card human checkpoint; execute INLINE on main — subagents lack node/pnpm; phase-resolver is fine for slug `seo-static-assets`, unlike `16-3d-layer`).
 
