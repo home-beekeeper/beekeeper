@@ -261,7 +261,24 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   4. Every integration guide for Tier-1/2/3 harnesses includes honest caveats at point-of-use; the CLI reference covers all subcommands and flags
   5. Every MDX file that derives content from a Go-side doc has a `source_doc:` frontmatter field, and all content has been reviewed against `docs/THREAT-MODEL.md` before publish
 
-**Plans**: TBD
+**Plans**: 6 plans (3 waves) — planned 2026-06-09 (research-first; pure-content scope per D-01; accuracy gate = `web/tests/accuracy_spec.py` AC-1..3 + human THREAT-MODEL.md review)
+**Wave 1**
+
+- [ ] 18-01-PLAN.md — Wave 1 infra: `web/tests/accuracy_spec.py` (AC-1 source_doc+path-exists / AC-2 unenforced labels / AC-3 no phantom commands; RED until content lands) + `web/components/docs/unenforced-callout.tsx` (amber dual-theme `UnenforcedCallout`) registered in `web/mdx-components.tsx` (DOCS-09)
+
+**Wave 2** *(blocked on 18-01; 18-02/03/04/05 share no files -> run in parallel)*
+
+- [ ] 18-02-PLAN.md — Wave 2: getting-started (zero->real `beekeeper check`, `hooks install --target`, Claude-Code-only caveat) + installation (go install + Releases + exact cosign/SLSA/SBOM from THREAT-MODEL section 7 + state-dir) (DOCS-02, DOCS-03, DOCS-09)
+- [ ] 18-03-PLAN.md — Wave 2: configuration (layered config, policy-as-code, sensitive paths, soft/hard nudge + `require_hardened` blocking accurate to real validator, `<UnenforcedCallout>` for release_age/lifecycle) + cli-reference (exhaustive subcommand tree, no phantom/internal commands) (DOCS-04, DOCS-07, DOCS-09)
+- [ ] 18-04-PLAN.md — Wave 2: security (posture + co-located known gaps — Hermes/Tier-3/unenforced/--bind) + integration (Tier1->2->3->gateway with point-of-use caveats, `--target` flag) (DOCS-05, DOCS-06, DOCS-09)
+- [ ] 18-05-PLAN.md — Wave 2: troubleshooting (real commands only — `diag`/`version`; phantom `hooks status`/`catalogs rebuild`/`status` removed) + audit-log (single `beekeeper.ndjson`, corrected rotation claim, field-scoped redaction caveat) (DOCS-08, DOCS-09)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 18-06-PLAN.md — Wave 3 gate: full suite green (pnpm build + accuracy_spec + seo/home/gfx regression) + blocking maintainer AC-5 accuracy review against `docs/THREAT-MODEL.md` + served-docs render check (DOCS-09)
+
+**Cross-cutting constraints:** `web/tests/accuracy_spec.py` (18-01) is the shared DOCS-09 gate consumed by every Wave-2 plan; `<UnenforcedCallout>` (18-01) must be registered before 18-03/18-04 use it; `pnpm build` green is the shared wave-boundary gate; execution runs INLINE on main (subagents lack node/pnpm).
+
 **UI hint**: yes
 
 ### Phase 19: Test Suite & CI
@@ -310,5 +327,5 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **15. Marketing Home** | **v1.3.0** | **3/3** | **Complete** (SITE-03 deferred→Vercel) | **2026-06-08** |
 | **16. 3D Layer** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **17. SEO & Static Assets** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
-| **18. Full Content Authoring** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **18. Full Content Authoring** | **v1.3.0** | **0/6** | **Planned (6 plans, 3 waves)** | **—** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
