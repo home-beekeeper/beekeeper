@@ -31,10 +31,10 @@
 
 ### 3D & Motion (GFX)
 
-- [ ] **GFX-01**: The home hero features an interactive Three.js centerpiece (hive / agent-mediation visual) loaded behind a client-only boundary that never breaks the static build
-- [ ] **GFX-02**: Ambient 3D/motion accents enhance marketing sections without harming readability
-- [ ] **GFX-03**: The 3D layer falls back to a static SVG (LCP-sized) under reduced-motion, low-power, or no-WebGL; the canvas is accessibility-invisible with an sr-only description
-- [ ] **GFX-04**: The home page meets a performance budget — Lighthouse LCP < 2.5s (SVG as LCP candidate), a bounded 3D bundle, and no leaked WebGL contexts across navigation
+- [x] **GFX-01**: The home hero features an interactive Three.js centerpiece (hive / agent-mediation visual) loaded behind a client-only boundary that never breaks the static build
+- [x] **GFX-02**: Ambient 3D/motion accents enhance marketing sections without harming readability
+- [x] **GFX-03**: The 3D layer falls back to a static SVG (LCP-sized) under reduced-motion, low-power, or no-WebGL; the canvas is accessibility-invisible with an sr-only description
+- [x] **GFX-04**: The home page meets a performance budget — Lighthouse LCP < 2.5s (SVG as LCP candidate), a bounded 3D bundle, and no leaked WebGL contexts across navigation
 
 ### Documentation (DOCS)
 
@@ -97,10 +97,10 @@
 | HOME-03 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
 | HOME-04 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
 | HOME-05 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
-| GFX-01 | Phase 16 — 3D Layer | Not started |
-| GFX-02 | Phase 16 — 3D Layer | Not started |
-| GFX-03 | Phase 16 — 3D Layer | Not started |
-| GFX-04 | Phase 16 — 3D Layer | Not started |
+| GFX-01 | Phase 16 — 3D Layer | ✅ Complete (2026-06-09) |
+| GFX-02 | Phase 16 — 3D Layer | ✅ Complete (2026-06-09) |
+| GFX-03 | Phase 16 — 3D Layer | ✅ Complete (2026-06-09) |
+| GFX-04 | Phase 16 — 3D Layer | ✅ Complete (2026-06-09) |
 | DOCS-01 | Phase 13 — Docs Content Pipeline | ✅ Complete (2026-06-08) |
 | DOCS-02 | Phase 18 — Full Content Authoring | Not started |
 | DOCS-03 | Phase 18 — Full Content Authoring | Not started |

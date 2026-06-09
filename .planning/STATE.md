@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Web Presence & Documentation
 status: executing
-stopped_at: "Big dogfood session. (1) handoff #9 scan→pollen E2E validated. (2) #13 scan audit-bloat FIXED. (3) Wired beekeeper as a LIVE Claude Code hook (~/.claude/settings.json, merged w/ GSD; backup .pre-beekeeper-20260606.bak). (4) Found pnpm-detect flaky on Windows (42-92%). (5) Built nudge `mode=block` (detection-INDEPENDENT enforcement, offers pnpm+bun) — PROVEN blocking live npm install via the hook. (6) Fixed pkgparse compound/env bypass (was defeating nudge AND catalog block). 3 commits on main: 6691585 fix(scan), 96f0a7b fix(pkgparse), 0028392 feat(nudge). Live config: %APPDATA%/beekeeper/config.json mode=block."
-last_updated: "2026-06-09T06:28:49.913Z"
-last_activity: "2026-06-09 — Phase 16 (3D Layer) PLANNED: research-first (R3F v9 + Next 16 static export), Nyquist VALIDATION.md, pattern map, 3 plans/3 waves, plan-checker VERIFICATION PASSED (0 blockers), all GFX-01..04 covered. Next: /gsd-execute-phase 16."
+stopped_at: "Phase 16 (3D Layer) ✅ COMPLETE & verified 2026-06-09. Maintainer approved the hive at UAT round 3 (reworked: darker back depth ring + short amber center→cone light-streaks; defense-in-depth cards reordered Default→Privileged→Optional; ugly command-field scrollbars removed via a no-scrollbar @utility). Full gate GREEN on the production build: pnpm build exit 0, gfx_spec.py GFX-01..04 ALL PASS (FCP 560ms < 2500ms; canvas count 0→0 across nav), home_spec.py ALL PASS. 16-03-SUMMARY.md written; STATE/ROADMAP/REQUIREMENTS hand-reconciled (GFX-01..04 done); HANDOFF.json + 16-3d-layer/.continue-here.md removed (one-shot artifacts); dev servers stopped. Round-3 redesign + finalization committed inline on main."
+last_updated: "2026-06-09T15:20:00.000Z"
+last_activity: "2026-06-09 — Phase 16 (3D Layer) COMPLETE: maintainer-approved hive (round 3), GFX-01..04 green on production static build, tracking reconciled. Next: Phase 17 (SEO & Static Assets, SEO-01)."
 progress:
   total_phases: 9
-  completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
-  percent: 56
+  completed_phases: 6
+  total_plans: 15
+  completed_plans: 15
+  percent: 67
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 16 (3D Layer) ✅ PLANNED 2026-06-09 — interactive Three.js hive hero behind a client-only `dynamic(ssr:false)` boundary, static-SVG LCP fallback under reduced-motion/no-WebGL, LCP<2.5s budget (GFX-01..04). 3 plans/3 waves, plan-checker PASSED; ready to execute. (Phase 15 Marketing Home ✅ complete 2026-06-08; SITE-03 live deploy DEFERRED → Vercel.)
+**Current focus:** Phase 16 (3D Layer) ✅ COMPLETE & verified 2026-06-09 — interactive Three.js hive hero behind a client-only `dynamic(ssr:false)` boundary, static-SVG LCP fallback, no WebGL-context leak, FCP 560ms < 2500ms; maintainer approved the reworked hive (depth ring + center→cone light-streaks) at UAT round 3. GFX-01..04 all done. **NEXT: Phase 17 (SEO & Static Assets, SEO-01).** (SITE-03 live deploy still DEFERRED → Vercel.)
 
-> ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
+> ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `.planning/phases/05-contribution-back-milestone-close/.continue-here.md` and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 16 — 3D Layer (✅ PLANNED 2026-06-09 — 3 plans, 3 waves; research + patterns + validation done; plan-checker VERIFICATION PASSED 0 blockers)
-Plan: 16-01/16-02/16-03 (0/3 complete) — Wave 1 foundation (install pinned three/R3F/drei + hero-hive.svg LCP fallback + gfx_spec.py harness), Wave 2 3D layer (use-client dynamic ssr:false wrapper + capability-gated R3F Canvas + hero.tsx SVG slot), Wave 3 perf+a11y gate (Playwright LCP<2500ms proxy + no-context-leak + maintainer UAT). 16-01 Task1 + 16-03 Task3 are blocking human checkpoints.
-Status: Ready to execute
-Last activity: 2026-06-09 — Phase 16 PLANNED (research-first: R3F v9 + Next 16 static-export; Nyquist VALIDATION.md; plan-checker PASSED, all GFX-01..04 covered). Next: /gsd-execute-phase 16.
+Phase: 16 — 3D Layer (✅ COMPLETE & verified 2026-06-09 — 3/3 plans; GFX-01..04 green on the production static build; maintainer UAT approved after 3 hive redesign rounds)
+Plan: 16-01 ✅ / 16-02 ✅ / 16-03 ✅ (3/3 complete) — Wave 1 foundation (pinned three/R3F/drei + hero-hive.svg LCP fallback + gfx_spec.py harness), Wave 2 3D layer (use-client dynamic ssr:false wrapper + capability-gated R3F Canvas + hero.tsx SVG slot), Wave 3 perf+a11y gate (Playwright LCP/FCP 560ms<2500 proxy + no-context-leak) + maintainer UAT (hive reworked to final: darker depth ring + center→cone light-streaks; tier-ordered cards; no command scrollbars).
+Status: ✅ Complete & verified — NEXT: Phase 17 (SEO & Static Assets, SEO-01)
+Last activity: 2026-06-09 — Phase 16 COMPLETE (maintainer-approved hive round 3; full GFX gate green; 16-03-SUMMARY + tracking reconciled; HANDOFF/.continue-here removed; servers stopped).
 
 ## Phase Summary (v1.3.0)
 
@@ -42,7 +42,7 @@ Last activity: 2026-06-09 — Phase 16 PLANNED (research-first: R3F v9 + Next 16
 | 13 | Docs Content Pipeline | DOCS-01 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 4/4 SCs PASSED; FOWT UAT passed; code review 0-crit/3-warn) |
 | 14 | Changelog Pipeline | CHG-01–03 | ✅ Complete & verified 2026-06-08 (2/2 plans; verifier 7/7 must-haves + 3/3 SCs PASSED; code review 2-crit/3-warn ALL fixed inline before verify) |
 | 15 | Marketing Home | HOME-01–05 (SITE-03 deferred→Vercel) | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 5/5 must-haves + SC-1..5; code review 2-crit/3-warn fixed inline; both-theme Playwright proof) |
-| 16 | 3D Layer | GFX-01–04 | ◆ Planned 2026-06-09 (3 plans, 3 waves; plan-checker PASSED) — ready to execute |
+| 16 | 3D Layer | GFX-01–04 | ✅ Complete & verified 2026-06-09 (3/3 plans; GFX-01..04 green on prod build, FCP 560ms; maintainer UAT approved after 3 hive rounds) |
 | 17 | SEO & Static Assets | SEO-01 | Not started |
 | 18 | Full Content Authoring | DOCS-02–09 | Not started |
 | 19 | Test Suite & CI | QA-01, QA-02 | Not started |
@@ -201,6 +201,8 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
+Last session: 2026-06-09 (resumed → FINALIZED Phase 16). Restored from HANDOFF.json + 16-3d-layer/.continue-here.md: Phase 16 was executed & green but paused at the finalization gate. Maintainer requested a hive rework (round 3) — applied: darker back depth ring + short amber center→cone light-streaks (`Spoke`) in hero-canvas.tsx, defense-in-depth cards reordered Default→Privileged→Optional (how-it-works.tsx), command-field scrollbars removed (no-scrollbar @utility in globals.css). Maintainer approved on :3000 ("Good → finalize"). Full gate re-run GREEN on the production build (pnpm build exit 0; gfx_spec.py GFX-01..04 PASS, FCP 560ms; home_spec.py PASS). 16-03-SUMMARY.md written; STATE/ROADMAP/REQUIREMENTS reconciled (GFX-01..04 done); HANDOFF.json + 16-3d-layer/.continue-here.md deleted (one-shot); dev servers stopped. Committed inline on main. **Phase 16 COMPLETE. NEXT: Phase 17 (SEO & Static Assets, SEO-01).** NOTE for future sessions: GSD phase-resolver can't find "16-3d-layer" (greedy `3d` token) → tracking is hand-managed; do NOT spawn gsd-executor (subagents lack node/pnpm).
+
 Last session: 2026-06-07 (resumed) — restored from HANDOFF.json (2026-06-07T11:56). v1.3.0-seed work complete & committed (e1b907b/307fbad/999fa39/95a99e6 + wip e6962e6); tree clean. Proceeding to next action: formalize v1.3.0 milestone.
 
 Last session: 2026-06-06 (resumed)
@@ -210,5 +212,5 @@ Resume file: memory/nudge-block-mode-and-bypass-fix.md + HANDOFF.json. Open: blo
 ## Operator Next Steps
 
 - **v1.2.0 (current):** ALL phases (6,7,8,9) ✅ **complete & verified**. Milestone audit (`v1.2.0-MILESTONE-AUDIT.md`, `tech_debt` — NO blockers) → maintainer scope "Everything" → **Phase 9 "v1.2.0 Tech-Debt Cleanup" EXECUTED (5/5 plans + fix `ef4ea97`) + VERIFIED passed 9/9** (`09-VERIFICATION.md`). All audit findings resolved: CLEAN-01 hermetic CORR E2E (signed non-wildcard fixture, blocks offline), CLEAN-02 LoadLayered Nudge-pointer merge (root fix), CLEAN-03 Phase-6 Nyquist COMPLIANT, CLEAN-04 handler comment, HARDEN-01/02/03 SPATH evasion edges (ancestor-symlink dual-form + Windows ADS/trailing-dot + verb word-boundary), DRIFT-01 live version_drift npm registry query (fail-open, floors never bumped). Release gates GREEN (go build + full unit suite + `-tags e2e` 15.4s + `-tags fuzz` incl. policy post-fix + TestPathImportsArePure + TestOverlayAllowCannotDowngradePathBlock). Phase 9 ran SEQUENTIALLY on main (`use_worktrees=false`); executors were told NOT to do phase-number-keyed SDK tracking writes — orchestrator updated STATE/ROADMAP/REQUIREMENTS MANUALLY. **NEXT:** re-run `/gsd-complete-milestone v1.2.0` — fold `v1.2.0-MILESTONE-AUDIT.md` + `09-VERIFICATION.md` into the archive (optionally `/gsd-verify-work 9` for conversational UAT first). (Phase 8's 08-05 executor had hit a mid-run session limit AFTER committing its 3 task commits — closed out manually by writing its SUMMARY, no re-execution.) Known INFO (now folded into Phase 9): gateway `realMetadataFetch` (drift.go) is a production stub returning empty, so `version_drift` emits nothing live until a real registry query is added (floor auto-update is Out-of-Scope; drift is informational-only). Also confirmed broken this session: `phase-plan-index 8` flattens all 8 plans into "wave 1" (ignores the `wave:` frontmatter) — execution used the authoritative PLAN-frontmatter wave order W1{01,05} W2{02,03} W3{04} W4{06} W5{07,08}. Code review done (08-REVIEW.md): 0 critical, 4 warning — ALL FIXED (WR-01 redact nudge command fields in audit log, WR-02 parseInt overflow guard, WR-03 parallelize PM probes so detection stays ~2s within the hook budget, WR-04 bound drift goroutine) + re-confirmed (build + tests + live E2E green); 5 Info deferred. Caveat: `go test -race` is CI-only (CGO disabled locally) — the CI race pass on internal/nudge is the authoritative confirmation for WR-03's concurrency change. NOTE (still applies to execute): the `gsd-sdk` init.plan-phase / state.begin-phase / phase.complete resolvers map bare phase numbers (7, 8) to ARCHIVED v1.0.0 dirs under `.planning/milestones/v1.0.0-phases/` and corrupt STATE frontmatter progress — the live v1.2.0 phases are in `.planning/phases/NN-slug/`. Pass explicit paths to agents and update STATE/ROADMAP/REQUIREMENTS tracking MANUALLY (do not trust phase-number-keyed SDK writes). `init.execute-phase`, `roadmap.get-phase`, and `init.phase-op` resolved correctly; `init.plan-phase`/`state.begin-phase` did not. CONFIRMED this session: `init.plan-phase 8` → `.planning/milestones/v1.0.0-phases/08-tui-dashboard` (wrong); plan-phase was driven with explicit live paths instead.
-- **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: `HANDOFF.json` + 05-05 `.continue-here.md`. Do NOT close v1.1.0 before this runs.
+- **v1.1.0 (parked release):** when ready, run `docs/release-runbook.md` (push `../pollen` + cut signed tags `pollen.2/.3/.4/.5` + cosign verify + create/push `bantuson/beekeeper`), then finish 05-05 Task 3 (tracking + verify) and close v1.1.0 via `/gsd-complete-milestone`. Resume context: 05-05 `.continue-here.md` + `docs/release-runbook.md`. Do NOT close v1.1.0 before this runs.
 - **Still pending (from v1.0.0 close):** the beekeeper GitHub remote is created as part of the v1.1.0 runbook (Step 1: `gh repo create bantuson/beekeeper`).

@@ -67,7 +67,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 13: Docs Content Pipeline** — ✅ Complete & verified 2026-06-08 — Fumadocs static-export pipeline (fumadocs-mdx wiring, static Orama search, DocsLayout, 8-section skeleton); verifier 4/4 SCs + FOWT UAT passed
 - [x] **Phase 14: Changelog Pipeline** — ✅ Complete & verified 2026-06-08 — second fumadocs-mdx changelog collection + per-version static pages (v1.0.0/v1.2.0/v1.3.0) + cosign/SLSA verify commands + red exit-1→exit-2 breaking-change callout; verifier 7/7 must-haves, 3/3 SCs
 - [x] **Phase 15: Marketing Home** — ✅ Complete & verified 2026-06-08 (HOME-01..05) — hero+dual CTA+go-install chip, Nx origin story, 3-step how-it-works, 6 shipped-capability feature cards, 15-harness matrix, honesty/known-gaps callout; verifier 5/5 must-haves; code review 2-crit/3-warn fixed inline; both-theme Playwright proof. **SITE-03 (live deploy) DEFERRED → Vercel.**
-- [ ] **Phase 16: 3D Layer** — R3F hive hero + ambient accents behind dynamic(ssr:false), perf/a11y gates — **3 plans planned 2026-06-09**
+- [x] **Phase 16: 3D Layer** — R3F hive hero + ambient accents behind dynamic(ssr:false), perf/a11y gates — **✅ complete & verified 2026-06-09 (3/3 plans; GFX-01..04 green; maintainer UAT approved after 3 hive rounds)**
 - [ ] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image
 - [ ] **Phase 18: Full Content Authoring** — all docs + changelog prose, accuracy review gate
 - [ ] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/
@@ -219,7 +219,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 16-03-PLAN.md — Wave 3: perf + a11y gate — gfx_spec.py GFX-04 (Playwright LCP proxy < 2500ms + no-context-leak across nav) + optional lighthouse@13.3.0 CI path + maintainer UAT (hive visual/brand fit + drag feel + reduced-motion fallback + keyboard nav in both themes) (GFX-04)
+- [x] 16-03-PLAN.md — Wave 3: perf + a11y gate — gfx_spec.py GFX-04 (Playwright LCP/FCP proxy 560ms < 2500ms + no-context-leak across nav) + lighthouse SKIPPED (proxy is the sole gate, RESEARCH OQ4) + maintainer UAT approved after 3 hive redesign rounds (depth ring + center→cone light-streaks; tier-ordered cards; no command scrollbars) (GFX-04)
 
 **UI hint**: yes
 
@@ -297,7 +297,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **13. Docs Content Pipeline** | **v1.3.0** | **3/3** | **Complete** | **2026-06-08** |
 | **14. Changelog Pipeline** | **v1.3.0** | **2/2** | **Complete** | **2026-06-08** |
 | **15. Marketing Home** | **v1.3.0** | **3/3** | **Complete** (SITE-03 deferred→Vercel) | **2026-06-08** |
-| **16. 3D Layer** | **v1.3.0** | **0/3** | **Planned** | **—** |
+| **16. 3D Layer** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **17. SEO & Static Assets** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **18. Full Content Authoring** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
