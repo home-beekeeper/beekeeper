@@ -211,7 +211,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 3 plans (3 waves)
 **Wave 1**
 
-- [ ] 16-01-PLAN.md — Wave 1: foundation — package-legitimacy gate + install pinned three@0.184.0/@react-three/fiber@9.6.1/drei@10.7.7/@types/three@0.184.1 (workspace-isolated) + author static public/hero-hive.svg LCP fallback + create tests/gfx_spec.py harness (GFX-01 server-clean grep + canvas-post-hydration; GFX-02/03/04 PENDING slots) (GFX-01, GFX-03)
+- [x] 16-01-PLAN.md — Wave 1: foundation — package-legitimacy gate + install pinned three@0.184.0/@react-three/fiber@9.6.1/drei@10.7.7/@types/three@0.184.1 (workspace-isolated) + author static public/hero-hive.svg LCP fallback + create tests/gfx_spec.py harness (GFX-01 server-clean grep + canvas-post-hydration; GFX-02/03/04 PENDING slots) (GFX-01, GFX-03)
 
 **Wave 2** *(blocked on Wave 1)*
 
