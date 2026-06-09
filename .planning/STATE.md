@@ -5,7 +5,7 @@ milestone_name: Web Presence & Documentation
 status: executing
 stopped_at: "Big dogfood session. (1) handoff #9 scan→pollen E2E validated. (2) #13 scan audit-bloat FIXED. (3) Wired beekeeper as a LIVE Claude Code hook (~/.claude/settings.json, merged w/ GSD; backup .pre-beekeeper-20260606.bak). (4) Found pnpm-detect flaky on Windows (42-92%). (5) Built nudge `mode=block` (detection-INDEPENDENT enforcement, offers pnpm+bun) — PROVEN blocking live npm install via the hook. (6) Fixed pkgparse compound/env bypass (was defeating nudge AND catalog block). 3 commits on main: 6691585 fix(scan), 96f0a7b fix(pkgparse), 0028392 feat(nudge). Live config: %APPDATA%/beekeeper/config.json mode=block."
 last_updated: "2026-06-09T06:28:49.913Z"
-last_activity: "2026-06-08 — Phase 15 complete (3 plans, verifier 5/5 + SC-1..5, code review remediated inline: dual-theme header bg + threat-catalog overclaim). Next: Phase 16 (3D Layer)."
+last_activity: "2026-06-09 — Phase 16 (3D Layer) PLANNED: research-first (R3F v9 + Next 16 static export), Nyquist VALIDATION.md, pattern map, 3 plans/3 waves, plan-checker VERIFICATION PASSED (0 blockers), all GFX-01..04 covered. Next: /gsd-execute-phase 16."
 progress:
   total_phases: 9
   completed_phases: 5
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** Phase 15 (Marketing Home) ✅ COMPLETE & verified 2026-06-08 (HOME-01..05 — marketing home page live: hero, origin story, how-it-works, 6 feature cards, 15-harness matrix, honesty callout). SITE-03 (live deploy) DEFERRED → Vercel. Next: Phase 16 (3D Layer) — not started.
+**Current focus:** Phase 16 (3D Layer) ✅ PLANNED 2026-06-09 — interactive Three.js hive hero behind a client-only `dynamic(ssr:false)` boundary, static-SVG LCP fallback under reduced-motion/no-WebGL, LCP<2.5s budget (GFX-01..04). 3 plans/3 waves, plan-checker PASSED; ready to execute. (Phase 15 Marketing Home ✅ complete 2026-06-08; SITE-03 live deploy DEFERRED → Vercel.)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `HANDOFF.json`, `.planning/phases/05-contribution-back-milestone-close/.continue-here.md`, and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
 ## Current Position
 
-Phase: 16 — 3D Layer (not started; Phase 15 ✅ complete & verified 2026-06-08)
-Plan: 15-01/15-02/15-03 (3/3 complete) — verifier 5/5 must-haves + SC-1..5 PASSED; code review 2-crit/3-warn fixed inline before verify; both-theme Playwright proof green
+Phase: 16 — 3D Layer (✅ PLANNED 2026-06-09 — 3 plans, 3 waves; research + patterns + validation done; plan-checker VERIFICATION PASSED 0 blockers)
+Plan: 16-01/16-02/16-03 (0/3 complete) — Wave 1 foundation (install pinned three/R3F/drei + hero-hive.svg LCP fallback + gfx_spec.py harness), Wave 2 3D layer (use-client dynamic ssr:false wrapper + capability-gated R3F Canvas + hero.tsx SVG slot), Wave 3 perf+a11y gate (Playwright LCP<2500ms proxy + no-context-leak + maintainer UAT). 16-01 Task1 + 16-03 Task3 are blocking human checkpoints.
 Status: Ready to execute
-Last activity: 2026-06-08 — Phase 15 complete (3 plans, verifier 5/5 + SC-1..5, code review remediated inline: dual-theme header bg + threat-catalog overclaim). Next: Phase 16 (3D Layer).
+Last activity: 2026-06-09 — Phase 16 PLANNED (research-first: R3F v9 + Next 16 static-export; Nyquist VALIDATION.md; plan-checker PASSED, all GFX-01..04 covered). Next: /gsd-execute-phase 16.
 
 ## Phase Summary (v1.3.0)
 
@@ -42,7 +42,7 @@ Last activity: 2026-06-08 — Phase 15 complete (3 plans, verifier 5/5 + SC-1..5
 | 13 | Docs Content Pipeline | DOCS-01 | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 4/4 SCs PASSED; FOWT UAT passed; code review 0-crit/3-warn) |
 | 14 | Changelog Pipeline | CHG-01–03 | ✅ Complete & verified 2026-06-08 (2/2 plans; verifier 7/7 must-haves + 3/3 SCs PASSED; code review 2-crit/3-warn ALL fixed inline before verify) |
 | 15 | Marketing Home | HOME-01–05 (SITE-03 deferred→Vercel) | ✅ Complete & verified 2026-06-08 (3/3 plans; verifier 5/5 must-haves + SC-1..5; code review 2-crit/3-warn fixed inline; both-theme Playwright proof) |
-| 16 | 3D Layer | GFX-01–04 | Not started |
+| 16 | 3D Layer | GFX-01–04 | ◆ Planned 2026-06-09 (3 plans, 3 waves; plan-checker PASSED) — ready to execute |
 | 17 | SEO & Static Assets | SEO-01 | Not started |
 | 18 | Full Content Authoring | DOCS-02–09 | Not started |
 | 19 | Test Suite & CI | QA-01, QA-02 | Not started |
