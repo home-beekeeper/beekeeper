@@ -20,7 +20,7 @@
 - [x] **DSYS-02**: A visitor can switch between light and dark themes, persisted across visits, with no flash-of-wrong-theme
 - [x] **DSYS-03**: The site honors `prefers-reduced-motion` site-wide (a reduced-motion provider gates animation and 3D)
 - [x] **DSYS-04**: The UI meets WCAG 2.1 AA (contrast, keyboard navigation, visible focus) across both themes
-- [ ] **DSYS-05**: The documentation section adopts the Beekeeper design system (brand tokens, typography, chrome) and matches the marketing home's visual quality — dual-theme, reduced-motion, and WCAG-AA safe — without changing content *(Phase 18.1, inserted 2026-06-09 from the docs-styling-polish backlog)*
+- [x] **DSYS-05**: The documentation section adopts the Beekeeper design system (brand tokens, typography, chrome) and matches the marketing home's visual quality — dual-theme, reduced-motion, and WCAG-AA safe — without changing content ✅ Phase 18.1 (2026-06-09; quick task — command-card copy refinement deferred to backlog)
 
 ### Marketing Home (HOME)
 
@@ -93,7 +93,7 @@
 | DSYS-02 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-03 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
 | DSYS-04 | Phase 12 — Design System | ✅ Complete (2026-06-08) |
-| DSYS-05 | Phase 18.1 — Docs Theme Restyle | In progress (restyle quick-fixes landed 2026-06-09; command-card copy split pending) |
+| DSYS-05 | Phase 18.1 — Docs Theme Restyle | ✅ Complete (2026-06-09; quick task; command-card copy split → backlog) |
 | HOME-01 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
 | HOME-02 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |
 | HOME-03 | Phase 15 — Marketing Home | ✅ Complete (2026-06-08) |

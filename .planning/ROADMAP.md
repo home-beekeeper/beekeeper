@@ -70,7 +70,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 16: 3D Layer** — R3F hive hero + ambient accents behind dynamic(ssr:false), perf/a11y gates — **✅ complete & verified 2026-06-09 (3/3 plans; GFX-01..04 green; maintainer UAT approved after 3 hive rounds)**
 - [x] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image — **✅ complete & verified 2026-06-09 (3/3 plans; SEO-01; seo_spec SC-1..3 green; maintainer-approved OG card)**
 - [x] **Phase 18: Full Content Authoring** — all 8 docs sections authored + accuracy gate — **✅ complete & verified 2026-06-09 (6/6 plans; DOCS-02..09; accuracy_spec AC-1..3 green; maintainer AC-5 sign-off vs THREAT-MODEL.md)**
-- [ ] **Phase 18.1: Docs Theme Restyle** — restyle the Fumadocs docs chrome to the Phase-12 brand (DSYS-05; inserted 2026-06-09 from the docs-styling-polish backlog)
+- [x] **Phase 18.1: Docs Theme Restyle** — Fumadocs chrome brand-aligned (white border killed, teal/amber accents, sidebar duplication fixed) — **✅ complete & maintainer-approved 2026-06-09 (quick task; DSYS-05; command-card copy split deferred to backlog)**
 - [ ] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/
 
 ---
@@ -345,5 +345,5 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **16. 3D Layer** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **17. SEO & Static Assets** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
-| **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Restyle landed (borders/accents/duplication); command-card copy split pending** | **2026-06-09** |
+| **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
