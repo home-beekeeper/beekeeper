@@ -234,7 +234,10 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   2. Every page references the shared OG image (1200×630 PNG); social-card preview renders correctly when the URL is pasted into Twitter/LinkedIn
   3. `out/sitemap.xml` lists all public page URLs and `out/robots.txt` allows all crawlers and references the sitemap
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 17-01-PLAN.md — Foundation: BASE_URL constant (web/lib/metadata.ts) + seo_spec.py SC-1..3 file-walk harness (Wave 0)
+- [ ] 17-02-PLAN.md — Per-page metadata (SC-1) + shared OG card (SC-2): metadataBase/title-template/canonical + opengraph-image.png
+- [ ] 17-03-PLAN.md — Crawler assets (SC-3): sitemap.ts + robots.ts (force-static)
 **UI hint**: no
 
 ### Phase 18: Full Content Authoring
