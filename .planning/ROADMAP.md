@@ -340,7 +340,7 @@ Plans:
 - [x] 20-03-PLAN.md — Tier 3 W1 Sentry rules (SENT): watchlist expansion; SENTRY-006 + isMonitoredDescendant; SENTRY-007 + isExternalDest; TestRulesImportsArePure [wave 1] ✅ 2026-06-10 (SENT-01..04; commits 0e6b5f1/3e5b3a2)
 - [x] 20-04-PLAN.md — Tier 3 W2 file-write (SENT): EventFileWrite + SENTRY-008 + persistenceWritePaths; per-OS ingestion (Linux 2nd fanotify group >=5.9 / macOS write+rename+new-file union fix / Windows correct Kernel-File IDs 16/30/27) [wave 2] ✅ 2026-06-10 (SENT-05..08; commits f285ecf/c5c05db/fc5a781/03dcaec)
 - [x] 20-05-PLAN.md — Tier 3 W3 honesty + tests (SENT): PROJECT/THREAT-MODEL §8 + home honesty edits; synthetic 006/007/008 + watchlist rules_test [wave 3] ✅ 2026-06-10 (SENT-09/10; commit 304fedc; synthetic cases already from 20-03/04, verified green)
-- [ ] 20-06-PLAN.md — Tier 3 W4 STRETCH/OPTIONAL DNS: EventDNSQuery; Linux kprobe udp/tcp_sendmsg dport53 bpf2go; Windows ETW DNS-Client ID 3006; macOS deferred v2 [wave 4]
+- [x] 20-06-PLAN.md — Tier 3 W4 STRETCH/OPTIONAL DNS: EventDNSQuery; Linux kprobe udp/tcp_sendmsg dport53 bpf2go; Windows ETW DNS-Client ID 3006; macOS deferred v2 [wave 4] ✅ 2026-06-10 (SENT-11; commit d5719c5; eBPF QNAME parse CI-validated)
 **UI hint**: no (TUI/threat-model/marketing text only)
 
 ## Progress
@@ -378,4 +378,4 @@ Plans:
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
 | **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
-| **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **5/6** | **In Progress (20-01/03/04/05 ✅; 20-02 LLMF code ✅ — human HF-license verify pending; 20-06 DNS optional stretch remaining)** | **—** |
+| **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **6/6** | **All plans CODE-complete (20-01..06 ✅). ONLY remaining: 20-02 LLMF human HF-license live-bootstrap verify (gated 22M model)** | **—** |
