@@ -63,6 +63,26 @@ func TestAppClosePanel(t *testing.T) {
 	}
 }
 
+// TestAppPolicyShortcut proves the `p` key opens the policy editor panel from
+// the calm base screen — the first-class shortcut added so the editor is
+// reachable without going through the `:` command palette. BEEKEEPER_HOME
+// isolates the managed-policy file NewPolicyPanel seeds on construction.
+func TestAppPolicyShortcut(t *testing.T) {
+	t.Setenv("BEEKEEPER_HOME", t.TempDir())
+	a := NewApp(true)
+	m, _ := a.handleKey(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	app, ok := m.(App)
+	if !ok {
+		t.Fatalf("handleKey returned %T, want App", m)
+	}
+	if app.mode != modePanel {
+		t.Fatalf("expected modePanel after 'p', got %d", app.mode)
+	}
+	if app.panel != panelPolicy {
+		t.Fatalf("expected panelPolicy after 'p', got %s", app.panel)
+	}
+}
+
 // sampleSentryRecord returns a realistic critical sentry_alert audit record for
 // driving the incident card in tests (replaces the retired DefaultIncident demo).
 func sampleSentryRecord() audit.AuditRecord {

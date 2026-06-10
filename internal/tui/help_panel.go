@@ -10,7 +10,8 @@ import (
 )
 
 // HelpPanel implements PanelContent for the help overlay.
-// Content is static (LOCKED from prototype).
+// Content is static (prototype-locked; the policy-editor shortcut row was
+// added 2026-06-10 alongside the new `p` keybinding).
 type HelpPanel struct{}
 
 // NewHelpPanel creates a HelpPanel.
@@ -52,6 +53,7 @@ func (p *HelpPanel) Body(width, height int) string {
 	sb.WriteString("  " + label("NAVIGATION") + "\n")
 	sb.WriteString("  " + key(":") + explain("open command palette (do anything)") + "\n")
 	sb.WriteString("  " + key("!") + explain("jump straight to alerts") + "\n")
+	sb.WriteString("  " + key("p") + explain("open the policy editor (--admin to edit)") + "\n")
 	sb.WriteString("  " + key("g") + explain("go-to menu") + "\n")
 	sb.WriteString("  " + key("esc") + explain("close any overlay") + "\n")
 	sb.WriteString("\n")

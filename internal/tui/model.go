@@ -269,13 +269,17 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Calm mode global key bindings (LOCKED from prototype).
+	// Calm mode global key bindings. Prototype-locked set, intentionally extended
+	// 2026-06-10 with `p` so the real policy editor has a first-class shortcut
+	// (it was previously reachable only via the `:` palette → "policy edit").
 	switch k {
 	case ":":
 		a.mode = modePalette
 		a.palette = PaletteModel{}
 	case "!":
 		return a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
+	case "p", "P":
+		return a.openPanel(panelPolicy, NewPolicyPanel(a.adminMode))
 	case "?":
 		return a.openPanel(panelHelp, NewHelpPanel())
 	case "g", "G":
