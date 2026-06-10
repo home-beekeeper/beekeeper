@@ -7,7 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
+
+// DefaultPromptGuardModel is the gated 22M PromptGuard 2 model used by default
+// (CPU/Windows friendly). It is a GATED Hugging Face model: it requires accepting
+// the Llama license on huggingface.co and `huggingface-cli login` before it can
+// be fetched (Phase 20, LLMF — human-only web action).
+const DefaultPromptGuardModel = "meta-llama/Llama-Prompt-Guard-2-22M"
 
 // Embedded sidecar assets (Phase 20, LLMF). //go:embed requires the assets to
 // live under the embedding package, so the old top-level sidecar/ directory was
@@ -33,6 +40,28 @@ func SidecarDir(stateDir string) string {
 // SidecarScriptPath returns the installed sidecar script path.
 func SidecarScriptPath(stateDir string) string {
 	return filepath.Join(SidecarDir(stateDir), SidecarScriptName)
+}
+
+// VenvDir returns the Python venv directory created by `beekeeper llamafirewall
+// install`: <stateDir>/llamafirewall/venv.
+func VenvDir(stateDir string) string {
+	return filepath.Join(SidecarDir(stateDir), "venv")
+}
+
+// VenvPython returns the venv interpreter path for the given venv directory
+// (Scripts\python.exe on Windows, bin/python elsewhere).
+func VenvPython(venvDir string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(venvDir, "Scripts", "python.exe")
+	}
+	return filepath.Join(venvDir, "bin", "python")
+}
+
+// HFHome returns the pinned Hugging Face cache dir for the gated model:
+// <stateDir>/llamafirewall/hf. Injected as HF_HOME so the model cache lives under
+// the StateDir, not the user's default ~/.cache.
+func HFHome(stateDir string) string {
+	return filepath.Join(SidecarDir(stateDir), "hf")
 }
 
 // InstallSidecar writes the embedded sidecar script + requirements.txt under

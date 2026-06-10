@@ -12,8 +12,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -1768,7 +1770,100 @@ func newLlamaFirewallCmd() *cobra.Command {
 		},
 	})
 
+	installCmd := &cobra.Command{
+		Use:   "install",
+		Short: "Bootstrap the LlamaFirewall venv, pinned CPU deps, and gated model",
+		Long: `Bootstrap the opt-in LlamaFirewall runtime under the beekeeper StateDir:
+materialize the sidecar, create a Python venv, install pinned dependencies from
+the CPU torch index (NOT the multi-GB CUDA wheels), and pre-pull the GATED
+Llama-Prompt-Guard-2 model into a pinned HF_HOME.
+
+The model is GATED: accept its license at
+https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-22M and run
+'huggingface-cli login' first, or the download step will fail.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state dir: %w", err)
+			}
+			model, _ := cmd.Flags().GetString("model")
+			out := cmd.OutOrStdout()
+
+			// Materialize the embedded sidecar script + requirements.txt.
+			scriptPath, err := llamafirewall.InstallSidecar(stateDir)
+			if err != nil {
+				return fmt.Errorf("install sidecar assets: %w", err)
+			}
+			sidecarDir := filepath.Dir(scriptPath)
+			reqPath := filepath.Join(sidecarDir, "requirements.txt")
+			venvDir := llamafirewall.VenvDir(stateDir)
+			hfHome := llamafirewall.HFHome(stateDir)
+
+			// Surface the GATED-model requirement up front — accepting the license
+			// is a human-only web action automation cannot perform.
+			fmt.Fprintf(out, "LlamaFirewall is opt-in and uses the GATED model %s.\n", model)
+			fmt.Fprintln(out, "You MUST accept its license and authenticate first:")
+			fmt.Fprintf(out, "  1. Accept https://huggingface.co/%s\n", model)
+			fmt.Fprintln(out, "  2. huggingface-cli login   (HF token that accepted the license)")
+			fmt.Fprintln(out)
+
+			// Choose the interpreter that creates the venv (config override wins).
+			basePython := "python3"
+			if runtime.GOOS == "windows" {
+				basePython = "python"
+			}
+			if cfg, lerr := config.Load(llamafirewallConfigPath()); lerr == nil && cfg.LlamaFirewall.PythonPath != "" {
+				basePython = cfg.LlamaFirewall.PythonPath
+			}
+
+			fmt.Fprintf(out, "Creating venv at %s ...\n", venvDir)
+			if err := runLlamafirewallCmd(cmd, basePython, "-m", "venv", venvDir); err != nil {
+				return fmt.Errorf("create venv: %w", err)
+			}
+			venvPython := llamafirewall.VenvPython(venvDir)
+
+			fmt.Fprintln(out, "Installing pinned dependencies (CPU torch index, no CUDA wheels) ...")
+			if err := runLlamafirewallCmd(cmd, venvPython, "-m", "pip", "install", "--upgrade", "pip"); err != nil {
+				return fmt.Errorf("upgrade pip: %w", err)
+			}
+			if err := runLlamafirewallCmd(cmd, venvPython, "-m", "pip", "install", "-r", reqPath,
+				"--extra-index-url", "https://download.pytorch.org/whl/cpu"); err != nil {
+				return fmt.Errorf("pip install: %w", err)
+			}
+
+			// Pre-pull the gated model into a pinned HF_HOME under the StateDir.
+			if err := os.MkdirAll(hfHome, 0o700); err != nil {
+				return fmt.Errorf("create HF cache dir: %w", err)
+			}
+			fmt.Fprintf(out, "Pre-pulling gated model %s into %s ...\n", model, hfHome)
+			dl := exec.Command(venvPython, "-c",
+				"import sys; from huggingface_hub import snapshot_download; snapshot_download(sys.argv[1])", model)
+			dl.Env = append(os.Environ(), "HF_HOME="+hfHome)
+			dl.Stdout = out
+			dl.Stderr = cmd.ErrOrStderr()
+			if err := dl.Run(); err != nil {
+				return fmt.Errorf("pre-pull gated model %s failed — did you accept the Llama license and run 'huggingface-cli login'? %w", model, err)
+			}
+
+			fmt.Fprintln(out, "LlamaFirewall install complete. Enable scanning with: beekeeper llamafirewall enable")
+			return nil
+		},
+	}
+	installCmd.Flags().String("model", llamafirewall.DefaultPromptGuardModel, "Gated PromptGuard model to pre-pull into HF_HOME")
+	lfCmd.AddCommand(installCmd)
+
 	return lfCmd
+}
+
+// runLlamafirewallCmd runs name+args, streaming stdout/stderr to the command's
+// output so venv/pip progress is visible. Used by `beekeeper llamafirewall
+// install`.
+func runLlamafirewallCmd(cmd *cobra.Command, name string, args ...string) error {
+	c := exec.Command(name, args...)
+	c.Stdout = cmd.OutOrStdout()
+	c.Stderr = cmd.ErrOrStderr()
+	return c.Run()
 }
 
 // newAuditRecordCmd is the PostToolUse hook handler. It reads PostToolUse JSON

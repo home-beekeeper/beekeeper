@@ -98,7 +98,13 @@ type Supervisor struct {
 func NewSupervisor(cfg LlamaFirewallConfig, sidecarPath string) *Supervisor {
 	pythonPath := cfg.PythonPath
 	if pythonPath == "" {
-		if runtime.GOOS == "windows" {
+		// Prefer the venv interpreter bootstrapped by `beekeeper llamafirewall
+		// install` (it sits next to the sidecar script); fall back to the system
+		// interpreter when no venv exists.
+		venvPy := VenvPython(filepath.Join(filepath.Dir(sidecarPath), "venv"))
+		if fi, err := os.Stat(venvPy); err == nil && !fi.IsDir() {
+			pythonPath = venvPy
+		} else if runtime.GOOS == "windows" {
 			pythonPath = "python"
 		} else {
 			pythonPath = "python3"
