@@ -164,10 +164,29 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, qCmd
 
 	case syncCatalogsMsg:
-		// Show sync toast (prototype: s in catalogs panel shows "Syncing all sources…").
+		// In-progress feedback: the catalogs panel batches this alongside the real
+		// async runSyncCmd, so the toast shows WHILE the sync runs. The outcome
+		// arrives as syncDoneMsg below (Phase 20 — no longer a no-op toast).
 		var sCmd tea.Cmd
 		a.toast, sCmd = a.toast.Show("Syncing all sources…", toastOK)
 		return a, sCmd
+
+	case syncDoneMsg:
+		// Real catalog-sync result toast (Phase 20): success / unchanged / failure.
+		var dCmd tea.Cmd
+		switch {
+		case msg.err != nil:
+			emsg := msg.err.Error()
+			if len(emsg) > 60 {
+				emsg = emsg[:57] + "..."
+			}
+			a.toast, dCmd = a.toast.Show("Catalog sync failed: "+emsg, toastWarn)
+		case msg.notModified:
+			a.toast, dCmd = a.toast.Show("Catalogs already fresh (unchanged)", toastOK)
+		default:
+			a.toast, dCmd = a.toast.Show(fmt.Sprintf("Synced %d catalog entries", msg.count), toastOK)
+		}
+		return a, dCmd
 
 	case policyEditErrMsg:
 		// A policy edit was rejected by the validation gate — surface why; the
