@@ -16,8 +16,10 @@ import (
 var EventsDropped uint64
 
 // DefaultEsloggerEvents is the eslogger subscription list.
-// Both "open" and "create" are required to detect credential reads.
-var DefaultEsloggerEvents = []string{"exec", "open", "create", "network_flow", "fork"}
+// "open"/"create" detect credential reads; Phase 20 (SENT-07) adds "write" and
+// "rename" so persistence writes (SENTRY-008) are seen — editors commonly
+// write-temp-then-rename, so "rename" is the key persistence-write signal.
+var DefaultEsloggerEvents = []string{"exec", "open", "create", "write", "rename", "network_flow", "fork"}
 
 // EsloggerCommand returns an *exec.Cmd for eslogger with the given event types.
 // The caller must attach stdout/stderr pipes before calling cmd.Start().

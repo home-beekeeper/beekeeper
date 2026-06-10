@@ -84,6 +84,50 @@ func TestParseCreateEvent(t *testing.T) {
 	}
 }
 
+// TestParseCreateNewFileUnion proves the union fix: a new-file create whose path
+// lives only in new_path.dir+filename is no longer dropped (FilePath non-empty).
+func TestParseCreateNewFileUnion(t *testing.T) {
+	data := loadFixture(t, "create_newfile_event.json")
+	ev, err := parseEsloggerLine(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.FilePath != "/Users/me/.claude/settings.json" {
+		t.Errorf("FilePath = %q, want /Users/me/.claude/settings.json (new_path union)", ev.FilePath)
+	}
+}
+
+// TestParseWriteEvent proves a write event parses to EventFileWrite.
+func TestParseWriteEvent(t *testing.T) {
+	data := loadFixture(t, "write_event.json")
+	ev, err := parseEsloggerLine(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.Kind != sentry.EventFileWrite {
+		t.Errorf("Kind = %v, want EventFileWrite", ev.Kind)
+	}
+	if ev.FilePath != "/Users/me/.vscode/tasks.json" {
+		t.Errorf("FilePath = %q, want /Users/me/.vscode/tasks.json", ev.FilePath)
+	}
+}
+
+// TestParseRenameEvent proves a rename event parses to EventFileWrite with the
+// destination path (the write-temp-then-rename persistence pattern).
+func TestParseRenameEvent(t *testing.T) {
+	data := loadFixture(t, "rename_event.json")
+	ev, err := parseEsloggerLine(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.Kind != sentry.EventFileWrite {
+		t.Errorf("Kind = %v, want EventFileWrite", ev.Kind)
+	}
+	if ev.FilePath != "/Users/me/Library/LaunchAgents/com.evil.plist" {
+		t.Errorf("FilePath = %q, want the rename destination path", ev.FilePath)
+	}
+}
+
 func TestParseNetworkEvent(t *testing.T) {
 	data := loadFixture(t, "network_event.json")
 	ev, err := parseEsloggerLine(data)

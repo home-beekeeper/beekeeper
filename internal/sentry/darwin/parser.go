@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"path"
 	"strings"
 	"time"
 
@@ -52,12 +53,50 @@ type esloggerOpenEvent struct {
 	} `json:"file"`
 }
 
-type esloggerCreateEvent struct {
-	Destination struct {
-		ExistingFile struct {
+// esloggerDestination models the ES destination union used by both create and
+// rename events. A NEW file's path is carried in new_path.dir.path + filename,
+// NOT existing_file.path — the original parser read only existing_file and so
+// DROPPED every new-file create (Phase 20 SENT-07 bug). path() returns the union.
+type esloggerDestination struct {
+	ExistingFile struct {
+		Path string `json:"path"`
+	} `json:"existing_file"`
+	NewPath struct {
+		Dir struct {
 			Path string `json:"path"`
-		} `json:"existing_file"`
-	} `json:"destination"`
+		} `json:"dir"`
+		Filename string `json:"filename"`
+	} `json:"new_path"`
+}
+
+// path returns the destination path, preferring existing_file (modify/overwrite)
+// and falling back to the new_path.dir+filename union (new-file create).
+func (d esloggerDestination) path() string {
+	if d.ExistingFile.Path != "" {
+		return d.ExistingFile.Path
+	}
+	if d.NewPath.Dir.Path != "" || d.NewPath.Filename != "" {
+		return path.Join(d.NewPath.Dir.Path, d.NewPath.Filename)
+	}
+	return ""
+}
+
+type esloggerCreateEvent struct {
+	Destination esloggerDestination `json:"destination"`
+}
+
+// esloggerWriteEvent models es_event_write_t (target file written in place).
+type esloggerWriteEvent struct {
+	Target struct {
+		Path string `json:"path"`
+	} `json:"target"`
+}
+
+// esloggerRenameEvent models es_event_rename_t; the destination is the same
+// union as create (editors write-temp-then-rename, so this is the common
+// persistence-write path).
+type esloggerRenameEvent struct {
+	Destination esloggerDestination `json:"destination"`
 }
 
 type esloggerNetworkFlowEvent struct {
@@ -134,7 +173,45 @@ func parseEsloggerLine(data []byte) (sentry.SentryEvent, error) {
 			PPID:     line.Process.PPID,
 			UID:      line.Process.AuditToken.UID,
 			Exe:      line.Process.Executable.Path,
-			FilePath: createEv.Destination.ExistingFile.Path,
+			FilePath: createEv.Destination.path(), // union fix: new-file creates no longer dropped
+			WallTime: wallTime,
+		}, nil
+
+	case "write":
+		raw, ok := line.Event["write"]
+		if !ok {
+			return sentry.SentryEvent{}, fmt.Errorf("%w: write event missing write key", ParseError)
+		}
+		var writeEv esloggerWriteEvent
+		if err := json.Unmarshal(raw, &writeEv); err != nil {
+			return sentry.SentryEvent{}, fmt.Errorf("%w: %v", ParseError, err)
+		}
+		return sentry.SentryEvent{
+			Kind:     sentry.EventFileWrite,
+			PID:      line.Process.AuditToken.PID,
+			PPID:     line.Process.PPID,
+			UID:      line.Process.AuditToken.UID,
+			Exe:      line.Process.Executable.Path,
+			FilePath: writeEv.Target.Path,
+			WallTime: wallTime,
+		}, nil
+
+	case "rename":
+		raw, ok := line.Event["rename"]
+		if !ok {
+			return sentry.SentryEvent{}, fmt.Errorf("%w: rename event missing rename key", ParseError)
+		}
+		var renameEv esloggerRenameEvent
+		if err := json.Unmarshal(raw, &renameEv); err != nil {
+			return sentry.SentryEvent{}, fmt.Errorf("%w: %v", ParseError, err)
+		}
+		return sentry.SentryEvent{
+			Kind:     sentry.EventFileWrite,
+			PID:      line.Process.AuditToken.PID,
+			PPID:     line.Process.PPID,
+			UID:      line.Process.AuditToken.UID,
+			Exe:      line.Process.Executable.Path,
+			FilePath: renameEv.Destination.path(), // rename -> destination path
 			WallTime: wallTime,
 		}, nil
 

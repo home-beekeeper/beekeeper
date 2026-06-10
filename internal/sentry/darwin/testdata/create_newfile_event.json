@@ -1,0 +1,1 @@
+{"event_type":"create","time":"2026-05-28T12:00:03.000000000Z","process":{"audit_token":{"pid":777,"uid":501},"ppid":1,"executable":{"path":"/usr/local/bin/claude"}},"event":{"create":{"destination":{"new_path":{"dir":{"path":"/Users/me/.claude"},"filename":"settings.json"}}}}}

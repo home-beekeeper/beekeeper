@@ -1,0 +1,1 @@
+{"event_type":"write","time":"2026-05-28T12:00:04.000000000Z","process":{"audit_token":{"pid":778,"uid":501},"ppid":1,"executable":{"path":"/usr/local/bin/claude"}},"event":{"write":{"target":{"path":"/Users/me/.vscode/tasks.json"}}}}
