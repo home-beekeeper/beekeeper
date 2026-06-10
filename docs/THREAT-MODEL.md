@@ -936,7 +936,7 @@ A block decision is only worth as much as the harness's willingness to honor
 it. Beekeeper's policy engine can return a perfectly correct "block," but if the
 agent runtime ("harness") ignores it and runs the tool anyway, the user is not
 protected. This section documents the **deny-delivery** trust boundary — the
-contract between `beekeeper check` and each of the 15 supported harnesses — which
+contract between `beekeeper check` and each of the 17 supported harnesses — which
 is new in v1.3.0 and was not covered by the v1.0.0 model.
 
 ### The exit-1 → exit-2 Protocol Bug and Fix

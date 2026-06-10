@@ -1,13 +1,13 @@
 # Agent Harness Support Matrix
 
-**Version:** Phase 10 (v1.3.0-seed), 2026-06-05
-**Source:** 10-RESEARCH.md §2–3 (multi-harness deny-contract analysis)
+**Version:** Phase 10 (v1.3.0-seed), 2026-06-05 — updated 2026-06-10 (added Continue + OpenClaw; 17 targets total, matching `internal/hooks/hooks.go` `allTargets`)
+**Source:** 10-RESEARCH.md §2–3 (multi-harness deny-contract analysis); `internal/hooks/hooks.go`
 
 ---
 
 ## Overview
 
-Beekeeper supports 15 agent harnesses across three support tiers. The tier
+Beekeeper supports 17 agent harnesses across three support tiers. The tier
 reflects how completely Beekeeper can intercept tool calls for that harness,
 based on available upstream hook mechanisms.
 
@@ -40,6 +40,8 @@ based on available upstream hook mechanisms.
 | 13 | **OpenCode** | `~/.config/opencode` | PLUGIN (tool.execute.before) | `throw new Error(...)` inside JS plugin | **Tier 2** | Plugin does NOT catch subagent `task` calls (#5894) or historically MCP calls (#2319); Beekeeper ships a plugin to `~/.config/opencode/plugins/beekeeper.js` | Documented contract |
 | 14 | **Kilo** | `~/.config/kilo` | MCP-GATEWAY-ONLY | MCP gateway intercept | **Tier 3** | **Native Bash/file tools UNGUARDED** — no pre-exec hook upstream (open FR #5827). Only MCP tools intercepted via gateway. | Documented contract |
 | 15 | **Trae** | `~/.trae` | MCP-GATEWAY-ONLY | MCP gateway intercept | **Tier 3** | **Native shell/file tools UNGUARDED** — no programmatic pre-exec hook. Native commands gated only by Trae's "Auto-run & security" UI. Only MCP tools intercepted via gateway. | Documented contract |
+| 16 | **Continue** | `~/.continue` | MCP-GATEWAY-ONLY | MCP gateway intercept | **Tier 3** | Wired via MCP client config (`~/.continue/config.yaml`, `mcpServers` streamable-http), NOT a pre-exec hook file. Only MCP tools routed through the gateway are intercepted; native/non-MCP tools are UNGUARDED. | Documented contract |
+| 17 | **OpenClaw** | `~/.openclaw` | MCP-GATEWAY-ONLY | MCP gateway intercept | **Tier 3** | Wired via MCP client config (`~/.openclaw/config.json`), NOT a pre-exec hook file. Only MCP tools routed through the gateway are intercepted; native/non-MCP tools are UNGUARDED. | Documented contract |
 
 ---
 
@@ -95,6 +97,18 @@ install a binary hook that runs before each tool call.
   Native tools are **UNGUARDED**. Only MCP tools routed through the Beekeeper
   gateway are intercepted. Configure via `~/.trae/mcp.json`.
 
+- **Continue** — integrated through its MCP client config
+  (`~/.continue/config.yaml`, `mcpServers` streamable-http), not a pre-exec hook
+  file. Beekeeper intercepts only the MCP tools Continue routes through the
+  gateway; any native/non-MCP tools are **UNGUARDED**. `beekeeper hooks install
+  --target continue` prints the config (no file is written).
+
+- **OpenClaw** — integrated through its MCP client config
+  (`~/.openclaw/config.json`), not a pre-exec hook file. Beekeeper intercepts only
+  the MCP tools OpenClaw routes through the gateway; any native/non-MCP tools are
+  **UNGUARDED**. `beekeeper hooks install --target openclaw` prints the config (no
+  file is written).
+
 ---
 
 ## Honesty Notes
@@ -107,7 +121,7 @@ The live-verified claim (HPC-04) means: on the development machine with
 2. Block the tool call (tool did not execute — no PostToolUse record followed)
 3. Audit the block in the NDJSON log
 
-**The other 14 harnesses** are implemented against their published documentation
+**The other 16 harnesses** are implemented against their published documentation
 and source code. Each has contract-shape unit tests that verify:
 - The installer writes the correct config format
 - The deny output matches the harness-documented JSON schema
@@ -141,20 +155,24 @@ that is marked executable. Windows does not support Unix executable scripts
 in this way. The Beekeeper Cline installer is guarded with `//go:build !windows`
 and returns an explicit "macOS/Linux only" error on Windows.
 
-### 4. Tier-3 native-tool gap (Kilo, Trae)
+### 4. Tier-3 native-tool gap (Kilo, Trae, Continue, OpenClaw)
 
-Kilo and Trae have no upstream pre-exec hook mechanism. This means:
-- **Any native tool call** (Bash, file read, file write, shell command) that a
-  Kilo or Trae agent makes will NOT be intercepted by Beekeeper.
+The four Tier-3 targets are integrated through the MCP gateway, not a pre-exec
+hook file (they are Beekeeper's `gatewayTargets`). This means:
+- **Any native tool call** (Bash, file read, file write, shell command) that the
+  agent makes outside MCP will NOT be intercepted by Beekeeper.
 - Only MCP tool calls routed through the Beekeeper gateway are intercepted.
-- This is an upstream limitation, not a Beekeeper implementation gap. For Kilo,
-  the upstream feature request is FR #5827.
-- Users of Kilo or Trae should be aware that Beekeeper provides PARTIAL coverage
-  only. For full pre-exec coverage, use a Tier-1 harness.
+- For Kilo and Trae this is an upstream limitation (no pre-exec hook mechanism);
+  for Kilo the upstream feature request is FR #5827. Continue and OpenClaw are
+  wired via their MCP client config (`~/.continue/config.yaml`,
+  `~/.openclaw/config.json`); `beekeeper hooks install` prints the config rather
+  than writing a hook.
+- Users of any Tier-3 target should be aware that Beekeeper provides PARTIAL
+  coverage only. For full pre-exec coverage, use a Tier-1 harness.
 
 ### 5. Documented-contract caveat for all non-Claude-Code harnesses
 
-All 14 non-Claude-Code harnesses are implemented based on:
+All 16 non-Claude-Code harnesses are implemented based on:
 - Official documentation from each harness vendor
 - Source code review (where public)
 - Corroborated across multiple sources
@@ -181,9 +199,11 @@ beekeeper hooks install --target cursor --dry-run
 # Uninstall (removes only Beekeeper entries, preserves other hooks):
 beekeeper hooks uninstall --target cursor
 
-# For Kilo/Trae (MCP gateway only — prints config instructions):
+# For Tier-3 targets (MCP gateway only — prints config instructions, no file written):
 beekeeper hooks install --target kilo
 beekeeper hooks install --target trae
+beekeeper hooks install --target continue
+beekeeper hooks install --target openclaw
 ```
 
 ---
@@ -203,6 +223,8 @@ Augment: docs.augmentcode.com/cli/hooks |
 Hermes: github.com/NousResearch/hermes-agent hooks.md |
 Windsurf: docs.windsurf.com/windsurf/cascade/hooks |
 Cline: docs.cline.bot/customization/hooks |
-Trae: docs.trae.ai/ide (MCP only)
+Trae: docs.trae.ai/ide (MCP only) |
+Continue: docs.continue.dev/customize/deep-dives/mcp (MCP only) |
+OpenClaw: docs.openclaw.ai/cli/mcp (MCP only)
 
 **Research date:** 2026-06-05
