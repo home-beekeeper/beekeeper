@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -1311,19 +1313,29 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 					CodeShieldAction: cfg.LlamaFirewall.CodeShieldAction,
 					PythonPath:       cfg.LlamaFirewall.PythonPath,
 				}
-				sockPath := filepath.Join(stateDir, "llamafirewall.sock")
-				sidecarPath := filepath.Join(stateDir, "llamafirewall", "llamafirewall_sidecar.py")
-				sup := llamafirewall.NewSupervisor(llmfCfg, sockPath, sidecarPath)
-				if err := sup.Start(ctx); err != nil {
-					// Fail-closed: if sidecar fails to start and FailMode is closed, abort.
-					if cfg.LlamaFirewall.FailMode == "" || cfg.LlamaFirewall.FailMode == "closed" {
-						return fmt.Errorf("llamafirewall sidecar failed to start (fail-closed): %w", err)
+				failClosed := cfg.LlamaFirewall.FailMode == "" || cfg.LlamaFirewall.FailMode == "closed"
+				// Materialize the embedded sidecar script under the StateDir (hash-skip
+				// on a matching stamp). The venv + gated model are bootstrapped
+				// separately by `beekeeper llamafirewall install`.
+				sidecarPath, instErr := llamafirewall.InstallSidecar(stateDir)
+				if instErr != nil {
+					if failClosed {
+						return fmt.Errorf("llamafirewall sidecar install failed (fail-closed): %w", instErr)
 					}
-					// fail-open: log and continue without scanning.
-					fmt.Fprintf(os.Stderr, "beekeeper gateway: llamafirewall sidecar unavailable (fail-open): %v\n", err)
+					fmt.Fprintf(os.Stderr, "beekeeper gateway: llamafirewall sidecar install failed (fail-open): %v\n", instErr)
 				} else {
-					llmfScanner = sup
-					defer sup.Stop() //nolint:errcheck
+					sup := llamafirewall.NewSupervisor(llmfCfg, sidecarPath)
+					if err := sup.Start(ctx); err != nil {
+						// Fail-closed: if sidecar fails to start and FailMode is closed, abort.
+						if failClosed {
+							return fmt.Errorf("llamafirewall sidecar failed to start (fail-closed): %w", err)
+						}
+						// fail-open: log and continue without scanning.
+						fmt.Fprintf(os.Stderr, "beekeeper gateway: llamafirewall sidecar unavailable (fail-open): %v\n", err)
+					} else {
+						llmfScanner = sup
+						defer sup.Stop() //nolint:errcheck
+					}
 				}
 			}
 
@@ -1629,6 +1641,29 @@ func newSentryCmd() *cobra.Command {
 	return daemon
 }
 
+// llamafirewallConfigPath resolves the beekeeper config.json path via the
+// platform resolver (honors %APPDATA% on Windows / BEEKEEPER_HOME on all OSes),
+// returning "" if it cannot be determined so the caller's config.Load surfaces
+// the error. Replaces the old $HOME/.beekeeper hardcode (Phase 20, LLMF — the
+// Windows StateDir bug).
+func llamafirewallConfigPath() string {
+	p, err := platform.ConfigPath()
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+// llamafirewallStatePath resolves <StateDir>/state.json via the platform
+// resolver, returning "" if the state dir cannot be determined.
+func llamafirewallStatePath() string {
+	dir, err := platform.StateDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "state.json")
+}
+
 // newLlamaFirewallCmd groups the LlamaFirewall prompt-injection sidecar subcommands.
 // It provides enable/disable/status management (LLMF-01, LLMF-06).
 func newLlamaFirewallCmd() *cobra.Command {
@@ -1642,7 +1677,7 @@ func newLlamaFirewallCmd() *cobra.Command {
 		Short: "Enable LlamaFirewall sidecar scanning",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfgPath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "config.json")
+			cfgPath := llamafirewallConfigPath()
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -1661,7 +1696,7 @@ func newLlamaFirewallCmd() *cobra.Command {
 		Short: "Disable LlamaFirewall sidecar scanning",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfgPath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "config.json")
+			cfgPath := llamafirewallConfigPath()
 			cfg, err := config.Load(cfgPath)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -1681,7 +1716,7 @@ func newLlamaFirewallCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Read state.json for PID + started_at written by the supervisor.
-			statePath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "state.json")
+			statePath := llamafirewallStatePath()
 			data, err := os.ReadFile(statePath)
 			if err != nil || data == nil {
 				fmt.Fprintln(cmd.OutOrStdout(), "LlamaFirewall Sidecar — Not running")
@@ -1709,7 +1744,7 @@ func newLlamaFirewallCmd() *cobra.Command {
 			proc, _ := os.FindProcess(pid)
 			alive := proc != nil && proc.Signal(syscall.Signal(0)) == nil
 
-			cfgPath := filepath.Join(os.ExpandEnv("$HOME"), ".beekeeper", "config.json")
+			cfgPath := llamafirewallConfigPath()
 			cfg, _ := config.Load(cfgPath)
 			sampleRate := cfg.LlamaFirewallSampleRate()
 			failMode := cfg.LlamaFirewall.FailMode
@@ -1785,8 +1820,21 @@ unreachability can exit 1 (block).`,
 				_ = check.RunAuditRecord(os.Stdin, auditPath)
 				return nil
 			}
-			sockPath := filepath.Join(stateDir, "llamafirewall.sock")
-			client, dialErr := llamafirewall.Dial(sockPath, 2*time.Second)
+			// Read the loopback port + per-launch bearer token the gateway's
+			// supervisor persisted to state.json (Phase 20, LLMF — IPC is loopback
+			// TCP + bearer token; one-shot commands connect to the running sidecar).
+			port, token, epErr := readLlamafirewallEndpoint(stateDir)
+			if epErr != nil {
+				// No running sidecar endpoint recorded → treat as unreachable.
+				if cfg.LlamaFirewall.FailMode == "" || cfg.LlamaFirewall.FailMode == "closed" {
+					fmt.Fprintf(os.Stderr, "beekeeper audit-record: LLMF sidecar endpoint unknown (fail-closed): %v\n", epErr)
+					os.Exit(1) // block PostToolUse
+				}
+				// fail-open: continue without scanning.
+				_ = check.RunAuditRecord(os.Stdin, auditPath)
+				return nil
+			}
+			client, dialErr := llamafirewall.Dial(net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), token, 2*time.Second)
 			if dialErr != nil {
 				// Sidecar unreachable.
 				if cfg.LlamaFirewall.FailMode == "" || cfg.LlamaFirewall.FailMode == "closed" {
@@ -1824,6 +1872,34 @@ func (s *llmfClientScanner) Scan(ctx context.Context, req llamafirewall.ScanRequ
 }
 
 func (s *llmfClientScanner) IsDegraded() bool { return false }
+
+// readLlamafirewallEndpoint reads the loopback port + per-launch bearer token the
+// LlamaFirewall supervisor persisted to <stateDir>/state.json. One-shot commands
+// (audit-record) use it to reach the long-lived sidecar started by the gateway
+// daemon (Phase 20, LLMF — IPC is loopback TCP + bearer token). It returns an
+// error when no complete endpoint is recorded, which the caller treats per the
+// configured fail-mode (fail-closed = block).
+func readLlamafirewallEndpoint(stateDir string) (int, string, error) {
+	statePath := filepath.Join(stateDir, "state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return 0, "", err
+	}
+	var state map[string]any
+	if err := json.Unmarshal(data, &state); err != nil {
+		return 0, "", err
+	}
+	lf, ok := state["llamafirewall"].(map[string]any)
+	if !ok {
+		return 0, "", fmt.Errorf("no llamafirewall endpoint recorded in state.json")
+	}
+	portF, okPort := lf["port"].(float64) // JSON numbers decode to float64
+	token, okToken := lf["token"].(string)
+	if !okPort || !okToken || int(portF) == 0 || token == "" {
+		return 0, "", fmt.Errorf("incomplete llamafirewall endpoint in state.json")
+	}
+	return int(portF), token, nil
+}
 
 // newDashboardCmd opens the real-time Bubble Tea TUI dashboard.
 func newDashboardCmd() *cobra.Command {

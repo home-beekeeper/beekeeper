@@ -5,24 +5,25 @@ package llamafirewall
 import (
 	"context"
 	"net"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
 
-// startMockSidecar creates a Unix listener at sockPath. It accepts exactly one
+// testToken is the bearer token used by the TCP mocks below. The mocks do not
+// enforce it (token rejection is covered by client_token_test.go); they accept
+// any request so the supervisor's Scan/latency paths can be exercised.
+const testToken = "test-token"
+
+// startMockSidecar creates a loopback TCP listener (one transport on every OS,
+// matching the production sidecar — Phase 20, LLMF). It accepts exactly one
 // connection, reads a ScanRequest, writes back resp, then closes the connection.
-// Returns a cleanup function that stops the listener.
-func startMockSidecar(t *testing.T, sockPath string, resp ScanResponse) func() {
+// Returns the dial address and a cleanup function that stops the listener.
+func startMockSidecar(t *testing.T, resp ScanResponse) (string, func()) {
 	t.Helper()
 
-	// Remove stale socket if present.
-	_ = os.Remove(sockPath)
-
-	ln, err := net.Listen("unix", sockPath)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("startMockSidecar: listen on %s: %v", sockPath, err)
+		t.Fatalf("startMockSidecar: listen: %v", err)
 	}
 
 	done := make(chan struct{})
@@ -42,21 +43,19 @@ func startMockSidecar(t *testing.T, sockPath string, resp ScanResponse) func() {
 		_ = Encode(conn, resp)
 	}()
 
-	return func() {
+	return ln.Addr().String(), func() {
 		ln.Close()
 		<-done
-		_ = os.Remove(sockPath)
 	}
 }
 
 // startCrashingSidecar accepts one connection then immediately closes it to
-// simulate a sidecar crash during a read.
-func startCrashingSidecar(t *testing.T, sockPath string) func() {
+// simulate a sidecar crash during a read. Returns the dial address and cleanup.
+func startCrashingSidecar(t *testing.T) (string, func()) {
 	t.Helper()
-	_ = os.Remove(sockPath)
-	ln, err := net.Listen("unix", sockPath)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("startCrashingSidecar: listen on %s: %v", sockPath, err)
+		t.Fatalf("startCrashingSidecar: listen: %v", err)
 	}
 	done := make(chan struct{})
 	go func() {
@@ -68,10 +67,9 @@ func startCrashingSidecar(t *testing.T, sockPath string) func() {
 		// Immediately close — simulates process crash.
 		conn.Close()
 	}()
-	return func() {
+	return ln.Addr().String(), func() {
 		ln.Close()
 		<-done
-		_ = os.Remove(sockPath)
 	}
 }
 
@@ -83,7 +81,7 @@ func TestSupervisorFailsClosedAfterMaxRetries(t *testing.T) {
 		FailMode:   "closed",
 		SampleRate: 1.0,
 	}
-	sup := NewSupervisor(cfg, "/tmp/test.sock", "/tmp/fake_sidecar.py")
+	sup := NewSupervisor(cfg, "/tmp/fake_sidecar.py")
 	sup.degraded = true
 	sup.retries = sup.MaxRetries
 
@@ -108,7 +106,7 @@ func TestSupervisorFailsOpenAfterMaxRetries(t *testing.T) {
 		FailMode:   "open",
 		SampleRate: 1.0,
 	}
-	sup := NewSupervisor(cfg, "/tmp/test_open.sock", "/tmp/fake_sidecar.py")
+	sup := NewSupervisor(cfg, "/tmp/fake_sidecar.py")
 	sup.degraded = true
 	sup.retries = sup.MaxRetries
 
@@ -128,18 +126,13 @@ func TestSupervisorFailsOpenAfterMaxRetries(t *testing.T) {
 // TestSampleRateGating verifies that SampleRate=0.0 results in no request being
 // sent to the mock sidecar.
 func TestSampleRateGating(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := filepath.Join(dir, "sidecar.sock")
-
 	// Track whether the mock sidecar ever accepted a connection.
 	accepted := make(chan struct{}, 1)
-	_ = os.Remove(sockPath)
-	ln, err := net.Listen("unix", sockPath)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	defer ln.Close()
-	defer os.Remove(sockPath)
 
 	go func() {
 		conn, err := ln.Accept()
@@ -155,9 +148,9 @@ func TestSampleRateGating(t *testing.T) {
 		FailMode:   "closed",
 		SampleRate: 0.0, // never sample
 	}
-	sup := NewSupervisor(cfg, sockPath, "/tmp/fake_sidecar.py")
+	sup := NewSupervisor(cfg, "/tmp/fake_sidecar.py")
 	// Wire a real client — the 0.0 sample rate should prevent it from being used.
-	c, err := Dial(sockPath, time.Second)
+	c, err := Dial(ln.Addr().String(), testToken, time.Second)
 	if err != nil {
 		t.Fatalf("dial mock: %v", err)
 	}
@@ -189,18 +182,15 @@ func TestSampleRateGating(t *testing.T) {
 }
 
 // TestSupervisorScanSuccess verifies a successful round-trip scan using a mock
-// Unix sidecar.
+// loopback-TCP sidecar.
 func TestSupervisorScanSuccess(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := filepath.Join(dir, "sidecar.sock")
-
 	mockResp := ScanResponse{
 		RequestID:  "req-4",
 		Result:     ResultClean,
 		Confidence: 0.99,
 		LatencyMS:  10,
 	}
-	cleanup := startMockSidecar(t, sockPath, mockResp)
+	addr, cleanup := startMockSidecar(t, mockResp)
 	defer cleanup()
 
 	cfg := LlamaFirewallConfig{
@@ -208,10 +198,10 @@ func TestSupervisorScanSuccess(t *testing.T) {
 		FailMode:   "closed",
 		SampleRate: 1.0,
 	}
-	sup := NewSupervisor(cfg, sockPath, "/tmp/fake_sidecar.py")
+	sup := NewSupervisor(cfg, "/tmp/fake_sidecar.py")
 
 	// Dial the mock sidecar directly and inject into supervisor.
-	c, err := Dial(sockPath, time.Second)
+	c, err := Dial(addr, testToken, time.Second)
 	if err != nil {
 		t.Fatalf("dial mock sidecar: %v", err)
 	}
@@ -237,15 +227,12 @@ func TestSupervisorScanSuccess(t *testing.T) {
 // TestLatencyTrackerUpdatedOnScan verifies that after a successful Scan the
 // supervisor's latency tracker is non-zero.
 func TestLatencyTrackerUpdatedOnScan(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := filepath.Join(dir, "sidecar_lat.sock")
-
 	mockResp := ScanResponse{
 		RequestID: "req-5",
 		Result:    ResultClean,
 		LatencyMS: 42,
 	}
-	cleanup := startMockSidecar(t, sockPath, mockResp)
+	addr, cleanup := startMockSidecar(t, mockResp)
 	defer cleanup()
 
 	cfg := LlamaFirewallConfig{
@@ -253,9 +240,9 @@ func TestLatencyTrackerUpdatedOnScan(t *testing.T) {
 		FailMode:   "closed",
 		SampleRate: 1.0,
 	}
-	sup := NewSupervisor(cfg, sockPath, "/tmp/fake_sidecar.py")
+	sup := NewSupervisor(cfg, "/tmp/fake_sidecar.py")
 
-	c, err := Dial(sockPath, time.Second)
+	c, err := Dial(addr, testToken, time.Second)
 	if err != nil {
 		t.Fatalf("dial mock sidecar: %v", err)
 	}

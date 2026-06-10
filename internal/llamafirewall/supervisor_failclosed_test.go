@@ -32,7 +32,7 @@ func newTestSupervisor(failMode string) *Supervisor {
 		Enabled:    true,
 		FailMode:   failMode,
 		SampleRate: 1.0,
-	}, "test.sock", "fake_sidecar.py")
+	}, "fake_sidecar.py")
 }
 
 // TestNewSupervisorInitialState verifies NewSupervisor returns a sane,
@@ -59,9 +59,6 @@ func TestNewSupervisorInitialState(t *testing.T) {
 	if sup.SidecarPath != "fake_sidecar.py" {
 		t.Errorf("SidecarPath = %q, want %q", sup.SidecarPath, "fake_sidecar.py")
 	}
-	if sup.SockPath != "test.sock" {
-		t.Errorf("SockPath = %q, want %q", sup.SockPath, "test.sock")
-	}
 
 	wantPython := "python3"
 	if runtime.GOOS == "windows" {
@@ -80,7 +77,7 @@ func TestNewSupervisorHonorsExplicitPython(t *testing.T) {
 		FailMode:   "closed",
 		SampleRate: 1.0,
 		PythonPath: "/opt/custom/python",
-	}, "test.sock", "fake_sidecar.py")
+	}, "fake_sidecar.py")
 
 	if sup.PythonPath != "/opt/custom/python" {
 		t.Errorf("PythonPath = %q, want explicit /opt/custom/python", sup.PythonPath)
@@ -223,7 +220,7 @@ func TestScanSampleRateZeroIsTreatedAsFull(t *testing.T) {
 		Enabled:    true,
 		FailMode:   "closed",
 		SampleRate: 0.0, // documented: zero/negative -> 1.0 (scan everything)
-	}, "test.sock", "fake_sidecar.py")
+	}, "fake_sidecar.py")
 	// Not degraded, nil client.
 
 	resp, err := sup.Scan(context.Background(), ScanRequest{
@@ -266,7 +263,7 @@ func TestStatusInfoNotStarted(t *testing.T) {
 		Enabled:    true,
 		FailMode:   "closed",
 		SampleRate: 0.5,
-	}, "test.sock", "fake_sidecar.py")
+	}, "fake_sidecar.py")
 
 	st := sup.StatusInfo()
 	if st.PID != 0 {

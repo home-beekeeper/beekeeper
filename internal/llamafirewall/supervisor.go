@@ -1,21 +1,25 @@
 // Package llamafirewall implements the LlamaFirewall sidecar supervisor.
 // The supervisor manages the Python sidecar process lifecycle: starting it,
-// dialling the Unix socket (or named pipe on Windows), health-monitoring via
-// process wait, and restarting up to MaxRetries times with exponential backoff
-// before entering degraded mode.
+// dialling a loopback TCP socket (one transport on every OS), health-monitoring
+// via process wait, and restarting up to MaxRetries times with exponential
+// backoff before entering degraded mode.
 package llamafirewall
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,8 +74,6 @@ type Supervisor struct {
 	PythonPath string
 	// SidecarPath is the absolute path to llamafirewall_sidecar.py.
 	SidecarPath string
-	// SockPath is the Unix socket path (or named pipe path on Windows).
-	SockPath string
 	// MaxRetries is the maximum number of restart attempts before degraded mode.
 	MaxRetries int
 
@@ -83,11 +85,17 @@ type Supervisor struct {
 	degraded  bool
 	client    *Client
 	latency   LatencyTracker
+
+	// port is the loopback TCP port the sidecar binds; token is the per-launch
+	// bearer token. Both are chosen once in Start and reused across relaunches.
+	port  int
+	token string
 }
 
-// NewSupervisor creates a Supervisor from the given config, sock path, and
-// sidecar script path. It does not start the sidecar — call Start.
-func NewSupervisor(cfg LlamaFirewallConfig, sockPath, sidecarPath string) *Supervisor {
+// NewSupervisor creates a Supervisor from the given config and sidecar script
+// path. It does not start the sidecar — call Start. The loopback port and bearer
+// token are chosen at Start time, not here.
+func NewSupervisor(cfg LlamaFirewallConfig, sidecarPath string) *Supervisor {
 	pythonPath := cfg.PythonPath
 	if pythonPath == "" {
 		if runtime.GOOS == "windows" {
@@ -99,18 +107,90 @@ func NewSupervisor(cfg LlamaFirewallConfig, sockPath, sidecarPath string) *Super
 	return &Supervisor{
 		PythonPath:  pythonPath,
 		SidecarPath: sidecarPath,
-		SockPath:    sockPath,
 		MaxRetries:  3,
 		cfg:         cfg,
 	}
 }
 
-// Start launches the Python sidecar, waits up to 2 seconds for its socket to
-// appear, dials it, persists the PID to state.json, and starts the watch goroutine
-// that restarts the process on unexpected exit.
+// addr returns the loopback dial address for the sidecar (127.0.0.1:<port>).
+func (s *Supervisor) addr() string {
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(s.port))
+}
+
+// childEnv returns the sidecar's environment: the parent environment plus the
+// loopback port + per-launch bearer token (the sidecar binds the port and
+// authenticates each request against the token) and a pinned HF_HOME so the
+// gated model cache lives under the StateDir, not the user's default ~/.cache.
+func (s *Supervisor) childEnv() []string {
+	env := append(os.Environ(),
+		"BEEKEEPER_LLMF_PORT="+strconv.Itoa(s.port),
+		"BEEKEEPER_LLMF_TOKEN="+s.token,
+	)
+	if stateDir, err := platform.StateDir(); err == nil {
+		env = append(env, "HF_HOME="+filepath.Join(stateDir, "llamafirewall", "hf"))
+	}
+	return env
+}
+
+// waitReady polls the loopback port until a TCP connection succeeds or the
+// deadline passes. This replaces the old os.Stat(socketFile) readiness probe,
+// which (a) has no meaning for a TCP socket and (b) raced the sidecar's listen()
+// — a successful dial is the only true readiness signal.
+func (s *Supervisor) waitReady(deadline time.Time) bool {
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", s.addr(), 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
+// pickFreeLoopbackPort asks the kernel for an unused 127.0.0.1 port by binding
+// :0 and immediately closing. The sidecar (which sets SO_REUSEADDR) binds it
+// microseconds later; the brief gap is an accepted TOCTOU on loopback only.
+func pickFreeLoopbackPort() (int, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	_ = ln.Close()
+	return port, nil
+}
+
+// newBearerToken returns a 256-bit cryptographically-random hex token.
+func newBearerToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := crand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// Start chooses a loopback port + bearer token, launches the Python sidecar with
+// them (plus HF_HOME) injected into its environment, waits up to 2 seconds for
+// the sidecar to accept a TCP connection, dials it, persists the PID/port/token
+// to state.json, and starts the watch goroutine that restarts the process on
+// unexpected exit.
 func (s *Supervisor) Start(ctx context.Context) error {
+	port, err := pickFreeLoopbackPort()
+	if err != nil {
+		return fmt.Errorf("pick llamafirewall loopback port: %w", err)
+	}
+	token, err := newBearerToken()
+	if err != nil {
+		return fmt.Errorf("generate llamafirewall bearer token: %w", err)
+	}
+	s.mu.Lock()
+	s.port = port
+	s.token = token
+	s.mu.Unlock()
+
 	cmd := exec.CommandContext(ctx, s.PythonPath, s.SidecarPath)
-	cmd.Env = os.Environ()
+	cmd.Env = s.childEnv()
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start llamafirewall sidecar: %w", err)
@@ -121,21 +201,13 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	s.startedAt = time.Now()
 	s.mu.Unlock()
 
-	// Wait up to 2 s for the socket file to appear.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(s.SockPath); err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if _, err := os.Stat(s.SockPath); err != nil {
-		// Kill the process — socket never appeared.
+	if !s.waitReady(time.Now().Add(2 * time.Second)) {
+		// Kill the process — it never started listening.
 		_ = cmd.Process.Kill()
-		return fmt.Errorf("llamafirewall sidecar socket %s did not appear within 2s", s.SockPath)
+		return fmt.Errorf("llamafirewall sidecar did not listen on %s within 2s", s.addr())
 	}
 
-	c, err := Dial(s.SockPath, 5*time.Second)
+	c, err := Dial(s.addr(), s.token, 5*time.Second)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		return fmt.Errorf("dial llamafirewall sidecar: %w", err)
@@ -177,50 +249,39 @@ func (s *Supervisor) watchProcess(ctx context.Context, cmd *exec.Cmd) {
 	s.relaunch(ctx)
 }
 
-// relaunch re-starts the sidecar process. On failure it increments the retry
-// counter and, if MaxRetries is exceeded, sets degraded=true.
+// bumpRetry increments the restart counter and trips degraded mode once the
+// retry budget is exhausted. Called on every relaunch failure path.
+func (s *Supervisor) bumpRetry() {
+	s.mu.Lock()
+	s.retries++
+	if s.retries >= s.MaxRetries {
+		s.degraded = true
+	}
+	s.mu.Unlock()
+}
+
+// relaunch re-starts the sidecar process on the same loopback port + token. On
+// failure it increments the retry counter and, if MaxRetries is exceeded, sets
+// degraded=true.
 func (s *Supervisor) relaunch(ctx context.Context) {
 	cmd := exec.CommandContext(ctx, s.PythonPath, s.SidecarPath)
-	cmd.Env = os.Environ()
+	cmd.Env = s.childEnv()
 
 	if err := cmd.Start(); err != nil {
-		s.mu.Lock()
-		s.retries++
-		if s.retries >= s.MaxRetries {
-			s.degraded = true
-		}
-		s.mu.Unlock()
+		s.bumpRetry()
 		return
 	}
 
-	// Wait up to 2 s for the socket file to appear.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(s.SockPath); err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if _, err := os.Stat(s.SockPath); err != nil {
+	if !s.waitReady(time.Now().Add(2 * time.Second)) {
 		_ = cmd.Process.Kill()
-		s.mu.Lock()
-		s.retries++
-		if s.retries >= s.MaxRetries {
-			s.degraded = true
-		}
-		s.mu.Unlock()
+		s.bumpRetry()
 		return
 	}
 
-	c, err := Dial(s.SockPath, 5*time.Second)
+	c, err := Dial(s.addr(), s.token, 5*time.Second)
 	if err != nil {
 		_ = cmd.Process.Kill()
-		s.mu.Lock()
-		s.retries++
-		if s.retries >= s.MaxRetries {
-			s.degraded = true
-		}
-		s.mu.Unlock()
+		s.bumpRetry()
 		return
 	}
 
@@ -374,6 +435,8 @@ func (s *Supervisor) persistState(pid int) {
 	state["llamafirewall"] = map[string]any{
 		"pid":        pid,
 		"started_at": time.Now().UTC().Format(time.RFC3339),
+		"port":       s.port,
+		"token":      s.token,
 	}
 	out, _ := json.MarshalIndent(state, "", "  ")
 	_ = os.WriteFile(statePath, append(out, '\n'), 0600)
