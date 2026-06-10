@@ -310,7 +310,20 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   2. The CI job runs Biome lint/format check, `tsc --noEmit`, Vitest unit tests, `pnpm build`, and Playwright E2E against `out/` — all as required gates before merge
   3. Playwright E2E tests verify: home page renders with SVG hero fallback, docs navigation and search return results, theme toggle persists across reload, all three changelog version pages build and render their headings
 
-**Plans**: TBD
+**Plans**: 3 plans (3 waves) — planned 2026-06-10 (research-first; full JS-native toolchain per D-01; execution INLINE on main per D-05)
+**Wave 1**
+
+- [ ] 19-01-PLAN.md — Wave 1 foundation: package-legitimacy gate + install pinned test devDeps (vitest/vite/@vitejs-plugin-react/jsdom/vite-tsconfig-paths/@testing-library-react+dom/@playwright-test, workspace-isolated, no Go-module touch) + vitest.config.mts + package.json scripts (typecheck/test/test:postbuild/test:e2e) + pre-build Vitest unit tests (cn / useReducedMotion / InstallChip / metadata consts + accuracy_spec.py port, verbatim constants) (QA-01)
+
+**Wave 2** *(blocked on 19-01)*
+
+- [ ] 19-02-PLAN.md — Wave 2 E2E + post-build: playwright.config.ts (chromium-only, managed webServer serving real out/ on pinned port 4199) + home.spec.ts (home_spec.py port + four QA-02 critical paths) + gfx.spec.ts (gfx_spec.py port) + tests/postbuild/seo.test.ts (seo_spec.py post-build port) (QA-01, QA-02)
+
+**Wave 3** *(blocked on 19-02)*
+
+- [ ] 19-03-PLAN.md — Wave 3 CI gate + parity-retire: .github/workflows/web.yml (5 ordered gates, first-party actions, least-privilege; static-verified per D-03) + ci.yml paths-ignore web isolation (bidirectional, SC-1) + prove the 4 .py specs green then DELETE them + final full-suite gate (QA-01, QA-02)
+
+**Cross-cutting constraints:** the 4 Python specs are RETIRED only after the JS ports prove parity on the same out/ build (D-01); CI is build-verified LOCALLY (D-03 — web.yml YAML statically inspected, not run live); execution runs INLINE on main (D-05).
 **UI hint**: no
 
 ### Phase 20: Runtime Hardening II (Tiers 1–3)
