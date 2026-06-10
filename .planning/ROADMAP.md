@@ -310,7 +310,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   2. The CI job runs Biome lint/format check, `tsc --noEmit`, Vitest unit tests, `pnpm build`, and Playwright E2E against `out/` — all as required gates before merge
   3. Playwright E2E tests verify: home page renders with SVG hero fallback, docs navigation and search return results, theme toggle persists across reload, all three changelog version pages build and render their headings
 
-**Plans**: 3 plans (3 waves) — planned 2026-06-10 (research-first; full JS-native toolchain per D-01; execution INLINE on main per D-05)
+**Plans**: 3 plans (3 waves) — planned & verified 2026-06-10 (research-first; plan-checker PASSED 14/14 dimensions, 0 blockers; full JS-native toolchain per D-01; execution INLINE on main per D-05)
 **Wave 1**
 
 - [ ] 19-01-PLAN.md — Wave 1 foundation: package-legitimacy gate + install pinned test devDeps (vitest/vite/@vitejs-plugin-react/jsdom/vite-tsconfig-paths/@testing-library-react+dom/@playwright-test, workspace-isolated, no Go-module touch) + vitest.config.mts + package.json scripts (typecheck/test/test:postbuild/test:e2e) + pre-build Vitest unit tests (cn / useReducedMotion / InstallChip / metadata consts + accuracy_spec.py port, verbatim constants) (QA-01)
@@ -390,5 +390,5 @@ Plans:
 | **17. SEO & Static Assets** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
 | **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
-| **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **19. Test Suite & CI** | **v1.3.0** | **0/3** | **Planned & verified 2026-06-10 (plan-checker PASSED, 0 blockers). NEXT: /gsd-execute-phase 19 (INLINE on main)** | **—** |
 | **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **6/6** | **All plans CODE-complete (20-01..06 ✅). ONLY remaining: 20-02 LLMF human HF-license live-bootstrap verify (gated 22M model)** | **—** |
