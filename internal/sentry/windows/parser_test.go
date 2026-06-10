@@ -74,6 +74,49 @@ func TestParseFileCreateEvent(t *testing.T) {
 	}
 }
 
+func TestParseFileReadEvent(t *testing.T) {
+	e := makeEventSummary("{EDD08927-9CC4-4E65-B970-C2560FB5C289}", 15, 555, map[string]interface{}{
+		"FileName": `C:\Users\me\.aws\credentials`,
+	})
+	ev, err := parseETWEventSummary(e)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.Kind != sentry.EventFileAccess {
+		t.Errorf("Kind = %v, want EventFileAccess for event 15 (Read)", ev.Kind)
+	}
+	if ev.FilePath != `C:\Users\me\.aws\credentials` {
+		t.Errorf("FilePath = %q", ev.FilePath)
+	}
+}
+
+func TestParseFileWriteEvents(t *testing.T) {
+	for _, id := range []uint16{16, 30, 27, 19} {
+		e := makeEventSummary("{EDD08927-9CC4-4E65-B970-C2560FB5C289}", id, 555, map[string]interface{}{
+			"FileName": `C:\Users\me\.claude\settings.json`,
+		})
+		ev, err := parseETWEventSummary(e)
+		if err != nil {
+			t.Fatalf("event %d: unexpected error: %v", id, err)
+		}
+		if ev.Kind != sentry.EventFileWrite {
+			t.Errorf("event %d: Kind = %v, want EventFileWrite", id, ev.Kind)
+		}
+		if ev.FilePath != `C:\Users\me\.claude\settings.json` {
+			t.Errorf("event %d: FilePath = %q", id, ev.FilePath)
+		}
+	}
+}
+
+func TestParseFileCloseIgnored(t *testing.T) {
+	e := makeEventSummary("{EDD08927-9CC4-4E65-B970-C2560FB5C289}", 14, 555, map[string]interface{}{
+		"FileName": `C:\Users\me\.aws\credentials`,
+	})
+	if _, err := parseETWEventSummary(e); !errors.Is(err, ErrUnknownEvent) {
+		t.Errorf("event 14 (Close) should be ignored (ErrUnknownEvent), got %v", err)
+	}
+}
+
 func TestParseNetworkConnectEvent(t *testing.T) {
 	e := makeEventSummary("{7DD42A49-5329-4832-8DFD-43D979153A88}", 12, 777, map[string]interface{}{
 		"daddr": "52.14.222.1",

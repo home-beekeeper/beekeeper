@@ -95,7 +95,10 @@ func parseETWEvent(e *etw.Event) (sentry.SentryEvent, error) {
 // sentry.SentryEvent. It handles three kernel provider GUIDs:
 //
 //   - Microsoft-Windows-Kernel-Process (event ID 1 = process start)
-//   - Microsoft-Windows-Kernel-File    (event IDs 12, 14, 15 = file create/name)
+//   - Microsoft-Windows-Kernel-File    (12=Create/open + 15=Read -> file access;
+//     16=Write/30=CreateNewFile/27=RenamePath/19=Rename -> file write;
+//     14=Close is ignored. Phase 20 SENT-08 corrected the prior mislabel that
+//     lumped 12/14/15 together as "create/name".)
 //   - Microsoft-Windows-Kernel-Network (event IDs 10, 11, 12 = TCP connect)
 func parseETWEventSummary(e etwEventSummary) (sentry.SentryEvent, error) {
 	if e.PID == 0 {
@@ -133,19 +136,36 @@ func parseETWEventSummary(e etwEventSummary) (sentry.SentryEvent, error) {
 		}, nil
 
 	case guidKernelFile:
-		if e.EventID != 12 && e.EventID != 14 && e.EventID != 15 {
-			return sentry.SentryEvent{}, fmt.Errorf("%w: kernel-file event %d", ErrUnknownEvent, e.EventID)
-		}
+		// Phase 20 (SENT-08): split the Kernel-File branch by the CORRECT event
+		// IDs. The write/rename EventData path key is read with the same
+		// FileName -> FilePath fallback as reads; the exact key for write/rename
+		// templates is flagged for live golang-etw verification (see SUMMARY /
+		// CLAUDE.md Phase-7 ETW field-name research flag).
 		filePath, _ := e.EventData["FileName"].(string)
 		if filePath == "" {
 			filePath, _ = e.EventData["FilePath"].(string)
 		}
-		return sentry.SentryEvent{
-			Kind:     sentry.EventFileAccess,
-			PID:      e.PID,
-			FilePath: filePath,
-			WallTime: wallTime,
-		}, nil
+		switch e.EventID {
+		case 12, 15:
+			// 12 = Create (open handle), 15 = Read — the process touched the file.
+			return sentry.SentryEvent{
+				Kind:     sentry.EventFileAccess,
+				PID:      e.PID,
+				FilePath: filePath,
+				WallTime: wallTime,
+			}, nil
+		case 16, 30, 27, 19:
+			// 16 = Write, 30 = CreateNewFile, 27 = RenamePath, 19 = Rename.
+			return sentry.SentryEvent{
+				Kind:     sentry.EventFileWrite,
+				PID:      e.PID,
+				FilePath: filePath,
+				WallTime: wallTime,
+			}, nil
+		default:
+			// 14 = Close and all other Kernel-File IDs are not alertable events.
+			return sentry.SentryEvent{}, fmt.Errorf("%w: kernel-file event %d", ErrUnknownEvent, e.EventID)
+		}
 
 	case guidKernelNetwork:
 		if e.EventID != 10 && e.EventID != 11 && e.EventID != 12 {
