@@ -335,7 +335,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: 6 plans in 4 waves (20-06 DNS is an OPTIONAL stretch)
 
 Plans:
-- [ ] 20-01-PLAN.md — Tier 1 catalog sync (CSYNC): config schema + project-cant-disable; SourceState timestamps + ETag conditional sync; unprivileged catalogs daemon (systemd --user / LaunchAgent / schtasks) + interval gate; TUI real sync + selector + first-run sync [wave 1]
+- [x] 20-01-PLAN.md — Tier 1 catalog sync (CSYNC): config schema + project-cant-disable; SourceState timestamps + ETag conditional sync; unprivileged catalogs daemon (systemd --user / LaunchAgent / schtasks) + interval gate; TUI real sync + selector + first-run sync [wave 1] ✅ 2026-06-10 (CSYNC-01..06; 4 commits 0540e52/482e8b9/6280a5f/8415c73)
 - [ ] 20-02-PLAN.md — Tier 2 LlamaFirewall (LLMF): embed + InstallSidecar; fix the silent fail-open API; loopback-TCP+token IPC; real CodeShield + remove AlignmentCheck; venv/22M-model/HF cache + StateDir fix; gated e2e [wave 2, blocking human checkpoint]
 - [ ] 20-03-PLAN.md — Tier 3 W1 Sentry rules (SENT): watchlist expansion; SENTRY-006 + isMonitoredDescendant; SENTRY-007 + isExternalDest; TestRulesImportsArePure [wave 1]
 - [ ] 20-04-PLAN.md — Tier 3 W2 file-write (SENT): EventFileWrite + SENTRY-008 + persistenceWritePaths; per-OS ingestion (Linux 2nd fanotify group >=5.9 / macOS write+rename+new-file union fix / Windows correct Kernel-File IDs 16/30/27) [wave 2]
@@ -378,4 +378,4 @@ Plans:
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
 | **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
-| **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **0/6** | **Planned (4 waves; 20-06 DNS optional)** | **—** |
+| **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **1/6** | **In Progress (W1: 20-01 ✅ CSYNC done; 20-03 next)** | **—** |
