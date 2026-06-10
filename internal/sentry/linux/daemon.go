@@ -159,6 +159,15 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 
 	go StartFanotifyReader(ctx, fanFd, events)
 
+	// Phase 20 (SENT-06): second fanotify group for file-WRITE detection on
+	// persistence surfaces. Requires kernel >= 5.9 (FAN_REPORT_DFID_NAME); on
+	// older kernels it degrades gracefully without affecting the read-watch group.
+	if writeCloser, werr := StartWriteWatch(ctx, events); werr != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper sentry: file-write watch disabled: %v\n", werr)
+	} else {
+		defer writeCloser()
+	}
+
 	// TM-RS-01: build live extension inventory so SENTRY-004/005 can fire in
 	// production. Seed from the configured watch directories at startup, then
 	// refresh every 30 s so newly-installed extensions are picked up.
