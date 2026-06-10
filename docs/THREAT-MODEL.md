@@ -658,18 +658,32 @@ limit.
 #### Detection-Completeness Gaps in the Behavioral Sentry
 
 The Sentry is a behavioral *correlation* layer (detect/audit), not an
-enforcement chokepoint — the hook and gateway are where blocks happen. Two
-cross-signal correlation rules (fresh-extension correlation and the critical
-read-creds + fresh-extension + phone-home exfiltration-fusion rule) require an
-extension-inventory snapshot that the shipped daemons do not yet build, so those
-two rules do not fire in production today; the underlying behaviors (credential
-read, outbound connection, editor-descendant process tree) are still detected
-independently. On Windows, file/network events carry no parent-PID, so a
-short-lived or race-ordered malicious child can lose editor-descendant
-attribution. And collectors drop events under flood (the Linux fanotify path
-does not even count drops), so an attacker who floods benign events can evade
-windowed file-access rules. These reduce *detection coverage*; they do not relax
-the fail-closed enforcement path.
+enforcement chokepoint — the hook and gateway are where blocks happen.
+SENTRY-004/005 now fire in production: all three daemons build a live extension
+`InventoryStore` (mod-time-based) and pass `Snapshot(now)` into `EvaluateEvent`,
+and the Linux fanotify path counts drops (`EventsDropped`). v1.3.0 (Phase 20)
+added SENTRY-006 (agent-descendant credential cluster), SENTRY-007 (generalized
+exfil fusion with no fresh-extension precondition), SENTRY-008 (persistence-
+location write), agent-CLI ancestry, file-write ingestion, and a cloud-credential
+watchlist expansion. The remaining honest gaps are:
+
+1. **Scope.** Rules require ancestry from an editor (code/cursor/windsurf/codium)
+   or a known agent CLI (claude/codex/cursor-agent/gemini/copilot/qwen/aider/
+   opencode/hermes). CI/CD runners and system daemons outside those trees are not
+   monitored.
+2. **SENTRY-003 has no domain allowlist** and is not tied to extension
+   activation — it fires on the first outbound by any monitored descendant, so it
+   is noisy and cannot identify the destination.
+3. **No DNS or process-memory event sources**, so DNS-TXT tunneling and
+   `/proc/<pid>/maps` secret-scraping are undetected. (Persistence-write injection
+   is now covered by SENTRY-008 wherever file-write ingestion is active.)
+4. **Sentry is detection-only**; no rule triggers automated containment
+   (extension quarantine lives in the separate watch/scan layer).
+5. **On Windows, file/network events carry no parent-PID**, so a short-lived or
+   race-ordered malicious child can lose descendant attribution.
+
+These reduce *detection coverage*; they do not relax the fail-closed enforcement
+path.
 
 #### Windows Sentry: Missing Parent-PID on File and Network Events (TM-RS-02)
 

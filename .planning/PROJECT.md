@@ -112,7 +112,8 @@ Closed the three runtime-enforcement gaps live `beekeeper check` validation expo
 - [ ] Process event ingestion (creation, exec, parent PID, descendant tree)
 - [ ] File access events on sensitive-path watchlist
 - [ ] Outbound network connection events with process attribution
-- [ ] Default rule set: extension-host credential cluster, credential CLI burst, phone-home, fresh-extension behavior correlation, exfil signature fusion
+- [ ] Default rule set (SENTRY-001..005), each gated on editor-descendant ancestry (code/cursor/windsurf/codium): SENTRY-001 credential-file cluster, SENTRY-002 credential-CLI burst, SENTRY-003 first-outbound phone-home (no domain allowlist in v1), SENTRY-004 fresh-extension correlation, SENTRY-005 exfil-signature fusion. Sentry is DETECTION-ONLY (writes audit records; it does not quarantine or kill — extension quarantine lives in the unprivileged watch/scan layer). Scope is the editor-extension-trojan family.
+- ✓ v1.3.0 (Phase 20, SENT): SENTRY-006 (agent-descendant credential cluster), SENTRY-007 (generalized exfil fusion, no fresh-extension precondition), SENTRY-008 (persistence-location write); agent-CLI ancestry + file-write ingestion + cloud-credential watchlist expansion. Standalone-terminal agents and persistence writes are now in scope; CI runners, DNS, and process-memory remain out of scope.
 - [ ] 7-day audit-only baseline period before rules promote to enforcement
 - [ ] `beekeeper protect install` — installs Sentry as privileged service (systemd/launchd/Windows Service)
 - [ ] Linux: fanotify + eBPF (`cilium/ebpf`)
@@ -120,9 +121,9 @@ Closed the three runtime-enforcement gaps live `beekeeper check` validation expo
 - [ ] Windows: ETW with relevant security providers
 
 #### LlamaFirewall Sidecar (optional)
-- ✓ Python sidecar supervised by Beekeeper; Unix socket / Windows named pipe IPC; fail-closed on sidecar crash; exponential-backoff restart — Phase 6
-- ✓ PromptGuard 2 injection scan on tool outputs; llmf_alert audit record; fail-closed on sidecar unavailable — Phase 6
-- ✓ CodeShield on agent-generated file writes; AlignmentCheck wired in gateway (scan_code / scan_alignment stubs ready for model integration) — Phase 6
+- ✓ Python sidecar supervised by Beekeeper; loopback-TCP + per-launch bearer-token IPC (one transport on every OS); fail-closed on sidecar crash; exponential-backoff restart — Phase 6, IPC reworked Phase 20
+- ✓ PromptGuard 2 injection scan on tool outputs; llmf_alert audit record; fail-closed on sidecar unavailable OR scan error — Phase 6 / Phase 20 (the silent fail-open no-op was fixed)
+- ✓ Real CodeShield on agent-generated code (opt-in, experimental; gated 22M model bootstrapped via `beekeeper llamafirewall install`). The cloud AlignmentCheck (Together AI) path was REMOVED — Phase 20 (LLMF); no agent context leaves the host
 
 #### Audit Log & Observability
 - ✓ NDJSON audit log — every policy decision, Bumblebee-schema-compatible, with catalog provenance — Phase 1 / Phase 6
@@ -159,6 +160,9 @@ Closed the three runtime-enforcement gaps live `beekeeper check` validation expo
 - Replacement for EDR, antivirus, or network firewalls — complement, not substitute
 - Custom threat intelligence research — consumes upstream catalogs + small default ruleset only
 - macOS EndpointSecurity entitlement — v1 uses eslogger; entitlement application is v2
+- Sentry coverage of CI/CD runners and system daemons — Sentry monitors editor- and agent-CLI descendants only (SENTRY-006 added agent ancestry in v1.3.0); broader execution contexts are future work
+- DNS-tunneling and process-memory-scrape detection — need new event sources (Linux/Windows v1.x, macOS v2)
+- Exfil over legitimate/allowlisted endpoints (GitHub API, AWS services, npm registry) — host-undetectable; architectural mitigation only, not a Sentry rule
 
 ## Context
 
