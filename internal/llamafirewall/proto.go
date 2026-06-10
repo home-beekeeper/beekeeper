@@ -23,8 +23,6 @@ const (
 	ScanPrompt ScanKind = "scan_prompt"
 	// ScanCode requests a code-safety scan.
 	ScanCode ScanKind = "scan_code"
-	// ScanAlignment requests an alignment/goal-hijacking scan.
-	ScanAlignment ScanKind = "scan_alignment"
 )
 
 // ScanRequest is sent from the Go supervisor to the LlamaFirewall sidecar.
@@ -33,6 +31,10 @@ type ScanRequest struct {
 	Content   string   `json:"content"`
 	Context   string   `json:"context,omitempty"`
 	RequestID string   `json:"request_id"`
+	// Token is the per-launch bearer token (Phase 20, LLMF). The supervisor sets
+	// it on every request; the sidecar rejects a mismatch. It restores the
+	// access control the old 0600 unix socket gave now that IPC is loopback TCP.
+	Token string `json:"token,omitempty"`
 }
 
 // ScanResult is the top-level verdict returned by LlamaFirewall.
@@ -45,8 +47,10 @@ const (
 	ResultInjection ScanResult = "injection"
 	// ResultUnsafe indicates unsafe code or tool use detected.
 	ResultUnsafe ScanResult = "unsafe"
-	// ResultHijacked indicates goal-hijacking / alignment failure detected.
-	ResultHijacked ScanResult = "hijacked"
+	// ResultError indicates the sidecar could not complete the scan (model
+	// missing, import error, crash). The Go layer treats it fail-closed (block),
+	// never as clean (Phase 20, LLMF — replaces the old swallow-into-clean).
+	ResultError ScanResult = "error"
 )
 
 // ScanResponse is returned from the LlamaFirewall sidecar to the Go supervisor.

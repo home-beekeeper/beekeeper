@@ -463,7 +463,7 @@ func mergeLlamaFirewall(dst, src LlamaFirewallConfig) LlamaFirewallConfig {
 	// Apply src LlamaFirewall.Enabled if true OR if src has any other non-zero
 	// sidecar field (indicating the user configured the sidecar section).
 	srcHasOtherFields := src.SampleRate > 0 || src.FailMode != "" ||
-		src.CodeShield || src.AlignmentCheck ||
+		src.CodeShield ||
 		src.CodeShieldAction != "" || src.PythonPath != ""
 
 	if src.Enabled || srcHasOtherFields {
@@ -477,9 +477,6 @@ func mergeLlamaFirewall(dst, src LlamaFirewallConfig) LlamaFirewallConfig {
 	}
 	if src.CodeShield {
 		dst.CodeShield = src.CodeShield
-	}
-	if src.AlignmentCheck {
-		dst.AlignmentCheck = src.AlignmentCheck
 	}
 	if src.CodeShieldAction != "" {
 		dst.CodeShieldAction = src.CodeShieldAction
@@ -496,7 +493,7 @@ func mergeLlamaFirewall(dst, src LlamaFirewallConfig) LlamaFirewallConfig {
 // allowed. All other non-security fields are merged unconditionally.
 func mergeLlamaFirewallUntrusted(dst, src LlamaFirewallConfig, layerName string) LlamaFirewallConfig {
 	srcHasOtherFields := src.SampleRate > 0 || src.FailMode != "" ||
-		src.CodeShield || src.AlignmentCheck ||
+		src.CodeShield ||
 		src.CodeShieldAction != "" || src.PythonPath != ""
 
 	if src.Enabled {
@@ -518,9 +515,6 @@ func mergeLlamaFirewallUntrusted(dst, src LlamaFirewallConfig, layerName string)
 	}
 	if src.CodeShield {
 		dst.CodeShield = src.CodeShield
-	}
-	if src.AlignmentCheck {
-		dst.AlignmentCheck = src.AlignmentCheck
 	}
 	if src.CodeShieldAction != "" {
 		dst.CodeShieldAction = src.CodeShieldAction

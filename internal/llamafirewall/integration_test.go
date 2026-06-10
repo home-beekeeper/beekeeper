@@ -65,14 +65,17 @@ func TestBuildWarningPayloadCodeShield(t *testing.T) {
 	}
 }
 
-func TestBuildWarningPayloadAlignment(t *testing.T) {
-	resp := ScanResponse{Result: ResultHijacked, Confidence: 0.91}
+// TestBuildWarningPayloadErrorIsInjectionDefault verifies the alignment branch
+// is gone: an unknown/error result falls through to the prompt_injection default
+// rather than the removed alignment_hijack type (Phase 20, LLMF).
+func TestBuildWarningPayloadErrorIsInjectionDefault(t *testing.T) {
+	resp := ScanResponse{Result: ResultError, Confidence: 0.0}
 	data := BuildWarningPayload(resp)
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if m["alert_type"] != "alignment_hijack" {
-		t.Errorf("alert_type = %v, want alignment_hijack", m["alert_type"])
+	if m["alert_type"] != "prompt_injection" {
+		t.Errorf("alert_type = %v, want prompt_injection (no alignment branch)", m["alert_type"])
 	}
 }

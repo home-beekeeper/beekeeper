@@ -1308,7 +1308,6 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 					SampleRate:       cfg.LlamaFirewallSampleRate(),
 					FailMode:         cfg.LlamaFirewall.FailMode,
 					CodeShield:       cfg.LlamaFirewall.CodeShield,
-					AlignmentCheck:   cfg.LlamaFirewall.AlignmentCheck,
 					CodeShieldAction: cfg.LlamaFirewall.CodeShieldAction,
 					PythonPath:       cfg.LlamaFirewall.PythonPath,
 				}

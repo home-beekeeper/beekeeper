@@ -84,8 +84,6 @@ type LlamaFirewallConfig struct {
 	// CodeShield enables the LlamaFirewall CodeShield scanner. Default true
 	// when LlamaFirewall is enabled.
 	CodeShield bool `json:"codeshield,omitempty"`
-	// AlignmentCheck enables the experimental alignment scanner.
-	AlignmentCheck bool `json:"alignment_check,omitempty"`
 	// CodeShieldAction controls what happens on a CodeShield hit: "warn" or
 	// "block". Default "warn".
 	CodeShieldAction string `json:"codeshield_action,omitempty"`

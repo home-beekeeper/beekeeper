@@ -42,8 +42,6 @@ type LlamaFirewallConfig struct {
 	FailMode string
 	// CodeShield enables code-safety scanning (ScanCode kind).
 	CodeShield bool
-	// AlignmentCheck enables goal-hijacking scanning (ScanAlignment kind).
-	AlignmentCheck bool
 	// CodeShieldAction controls what happens on a code-safety hit: "warn" or "block".
 	CodeShieldAction string
 	// PythonPath is the Python interpreter to use (default: "python3" on Unix,
@@ -294,6 +292,21 @@ func (s *Supervisor) Scan(ctx context.Context, req ScanRequest) (ScanResponse, e
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "llamafirewall: scan error: %v\n", err)
 		return ScanResponse{}, err
+	}
+
+	// Fail-closed (Phase 20, LLMF): a sidecar that returns the error sentinel (a
+	// caught Python exception, a missing gated model, an import failure) must
+	// NEVER be treated as clean — that was the old silent fail-open. Apply the
+	// configured fail-mode: closed => surface an error (block); open/warn => clean.
+	if resp.Result == ResultError || resp.Error != "" {
+		if failMode == "open" || failMode == "warn" {
+			return ScanResponse{
+				RequestID: req.RequestID,
+				Result:    ResultClean,
+				Reason:    "sidecar error (fail-open): " + resp.Error,
+			}, nil
+		}
+		return ScanResponse{}, fmt.Errorf("%w: %s", ErrSidecarUnavailable, resp.Error)
 	}
 
 	// Record into the per-instance tracker (for StatusInfo / supervisor-local use)

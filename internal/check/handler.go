@@ -654,18 +654,6 @@ func RunAuditRecordWithLLMF(stdin io.Reader, auditPath string, cfg config.Config
 				}
 			}
 		}
-
-		if cfg.LlamaFirewall.AlignmentCheck {
-			resp, err := scanner.Scan(ctx, llamafirewall.ScanRequest{
-				Kind:      llamafirewall.ScanAlignment,
-				Content:   input.ToolName,
-				Context:   "alignment_check",
-				RequestID: newRecordID(),
-			})
-			if err == nil && resp.Result == llamafirewall.ResultHijacked {
-				writeLLMFAlertRecord(auditPath, input.ToolName, string(resp.Result), resp.Confidence, resp.LatencyMS)
-			}
-		}
 	}
 
 	w, err := audit.NewWriter(auditPath)

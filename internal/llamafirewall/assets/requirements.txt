@@ -1,0 +1,13 @@
+# LlamaFirewall sidecar dependencies (Phase 20, LLMF).
+#
+# The real Meta distribution on PyPI is `llamafirewall` (NO hyphen) — the old
+# `llama-firewall` spelling in this file was a typosquat risk. Verified: Meta's
+# PurpleLlama LlamaFirewall, PyPI project `llamafirewall` (>=1.0.3, requires
+# Python 3.10+).
+#
+# torch is pinned to a CPU build: `beekeeper llamafirewall install` passes
+#   --extra-index-url https://download.pytorch.org/whl/cpu
+# so pip resolves the CPU wheel instead of the multi-GB default CUDA wheels.
+llamafirewall==1.0.3
+torch==2.4.1
+transformers==4.44.2

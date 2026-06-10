@@ -67,13 +67,14 @@ func TestDecodeRoundTripScanCode(t *testing.T) {
 	}
 }
 
-// TestDecodeRoundTripScanAlignment verifies Encode/Decode round-trip for a
-// ScanRequest with Kind=ScanAlignment.
-func TestDecodeRoundTripScanAlignment(t *testing.T) {
+// TestDecodeRoundTripScanCodeWithToken verifies Encode/Decode round-trip for a
+// ScanRequest with Kind=ScanCode and a bearer token (Phase 20, LLMF).
+func TestDecodeRoundTripScanCodeWithToken(t *testing.T) {
 	req := ScanRequest{
-		Kind:      ScanAlignment,
+		Kind:      ScanCode,
 		Content:   "thought",
 		RequestID: "r3",
+		Token:     "secret-token",
 	}
 
 	var buf bytes.Buffer
@@ -94,6 +95,9 @@ func TestDecodeRoundTripScanAlignment(t *testing.T) {
 	}
 	if got.RequestID != req.RequestID {
 		t.Errorf("RequestID: got %q, want %q", got.RequestID, req.RequestID)
+	}
+	if got.Token != req.Token {
+		t.Errorf("Token: got %q, want %q", got.Token, req.Token)
 	}
 }
 

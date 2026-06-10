@@ -31,11 +31,6 @@ func BuildWarningPayload(resp ScanResponse) []byte {
 		if reason == "" {
 			reason = "CodeShield detected insecure code pattern"
 		}
-	case ResultHijacked:
-		alertType = "alignment_hijack"
-		if reason == "" {
-			reason = "AlignmentCheck detected goal hijacking signal"
-		}
 	default:
 		if reason == "" {
 			reason = "PromptGuard 2 detected indirect prompt injection attempt in tool output"
