@@ -1,8 +1,10 @@
 package catalog
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadStateMissing(t *testing.T) {
@@ -319,5 +321,56 @@ func TestCatalogDeltaHasChanges(t *testing.T) {
 				t.Errorf("HasChanges(): want %v, got %v", tc.wantTrue, got)
 			}
 		})
+	}
+}
+
+// TestSourceStateLegacyBackCompat verifies a legacy state.json carrying only the
+// original {hash,count,degraded} fields loads cleanly into the Phase-20 extended
+// SourceState — the new timestamp/ETag fields read as zero (omitempty keeps the
+// extension backward compatible).
+func TestSourceStateLegacyBackCompat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	legacy := `{"sources":{"bumblebee":{"hash":"deadbeef","count":42,"degraded":false}}}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("write legacy state: %v", err)
+	}
+	st, err := LoadState(path)
+	if err != nil {
+		t.Fatalf("LoadState(legacy) returned error: %v", err)
+	}
+	src, ok := st.Sources["bumblebee"]
+	if !ok {
+		t.Fatal("bumblebee source missing after legacy load")
+	}
+	if src.Hash != "deadbeef" || src.Count != 42 {
+		t.Errorf("legacy fields = {%q,%d}, want {deadbeef,42}", src.Hash, src.Count)
+	}
+	if !src.LastSuccess.IsZero() || !src.LastAttempt.IsZero() || src.LastError != "" || src.ETag != "" {
+		t.Errorf("new fields should be zero on legacy load, got LastSuccess=%v LastAttempt=%v LastError=%q ETag=%q",
+			src.LastSuccess, src.LastAttempt, src.LastError, src.ETag)
+	}
+}
+
+// TestSourceStateTimestampRoundTrip verifies the new timestamp/ETag fields
+// persist and reload through SaveState/LoadState.
+func TestSourceStateTimestampRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	now := time.Now().UTC().Truncate(time.Second)
+	in := WatchState{Sources: map[string]SourceState{
+		"bumblebee": {Hash: "h", Count: 3, LastSuccess: now, LastAttempt: now, ETag: `"abc123"`},
+	}}
+	if err := SaveState(path, in); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	out, err := LoadState(path)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	src := out.Sources["bumblebee"]
+	if !src.LastSuccess.Equal(now) || !src.LastAttempt.Equal(now) || src.ETag != `"abc123"` {
+		t.Errorf("round-trip lost fields: LastSuccess=%v LastAttempt=%v ETag=%q",
+			src.LastSuccess, src.LastAttempt, src.ETag)
 	}
 }

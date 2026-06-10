@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // SourceState holds the persisted per-source delta state. It is stored under
@@ -31,6 +32,26 @@ type SourceState struct {
 	// DegradedReason is the human-readable reason for degradation.
 	// Empty when Degraded is false.
 	DegradedReason string `json:"degraded_reason,omitempty"`
+
+	// LastSuccess is the time of the most recent SUCCESSFUL sync (200 fetch+
+	// rebuild OR a 304 not-modified confirmation). The interval gate keys off
+	// this: `catalogs sync` no-ops unless time.Since(LastSuccess) >= the
+	// configured interval (Phase 20, CSYNC). Zero value = never synced.
+	LastSuccess time.Time `json:"last_success,omitempty"`
+
+	// LastAttempt is the time of the most recent sync attempt regardless of
+	// outcome. LastAttempt > LastSuccess means the last attempt failed — the TUI
+	// renders that amber rather than "fresh".
+	LastAttempt time.Time `json:"last_attempt,omitempty"`
+
+	// LastError is the error string from the most recent failed attempt, cleared
+	// on the next success. Empty when the last attempt succeeded.
+	LastError string `json:"last_error,omitempty"`
+
+	// ETag is the GitHub Contents-list ETag from the last successful 200, sent
+	// as If-None-Match on the next sync so an unchanged upstream returns 304
+	// (skip fetch + rebuild). Empty when never captured.
+	ETag string `json:"etag,omitempty"`
 }
 
 // WatchState is the complete persisted watch-daemon state, written atomically
