@@ -375,38 +375,23 @@ func newCatalogsCmd() *cobra.Command {
 		Use:   "catalogs",
 		Short: "Manage cached threat-intel catalogs",
 	}
-	catalogs.AddCommand(&cobra.Command{
+	var syncForce bool
+	syncCmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Fetch and cache catalogs, then build the mmap index",
+		Short: "Fetch and cache catalogs, then build the mmap index (interval-gated; --force to override)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dir, err := platform.CatalogDir()
-			if err != nil {
-				return fmt.Errorf("resolve catalog directory: %w", err)
-			}
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return fmt.Errorf("create catalog directory %q: %w", dir, err)
-			}
-
-			client := &http.Client{Timeout: 30 * time.Second}
-			n, err := catalog.Sync(cmd.Context(), client, dir)
-			if err != nil {
-				return fmt.Errorf("catalog sync failed: %w", err)
-			}
-
-			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Synced %d catalog entries\n", n)
-			fmt.Fprintf(out, "Index: %s\n", filepath.Join(dir, "bumblebee.idx"))
-
-			// Phase 9 (CTLG-04): run the self-quarantine check AFTER every sync
-			// so a newly-published compromise entry is acted on immediately.
-			if sqErr := enforceSelfQuarantine(cmd); sqErr != nil {
-				return sqErr
-			}
-
-			return nil
+			// Interval gate + ETag-conditional sync + freshness tracking live in
+			// runCatalogsSync so the OS-scheduled daemon and manual invocation
+			// share one implementation (Phase 20, CSYNC).
+			return runCatalogsSync(cmd, syncForce)
 		},
-	})
+	}
+	syncCmd.Flags().BoolVar(&syncForce, "force", false, "Sync now even if the configured interval has not elapsed (manual/TUI use)")
+	catalogs.AddCommand(syncCmd)
+
+	// catalogs daemon — unprivileged user-level background sync scheduler (CSYNC-04/05).
+	catalogs.AddCommand(newCatalogsDaemonCmd())
 
 	// catalogs watch — foreground catalog watch daemon.
 	catalogs.AddCommand(&cobra.Command{
@@ -1222,6 +1207,9 @@ func newHooksCmd() *cobra.Command {
 				// Installing a hook is an explicit "protect this machine" action, so
 				// default the nudge to block (supply-chain enforcement) on first install.
 				ensureNudgeBlockDefault(cmd.OutOrStdout())
+				// CSYNC-06: populate the threat-intel index now (best-effort) and
+				// offer to register the unprivileged background sync daemon.
+				offerCatalogSyncDaemon(cmd)
 			}
 			return nil
 		},
