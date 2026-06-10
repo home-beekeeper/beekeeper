@@ -72,6 +72,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 18: Full Content Authoring** — all 8 docs sections authored + accuracy gate — **✅ complete & verified 2026-06-09 (6/6 plans; DOCS-02..09; accuracy_spec AC-1..3 green; maintainer AC-5 sign-off vs THREAT-MODEL.md)**
 - [x] **Phase 18.1: Docs Theme Restyle** — Fumadocs chrome brand-aligned (white border killed, teal/amber accents, sidebar duplication fixed) — **✅ complete & maintainer-approved 2026-06-09 (quick task; DSYS-05; command-card copy split deferred to backlog)**
 - [ ] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/
+- [ ] **Phase 20: Runtime Hardening II (Tiers 1–3)** — Tier 1 background catalog sync + TUI scheduler · Tier 2 LlamaFirewall opt-in actually works · Tier 3 Sentry coverage (006/007/008 + file-write) + honesty edits (researched; `20-RESEARCH.md` + `20-PLAN.md`)
 
 ---
 
@@ -312,6 +313,36 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Plans**: TBD
 **UI hint**: no
 
+### Phase 20: Runtime Hardening II (Tiers 1–3)
+
+**Goal**: Close three runtime gaps from the 2026-06-10 audit — manual-only catalog sync, a non-functional (silently fail-open) LlamaFirewall opt-in, and narrow/overstated Sentry coverage — and make docs/threat-model match reality. Researched: `phases/20-runtime-hardening/20-RESEARCH.md` + `20-PLAN.md`. Analysis: `analysis/sentry-coverage-2026-06.md`.
+**Depends on**: none (Go runtime + sidecar + honesty text; independent of the web phases). Tiers are independent — any order/parallel; Tier 3 is largest.
+**Requirements**: CSYNC-01..06, LLMF-01..06, SENT-01..11
+
+**Tier 1 — catalog sync (CSYNC):** new unprivileged `beekeeper catalogs daemon` (user-level systemd --user / launchd LaunchAgent / Windows schtasks) running `catalogs sync` on an hourly heartbeat gated by a config interval (5h/10h/24h); `CatalogSyncConfig` + project-layer-can't-disable; `SourceState` timestamps + ETag conditional sync (only the GitHub *list* call is rate-metered); wire the dead TUI `s sync all` + a schedule selector.
+
+**Tier 2 — LlamaFirewall (LLMF):** `//go:embed` + installer (move `sidecar/`→`internal/llamafirewall/assets/`); **fix the silent fail-open** (`UserMessage(role=…)` TypeError→swallowed→"clean"; build scanners + construct once); switch IPC to loopback-TCP+token (delete the Windows-pipe fork, works on all 3 OSes); de-stub CodeShield, **remove** AlignmentCheck (cloud key); venv + HF_HOME cache + gated-22M model; fix the `$HOME` vs `StateDir` Windows bug; real-sidecar `//go:build e2e`.
+
+**Tier 3 — Sentry + honesty (SENT):** watchlist expansion; **SENTRY-006** agent-descendant (`isMonitoredDescendant` refactor); **SENTRY-007** generalized exfil fusion + `isExternalDest`; **SENTRY-008** + new `EventFileWrite` ingestion (Linux 2nd fanotify group ≥5.9 · macOS write/rename + new-file union fix · Windows correct Kernel-File IDs 16/30/27); honesty edits (PROJECT/THREAT-MODEL §8 stale-fix/home). **Stretch:** DNS (Linux kprobe + Windows ETW DNS-Client). **OUT (residual/v2):** memory-read, macOS-DNS, Windows missing-PPID, legit-endpoint exfil.
+
+**Success Criteria** (what must be TRUE):
+
+  1. **T1:** injected-clock test proves interval-gated background sync; project-layer can't disable; TUI `s`/selector perform a real sync.
+  2. **T2:** gated `//go:build e2e` proves benign-allow / injection / CodeShield-unsafe / crash-fail-closed; no stub-only decision path; Windows StateDir bug fixed.
+  3. **T3:** SENTRY-006/007/008 fire on target + not on baselines; `EventFileWrite` builds on all 3 GOOS; watchlist trips SENTRY-001 on a 2-cloud-cred read.
+  4. THREAT-MODEL §8 + home no longer overstate Sentry/LlamaFirewall; `go test ./... ` + `go vet` + `TestRulesImportsArePure` green; `pnpm build` + web specs green.
+
+**Plans**: 6 plans in 4 waves (20-06 DNS is an OPTIONAL stretch)
+
+Plans:
+- [ ] 20-01-PLAN.md — Tier 1 catalog sync (CSYNC): config schema + project-cant-disable; SourceState timestamps + ETag conditional sync; unprivileged catalogs daemon (systemd --user / LaunchAgent / schtasks) + interval gate; TUI real sync + selector + first-run sync [wave 1]
+- [ ] 20-02-PLAN.md — Tier 2 LlamaFirewall (LLMF): embed + InstallSidecar; fix the silent fail-open API; loopback-TCP+token IPC; real CodeShield + remove AlignmentCheck; venv/22M-model/HF cache + StateDir fix; gated e2e [wave 2, blocking human checkpoint]
+- [ ] 20-03-PLAN.md — Tier 3 W1 Sentry rules (SENT): watchlist expansion; SENTRY-006 + isMonitoredDescendant; SENTRY-007 + isExternalDest; TestRulesImportsArePure [wave 1]
+- [ ] 20-04-PLAN.md — Tier 3 W2 file-write (SENT): EventFileWrite + SENTRY-008 + persistenceWritePaths; per-OS ingestion (Linux 2nd fanotify group >=5.9 / macOS write+rename+new-file union fix / Windows correct Kernel-File IDs 16/30/27) [wave 2]
+- [ ] 20-05-PLAN.md — Tier 3 W3 honesty + tests (SENT): PROJECT/THREAT-MODEL §8 + home honesty edits; synthetic 006/007/008 + watchlist rules_test [wave 3]
+- [ ] 20-06-PLAN.md — Tier 3 W4 STRETCH/OPTIONAL DNS: EventDNSQuery; Linux kprobe udp/tcp_sendmsg dport53 bpf2go; Windows ETW DNS-Client ID 3006; macOS deferred v2 [wave 4]
+**UI hint**: no (TUI/threat-model/marketing text only)
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -347,3 +378,4 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
 | **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
+| **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **0/6** | **Planned (4 waves; 20-06 DNS optional)** | **—** |
