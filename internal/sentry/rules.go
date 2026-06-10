@@ -372,6 +372,12 @@ func EvaluateEvent(
 
 	case EventFileWrite:
 		alerts = append(alerts, evalSENTRY008(event, state, tree, baseline, now)...)
+
+	case EventDNSQuery:
+		// SENT-11 (OPTIONAL stretch): DNS QNAMEs are ingested for the DNS-TXT
+		// tunnelling gap, but no DNS-exfil correlation rule consumes them yet.
+		// The kind is dispatched here as an explicit no-op so the Linux/Windows
+		// ingestion sources can land ahead of the rule (engine stays pure).
 	}
 
 	return alerts

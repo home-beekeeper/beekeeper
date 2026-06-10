@@ -667,3 +667,19 @@ func TestSENTRY007SeesPersistenceWrite(t *testing.T) {
 		t.Error("expected SENTRY-007 to fuse on a recent persistence write + external outbound")
 	}
 }
+
+// ---- Phase 20 (SENT-11, OPTIONAL) — EventDNSQuery passthrough ----
+
+// TestDNSQueryPassThrough proves an EventDNSQuery flows through EvaluateEvent
+// without panicking and produces no alert yet (the QNAME is ingested for the
+// DNS-TXT tunnelling gap, but no DNS-exfil correlation rule consumes it).
+func TestDNSQueryPassThrough(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := editorTree()
+	ev := SentryEvent{Kind: EventDNSQuery, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: "exfil.attacker.example"}
+	alerts := EvaluateEvent(ev, state, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+	if len(alerts) != 0 {
+		t.Errorf("EventDNSQuery should produce no alerts yet, got %d", len(alerts))
+	}
+}

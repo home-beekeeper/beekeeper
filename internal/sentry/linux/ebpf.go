@@ -54,6 +54,18 @@ type networkEventLayout struct {
 	KtimeNS uint64
 }
 
+// dnsEventLayout mirrors the C struct dns_event layout exactly (Phase 20,
+// SENT-11). Field order and sizes must remain in sync with dns_tracer.bpf.c.
+type dnsEventLayout struct {
+	Pid     uint32
+	Ppid    uint32
+	Uid     uint32
+	Dport   uint16
+	Pad     [2]byte
+	KtimeNS uint64
+	Qbuf    [256]byte // raw DNS message bytes; QNAME decoded by decodeDNSQName
+}
+
 // StartEBPFReaders attaches eBPF probes (tracepoint for exec, kprobe for
 // tcp_connect) and starts goroutines that read from the associated ring/perf
 // buffers. The chosen buffer type is determined by tier:
@@ -61,7 +73,11 @@ type networkEventLayout struct {
 //   - Tier1 → perf event array
 //
 // The returned closers must be closed when the caller shuts down.
-func StartEBPFReaders(ctx context.Context, execObjs *BeekeeperExecObjects, netObjs *BeekeeperNetObjects, tier DegradationTier, events chan<- sentry.SentryEvent) ([]io.Closer, error) {
+// dnsObjs is OPTIONAL (Phase 20, SENT-11): when nil (DNS bytecode unavailable or
+// load failed), DNS ingestion is simply absent and the exec/net readers run
+// unchanged. This keeps the DNS stretch fail-safe — a missing DNS source never
+// degrades the core sources.
+func StartEBPFReaders(ctx context.Context, execObjs *BeekeeperExecObjects, netObjs *BeekeeperNetObjects, dnsObjs *BeekeeperDNSObjects, tier DegradationTier, events chan<- sentry.SentryEvent) ([]io.Closer, error) {
 	var closers []io.Closer
 
 	tp, err := link.Tracepoint("sched", "sched_process_exec",
@@ -85,6 +101,21 @@ func StartEBPFReaders(ctx context.Context, execObjs *BeekeeperExecObjects, netOb
 	} else {
 		go startPerfReader(ctx, execObjs.BeekeeperExecMaps.Events, events, sentry.EventProcessCreate)
 		go startPerfReader(ctx, netObjs.BeekeeperNetMaps.Events, events, sentry.EventNetworkConnect)
+	}
+
+	// SENT-11 (OPTIONAL): DNS kprobes on udp_sendmsg/tcp_sendmsg (dport 53).
+	if dnsObjs != nil {
+		if kpUDP, derr := link.Kprobe("udp_sendmsg", dnsObjs.BeekeeperDNSPrograms.KprobeUdpSendmsg, nil); derr == nil {
+			closers = append(closers, kpUDP)
+		}
+		if kpTCP, derr := link.Kprobe("tcp_sendmsg", dnsObjs.BeekeeperDNSPrograms.KprobeTcpSendmsg, nil); derr == nil {
+			closers = append(closers, kpTCP)
+		}
+		if tier == Tier0 {
+			go startRingBufReader(ctx, dnsObjs.BeekeeperDNSMaps.Events, events, sentry.EventDNSQuery)
+		} else {
+			go startPerfReader(ctx, dnsObjs.BeekeeperDNSMaps.Events, events, sentry.EventDNSQuery)
+		}
 	}
 
 	return closers, nil
@@ -188,8 +219,53 @@ func parseEvent(raw []byte, kind sentry.EventKind) sentry.SentryEvent {
 				ev.DstAddr = net.IP(addr)
 			}
 		}
+	case sentry.EventDNSQuery:
+		var de dnsEventLayout
+		if err := binary.Read(r, binary.LittleEndian, &de); err == nil {
+			ev.PID = de.Pid
+			ev.PPID = de.Ppid
+			ev.UID = de.Uid
+			ev.KTimeNS = de.KtimeNS
+			ev.DstPort = binary.BigEndian.Uint16([]byte{byte(de.Dport >> 8), byte(de.Dport)})
+			ev.FilePath = decodeDNSQName(de.Qbuf[:])
+		}
 	}
 	return ev
+}
+
+// decodeDNSQName decodes the QNAME from a raw DNS message (length-prefixed wire
+// format) into a dotted domain string. buf starts at the DNS message header; the
+// 12-byte header is skipped and the question's QNAME labels follow. Compression
+// pointers are not expected in a query QNAME and terminate the decode. Phase 20,
+// SENT-11.
+func decodeDNSQName(buf []byte) string {
+	const dnsHeaderLen = 12
+	if len(buf) <= dnsHeaderLen {
+		return ""
+	}
+	var sb strings.Builder
+	for i := dnsHeaderLen; i < len(buf); {
+		l := int(buf[i])
+		if l == 0 {
+			break // root label: end of QNAME
+		}
+		if l&0xC0 != 0 {
+			break // compression pointer / reserved: not valid in a query QNAME
+		}
+		i++
+		if i+l > len(buf) {
+			break
+		}
+		if sb.Len() > 0 {
+			sb.WriteByte('.')
+		}
+		sb.Write(buf[i : i+l])
+		i += l
+		if sb.Len() > 253 { // max DNS name length
+			break
+		}
+	}
+	return sb.String()
 }
 
 // StartProcessTreeBuilder consumes SentryEvent values from the events channel

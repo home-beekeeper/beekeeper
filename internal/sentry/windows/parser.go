@@ -18,6 +18,9 @@ var (
 	guidKernelProcess = "22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716"
 	guidKernelFile    = "edd08927-9cc4-4e65-b970-c2560fb5c289"
 	guidKernelNetwork = "7dd42a49-5329-4832-8dfd-43d979153a88"
+	// guidDNSClient is the Microsoft-Windows-DNS-Client manifest provider
+	// (Phase 20, SENT-11, OPTIONAL). Event ID 3006 carries the issued QueryName.
+	guidDNSClient = "1c95126e-7eea-49a9-a3fe-a378b03ddb4d"
 )
 
 // ErrUnknownEvent is returned by parseETWEvent when the provider or event ID
@@ -184,6 +187,20 @@ func parseETWEventSummary(e etwEventSummary) (sentry.SentryEvent, error) {
 			PID:      e.PID,
 			DstAddr:  net.ParseIP(daddrStr),
 			DstPort:  toUint16(portRaw),
+			WallTime: wallTime,
+		}, nil
+
+	case guidDNSClient:
+		// Microsoft-Windows-DNS-Client event ID 3006 = a DNS query was issued.
+		// QueryName carries the queried domain. Phase 20 (SENT-11, OPTIONAL).
+		if e.EventID != 3006 {
+			return sentry.SentryEvent{}, fmt.Errorf("%w: dns-client event %d", ErrUnknownEvent, e.EventID)
+		}
+		qname, _ := e.EventData["QueryName"].(string)
+		return sentry.SentryEvent{
+			Kind:     sentry.EventDNSQuery,
+			PID:      e.PID,
+			FilePath: qname,
 			WallTime: wallTime,
 		}, nil
 

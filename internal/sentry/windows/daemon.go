@@ -139,6 +139,10 @@ func runDaemonBody(ctx context.Context, cfg *config.Config, auditPath string) er
 		{"Microsoft-Windows-Security-Auditing", ProviderGUIDs["Microsoft-Windows-Security-Auditing"]},
 		{"Microsoft-Windows-Kernel-File", ProviderGUIDs["Microsoft-Windows-Kernel-File"]},
 		{"Microsoft-Windows-Kernel-Network", ProviderGUIDs["Microsoft-Windows-Kernel-Network"]},
+		// SENT-11 (OPTIONAL): DNS-Client is a manifest provider. If golang-etw
+		// cannot enable it on this session, the same access-denied-continue
+		// fallback below leaves DNS ingestion absent without failing the daemon.
+		{"Microsoft-Windows-DNS-Client", ProviderGUIDs["Microsoft-Windows-DNS-Client"]},
 	}
 
 	var enabledCount int

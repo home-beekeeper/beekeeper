@@ -24,6 +24,9 @@ var ProviderGUIDs = map[string]string{
 	"Microsoft-Windows-Kernel-File":       "{EDD08927-9CC4-4E65-B970-C2560FB5C289}",
 	"Microsoft-Windows-Kernel-Network":    "{7DD42A49-5329-4832-8DFD-43D979153A88}",
 	"Microsoft-Windows-Security-Auditing": "{54849625-5478-4994-A5BA-3E3B0328C30D}",
+	// Phase 20 (SENT-11, OPTIONAL): DNS-Client is a MANIFEST provider (not a
+	// kernel provider). Event ID 3006 carries the issued QueryName.
+	"Microsoft-Windows-DNS-Client": "{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}",
 }
 
 // DefaultKernelProviders returns the GUIDs for the default set of kernel

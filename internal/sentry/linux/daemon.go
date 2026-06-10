@@ -79,7 +79,9 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 	// 3. Load eBPF objects if the tier allows it.
 	var execObjs BeekeeperExecObjects
 	var netObjs BeekeeperNetObjects
+	var dnsObjs BeekeeperDNSObjects
 	ebpfAvailable := false
+	dnsAvailable := false
 	if tier <= Tier1 {
 		if err := loadBeekeeperExecObjects(&execObjs, nil); err != nil {
 			fmt.Fprintf(os.Stderr, "beekeeper sentry: load exec eBPF: %v (degrading to Tier2)\n", err)
@@ -92,6 +94,15 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 			ebpfAvailable = true
 			defer execObjs.Close() //nolint:errcheck
 			defer netObjs.Close()  //nolint:errcheck
+			// SENT-11 (OPTIONAL): DNS ingestion is best-effort — a load failure
+			// (bytecode absent on a stub build) leaves DNS absent without
+			// degrading the core exec/net sources.
+			if err := loadBeekeeperDNSObjects(&dnsObjs, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "beekeeper sentry: load DNS eBPF: %v (DNS ingestion disabled)\n", err)
+			} else {
+				dnsAvailable = true
+				defer dnsObjs.Close() //nolint:errcheck
+			}
 		}
 	}
 
@@ -145,7 +156,11 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 	treeCh := make(chan map[uint32]sentry.ProcessNode, 1)
 
 	if ebpfAvailable {
-		closers, err := StartEBPFReaders(ctx, &execObjs, &netObjs, tier, events)
+		var dnsArg *BeekeeperDNSObjects
+		if dnsAvailable {
+			dnsArg = &dnsObjs
+		}
+		closers, err := StartEBPFReaders(ctx, &execObjs, &netObjs, dnsArg, tier, events)
 		if err != nil {
 			return fmt.Errorf("start eBPF readers: %w", err)
 		}

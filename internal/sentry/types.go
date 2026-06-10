@@ -26,6 +26,14 @@ const (
 	// It is a DISTINCT kind from EventFileAccess so the read-clustering path
 	// (SENTRY-001/006) stays uncontaminated; it dispatches to SENTRY-008.
 	EventFileWrite
+	// EventDNSQuery is a DNS query event carrying the queried domain (QNAME) in
+	// FilePath (Phase 20, SENT-11, OPTIONAL stretch). It is ingested on Linux via
+	// a kprobe on udp_sendmsg/tcp_sendmsg filtered to dport 53, and on Windows via
+	// the Microsoft-Windows-DNS-Client ETW provider (event ID 3006). It closes the
+	// DNS-TXT tunnelling gap that TCP-connect ingestion cannot see. No DNS-exfil
+	// correlation rule consumes it yet (reserved); it passes through EvaluateEvent
+	// as a no-op so the ingestion source can land ahead of the rule.
+	EventDNSQuery
 )
 
 // SentryEvent is the normalised, OS-agnostic representation of a single kernel

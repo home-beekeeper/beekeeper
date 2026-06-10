@@ -137,6 +137,37 @@ func TestParseNetworkConnectEvent(t *testing.T) {
 	}
 }
 
+// TestParseDNSQueryEvent proves DNS-Client event ID 3006 with a QueryName parses
+// to EventDNSQuery carrying the queried domain (Phase 20, SENT-11).
+func TestParseDNSQueryEvent(t *testing.T) {
+	e := makeEventSummary("{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}", 3006, 888, map[string]interface{}{
+		"QueryName": "exfil.attacker.example",
+	})
+	ev, err := parseETWEventSummary(e)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.Kind != sentry.EventDNSQuery {
+		t.Errorf("Kind = %v, want EventDNSQuery", ev.Kind)
+	}
+	if ev.PID != 888 {
+		t.Errorf("PID = %d, want 888", ev.PID)
+	}
+	if ev.FilePath != "exfil.attacker.example" {
+		t.Errorf("FilePath (QNAME) = %q, want exfil.attacker.example", ev.FilePath)
+	}
+}
+
+// TestParseDNSNon3006Ignored proves a non-3006 DNS-Client event is ErrUnknownEvent.
+func TestParseDNSNon3006Ignored(t *testing.T) {
+	e := makeEventSummary("{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}", 3008, 888, map[string]interface{}{
+		"QueryName": "example.com",
+	})
+	if _, err := parseETWEventSummary(e); !errors.Is(err, ErrUnknownEvent) {
+		t.Errorf("expected ErrUnknownEvent for non-3006 DNS-Client event, got %v", err)
+	}
+}
+
 func TestParseUnknownProviderReturnsErr(t *testing.T) {
 	e := makeEventSummary("{DEADBEEF-0000-0000-0000-000000000000}", 1, 1, nil)
 	_, err := parseETWEventSummary(e)
