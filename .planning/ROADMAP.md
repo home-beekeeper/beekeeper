@@ -338,7 +338,7 @@ Plans:
 - [x] 20-01-PLAN.md — Tier 1 catalog sync (CSYNC): config schema + project-cant-disable; SourceState timestamps + ETag conditional sync; unprivileged catalogs daemon (systemd --user / LaunchAgent / schtasks) + interval gate; TUI real sync + selector + first-run sync [wave 1] ✅ 2026-06-10 (CSYNC-01..06; 4 commits 0540e52/482e8b9/6280a5f/8415c73)
 - [ ] 20-02-PLAN.md — Tier 2 LlamaFirewall (LLMF): embed + InstallSidecar; fix the silent fail-open API; loopback-TCP+token IPC; real CodeShield + remove AlignmentCheck; venv/22M-model/HF cache + StateDir fix; gated e2e [wave 2, blocking human checkpoint]
 - [x] 20-03-PLAN.md — Tier 3 W1 Sentry rules (SENT): watchlist expansion; SENTRY-006 + isMonitoredDescendant; SENTRY-007 + isExternalDest; TestRulesImportsArePure [wave 1] ✅ 2026-06-10 (SENT-01..04; commits 0e6b5f1/3e5b3a2)
-- [ ] 20-04-PLAN.md — Tier 3 W2 file-write (SENT): EventFileWrite + SENTRY-008 + persistenceWritePaths; per-OS ingestion (Linux 2nd fanotify group >=5.9 / macOS write+rename+new-file union fix / Windows correct Kernel-File IDs 16/30/27) [wave 2]
+- [x] 20-04-PLAN.md — Tier 3 W2 file-write (SENT): EventFileWrite + SENTRY-008 + persistenceWritePaths; per-OS ingestion (Linux 2nd fanotify group >=5.9 / macOS write+rename+new-file union fix / Windows correct Kernel-File IDs 16/30/27) [wave 2] ✅ 2026-06-10 (SENT-05..08; commits f285ecf/c5c05db/fc5a781/03dcaec)
 - [ ] 20-05-PLAN.md — Tier 3 W3 honesty + tests (SENT): PROJECT/THREAT-MODEL §8 + home honesty edits; synthetic 006/007/008 + watchlist rules_test [wave 3]
 - [ ] 20-06-PLAN.md — Tier 3 W4 STRETCH/OPTIONAL DNS: EventDNSQuery; Linux kprobe udp/tcp_sendmsg dport53 bpf2go; Windows ETW DNS-Client ID 3006; macOS deferred v2 [wave 4]
 **UI hint**: no (TUI/threat-model/marketing text only)
@@ -378,4 +378,4 @@ Plans:
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
 | **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/TBD** | **Not started** | **—** |
-| **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **2/6** | **In Progress (Wave 1 ✅ 20-01 CSYNC + 20-03 SENT-W1; Wave 2 next: 20-02 LLMF + 20-04 SENT-W2)** | **—** |
+| **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **3/6** | **In Progress (Wave 1 ✅; Wave 2: 20-04 SENT-W2 ✅, 20-02 LLMF next — human HF-license gate)** | **—** |
