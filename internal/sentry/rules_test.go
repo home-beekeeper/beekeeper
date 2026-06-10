@@ -441,3 +441,159 @@ func TestWindowExpiry(t *testing.T) {
 		t.Error("expected T=90s entry to remain in CredAccessByPID[100]")
 	}
 }
+
+// ---- Phase 20 (SENT) — watchlist / SENTRY-006 / SENTRY-007 / external dest ----
+
+// agentTree returns a bare-terminal agent process tree: shell(pid=1, no editor)
+// → claude(pid=50) → child(pid=200). The leaf is agent-descended but NOT
+// editor-descended.
+func agentTree() map[uint32]ProcessNode {
+	return buildTree([]ProcessNode{
+		{PID: 1, PPID: 0, Exe: "/bin/bash"},
+		{PID: 50, PPID: 1, Exe: "/usr/local/bin/claude"},
+		{PID: 200, PPID: 50, Exe: "/usr/bin/some-tool"},
+	})
+}
+
+// TestSENTRY001FiresCloudWatchlist proves the Phase-20 watchlist expansion: a
+// 2-cloud-cred read (.aws + .config/gcloud) by a monitored descendant fires
+// SENTRY-001.
+func TestSENTRY001FiresCloudWatchlist(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := editorTree()
+
+	mk := func(path string) SentryEvent {
+		return SentryEvent{Kind: EventFileAccess, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: path}
+	}
+	EvaluateEvent(mk("/home/u/.aws/credentials"), state, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+	alerts := EvaluateEvent(mk("/home/u/.config/gcloud/credentials.db"), state, tree, emptyInventory(), defaultCfg(), noBaseline(), now.Add(3*time.Second))
+	if !hasAlert(alerts, "SENTRY-001") {
+		t.Error("expected SENTRY-001 on .aws + .config/gcloud (watchlist expansion)")
+	}
+}
+
+// TestSENTRY006AgentBareTerminal proves a bare-terminal agent reading 2
+// sensitive paths in the window fires SENTRY-006.
+func TestSENTRY006AgentBareTerminal(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := agentTree()
+
+	mk := func(path string) SentryEvent {
+		return SentryEvent{Kind: EventFileAccess, PID: 200, PPID: 50, Exe: "/usr/bin/some-tool", FilePath: path}
+	}
+	EvaluateEvent(mk("/home/u/.aws/credentials"), state, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+	alerts := EvaluateEvent(mk("/home/u/.ssh/id_rsa"), state, tree, emptyInventory(), defaultCfg(), noBaseline(), now.Add(2*time.Second))
+	if !hasAlert(alerts, "SENTRY-006") {
+		t.Error("expected SENTRY-006 for a bare-terminal agent reading 2 sensitive paths")
+	}
+}
+
+// TestSENTRY006NoDoubleFireIntegratedTerminal proves an editor integrated
+// terminal produces exactly one alert (SENTRY-001) and NOT SENTRY-006.
+func TestSENTRY006NoDoubleFireIntegratedTerminal(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	// cursor(editor) → cursor-agent(agent) → leaf: BOTH editor- and agent-descended.
+	tree := buildTree([]ProcessNode{
+		{PID: 1, PPID: 0, Exe: "/usr/bin/cursor"},
+		{PID: 50, PPID: 1, Exe: "/usr/bin/cursor-agent"},
+		{PID: 200, PPID: 50, Exe: "/usr/bin/some-tool"},
+	})
+	mk := func(path string) SentryEvent {
+		return SentryEvent{Kind: EventFileAccess, PID: 200, PPID: 50, Exe: "/usr/bin/some-tool", FilePath: path}
+	}
+	EvaluateEvent(mk("/home/u/.aws/credentials"), state, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+	alerts := EvaluateEvent(mk("/home/u/.ssh/id_rsa"), state, tree, emptyInventory(), defaultCfg(), noBaseline(), now.Add(2*time.Second))
+	if !hasAlert(alerts, "SENTRY-001") {
+		t.Error("expected SENTRY-001 on the integrated terminal")
+	}
+	if hasAlert(alerts, "SENTRY-006") {
+		t.Error("SENTRY-006 must NOT fire on an editor integrated terminal (no double-fire, D-T3-gate)")
+	}
+}
+
+// TestIsExternalDest covers the private/external classification incl. the
+// IPv4-mapped IPv6 case.
+func TestIsExternalDest(t *testing.T) {
+	cases := []struct {
+		ip   string
+		want bool
+	}{
+		{"8.8.8.8", true},
+		{"1.1.1.1", true},
+		{"127.0.0.1", false},
+		{"::1", false},
+		{"10.0.0.1", false},
+		{"172.16.0.1", false},
+		{"192.168.1.1", false},
+		{"169.254.1.1", false},
+		{"100.64.0.1", false}, // CGNAT
+		{"::ffff:10.0.0.1", false}, // IPv4-mapped private
+		{"fc00::1", false},         // ULA
+	}
+	for _, c := range cases {
+		got := isExternalDest(net.ParseIP(c.ip))
+		if got != c.want {
+			t.Errorf("isExternalDest(%s) = %v, want %v", c.ip, got, c.want)
+		}
+	}
+}
+
+// TestSENTRY007Fires proves the generalized exfil fusion: cred read + external
+// outbound fires SENTRY-007; loopback/RFC1918 outbound does not.
+func TestSENTRY007Fires(t *testing.T) {
+	now := time.Now()
+	tree := editorTree()
+
+	run := func(dst string) []SentryAlert {
+		state := NewRuleState()
+		// 1 recent cred read (no SENTRY-001 — threshold 2).
+		EvaluateEvent(SentryEvent{Kind: EventFileAccess, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: "/home/u/.aws/credentials"},
+			state, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+		// Outbound connection to dst.
+		return EvaluateEvent(SentryEvent{Kind: EventNetworkConnect, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", DstAddr: net.ParseIP(dst)},
+			state, tree, emptyInventory(), defaultCfg(), noBaseline(), now.Add(10*time.Second))
+	}
+
+	if !hasAlert(run("8.8.8.8"), "SENTRY-007") {
+		t.Error("expected SENTRY-007 on cred-read + external outbound")
+	}
+	if hasAlert(run("127.0.0.1"), "SENTRY-007") {
+		t.Error("SENTRY-007 must NOT fire on a loopback outbound")
+	}
+	if hasAlert(run("10.0.0.1"), "SENTRY-007") {
+		t.Error("SENTRY-007 must NOT fire on an RFC1918 outbound")
+	}
+	if hasAlert(run("::ffff:10.0.0.1"), "SENTRY-007") {
+		t.Error("SENTRY-007 must NOT fire on an IPv4-mapped private outbound")
+	}
+}
+
+// TestSENTRY007WarnFirstInBaseline proves SENTRY-007 is warn-first (no
+// quarantine recommendation, BaselineMode set) while a baseline window is active.
+func TestSENTRY007WarnFirstInBaseline(t *testing.T) {
+	now := time.Now()
+	tree := editorTree()
+	state := NewRuleState()
+	baseline := BaselineState{DurationDays: 7, StartedAt: now.Add(-1 * 24 * time.Hour)}
+
+	EvaluateEvent(SentryEvent{Kind: EventFileAccess, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: "/home/u/.aws/credentials"},
+		state, tree, emptyInventory(), defaultCfg(), baseline, now)
+	alerts := EvaluateEvent(SentryEvent{Kind: EventNetworkConnect, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", DstAddr: net.ParseIP("8.8.8.8")},
+		state, tree, emptyInventory(), defaultCfg(), baseline, now.Add(10*time.Second))
+
+	for _, a := range alerts {
+		if a.RuleID == "SENTRY-007" {
+			if !a.BaselineMode {
+				t.Error("SENTRY-007 BaselineMode = false during active baseline, want true (warn-first)")
+			}
+			if a.QuarantineRec {
+				t.Error("SENTRY-007 QuarantineRec = true during baseline, want false (warn-first)")
+			}
+			return
+		}
+	}
+	t.Error("expected a SENTRY-007 alert")
+}

@@ -92,6 +92,11 @@ type RuleState struct {
 	CredCLIByPID map[uint32][]RuleWindowEntry
 	// PhoneHomeByPID tracks outbound network connections per PID for SENTRY-003.
 	PhoneHomeByPID map[uint32][]RuleWindowEntry
+	// PersistWriteByPID tracks persistence-path writes per PID. Populated by
+	// SENTRY-008 (plan 20-04, EventFileWrite) and consumed by SENTRY-007's
+	// recent-persistence-write fusion input — it is the extension point left by
+	// plan 20-03 (empty until 20-04 lands the write-ingestion source).
+	PersistWriteByPID map[uint32][]RuleWindowEntry
 	// RecentAlerts deduplicates alerts within a short suppression window.
 	RecentAlerts []recentAlert
 }
@@ -137,8 +142,9 @@ type InventorySnapshot struct {
 // that callers need not guard against nil map assignments.
 func NewRuleState() *RuleState {
 	return &RuleState{
-		CredAccessByPID: make(map[uint32][]RuleWindowEntry),
-		CredCLIByPID:    make(map[uint32][]RuleWindowEntry),
-		PhoneHomeByPID:  make(map[uint32][]RuleWindowEntry),
+		CredAccessByPID:   make(map[uint32][]RuleWindowEntry),
+		CredCLIByPID:      make(map[uint32][]RuleWindowEntry),
+		PhoneHomeByPID:    make(map[uint32][]RuleWindowEntry),
+		PersistWriteByPID: make(map[uint32][]RuleWindowEntry),
 	}
 }

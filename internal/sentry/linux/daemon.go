@@ -22,10 +22,12 @@ import (
 
 // daemonSensitivePaths mirrors sentry.defaultSensitivePaths for use in fanotify
 // marking. Kept in sync manually; the canonical list lives in sentry/rules.go.
+// Phase 20 (SENT-01) added the cloud-harvester + agent-config entries below.
 var daemonSensitivePaths = []string{
 	".ssh/", ".aws/", ".gnupg/", ".config/Claude/", ".config/op/",
 	".config/gh/", ".netrc", ".npmrc", ".pypirc",
 	".cargo/credentials", ".env",
+	".config/gcloud", ".azure", ".kube/config", ".docker/config.json", ".claude/",
 }
 
 // daemonState holds shared state protected by mu.

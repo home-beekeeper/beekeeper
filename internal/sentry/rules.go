@@ -1,6 +1,7 @@
 package sentry
 
 import (
+	"net"
 	"path/filepath"
 	"strings"
 	"time"
@@ -9,10 +10,16 @@ import (
 // defaultSensitivePaths is the set of path substrings that the credential-access
 // rule (SENTRY-001) considers sensitive. This list targets the most commonly
 // harvested credential stores observed in real agent-compromise incidents.
+//
+// Phase 20 (SENT-01) expanded the list with cloud-credential harvesters
+// (gcloud/azure/kube/docker) and the agent config dir (.claude/) that the
+// 2026 campaigns target.
 var defaultSensitivePaths = []string{
 	".ssh/", ".aws/", ".gnupg/", ".config/Claude/", ".config/op/",
 	".config/gh/", ".netrc", ".npmrc", ".pypirc",
 	".cargo/credentials", ".env",
+	// Phase 20 cloud-harvester + agent-config expansion (SENT-01):
+	".config/gcloud", ".azure", ".kube/config", ".docker/config.json", ".claude/",
 }
 
 // credentialCLIs is the set of binary names (base name only, no path) that the
@@ -43,6 +50,26 @@ var editorExes = map[string]bool{
 	"codium":        true,
 }
 
+// agentExes is the set of agent-CLI executable base-names (Phase 20, SENT-02).
+// These are standalone coding-agent binaries that can run OUTSIDE an editor (a
+// bare terminal, CI runner, or SSH session) where the editor-ancestry gate is
+// blind. cross-checked against the harness identifiers in internal/hooks/.
+// Note: "cursor" (the editor) is in editorExes; "cursor-agent" (the CLI agent)
+// is here — distinct binaries, so an integrated terminal is editor-descended.
+var agentExes = map[string]bool{
+	"claude":       true,
+	"codex":        true,
+	"cursor-agent": true,
+	"gemini":       true,
+	"copilot":      true,
+	"qwen":         true,
+	"aider":        true,
+	"opencode":     true,
+	"hermes":       true,
+	"goose":        true,
+	"amp":          true,
+}
+
 // isSensitivePath reports whether path contains any of the well-known sensitive
 // credential-store substrings.
 //
@@ -66,6 +93,69 @@ func isCredentialCLI(exe string) bool {
 	return credentialCLIs[exeBaseName(exe)]
 }
 
+// privateNets is the precomputed set of non-external CIDRs (Phase 20, SENT-03):
+// loopback, RFC1918, link-local, ULA, and CGNAT. Built once at package init so
+// isExternalDest does no per-call parsing and the rules layer stays pure (net is
+// an allowed import; no os/http/io).
+var privateNets []*net.IPNet
+
+func init() {
+	for _, cidr := range []string{
+		"127.0.0.0/8", "::1/128", // loopback
+		"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", // RFC1918
+		"169.254.0.0/16", "fe80::/10", // link-local
+		"fc00::/7",        // ULA
+		"100.64.0.0/10",   // CGNAT (RFC6598)
+	} {
+		if _, n, err := net.ParseCIDR(cidr); err == nil {
+			privateNets = append(privateNets, n)
+		}
+	}
+}
+
+// isExternalDest reports whether ip is an EXTERNAL destination — i.e. not
+// loopback, RFC1918, link-local, ULA, or CGNAT. IPv4-mapped IPv6 (::ffff:a.b.c.d)
+// is normalised to its v4 form first so a mapped private address is correctly
+// treated as private. A nil/unspecified IP returns false (fail-safe: an unknown
+// destination is not provably external, so it does not trip the exfil rules).
+func isExternalDest(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4 // normalise IPv4-mapped IPv6 before range tests
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return false
+	}
+	for _, n := range privateNets {
+		if n.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+// agentSelfConfigPaths are agent-own config dirs. A monitored agent reading ITS
+// OWN config (e.g. claude reading ~/.claude/) is legitimate and should not by
+// itself trip SENTRY-006 — these substrings are excluded from the SENTRY-006
+// credential-cluster count (self-read allowlist, D-T3-gate).
+var agentSelfConfigPaths = []string{
+	".claude/", ".config/Claude/", ".codex/", ".gemini/", ".cursor/", ".config/gh/",
+}
+
+// isAgentSelfConfigPath reports whether path is one of the agents' own config
+// dirs (forward-slash normalised like isSensitivePath).
+func isAgentSelfConfigPath(path string) bool {
+	n := filepath.ToSlash(path)
+	for _, s := range agentSelfConfigPaths {
+		if strings.Contains(n, s) {
+			return true
+		}
+	}
+	return false
+}
+
 // exeBaseName returns the base name of exe with any platform executable suffix
 // stripped (e.g. ".exe" on Windows). This normalises ETW-emitted Windows paths
 // such as "cursor.exe" to "cursor" so that editorExes and credentialCLIs lookups
@@ -82,6 +172,30 @@ func exeBaseName(exe string) string {
 // or is itself an editor process, by walking the PPID chain up to 32 hops. The
 // function returns false if pid is not present in tree.
 func isEditorDescendant(pid uint32, tree map[uint32]ProcessNode) bool {
+	return isDescendantOf(pid, tree, editorExes)
+}
+
+// isAgentDescendant reports whether pid is, or descends (<=32 hops) from, a
+// process whose base-name is a known agent CLI (Phase 20, SENT-02). It mirrors
+// isEditorDescendant's depth/cycle logic so standalone-terminal/CI/SSH agents
+// get coverage the editor-only gate misses.
+func isAgentDescendant(pid uint32, tree map[uint32]ProcessNode) bool {
+	return isDescendantOf(pid, tree, agentExes)
+}
+
+// isMonitoredDescendant is the unified ancestry gate (D-T3-gate): a process is
+// monitored when it descends from an editor OR an agent CLI. SENTRY-001/002/003/
+// 005 use this so they fire for both editor-extension trojans and standalone
+// agents, while integrated terminals (editor-descended) do not double-fire with
+// the agent-specific SENTRY-006.
+func isMonitoredDescendant(pid uint32, tree map[uint32]ProcessNode) bool {
+	return isEditorDescendant(pid, tree) || isAgentDescendant(pid, tree)
+}
+
+// isDescendantOf walks the PPID chain up to 32 hops and reports whether pid is,
+// or descends from, a process whose stripped base-name is in exes. Returns false
+// when pid is absent from tree, or on reaching init/a cycle.
+func isDescendantOf(pid uint32, tree map[uint32]ProcessNode, exes map[string]bool) bool {
 	const maxDepth = 32
 	current := pid
 	for i := 0; i < maxDepth; i++ {
@@ -89,7 +203,7 @@ func isEditorDescendant(pid uint32, tree map[uint32]ProcessNode) bool {
 		if !ok {
 			return false
 		}
-		if editorExes[exeBaseName(node.Exe)] {
+		if exes[exeBaseName(node.Exe)] {
 			return true
 		}
 		if node.PPID == 0 || node.PPID == current {
@@ -220,6 +334,9 @@ func EvaluateEvent(
 	switch event.Kind {
 	case EventFileAccess:
 		alerts = append(alerts, evalSENTRY001(event, state, tree, inventory, cfg, baseline, now)...)
+		// SENTRY-006 reuses the CredAccessByPID window populated by SENTRY-001
+		// above; dispatch it AFTER so the window is current.
+		alerts = append(alerts, evalSENTRY006(event, state, tree, cfg, baseline, now)...)
 
 	case EventProcessCreate:
 		alerts = append(alerts, evalSENTRY002(event, state, tree, inventory, cfg, baseline, now)...)
@@ -227,6 +344,7 @@ func EvaluateEvent(
 	case EventNetworkConnect:
 		alerts = append(alerts, evalSENTRY003(event, state, tree, inventory, cfg, baseline, now)...)
 		alerts = append(alerts, evalSENTRY005(event, state, tree, inventory, cfg, baseline, now)...)
+		alerts = append(alerts, evalSENTRY007(event, state, tree, cfg, baseline, now)...)
 	}
 
 	return alerts
@@ -244,7 +362,7 @@ func evalSENTRY001(
 	baseline BaselineState,
 	now time.Time,
 ) []SentryAlert {
-	if !isEditorDescendant(event.PID, tree) {
+	if !isMonitoredDescendant(event.PID, tree) {
 		return nil
 	}
 	if !isSensitivePath(event.FilePath) {
@@ -295,7 +413,7 @@ func evalSENTRY002(
 	baseline BaselineState,
 	now time.Time,
 ) []SentryAlert {
-	if !isEditorDescendant(event.PID, tree) {
+	if !isMonitoredDescendant(event.PID, tree) {
 		return nil
 	}
 	if !isCredentialCLI(event.Exe) {
@@ -342,7 +460,12 @@ func evalSENTRY003(
 	baseline BaselineState,
 	now time.Time,
 ) []SentryAlert {
-	if !isEditorDescendant(event.PID, tree) {
+	if !isMonitoredDescendant(event.PID, tree) {
+		return nil
+	}
+	// Phase 20 (SENT-03): only an EXTERNAL destination is a phone-home — a
+	// connection to loopback/RFC1918/link-local/ULA/CGNAT no longer trips this.
+	if !isExternalDest(event.DstAddr) {
 		return nil
 	}
 
@@ -421,7 +544,7 @@ func evalSENTRY005(
 	baseline BaselineState,
 	now time.Time,
 ) []SentryAlert {
-	if !isEditorDescendant(event.PID, tree) {
+	if !isMonitoredDescendant(event.PID, tree) {
 		return nil
 	}
 
@@ -465,5 +588,100 @@ func evalSENTRY005(
 		Timestamp:           now,
 	}
 	recordRecentAlert(state, "SENTRY-005", event.PID, now)
+	return []SentryAlert{alert}
+}
+
+// evalSENTRY006 implements the AGENT credential-access cluster rule (Phase 20,
+// SENT-02). It fires when an agent-descended process that is NOT also editor-
+// descended reads >= CredAccessThreshold sensitive paths within
+// CredAccessWindowSec. It reuses the CredAccessByPID window populated by
+// evalSENTRY001 (no second append) and excludes the agent's own config-dir reads
+// (self-read allowlist).
+//
+// The agent-not-also-editor gate (D-T3-gate) is what prevents a double-fire with
+// SENTRY-001 on an editor integrated terminal (which is editor-descended): there
+// SENTRY-001 fires and SENTRY-006 is suppressed, so an integrated terminal
+// produces exactly one alert. A bare-terminal/CI/SSH agent — invisible to the
+// editor gate before this rule — now gets coverage.
+func evalSENTRY006(
+	event SentryEvent,
+	state *RuleState,
+	tree map[uint32]ProcessNode,
+	cfg RuleConfig,
+	baseline BaselineState,
+	now time.Time,
+) []SentryAlert {
+	if !isAgentDescendant(event.PID, tree) || isEditorDescendant(event.PID, tree) {
+		return nil
+	}
+
+	cutoff := now.Add(-cfg.CredAccessWindowSec)
+	var files []string
+	for _, e := range state.CredAccessByPID[event.PID] {
+		if e.SeenAt.Before(cutoff) {
+			continue
+		}
+		if isAgentSelfConfigPath(e.Value) {
+			continue // self-read allowlist — own config does not count
+		}
+		files = append(files, e.Value)
+	}
+	if len(files) < cfg.CredAccessThreshold {
+		return nil
+	}
+
+	alert := makeAlert("SENTRY-006", "Agent Credential Access Cluster", "critical", event, tree, baseline, now)
+	alert.FilesAccessed = files
+	recordRecentAlert(state, "SENTRY-006", event.PID, now)
+	return []SentryAlert{alert}
+}
+
+// evalSENTRY007 implements the GENERALIZED exfiltration-fusion rule (Phase 20,
+// SENT-03). Unlike SENTRY-005 (which requires a fresh extension), it fires when a
+// monitored-descendant process makes an outbound connection to an EXTERNAL
+// destination AND has either a recent sensitive-file read OR a recent
+// persistence write within ExfilFusionWindowMin. The persistence-write input is
+// fed by SENTRY-008 (plan 20-04); until that lands, PersistWriteByPID is empty
+// and only the recent-cred-read path is exercised. It is warn-first in baseline
+// mode (makeAlert sets QuarantineRec only when baseline is inactive).
+func evalSENTRY007(
+	event SentryEvent,
+	state *RuleState,
+	tree map[uint32]ProcessNode,
+	cfg RuleConfig,
+	baseline BaselineState,
+	now time.Time,
+) []SentryAlert {
+	if !isMonitoredDescendant(event.PID, tree) {
+		return nil
+	}
+	if !isExternalDest(event.DstAddr) {
+		return nil
+	}
+
+	cutoff := now.Add(-cfg.ExfilFusionWindowMin)
+	recent := false
+	for _, e := range state.CredAccessByPID[event.PID] {
+		if !e.SeenAt.Before(cutoff) {
+			recent = true
+			break
+		}
+	}
+	if !recent {
+		// Extension point (plan 20-04): a recent persistence write also fuses.
+		for _, e := range state.PersistWriteByPID[event.PID] {
+			if !e.SeenAt.Before(cutoff) {
+				recent = true
+				break
+			}
+		}
+	}
+	if !recent {
+		return nil
+	}
+
+	alert := makeAlert("SENTRY-007", "Generalized Exfiltration Fusion", "critical", event, tree, baseline, now)
+	alert.NetworkDests = []string{event.DstAddr.String()}
+	recordRecentAlert(state, "SENTRY-007", event.PID, now)
 	return []SentryAlert{alert}
 }
