@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadMissingFileDefaultsClosed(t *testing.T) {
@@ -308,5 +309,74 @@ func TestNudgeMalformedDriftIntervalErrors(t *testing.T) {
 	path := writeConfig(t, `{"nudge":{"enabled":true,"major_drift_check":{"enabled":true,"interval":"not-a-duration"}}}`)
 	if _, err := Load(path); err == nil {
 		t.Fatal("Load with malformed drift interval returned nil error, want non-nil")
+	}
+}
+
+// --- Phase 20 (CSYNC) — CatalogSyncConfig ---
+
+// TestValidateCatalogSyncConfig verifies fail-closed interval validation:
+// empty + in-range accepted; unparseable + out-of-range rejected.
+func TestValidateCatalogSyncConfig(t *testing.T) {
+	accept := []string{"", "5h", "12h", "24h", "6h30m"}
+	for _, iv := range accept {
+		if err := ValidateCatalogSyncConfig(CatalogSyncConfig{Enabled: true, Interval: iv}); err != nil {
+			t.Errorf("ValidateCatalogSyncConfig(interval=%q) = %v, want nil", iv, err)
+		}
+	}
+	reject := []string{"12x", "1h", "48h", "0h", "-3h"}
+	for _, iv := range reject {
+		if err := ValidateCatalogSyncConfig(CatalogSyncConfig{Enabled: true, Interval: iv}); err == nil {
+			t.Errorf("ValidateCatalogSyncConfig(interval=%q) = nil, want error", iv)
+		}
+	}
+}
+
+// TestCatalogSyncIntervalClamp verifies the accessor defensively clamps to
+// [5h,24h] and defaults to 12h for empty/nil — it never returns 0 or panics.
+func TestCatalogSyncIntervalClamp(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		want time.Duration
+	}{
+		{"nil block -> 12h", Config{}, 12 * time.Hour},
+		{"empty -> 12h", Config{CatalogSync: &CatalogSyncConfig{Interval: ""}}, 12 * time.Hour},
+		{"in-range 6h", Config{CatalogSync: &CatalogSyncConfig{Interval: "6h"}}, 6 * time.Hour},
+		{"too-short 1h -> 5h", Config{CatalogSync: &CatalogSyncConfig{Interval: "1h"}}, 5 * time.Hour},
+		{"too-long 48h -> 24h", Config{CatalogSync: &CatalogSyncConfig{Interval: "48h"}}, 24 * time.Hour},
+		{"unparseable -> 12h", Config{CatalogSync: &CatalogSyncConfig{Interval: "nope"}}, 12 * time.Hour},
+	}
+	for _, tt := range tests {
+		if got := tt.cfg.CatalogSyncInterval(); got != tt.want {
+			t.Errorf("%s: CatalogSyncInterval() = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestLoadCatalogSyncDefault verifies a missing catalog_sync block resolves to
+// the documented default (enabled, 12h).
+func TestLoadCatalogSyncDefault(t *testing.T) {
+	path := writeConfig(t, `{"fail_mode":"closed"}`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.CatalogSync == nil {
+		t.Fatal("cfg.CatalogSync = nil, want default block")
+	}
+	if !cfg.CatalogSyncEnabled() {
+		t.Error("CatalogSyncEnabled() = false, want true (default)")
+	}
+	if got := cfg.CatalogSyncInterval(); got != 12*time.Hour {
+		t.Errorf("CatalogSyncInterval() = %s, want 12h (default)", got)
+	}
+}
+
+// TestLoadCatalogSyncInvalidErrors verifies an out-of-range interval is rejected
+// at load time (fail-closed), never silently clamped.
+func TestLoadCatalogSyncInvalidErrors(t *testing.T) {
+	path := writeConfig(t, `{"catalog_sync":{"enabled":true,"interval":"1h"}}`)
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load with out-of-range catalog_sync interval returned nil error, want non-nil")
 	}
 }

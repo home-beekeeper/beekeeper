@@ -264,6 +264,106 @@ func ValidateNudgeConfig(nc NudgeConfig) error {
 	return nil
 }
 
+// CatalogSyncConfig holds Phase 20 background catalog-sync configuration
+// (CSYNC-01..06).
+//
+// Background sync keeps threat intel fresh for hook-only users who would
+// otherwise never run `beekeeper catalogs sync` by hand. Disabling sync — or
+// loosening its cadence — is a SECURITY-RELAXING lever: a stale catalog widens
+// the window in which a hijacked or off-task agent can act unseen. Therefore an
+// untrusted (project/.beekeeper.json or env) layer cannot set Enabled:false or
+// loosen the interval (see mergeCatalogSyncUntrusted, CSYNC-04); only a trusted
+// user/global layer may opt out.
+//
+// The field is a POINTER on Config so the layered merge can distinguish an
+// absent block (nil → inherit lower layer) from an explicit disable, exactly
+// like Nudge.
+type CatalogSyncConfig struct {
+	// Enabled controls whether background catalog sync runs. Default true.
+	Enabled bool `json:"enabled"`
+	// Interval is the minimum time between successful syncs as a Go duration
+	// string in [5h, 24h]. Default "12h"; empty resolves to the default. The OS
+	// scheduler fires on a frequent (hourly) heartbeat and `catalogs sync`
+	// no-ops unless time.Since(LastSuccess) >= this interval (D-T1-interval).
+	Interval string `json:"interval,omitempty"`
+}
+
+// Catalog-sync interval bounds. The interval is clamped to [5h, 24h]: shorter
+// than 5h adds GitHub list-call pressure with no freshness benefit; longer than
+// 24h is too stale to defend a long-running agent session.
+const (
+	catalogSyncMinInterval     = 5 * time.Hour
+	catalogSyncMaxInterval     = 24 * time.Hour
+	catalogSyncDefaultInterval = 12 * time.Hour
+)
+
+// DefaultCatalogSyncConfig returns the documented default: sync enabled on a
+// 12h interval. A missing "catalog_sync" block resolves to this value.
+func DefaultCatalogSyncConfig() CatalogSyncConfig {
+	return CatalogSyncConfig{Enabled: true, Interval: "12h"}
+}
+
+// ValidateCatalogSyncConfig checks csc fail-closed (mirrors ValidateNudgeConfig).
+// An empty Interval is allowed (resolves to the default). A non-empty Interval
+// must be parseable by time.ParseDuration AND fall within [5h, 24h]; anything
+// else is rejected so a typo or out-of-range value cannot silently degrade the
+// sync cadence.
+func ValidateCatalogSyncConfig(csc CatalogSyncConfig) error {
+	if csc.Interval == "" {
+		return nil
+	}
+	d, err := time.ParseDuration(csc.Interval)
+	if err != nil {
+		return fmt.Errorf("invalid catalog_sync interval %q: %w", csc.Interval, err)
+	}
+	if d < catalogSyncMinInterval || d > catalogSyncMaxInterval {
+		return fmt.Errorf("catalog_sync interval %q out of range (want %s..%s)",
+			csc.Interval, catalogSyncMinInterval, catalogSyncMaxInterval)
+	}
+	return nil
+}
+
+// parseClampCatalogSyncInterval parses s and defensively clamps the result to
+// [5h, 24h], returning the 12h default for an empty or unparseable string. It
+// never returns 0 and never panics — it is the load-bearing accessor relied on
+// by the sync scheduler even if validation was somehow bypassed (mirrors the
+// gateway drift.go parse-then-default idiom).
+func parseClampCatalogSyncInterval(s string) time.Duration {
+	if s == "" {
+		return catalogSyncDefaultInterval
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return catalogSyncDefaultInterval
+	}
+	if d < catalogSyncMinInterval {
+		return catalogSyncMinInterval
+	}
+	if d > catalogSyncMaxInterval {
+		return catalogSyncMaxInterval
+	}
+	return d
+}
+
+// CatalogSyncInterval returns the effective sync interval, parsed and clamped to
+// [5h, 24h] (default 12h on empty/invalid/nil). The OS-scheduled `catalogs sync`
+// no-ops unless time.Since(LastSuccess) >= this value (D-T1-interval).
+func (c Config) CatalogSyncInterval() time.Duration {
+	if c.CatalogSync == nil {
+		return catalogSyncDefaultInterval
+	}
+	return parseClampCatalogSyncInterval(c.CatalogSync.Interval)
+}
+
+// CatalogSyncEnabled reports whether background catalog sync is enabled. A nil
+// block (absent config) defaults to enabled (DefaultCatalogSyncConfig).
+func (c Config) CatalogSyncEnabled() bool {
+	if c.CatalogSync == nil {
+		return DefaultCatalogSyncConfig().Enabled
+	}
+	return c.CatalogSync.Enabled
+}
+
 // SelfCatalogConfig holds configuration for the beekeeper-self catalog source
 // (Phase 9, CTLG-04/SFDF-06). The self-catalog is a separately-hosted feed
 // verified against a distinct public key embedded in the binary. It is checked
@@ -326,6 +426,13 @@ type Config struct {
 	// .beekeeper.json is preserved verbatim (the pointer is non-nil, Enabled
 	// is false) — project config wins over user config (layered merge, §11).
 	Nudge *NudgeConfig `json:"nudge,omitempty"`
+
+	// CatalogSync holds Phase 20 background catalog-sync configuration
+	// (CSYNC-01..06). A nil pointer means the block was absent; Load resolves
+	// nil → DefaultCatalogSyncConfig() so callers always see a populated struct.
+	// An untrusted (project/env) layer cannot disable sync or loosen the
+	// interval (mergeCatalogSyncUntrusted) — disabling sync reduces security.
+	CatalogSync *CatalogSyncConfig `json:"catalog_sync,omitempty"`
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.
@@ -366,10 +473,12 @@ func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// Missing file = use defaults. Apply DefaultNudgeConfig so callers
-			// always get a fully-populated Nudge block (mirrors FailMode default).
+			// Missing file = use defaults. Apply DefaultNudgeConfig +
+			// DefaultCatalogSyncConfig so callers always get fully-populated
+			// blocks (mirrors FailMode default).
 			d := DefaultNudgeConfig()
-			return Config{FailMode: FailModeClosed, Nudge: &d}, nil
+			cs := DefaultCatalogSyncConfig()
+			return Config{FailMode: FailModeClosed, Nudge: &d, CatalogSync: &cs}, nil
 		}
 		return Config{}, fmt.Errorf("read config %q: %w", path, err)
 	}
@@ -404,6 +513,17 @@ func Load(path string) (Config, error) {
 		if err := ValidateNudgeConfig(*cfg.Nudge); err != nil {
 			return Config{}, fmt.Errorf("invalid nudge config: %w", err)
 		}
+	}
+
+	// Phase 20 (CSYNC): resolve the CatalogSync block the same way as Nudge —
+	// absent (nil) → DefaultCatalogSyncConfig(); present → validated fail-closed
+	// via the EXPORTED ValidateCatalogSyncConfig so an out-of-range or malformed
+	// interval is rejected here rather than silently clamped.
+	if cfg.CatalogSync == nil {
+		cs := DefaultCatalogSyncConfig()
+		cfg.CatalogSync = &cs
+	} else if err := ValidateCatalogSyncConfig(*cfg.CatalogSync); err != nil {
+		return Config{}, fmt.Errorf("invalid catalog_sync config: %w", err)
 	}
 
 	return cfg, nil

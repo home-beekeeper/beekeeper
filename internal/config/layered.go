@@ -114,6 +114,17 @@ func LoadLayered(opts LayerOpts) (Config, error) {
 		return Config{}, fmt.Errorf("invalid merged nudge config: %w", err)
 	}
 
+	// CSYNC: guarantee a non-nil, validated CatalogSync at the layered root,
+	// mirroring the Nudge contract. Absent across every layer → default; a merged
+	// block is validated fail-closed so an invalid project interval is rejected
+	// here rather than silently clamped.
+	if cfg.CatalogSync == nil {
+		cs := DefaultCatalogSyncConfig()
+		cfg.CatalogSync = &cs
+	} else if err := ValidateCatalogSyncConfig(*cfg.CatalogSync); err != nil {
+		return Config{}, fmt.Errorf("invalid merged catalog_sync config: %w", err)
+	}
+
 	// Final validation: reject an invalid merged FailMode rather than silently
 	// using an insecure default (mitigates T-09-08).
 	return validate(cfg)
@@ -237,6 +248,10 @@ func merge(dst, src Config) Config {
 	// cfg.Nudge without a nil-check got nil. mergeNudge carries the block through.
 	dst.Nudge = mergeNudge(dst.Nudge, src.Nudge)
 
+	// CatalogSyncConfig — pointer field (CSYNC). Trusted-layer merge: src wins
+	// where set, including a disable (a trusted user/global layer MAY opt out).
+	dst.CatalogSync = mergeCatalogSync(dst.CatalogSync, src.CatalogSync)
+
 	return dst
 }
 
@@ -314,6 +329,10 @@ func mergeUntrusted(dst, src Config, layerName string) Config {
 
 	// NudgeConfig — use the low-trust nudge merge variant (TM-D-02).
 	dst.Nudge = mergeNudgeUntrusted(dst.Nudge, src.Nudge, layerName)
+
+	// CatalogSyncConfig — use the low-trust variant (CSYNC-04): a disable or an
+	// interval-loosening from a project/env layer is refused.
+	dst.CatalogSync = mergeCatalogSyncUntrusted(dst.CatalogSync, src.CatalogSync, layerName)
 
 	return dst
 }
@@ -561,6 +580,85 @@ func mergeNudgeUntrusted(dst, src *NudgeConfig, layerName string) *NudgeConfig {
 	}
 
 	return mergeNudge(dst, src)
+}
+
+// mergeCatalogSync merges the src CatalogSync pointer over dst following the
+// layered "src wins if set" discipline (mirrors mergeNudge). This is the
+// TRUSTED-layer variant: a trusted user/global layer MAY disable sync or set
+// any in-range interval.
+//
+// Semantics:
+//   - src == nil: absent in this layer → lower layer authoritative, dst returned.
+//   - dst == nil, src != nil: adopt a copy of src.
+//   - both non-nil: Enabled follows the mergeNudge bool convention (a bare /
+//     interval-less object asserts Enabled; with an interval present only an
+//     explicit enable applies so a partial override never silently disables);
+//     Interval is src-wins-if-non-empty.
+func mergeCatalogSync(dst, src *CatalogSyncConfig) *CatalogSyncConfig {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		cp := *src
+		return &cp
+	}
+	out := *dst
+
+	srcHasOtherSignal := src.Interval != ""
+	if !srcHasOtherSignal || src.Enabled {
+		out.Enabled = src.Enabled
+	}
+	if src.Interval != "" {
+		out.Interval = src.Interval
+	}
+	return &out
+}
+
+// mergeCatalogSyncUntrusted is the low-trust variant of mergeCatalogSync
+// (CSYNC-04). Both security-relaxing levers are gated:
+//
+//   - Enabled: a disable (src.Enabled == false) from a project/env layer is
+//     refused when the lower layer has sync enabled; an explicit enable is
+//     always honored (tightening is safe).
+//   - Interval: a LOOSENING (a longer/less-frequent interval) is refused; a
+//     tightening (shorter or equal) interval is honored. Disabling sync or
+//     letting the catalog go stale widens the hijacked-agent window, so neither
+//     can be set by an untrusted layer.
+func mergeCatalogSyncUntrusted(dst, src *CatalogSyncConfig, layerName string) *CatalogSyncConfig {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		// No trusted baseline to protect — adopt src as-is.
+		cp := *src
+		return &cp
+	}
+	out := *dst
+
+	// Enabled: refuse a disable; honor an enable.
+	if src.Enabled {
+		out.Enabled = true
+	} else if dst.Enabled {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring catalog_sync.enabled:false from %s config layer (security)\n",
+			layerName)
+		// out.Enabled stays dst.Enabled (true)
+	}
+
+	// Interval: refuse a loosening, honor a tightening.
+	if src.Interval != "" {
+		srcDur := parseClampCatalogSyncInterval(src.Interval)
+		dstDur := parseClampCatalogSyncInterval(dst.Interval)
+		if srcDur <= dstDur {
+			out.Interval = src.Interval
+		} else {
+			fmt.Fprintf(os.Stderr,
+				"beekeeper: ignoring catalog_sync.interval loosening %q→%q from %s config layer (security)\n",
+				dst.Interval, src.Interval, layerName)
+		}
+	}
+
+	return &out
 }
 
 // applyEnvVars applies BEEKEEPER_* environment variables as the fourth layer.

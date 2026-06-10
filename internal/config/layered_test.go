@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // writeLayerConfig writes a JSON config file into dir with the given name and
@@ -686,5 +687,70 @@ func TestTMD02_UserNudgeDisableHonored(t *testing.T) {
 	}
 	if cfg.Nudge.Enabled {
 		t.Error("cfg.Nudge.Enabled = true, want false — user (trusted) nudge disable must be honored (TM-D-02)")
+	}
+}
+
+// --- Phase 20 (CSYNC-04) — catalog_sync self-defense ---
+
+// TestMergeCatalogSyncUntrustedRefusesDisable verifies a project/env layer
+// cannot disable background catalog sync (disabling sync reduces security).
+func TestMergeCatalogSyncUntrustedRefusesDisable(t *testing.T) {
+	dst := &CatalogSyncConfig{Enabled: true, Interval: "12h"}
+	src := &CatalogSyncConfig{Enabled: false} // untrusted disable attempt
+	out := mergeCatalogSyncUntrusted(dst, src, "project")
+	if out == nil {
+		t.Fatal("merged CatalogSync = nil, want non-nil")
+	}
+	if !out.Enabled {
+		t.Error("Enabled = false, want true — untrusted layer must not be able to disable sync (CSYNC-04)")
+	}
+}
+
+// TestMergeCatalogSyncUntrustedAllowsEnable verifies an untrusted enable (a
+// tightening) is honored even when the lower layer had sync disabled.
+func TestMergeCatalogSyncUntrustedAllowsEnable(t *testing.T) {
+	dst := &CatalogSyncConfig{Enabled: false, Interval: "12h"}
+	src := &CatalogSyncConfig{Enabled: true}
+	out := mergeCatalogSyncUntrusted(dst, src, "project")
+	if !out.Enabled {
+		t.Error("Enabled = false, want true — an untrusted enable (tightening) is allowed")
+	}
+}
+
+// TestMergeCatalogSyncUntrustedInterval verifies a loosening (less-frequent)
+// interval from an untrusted layer is refused, but a tightening is honored.
+func TestMergeCatalogSyncUntrustedInterval(t *testing.T) {
+	// Loosening 5h -> 24h is refused (kept at 5h).
+	dst := &CatalogSyncConfig{Enabled: true, Interval: "5h"}
+	loosen := &CatalogSyncConfig{Enabled: true, Interval: "24h"}
+	if out := mergeCatalogSyncUntrusted(dst, loosen, "env"); out.Interval != "5h" {
+		t.Errorf("Interval = %q, want 5h — untrusted loosening must be refused (CSYNC-04)", out.Interval)
+	}
+	// Tightening 24h -> 5h is honored.
+	dst2 := &CatalogSyncConfig{Enabled: true, Interval: "24h"}
+	tighten := &CatalogSyncConfig{Enabled: true, Interval: "5h"}
+	if out := mergeCatalogSyncUntrusted(dst2, tighten, "env"); out.Interval != "5h" {
+		t.Errorf("Interval = %q, want 5h — a tightening interval is allowed", out.Interval)
+	}
+}
+
+// TestLoadLayeredCatalogSyncProjectCannotDisable is the end-to-end proof: a
+// project layer with catalog_sync.enabled:false cannot disable a user-enabled
+// sync.
+func TestLoadLayeredCatalogSyncProjectCannotDisable(t *testing.T) {
+	userDir := t.TempDir()
+	projDir := t.TempDir()
+	userPath := writeLayerConfig(t, userDir, "config.json", `{"catalog_sync":{"enabled":true,"interval":"6h"}}`)
+	projPath := writeLayerConfig(t, projDir, "config.json", `{"catalog_sync":{"enabled":false}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.CatalogSync == nil || !cfg.CatalogSync.Enabled {
+		t.Error("CatalogSync.Enabled = false, want true — project layer must not disable sync (CSYNC-04)")
+	}
+	if got := cfg.CatalogSyncInterval(); got != 6*time.Hour {
+		t.Errorf("CatalogSyncInterval() = %s, want 6h (user value preserved)", got)
 	}
 }
