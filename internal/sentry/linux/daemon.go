@@ -30,6 +30,18 @@ var daemonSensitivePaths = []string{
 	".config/gcloud", ".azure", ".kube/config", ".docker/config.json", ".claude/",
 }
 
+// daemonPersistenceDirs mirrors the persistence surfaces SENTRY-008 watches, as
+// PARENT directories to mark with the 2nd fanotify (FAN_REPORT_DFID_NAME) group
+// for create/move write events (Phase 20, SENT-05/06 — consumed by
+// fanotify_write.go). These are relative-to-$HOME directory suffixes; the
+// marking code resolves them against the user's home.
+var daemonPersistenceDirs = []string{
+	".config/systemd/user",
+	"Library/LaunchAgents", "Library/LaunchDaemons",
+	".vscode",
+	".claude", ".cursor",
+}
+
 // daemonState holds shared state protected by mu.
 type daemonState struct {
 	mu              sync.RWMutex

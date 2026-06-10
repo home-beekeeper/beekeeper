@@ -597,3 +597,73 @@ func TestSENTRY007WarnFirstInBaseline(t *testing.T) {
 	}
 	t.Error("expected a SENTRY-007 alert")
 }
+
+// ---- Phase 20 (SENT-05) — SENTRY-008 persistence-write ----
+
+// TestSENTRY008Fires proves a monitored-descendant write to a persistence path
+// fires SENTRY-008.
+func TestSENTRY008Fires(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := editorTree()
+	ev := SentryEvent{Kind: EventFileWrite, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: "/home/u/.claude/settings.json"}
+	alerts := EvaluateEvent(ev, state, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+	if !hasAlert(alerts, "SENTRY-008") {
+		t.Error("expected SENTRY-008 on a monitored write to ~/.claude/settings.json")
+	}
+}
+
+// TestSENTRY008NoFireBenign proves a benign-path write does not fire.
+func TestSENTRY008NoFireBenign(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := editorTree()
+	ev := SentryEvent{Kind: EventFileWrite, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: "/home/u/project/README.md"}
+	if alerts := EvaluateEvent(ev, state, tree, emptyInventory(), defaultCfg(), noBaseline(), now); hasAlert(alerts, "SENTRY-008") {
+		t.Error("SENTRY-008 must NOT fire on a benign-path write")
+	}
+}
+
+// TestSENTRY008NoFireNonMonitored proves a non-monitored writer does not fire.
+func TestSENTRY008NoFireNonMonitored(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := buildTree([]ProcessNode{{PID: 300, PPID: 0, Exe: "/bin/bash"}})
+	ev := SentryEvent{Kind: EventFileWrite, PID: 300, PPID: 0, Exe: "/usr/bin/some-tool", FilePath: "/home/u/.claude/settings.json"}
+	if alerts := EvaluateEvent(ev, state, tree, emptyInventory(), defaultCfg(), noBaseline(), now); hasAlert(alerts, "SENTRY-008") {
+		t.Error("SENTRY-008 must NOT fire for a non-monitored (no editor/agent ancestor) writer")
+	}
+}
+
+// TestSENTRY008DedupPerPath proves a repeated write to the same path does not
+// re-alert (per-path-per-session dedup).
+func TestSENTRY008DedupPerPath(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := editorTree()
+	ev := SentryEvent{Kind: EventFileWrite, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: "/home/u/.claude/settings.json"}
+	if a := EvaluateEvent(ev, state, tree, emptyInventory(), defaultCfg(), noBaseline(), now); !hasAlert(a, "SENTRY-008") {
+		t.Fatal("expected first SENTRY-008")
+	}
+	if a := EvaluateEvent(ev, state, tree, emptyInventory(), defaultCfg(), noBaseline(), now.Add(time.Second)); hasAlert(a, "SENTRY-008") {
+		t.Error("SENTRY-008 must NOT re-fire for the same path (per-path-per-session dedup)")
+	}
+}
+
+// TestSENTRY007SeesPersistenceWrite proves the closed extension point: a
+// persistence write (no cred read) followed by an external outbound fires
+// SENTRY-007 via PersistWriteByPID.
+func TestSENTRY007SeesPersistenceWrite(t *testing.T) {
+	now := time.Now()
+	state := NewRuleState()
+	tree := editorTree()
+	// A persistence write populates PersistWriteByPID (and fires SENTRY-008).
+	EvaluateEvent(SentryEvent{Kind: EventFileWrite, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", FilePath: "/home/u/.config/systemd/user/evil.service"},
+		state, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+	// An external outbound now fuses on the recent persistence write (no cred read).
+	alerts := EvaluateEvent(SentryEvent{Kind: EventNetworkConnect, PID: 100, PPID: 1, Exe: "/usr/bin/some-tool", DstAddr: net.ParseIP("8.8.8.8")},
+		state, tree, emptyInventory(), defaultCfg(), noBaseline(), now.Add(10*time.Second))
+	if !hasAlert(alerts, "SENTRY-007") {
+		t.Error("expected SENTRY-007 to fuse on a recent persistence write + external outbound")
+	}
+}

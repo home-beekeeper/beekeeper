@@ -70,6 +70,18 @@ var agentExes = map[string]bool{
 	"amp":          true,
 }
 
+// persistenceWritePaths is the set of path substrings that the persistence-write
+// rule (SENTRY-008, Phase 20 SENT-05) treats as agent/editor persistence
+// surfaces — a write here re-arms the attacker on the next session. Covers
+// systemd-user units, launchd agents/daemons, VS Code tasks/settings, and the
+// agent config dirs (.claude / .cursor).
+var persistenceWritePaths = []string{
+	".config/systemd/user/",
+	"Library/LaunchAgents/", "Library/LaunchDaemons/",
+	".vscode/tasks.json", ".vscode/settings.json",
+	".claude/settings.json", ".claude/", ".cursor/",
+}
+
 // isSensitivePath reports whether path contains any of the well-known sensitive
 // credential-store substrings.
 //
@@ -80,6 +92,18 @@ var agentExes = map[string]bool{
 func isSensitivePath(path string) bool {
 	normalised := filepath.ToSlash(path)
 	for _, s := range defaultSensitivePaths {
+		if strings.Contains(normalised, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// isPersistencePath reports whether path contains any persistence-surface
+// substring (forward-slash normalised like isSensitivePath).
+func isPersistencePath(path string) bool {
+	normalised := filepath.ToSlash(path)
+	for _, s := range persistenceWritePaths {
 		if strings.Contains(normalised, s) {
 			return true
 		}
@@ -345,6 +369,9 @@ func EvaluateEvent(
 		alerts = append(alerts, evalSENTRY003(event, state, tree, inventory, cfg, baseline, now)...)
 		alerts = append(alerts, evalSENTRY005(event, state, tree, inventory, cfg, baseline, now)...)
 		alerts = append(alerts, evalSENTRY007(event, state, tree, cfg, baseline, now)...)
+
+	case EventFileWrite:
+		alerts = append(alerts, evalSENTRY008(event, state, tree, baseline, now)...)
 	}
 
 	return alerts
@@ -683,5 +710,51 @@ func evalSENTRY007(
 	alert := makeAlert("SENTRY-007", "Generalized Exfiltration Fusion", "critical", event, tree, baseline, now)
 	alert.NetworkDests = []string{event.DstAddr.String()}
 	recordRecentAlert(state, "SENTRY-007", event.PID, now)
+	return []SentryAlert{alert}
+}
+
+// evalSENTRY008 implements the persistence-write rule (Phase 20, SENT-05). It
+// fires "high"/warn when a monitored-descendant process WRITES a persistence
+// surface (systemd-user unit, LaunchAgent, .vscode/tasks.json, ~/.claude/
+// settings.json, etc.). It is deduped per path per session (a repeated write to
+// the same path does not re-alert) and ALSO records the write into
+// PersistWriteByPID so SENTRY-007's exfil fusion can see a recent persistence
+// write (closing the extension point left by plan 20-03). Detection-only — the
+// check-layer settings.json self-edit block is the paired enforcement.
+func evalSENTRY008(
+	event SentryEvent,
+	state *RuleState,
+	tree map[uint32]ProcessNode,
+	baseline BaselineState,
+	now time.Time,
+) []SentryAlert {
+	if !isMonitoredDescendant(event.PID, tree) {
+		return nil
+	}
+	if !isPersistencePath(event.FilePath) {
+		return nil
+	}
+
+	// Per-path-per-session dedup: if this exact path was already written by this
+	// PID, still record the write (for SENTRY-007 freshness) but do not re-alert.
+	already := false
+	for _, e := range state.PersistWriteByPID[event.PID] {
+		if e.Value == event.FilePath {
+			already = true
+			break
+		}
+	}
+	state.PersistWriteByPID[event.PID] = append(state.PersistWriteByPID[event.PID], RuleWindowEntry{
+		PID:    event.PID,
+		Value:  event.FilePath,
+		SeenAt: now,
+	})
+	if already {
+		return nil
+	}
+
+	alert := makeAlert("SENTRY-008", "Persistence Write", "high", event, tree, baseline, now)
+	alert.FilesAccessed = []string{event.FilePath}
+	recordRecentAlert(state, "SENTRY-008", event.PID, now)
 	return []SentryAlert{alert}
 }

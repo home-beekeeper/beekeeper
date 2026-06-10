@@ -22,6 +22,10 @@ const (
 	EventFileAccess
 	// EventNetworkConnect is an outbound TCP/UDP connection event.
 	EventNetworkConnect
+	// EventFileWrite is a file create / write / rename event (Phase 20, SENT-05).
+	// It is a DISTINCT kind from EventFileAccess so the read-clustering path
+	// (SENTRY-001/006) stays uncontaminated; it dispatches to SENTRY-008.
+	EventFileWrite
 )
 
 // SentryEvent is the normalised, OS-agnostic representation of a single kernel
