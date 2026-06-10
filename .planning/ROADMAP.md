@@ -16,7 +16,7 @@
   Full per-phase detail archived in [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
   Summary: [`MILESTONES.md`](MILESTONES.md).
 
-- 🚧 **v1.3.0 — "Web Presence & Documentation"** — Phases 10–19 (in progress)
+- 🚧 **v1.3.0 — "Web Presence & Documentation"** — Phases 10–21 (in progress)
   Phase 10 (seed: hook-block + self-protection + $VAR hardening) shipped 2026-06-05.
   Phases 11–19: greenfield Next.js site under `web/`.
 
@@ -73,10 +73,11 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 18.1: Docs Theme Restyle** — Fumadocs chrome brand-aligned (white border killed, teal/amber accents, sidebar duplication fixed) — **✅ complete & maintainer-approved 2026-06-09 (quick task; DSYS-05; command-card copy split deferred to backlog)**
 - [ ] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/
 - [ ] **Phase 20: Runtime Hardening II (Tiers 1–3)** — Tier 1 background catalog sync + TUI scheduler · Tier 2 LlamaFirewall opt-in actually works · Tier 3 Sentry coverage (006/007/008 + file-write) + honesty edits (researched; `20-RESEARCH.md` + `20-PLAN.md`)
+- [ ] **Phase 21: Full-System Validation & CI Calibration** — Go-core release gate: close every local (Tier-A) test-coverage gap to 100% (gate-enforced), cross-platform CI matrix (Tier-B: 2 Linux kernels + macOS + Windows; eBPF/eslogger/ETW/peer-cred/-race), 17-harness installer+deny-contract conformance, fuzz gate, Claude Code live e2e, and a `docs/validation-register.md` manual register for the 16 live harnesses + gated-model e2e (Tier-C)
 
 ---
 
-## v1.3.0 Web Presence & Documentation — Phase Details (Phases 11–19)
+## v1.3.0 Web Presence & Documentation — Phase Details (Phases 11–21)
 
 ### Phase 11: Scaffold & Toolchain Isolation
 
@@ -356,6 +357,26 @@ Plans:
 - [x] 20-06-PLAN.md — Tier 3 W4 STRETCH/OPTIONAL DNS: EventDNSQuery; Linux kprobe udp/tcp_sendmsg dport53 bpf2go; Windows ETW DNS-Client ID 3006; macOS deferred v2 [wave 4] ✅ 2026-06-10 (SENT-11; commit d5719c5; eBPF QNAME parse CI-validated)
 **UI hint**: no (TUI/threat-model/marketing text only)
 
+### Phase 21: Full-System Validation & CI Calibration
+
+**Goal**: The Go safety harness ships fully validated — every behavior is verified at the correct tier: **Tier A** (locally testable) is at 100% coverage and gate-enforced on the Windows dev box; **Tier B** (platform/kernel/build-tag) is covered by a cross-platform CI matrix; **Tier C** (irreducible: true live block on the 16 non-Claude-Code harnesses, and the gated-model e2e) is captured in a signed-off manual register. "Fully validated" = 100% of what can be tested locally + a CI matrix for everything platform-bound + a documented manual register for the rest, with zero silent gaps.
+**Depends on**: the whole Go core; Phase 20 (validates its Sentry/LlamaFirewall hardening). Independent of the web phases.
+**Requirements**: VAL-01, VAL-02, VAL-03, VAL-04, VAL-05, VAL-06, VAL-07, VAL-08
+**Origin**: derived 2026-06-10 from the `/understand` knowledge-graph audit (per-package coverage + stub/gated/fail-open signals) — see the surfaced Tier-A gaps below. Relaxes the v1.3.0 web-only fence for the pre-ship release gate.
+**Success Criteria** (what must be TRUE):
+
+  1. `go test ./...` is green on the Windows dev box AND a coverage-gate check passes: every Go production file has a linked test OR a documented, reason-coded no-test allowlist entry (pure type/const/build-metadata + platform stubs) — zero unaccounted gaps. The surfaced Tier-A gaps are closed: `internal/ipc` server/client + Windows-pipe peer-auth, `check`/`watch`/`scan`/`gateway` `sanity.go`, `editorinit/lookup.go`, `hooks/protected.go`, and the TUI model logic.
+  2. A local 17-harness conformance suite is green: for every target, the installer writes the correct config (keys, idempotent, backup-on-overwrite) and the deny renderer emits the exact per-harness block contract (exit code + JSON/stdout, golden-file asserted), including the Hermes fail-open seam and the Kilo/Trae UNGUARDED honesty cases.
+  3. A cross-platform CI matrix (ubuntu-20.04/kernel-5.4 + ubuntu-22.04/kernel-5.15 + macos-latest + windows-latest) is green: build (native + 3 GOOS), vet, test, `-race` (CGO), eBPF generate+load (CI-only bytecode, never committed), eslogger (macOS), ETW (Windows), and Unix peer-cred auth.
+  4. The fuzz suite (policy engine, IPC proto parser, catalog parser, MCP message parser, Sentry rule evaluator) runs in CI as a blocking release gate.
+  5. A Claude Code live end-to-end test denies a canary credential read (`~/.ssh` + `~/.aws`) end-to-end — the documented true-block reference.
+  6. `docs/validation-register.md` exists, enumerates all 16 non-Claude-Code harness live-block procedures + the LlamaFirewall gated-22M-model e2e (each with exact steps, expected result, sign-off), and is signed off; the README harness count is corrected (15→17 / 14→16) and the validation posture (allowlist + Tier A/B/C tiering) is documented.
+
+**Cross-cutting constraints**: execution runs INLINE on main (Go subagents are fine here, unlike the web phases — but the executor is on Windows, so Tier-B paths are CI-validated, not local). The coverage-gate's no-test allowlist is self-defense (VAL-08): it fails closed on unjustified growth. CI is build-verified as far as the unpushed repo allows — the matrix YAML is statically validated; its live GitHub run is confirmed at first push.
+
+**Plans**: TBD (run `/gsd-plan-phase 21`)
+**UI hint**: no
+
 ## Progress
 
 | Phase | Milestone | Plans | Status | Completed |
@@ -392,3 +413,4 @@ Plans:
 | **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
 | **19. Test Suite & CI** | **v1.3.0** | **0/3** | **Planned & verified 2026-06-10 (plan-checker PASSED, 0 blockers). NEXT: /gsd-execute-phase 19 (INLINE on main)** | **—** |
 | **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **6/6** | **All plans CODE-complete (20-01..06 ✅). ONLY remaining: 20-02 LLMF human HF-license live-bootstrap verify (gated 22M model)** | **—** |
+| **21. Full-System Validation & CI Calibration** | **v1.3.0** | **0/TBD** | **Defined 2026-06-10 from the /understand audit (Go-core release gate: Tier-A local 100% + Tier-B CI matrix + 17-harness conformance + Tier-C manual register). NEXT: /gsd-plan-phase 21** | **—** |
