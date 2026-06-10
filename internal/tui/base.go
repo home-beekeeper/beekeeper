@@ -18,7 +18,7 @@ func renderBase(a App) string {
 	dots := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5f57")).Render("●") + " " +
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#febc2e")).Render("●") + " " +
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#28c840")).Render("●")
-	titleStr := styleDim.Render("  beekeeper dashboard — calm mode")
+	titleStr := styleDim.Render("  beekeeper dashboard · calm mode")
 	clockStr := styleDimmer.Render(a.clock.Format("15:04:05") + " ")
 	titlePad := w - lipgloss.Width(dots) - lipgloss.Width(titleStr) - lipgloss.Width(clockStr) - 2
 	if titlePad < 0 {

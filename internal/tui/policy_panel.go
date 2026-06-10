@@ -128,7 +128,7 @@ func buildPolicyRows(pf policyloader.PolicyFile) []policyRow {
 		{kind: rowCorr, label: "critical block at", value: strconv.Itoa(critical), corrField: "critical"},
 	}
 
-	const allowHdr = "Package allowlist  (trusted — overrides a block)"
+	const allowHdr = "Package allowlist  (trusted, overrides a block)"
 	firstAllow := true
 	for i, r := range pf.Rules {
 		if r.RuleType != "package_allowlist" {

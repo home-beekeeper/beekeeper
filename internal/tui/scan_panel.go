@@ -277,7 +277,7 @@ func (p *ScanPanel) progressBody() string {
 	if r.threats == 0 {
 		summary = "no threats matched"
 	} else {
-		summary = fmt.Sprintf("%d threat%s flagged — see the alert log", r.threats, plural(r.threats))
+		summary = fmt.Sprintf("%d threat%s flagged; see the alert log", r.threats, plural(r.threats))
 	}
 	if r.pollenUnavailable {
 		summary += " · pollen unavailable (editor-extension scan only)"

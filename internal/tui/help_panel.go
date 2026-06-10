@@ -59,7 +59,7 @@ func (p *HelpPanel) Body(width, height int) string {
 	sb.WriteString("\n")
 	sb.WriteString("  " + label("CONCEPT") + "\n")
 	sb.WriteString("  " + explain("Calm mode stays quiet by design. When Sentry flags a critical") + "\n")
-	sb.WriteString("  " + explain("event, the base screen escalates on its own — the incident card") + "\n")
+	sb.WriteString("  " + explain("event, the base screen escalates on its own; the incident card") + "\n")
 	sb.WriteString("  " + explain("appears with the real process tree and remediation guidance.") + "\n")
 	sb.WriteString("  " + explain("You don't hunt for the problem; it comes to you.") + "\n")
 	return sb.String()

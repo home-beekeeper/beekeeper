@@ -63,7 +63,7 @@ func IncidentFromRecord(rec audit.AuditRecord) IncidentModel {
 	}
 	ruleID := rec.SentryRuleID
 	if ruleID == "" {
-		ruleID = "—"
+		ruleID = "n/a"
 	}
 
 	return IncidentModel{

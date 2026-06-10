@@ -111,7 +111,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if rec.RecordType == "sentry_alert" && rec.SentrySeverity == "critical" && !a.critical {
 				a.critical = true
 				a.incident = IncidentFromRecord(rec)
-				a.status = "⚠ 1 CRITICAL — " + a.incident.RuleName
+				a.status = "⚠ 1 CRITICAL: " + a.incident.RuleName
 				a.health.LastBlock = "sentry firing"
 				a.health.SentryOK = false
 			}
@@ -302,7 +302,7 @@ func (a App) acknowledgeIncident() (tea.Model, tea.Cmd) {
 	a.health.LastBlock = "last block just now"
 	a.health.SentryOK = true
 	var cmd tea.Cmd
-	a.toast, cmd = a.toast.Show("incident acknowledged — no automated containment; remediate via CLI", toastWarn)
+	a.toast, cmd = a.toast.Show("incident acknowledged: no automated containment; remediate via CLI", toastWarn)
 	return a, cmd
 }
 
