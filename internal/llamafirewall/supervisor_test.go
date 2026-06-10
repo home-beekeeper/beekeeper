@@ -5,6 +5,7 @@ package llamafirewall
 import (
 	"context"
 	"net"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -260,5 +261,55 @@ func TestLatencyTrackerUpdatedOnScan(t *testing.T) {
 
 	if p95 := sup.latency.P95(); p95 == 0 {
 		t.Fatal("expected non-zero P95 after scan, got 0")
+	}
+}
+
+// TestSupervisorRestartOnCrash covers the two restart-on-crash guarantees with
+// no real Python sidecar (it runs in the default suite, unlike the e2e job):
+//
+//  1. Crash detection: a sidecar that drops the connection mid-scan (modelled by
+//     startCrashingSidecar) must surface an error to Scan — a "crashed" sidecar
+//     never yields a silent clean verdict.
+//  2. Restart budget: relaunch against an interpreter that cannot start models a
+//     sidecar that keeps crashing; after MaxRetries the supervisor enters
+//     degraded mode and then fails closed.
+func TestSupervisorRestartOnCrash(t *testing.T) {
+	cfg := LlamaFirewallConfig{Enabled: true, FailMode: "closed", SampleRate: 1.0}
+
+	// (1) Crash during a scan -> Scan returns an error (fail-closed), not clean.
+	addr, cleanup := startCrashingSidecar(t)
+	defer cleanup()
+
+	sup := NewSupervisor(cfg, "/tmp/fake_sidecar.py")
+	c, err := Dial(addr, testToken, time.Second)
+	if err != nil {
+		t.Fatalf("dial crashing sidecar: %v", err)
+	}
+	defer c.Close()
+	sup.client = c
+
+	if _, err := sup.Scan(context.Background(), ScanRequest{
+		Kind: ScanPrompt, Content: "x", RequestID: "crash",
+	}); err == nil {
+		t.Fatal("crash-during-scan: expected an error (fail-closed), got nil")
+	}
+
+	// (2) A sidecar that cannot relaunch exhausts the retry budget -> degraded.
+	sup2 := NewSupervisor(cfg, "/nonexistent/sidecar.py")
+	sup2.PythonPath = filepath.Join(t.TempDir(), "definitely-not-a-real-python")
+	sup2.MaxRetries = 3
+	for i := 0; i < sup2.MaxRetries; i++ {
+		if sup2.IsDegraded() {
+			t.Fatalf("entered degraded mode too early (attempt %d)", i)
+		}
+		sup2.relaunch(context.Background())
+	}
+	if !sup2.IsDegraded() {
+		t.Fatal("supervisor did not enter degraded mode after MaxRetries failed relaunches")
+	}
+	if _, err := sup2.Scan(context.Background(), ScanRequest{
+		Kind: ScanPrompt, Content: "x", RequestID: "degraded",
+	}); err != ErrSidecarUnavailable {
+		t.Fatalf("degraded Scan: err = %v, want ErrSidecarUnavailable", err)
 	}
 }
