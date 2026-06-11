@@ -71,7 +71,7 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 - [x] **Phase 17: SEO & Static Assets** — sitemap, robots.txt, finalized metadata, OG image — **✅ complete & verified 2026-06-09 (3/3 plans; SEO-01; seo_spec SC-1..3 green; maintainer-approved OG card)**
 - [x] **Phase 18: Full Content Authoring** — all 8 docs sections authored + accuracy gate — **✅ complete & verified 2026-06-09 (6/6 plans; DOCS-02..09; accuracy_spec AC-1..3 green; maintainer AC-5 sign-off vs THREAT-MODEL.md)**
 - [x] **Phase 18.1: Docs Theme Restyle** — Fumadocs chrome brand-aligned (white border killed, teal/amber accents, sidebar duplication fixed) — **✅ complete & maintainer-approved 2026-06-09 (quick task; DSYS-05; command-card copy split deferred to backlog)**
-- [ ] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/
+- [x] **Phase 19: Test Suite & CI** — path-filtered web.yml, Vitest unit tests, Playwright E2E against out/ ✅ Complete & verified 2026-06-10
 - [ ] **Phase 20: Runtime Hardening II (Tiers 1–3)** — Tier 1 background catalog sync + TUI scheduler · Tier 2 LlamaFirewall opt-in actually works · Tier 3 Sentry coverage (006/007/008 + file-write) + honesty edits (researched; `20-RESEARCH.md` + `20-PLAN.md`)
 - [ ] **Phase 21: Full-System Validation & CI Calibration** — Go-core release gate: close every local (Tier-A) test-coverage gap to 100% (gate-enforced), cross-platform CI matrix (Tier-B: 2 Linux kernels + macOS + Windows; eBPF/eslogger/ETW/peer-cred/-race), 17-harness installer+deny-contract conformance, fuzz gate, Claude Code live e2e, and a `docs/validation-register.md` manual register for the 16 live harnesses + gated-model e2e (Tier-C)
 
@@ -307,22 +307,22 @@ Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
 **Requirements**: QA-01, QA-02
 **Success Criteria** (what must be TRUE):
 
-  1. The `.github/workflows/web.yml` job triggers only on `web/**` and `pnpm-workspace.yaml` changes, never on Go file changes; Go CI never triggers on web changes
-  2. The CI job runs Biome lint/format check, `tsc --noEmit`, Vitest unit tests, `pnpm build`, and Playwright E2E against `out/` — all as required gates before merge
-  3. Playwright E2E tests verify: home page renders with SVG hero fallback, docs navigation and search return results, theme toggle persists across reload, all three changelog version pages build and render their headings
+  1. [x] The `.github/workflows/web.yml` job triggers only on `web/**` and `pnpm-workspace.yaml` changes, never on Go file changes; Go CI never triggers on web changes — ✅ web.yml `paths:` include + ci.yml mirror `paths-ignore` on both triggers (SC-1, static-verified)
+  2. [x] The CI job runs Biome lint/format check, `tsc --noEmit`, Vitest unit tests, `pnpm build`, and Playwright E2E against `out/` — all as required gates before merge — ✅ 6 ordered gates lint→typecheck→test→build→test:postbuild→test:e2e
+  3. [x] Playwright E2E tests verify: home page renders with SVG hero fallback, docs navigation and search return results, theme toggle persists across reload, all three changelog version pages build and render their headings — ✅ all four QA-02 paths green (12/12 e2e)
 
-**Plans**: 3 plans (3 waves) — planned & verified 2026-06-10 (research-first; plan-checker PASSED 14/14 dimensions, 0 blockers; full JS-native toolchain per D-01; execution INLINE on main per D-05)
+**Plans**: 3 plans (3 waves) — ✅ COMPLETE & verified 2026-06-10 (executed INLINE on main per D-05; verifier PASSED 3/3 SCs; code review 0-crit/6-warn — WR-01 pinned-serve fix applied, rest dispositioned)
 **Wave 1**
 
-- [ ] 19-01-PLAN.md — Wave 1 foundation: package-legitimacy gate + install pinned test devDeps (vitest/vite/@vitejs-plugin-react/jsdom/vite-tsconfig-paths/@testing-library-react+dom/@playwright-test, workspace-isolated, no Go-module touch) + vitest.config.mts + package.json scripts (typecheck/test/test:postbuild/test:e2e) + pre-build Vitest unit tests (cn / useReducedMotion / InstallChip / metadata consts + accuracy_spec.py port, verbatim constants) (QA-01)
+- [x] 19-01-PLAN.md — Wave 1 foundation: Vitest toolchain + 5 pre-build unit tests (cn/useReducedMotion/InstallChip/metadata + accuracy port, verbatim constants); 8 pinned devDeps, no Go-module touch (QA-01) — ✅ 33/33 unit green
 
 **Wave 2** *(blocked on 19-01)*
 
-- [ ] 19-02-PLAN.md — Wave 2 E2E + post-build: playwright.config.ts (chromium-only, managed webServer serving real out/ on pinned port 4199) + home.spec.ts (home_spec.py port + four QA-02 critical paths) + gfx.spec.ts (gfx_spec.py port) + tests/postbuild/seo.test.ts (seo_spec.py post-build port) (QA-01, QA-02)
+- [x] 19-02-PLAN.md — Wave 2 E2E + post-build: playwright.config.ts (chromium, serve out --listen 4199) + home.spec.ts (port + 4 QA-02 paths) + gfx.spec.ts (port) + postbuild/seo.test.ts (port) (QA-01, QA-02) — ✅ 12/12 e2e + 29/29 postbuild green
 
 **Wave 3** *(blocked on 19-02)*
 
-- [ ] 19-03-PLAN.md — Wave 3 CI gate + parity-retire: .github/workflows/web.yml (5 ordered gates, first-party actions, least-privilege; static-verified per D-03) + ci.yml paths-ignore web isolation (bidirectional, SC-1) + prove the 4 .py specs green then DELETE them + final full-suite gate (QA-01, QA-02)
+- [x] 19-03-PLAN.md — Wave 3 CI gate + parity-retire: web.yml (6 ordered gates, first-party actions, least-privilege; static-verified D-03) + ci.yml paths-ignore (bidirectional, SC-1) + 4 .py specs proven green then DELETED + full-suite gate (QA-01, QA-02) — ✅ parity proven, .py retired
 
 **Cross-cutting constraints:** the 4 Python specs are RETIRED only after the JS ports prove parity on the same out/ build (D-01); CI is build-verified LOCALLY (D-03 — web.yml YAML statically inspected, not run live); execution runs INLINE on main (D-05).
 **UI hint**: no
@@ -411,6 +411,6 @@ Plans:
 | **17. SEO & Static Assets** | **v1.3.0** | **3/3** | **Complete** | **2026-06-09** |
 | **18. Full Content Authoring** | **v1.3.0** | **6/6** | **Complete** | **2026-06-09** |
 | **18.1 Docs Theme Restyle** | **v1.3.0** | **quick-task** | **Complete (borders/accents/duplication; command-card split → backlog)** | **2026-06-09** |
-| **19. Test Suite & CI** | **v1.3.0** | **0/3** | **Planned & verified 2026-06-10 (plan-checker PASSED, 0 blockers). NEXT: /gsd-execute-phase 19 (INLINE on main)** | **—** |
+| 19. Test Suite & CI | v1.3.0 | 3/3 | ✅ Complete & verified 2026-06-10 (executed INLINE on main; verifier PASSED 3/3 SCs; unit 33 + postbuild 29 + e2e 12 green; 4 .py specs retired after parity; code review 0-crit/6-warn, WR-01 pinned-serve fix applied) | QA-01, QA-02 |
 | **20. Runtime Hardening II (Tiers 1–3)** | **v1.3.0** | **6/6** | **All plans CODE-complete (20-01..06 ✅). ONLY remaining: 20-02 LLMF human HF-license live-bootstrap verify (gated 22M model)** | **—** |
 | **21. Full-System Validation & CI Calibration** | **v1.3.0** | **0/TBD** | **Defined 2026-06-10 from the /understand audit (Go-core release gate: Tier-A local 100% + Tier-B CI matrix + 17-harness conformance + Tier-C manual register). NEXT: /gsd-plan-phase 21** | **—** |

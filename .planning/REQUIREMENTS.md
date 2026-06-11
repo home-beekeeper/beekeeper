@@ -61,8 +61,8 @@
 
 ### Quality & CI (QA)
 
-- [ ] **QA-01**: A path-filtered web CI job (separate from Go CI) builds the static site and runs unit (Vitest) + E2E (Playwright against `out/`) tests + lint/format (Biome), gating merges
-- [ ] **QA-02**: E2E tests verify the critical paths — home renders with hero fallback, docs navigation + search returns results, theme toggle, changelog pages build
+- [x] **QA-01**: A path-filtered web CI job (separate from Go CI) builds the static site and runs unit (Vitest) + E2E (Playwright against `out/`) tests + lint/format (Biome), gating merges — ✅ Complete 2026-06-10 (web.yml 6 ordered gates + ci.yml bidirectional isolation)
+- [x] **QA-02**: E2E tests verify the critical paths — home renders with hero fallback, docs navigation + search returns results, theme toggle, changelog pages build — ✅ Complete 2026-06-10 (4 QA-02 paths green, 12/12 e2e)
 
 ### Full-System Validation (VAL) — Go core, Phase 21
 
@@ -133,8 +133,8 @@
 | CHG-02 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
 | CHG-03 | Phase 14 — Changelog Pipeline | ✅ Complete (2026-06-08) |
 | SEO-01 | Phase 17 — SEO & Static Assets | ✅ Complete (2026-06-09) |
-| QA-01 | Phase 19 — Test Suite & CI | Planned & verified 2026-06-10 (web) |
-| QA-02 | Phase 19 — Test Suite & CI | Planned & verified 2026-06-10 (web) |
+| QA-01 | Phase 19 — Test Suite & CI | ✅ Complete (2026-06-10) |
+| QA-02 | Phase 19 — Test Suite & CI | ✅ Complete (2026-06-10) |
 | VAL-01 | Phase 21 — Full-System Validation & CI Calibration | Not started |
 | VAL-02 | Phase 21 — Full-System Validation & CI Calibration | Not started |
 | VAL-03 | Phase 21 — Full-System Validation & CI Calibration | Not started |
