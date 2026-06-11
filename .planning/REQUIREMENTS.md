@@ -72,14 +72,14 @@
 > manual/gated (documented register). Only Claude Code is live-verified; the other 16 harnesses
 > get installer + deny-contract conformance locally and a manual live-block register.
 
-- [ ] **VAL-01**: Every Go production file has a linked test OR a documented, reason-coded no-test allowlist entry (pure type/const/build-metadata + platform stubs); a coverage-gate check enforces zero silent gaps and closes the surfaced Tier-A gaps (`ipc` server/client + Windows-pipe peer, `check`/`watch`/`scan`/`gateway` `sanity.go`, `editorinit/lookup.go`, `hooks/protected.go`, TUI model logic)
-- [ ] **VAL-02**: A local 17-harness conformance suite asserts, for every target, correct installer config output (keys, idempotency, backup-on-overwrite) and golden-file the exact per-harness deny contract (exit code + JSON/stdout), including the Hermes fail-open seam and Kilo/Trae UNGUARDED honesty
-- [ ] **VAL-03**: A cross-platform CI matrix (ubuntu-20.04/kernel-5.4 + ubuntu-22.04/kernel-5.15 + macos-latest + windows-latest) runs build (native + 3 GOOS), vet, test, `-race` (CGO), eBPF generate+load (CI-only bytecode), eslogger (macOS), ETW (Windows), and Unix peer-cred auth — all green
-- [ ] **VAL-04**: The fuzz suite (policy engine, IPC proto parser, catalog parser, MCP message parser, Sentry rule evaluator) runs in CI as a blocking release gate
-- [ ] **VAL-05**: A Claude Code live end-to-end test proves a real block (canary `~/.ssh` + `~/.aws` read DENIED end-to-end) as the documented reference
-- [ ] **VAL-06**: `docs/validation-register.md` enumerates all 16 non-Claude-Code harness live-block procedures + the LlamaFirewall gated-22M-model e2e, each with exact steps, expected result, and a sign-off — the documented release gate for what cannot be automated
-- [ ] **VAL-07**: Documentation honesty — README harness count corrected (15→17 / 14→16) and the validation posture (no-test allowlist + Tier A/B/C model) documented so the coverage claim is auditable
-- [ ] **VAL-08**: Self-defense — the coverage gate cannot be silently weakened (allowlist growth requires a reason code and fails closed otherwise); fuzz-gate failures block release
+- [x] **VAL-01**: Every Go production file has a linked test OR a documented, reason-coded no-test allowlist entry (pure type/const/build-metadata + platform stubs); a coverage-gate check enforces zero silent gaps and closes the surfaced Tier-A gaps (`ipc` server/client + Windows-pipe peer, `check`/`watch`/`scan`/`gateway` `sanity.go`, `editorinit/lookup.go`, `hooks/protected.go`, TUI model logic)
+- [x] **VAL-02**: A local 17-harness conformance suite asserts, for every target, correct installer config output (keys, idempotency, backup-on-overwrite) and golden-file the exact per-harness deny contract (exit code + JSON/stdout), including the Hermes fail-open seam and Kilo/Trae UNGUARDED honesty
+- [x] **VAL-03**: A cross-platform CI matrix (ubuntu-20.04/kernel-5.4 + ubuntu-22.04/kernel-5.15 + macos-latest + windows-latest) runs build (native + 3 GOOS), vet, test, `-race` (CGO), eBPF generate+load (CI-only bytecode), eslogger (macOS), ETW (Windows), and Unix peer-cred auth — all green
+- [x] **VAL-04**: The fuzz suite (policy engine, IPC proto parser, catalog parser, MCP message parser, Sentry rule evaluator) runs in CI as a blocking release gate
+- [x] **VAL-05**: A Claude Code live end-to-end test proves a real block (canary `~/.ssh` + `~/.aws` read DENIED end-to-end) as the documented reference
+- [x] **VAL-06**: `docs/validation-register.md` enumerates all 16 non-Claude-Code harness live-block procedures + the LlamaFirewall gated-22M-model e2e, each with exact steps, expected result, and a sign-off — the documented release gate for what cannot be automated
+- [x] **VAL-07**: Documentation honesty — README harness count corrected (15→17 / 14→16) and the validation posture (no-test allowlist + Tier A/B/C model) documented so the coverage claim is auditable
+- [x] **VAL-08**: Self-defense — the coverage gate cannot be silently weakened (allowlist growth requires a reason code and fails closed otherwise); fuzz-gate failures block release
 
 ## Future Requirements (deferred)
 
@@ -135,13 +135,13 @@
 | SEO-01 | Phase 17 — SEO & Static Assets | ✅ Complete (2026-06-09) |
 | QA-01 | Phase 19 — Test Suite & CI | ✅ Complete (2026-06-10) |
 | QA-02 | Phase 19 — Test Suite & CI | ✅ Complete (2026-06-10) |
-| VAL-01 | Phase 21 — Full-System Validation & CI Calibration | Not started |
-| VAL-02 | Phase 21 — Full-System Validation & CI Calibration | Not started |
-| VAL-03 | Phase 21 — Full-System Validation & CI Calibration | Not started |
-| VAL-04 | Phase 21 — Full-System Validation & CI Calibration | Not started |
-| VAL-05 | Phase 21 — Full-System Validation & CI Calibration | Not started |
-| VAL-06 | Phase 21 — Full-System Validation & CI Calibration | Not started |
-| VAL-07 | Phase 21 — Full-System Validation & CI Calibration | Not started |
-| VAL-08 | Phase 21 — Full-System Validation & CI Calibration | Not started |
+| VAL-01 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
+| VAL-02 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
+| VAL-03 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
+| VAL-04 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
+| VAL-05 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
+| VAL-06 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
+| VAL-07 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
+| VAL-08 | Phase 21 — Full-System Validation & CI Calibration | ✅ Complete (2026-06-11) |
 
 **Coverage:** 32/32 requirements mapped — 100% coverage, no orphans. *(DSYS-05 added 2026-06-09 with Phase 18.1.)*
