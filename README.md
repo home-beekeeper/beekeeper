@@ -29,7 +29,7 @@ external runtime dependencies.
 
 ## Agent harness support
 
-Beekeeper supports 15 agent harnesses across three tiers. See
+Beekeeper supports 17 agent harnesses across three tiers. See
 [docs/harness-support-matrix.md](docs/harness-support-matrix.md) for the full
 table with config locations, deny mechanisms, caveats, and verification status.
 
@@ -39,7 +39,7 @@ table with config locations, deny mechanisms, caveats, and verification status.
 |------|-----------|---------|
 | **Tier 1 — full hook-block** | Claude Code, Codex, Cursor, Augment, CodeBuddy, Qwen Code, Gemini CLI, Copilot, Antigravity, Windsurf | Pre-exec hook: exit 2 + per-harness deny JSON. All tool calls intercepted. |
 | **Tier 2 — hook-block with caveats** | Hermes, Cline, OpenCode | Hook available but with known limitations (see below). |
-| **Tier 3 — MCP gateway only** | Kilo, Trae | MCP tools intercepted via gateway. **Native Bash/file tools UNGUARDED.** |
+| **Tier 3 — MCP gateway only** | Kilo, Trae, Continue, OpenClaw | MCP tools intercepted via gateway. **Native Bash/file tools UNGUARDED.** |
 
 ### Tier 2 caveats
 
@@ -51,23 +51,33 @@ table with config locations, deny mechanisms, caveats, and verification status.
 - **OpenCode**: JS plugin (`tool.execute.before`). Does not catch subagent `task`
   calls (#5894) or historically MCP calls (#2319).
 
-### Tier 3 (Kilo, Trae) — native tools unguarded
+### Tier 3 (Kilo, Trae, Continue, OpenClaw) — native tools unguarded
 
-Kilo and Trae have no upstream pre-exec hook mechanism. Beekeeper can only
+These four harnesses have no upstream pre-exec hook mechanism. Beekeeper can only
 intercept MCP tools by routing them through the gateway. **Native built-in
-tools (Bash, file read/write, shell commands) are UNGUARDED.** For full
-pre-exec coverage, use a Tier-1 harness.
+tools (Bash, file read/write, shell commands) are UNGUARDED.** For Kilo and Trae
+this is an upstream limitation (no hook); Continue and OpenClaw are wired through
+their MCP client config (`~/.continue/config.yaml`, `~/.openclaw/config.json`),
+so `beekeeper hooks install` prints the config rather than writing a hook file.
+For full pre-exec coverage, use a Tier-1 harness.
 
-See `beekeeper hooks install --target kilo` or `--target trae` for gateway
-configuration instructions.
+See `beekeeper hooks install --target kilo` (or `trae` / `continue` / `openclaw`)
+for gateway configuration instructions.
 
 ### Verification scope
 
-**Only Claude Code is locally live-verified.** The other 14 harnesses are
+**Only Claude Code is locally live-verified.** The other 16 harnesses are
 implemented against their published documentation and validated by
 contract-shape unit tests — these tests verify Beekeeper emits the correct
 exit code and JSON, but do NOT run a real harness. Whether a harness actually
 honors the hook contract is manual + Claude-Code-only.
+
+The live-block procedure for each of the 16 non-Claude-Code harnesses is
+enumerated, with sign-off fields, in
+[docs/validation-register.md](docs/validation-register.md); the validation
+posture (Tier A/B/C model + the coverage allowlist) is documented in
+[docs/validation-posture.md](docs/validation-posture.md) so the coverage claim is
+auditable.
 
 Full honesty notes: [docs/harness-support-matrix.md#honesty-notes](docs/harness-support-matrix.md#honesty-notes)
 
