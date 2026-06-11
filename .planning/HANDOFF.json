@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-11T21:33:17.917Z",
+  "phase": "post-milestone-close (no active GSD phase)",
+  "phase_name": "v1.3.0 CLOSED + post-close web reconciliation, blog, and catalog-sync 2h default",
+  "phase_dir": ".planning",
+  "plan": 0,
+  "task": 0,
+  "total_tasks": 0,
+  "status": "paused",
+  "milestone_context": "v1.3.0 milestone was CLOSED & ARCHIVED earlier this session (tag v1.3.0 local; beekeeper repo unpushed). Everything after that was ad-hoc maintainer-requested improvements, all committed and fully gated. We are between milestones. Working tree is clean (only pre-existing untracked artifacts remain: .claude/, 16-PATTERNS.md, .understand-anything/, AGENTS.md, *.html prototypes).",
+  "completed_tasks": [
+    {"id": 1, "name": "Closed v1.3.0 milestone BY HAND (archives + git rm REQUIREMENTS + consumed checkpoints + local tag v1.3.0; parked v1.1.0 Pollen preserved)", "status": "done", "commit": "4d37e1c,b37db67,216c905"},
+    {"id": 2, "name": "Audit-driven doc reconciliation: collapse changelog to single public v1.0.0, de-assert published claims, site badge v1.3.0->v1.0.0, document catalog daemon + Sentry 001-008 + DNS-ingested + Tier A/B/C validation, fix THREAT-MODEL DNS line + audit-rotation + harness counts", "status": "done", "commit": "59e76cb"},
+    {"id": 3, "name": "Add /blog section (3rd fumadocs collection, marketing-chrome article layout) + launch article", "status": "done", "commit": "1be7f0d"},
+    {"id": 4, "name": "Rewrite launch article around the REAL threat model (supply-chain, drop hijacked-agent framing; progressive disclosure naming each system part; honest 'quarantine sound-by-design not exploit-proven' line)", "status": "done", "commit": "eed9ebc"},
+    {"id": 5, "name": "Split the launch-article install commands into per-command cards (sequential/dependent, not simultaneous)", "status": "done", "commit": "1f57b67"},
+    {"id": 6, "name": "Catalog-sync default 12h -> 2h: lowered clamp floor 5h->2h so the default takes effect; updated config + config_test + TUI selector + docs + changelog + blog", "status": "done", "commit": "089fbac"}
+  ],
+  "remaining_tasks": [
+    {"id": 7, "name": "Decide next milestone: run /gsd-new-milestone OR (independently) resume the parked v1.1.0 Pollen GSD close via docs/release-runbook.md", "status": "not_started"},
+    {"id": 8, "name": "OPTIONAL deferred: apply the per-command card split to the DOCS pages (cli-reference, integration install lists) per .planning/todos/pending/docs-command-card-copy.md (done for the blog only)", "status": "not_started"},
+    {"id": 9, "name": "OPTIONAL: SITE-03 live Vercel deploy of the v1.3.0 site (the one deferred requirement; needs repo push + Vercel setup)", "status": "not_started"},
+    {"id": 10, "name": "OPTIONAL: cosign verify-blob the Pollen v0.2.0 release locally; surface v0.2.0 in install docs", "status": "not_started"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "Stop or keep the background preview server", "context": "A `serve out` static preview is running at http://localhost:3000 (background task id bgzxhc2ly). It persists across the pause; stop it with TaskStop if not needed.", "blocking": false},
+    {"action": "Choose the next direction (new milestone vs resume parked Pollen vs deploy)", "context": "v1.3.0 is closed; no work is in flight. The canonical GSD next step is /gsd-new-milestone.", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Public release framing = a SINGLE v1.0.0 changelog entry (everything folded in); v1.2.0/v1.3.0 changelog pages deleted; site version badge = v1.0.0", "rationale": "Internal milestone tags are not public releases; the repo is unpushed so 'published/signed release' claims were de-asserted. Do NOT re-add v1.2/v1.3 changelog pages or bump the badge past v1.0.0."},
+    {"decision": "catalog-sync default lowered 12h -> 2h AND clamp floor 5h -> 2h", "rationale": "12h is too coarse for threat-intel freshness. The floor had to drop too or the 2h default would be clamped back to 5h. Existing 12h configs stay valid (within [2h,24h]); ETag conditional requests keep 2h cadence cheap."},
+    {"decision": "Launch article reframed to supply-chain risk, not 'hijacked/misaligned agent'", "rationale": "Maintainer: agents rarely go rogue; the real, common risk is an agent faithfully installing a compromised package/extension. Quarantine + Sentry are honestly 'sound by design, not yet exploit-proven'."}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Nothing is mid-flight; everything is committed and green. On resume, first decide the next direction (/gsd-new-milestone, or resume parked v1.1.0 Pollen). Optionally stop the background preview server (TaskStop bgzxhc2ly) and pick up the deferred docs command-card split.",
+  "context_notes": "Long session that started as /gsd-resume-work -> /gsd-complete-milestone v1.3.0, then turned into a maintainer-driven polish pass on the web site (accuracy reconciliation, single-v1.0.0 release framing, a new /blog with the launch article, and the catalog-sync 2h default). Every change was committed atomically and fully gated each time (Go: build+vet+go test ./...; web: lint+typecheck+unit 33+build+postbuild SEO 29+e2e 13). The phase-number-resolver regression and the 'reconcile STATE by hand' caveats still apply. Reusable gotcha discovered this session: changing the catalog-sync default also requires lowering the clamp FLOOR (two paths: parseClampCatalogSyncInterval clamps; the TUI persistCatalogSyncInterval validates-and-rejects out-of-range), or the new default is silently clamped."
+}
