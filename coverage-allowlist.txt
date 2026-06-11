@@ -1,0 +1,23 @@
+# coverage-allowlist.txt — Phase 21 VAL-01 / VAL-08 no-test coverage allowlist.
+#
+# The coverage gate (internal/coveragegate, TestCoverageManifest) accounts every
+# production .go file under internal/ and cmd/ as either PACKAGE-TESTED (its
+# directory holds >=1 _test.go) or ALLOWLISTED here with a reason code. Any file
+# that is neither is UNACCOUNTED and FAILS the gate (and CI).
+#
+# Each entry is exactly:   <path><TAB># reason: <code>
+# The parser FAILS CLOSED: a bare path, an empty reason, or a reason code outside
+# the closed taxonomy below breaks the gate loudly — the bar cannot be silently
+# lowered (VAL-08 / D-10). Do not add blank lines (they break the format check).
+#
+# Closed reason-code taxonomy:
+#   generated-bpf   CI-generated eBPF bytecode (bpf_*_bpfel.go), never committed
+#   platform-stub   fail-closed per-OS shim with no logic (*_other.go etc.)
+#   type-only       pure type/const/build-metadata, no behavior to test
+#   exec-seam-stub  1-line wrapper existing only as a test seam
+#   thin-delegator  delegates entirely to a tested function elsewhere
+#   gen-directive   go:generate directive carrier
+#
+# A package-tested file does NOT need an entry here; only genuinely test-less
+# files do. As of Phase 21, internal/version is the lone zero-test package.
+internal/version/version.go	# reason: type-only
