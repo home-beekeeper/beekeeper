@@ -280,30 +280,31 @@ type CatalogSyncConfig struct {
 	// Enabled controls whether background catalog sync runs. Default true.
 	Enabled bool `json:"enabled"`
 	// Interval is the minimum time between successful syncs as a Go duration
-	// string in [5h, 24h]. Default "12h"; empty resolves to the default. The OS
+	// string in [2h, 24h]. Default "2h"; empty resolves to the default. The OS
 	// scheduler fires on a frequent (hourly) heartbeat and `catalogs sync`
 	// no-ops unless time.Since(LastSuccess) >= this interval (D-T1-interval).
 	Interval string `json:"interval,omitempty"`
 }
 
-// Catalog-sync interval bounds. The interval is clamped to [5h, 24h]: shorter
-// than 5h adds GitHub list-call pressure with no freshness benefit; longer than
-// 24h is too stale to defend a long-running agent session.
+// Catalog-sync interval bounds. The interval is clamped to [2h, 24h]: shorter
+// than 2h adds list-call pressure with little freshness benefit given the
+// conditional ETag requests; longer than 24h is too stale to defend a
+// long-running agent session.
 const (
-	catalogSyncMinInterval     = 5 * time.Hour
+	catalogSyncMinInterval     = 2 * time.Hour
 	catalogSyncMaxInterval     = 24 * time.Hour
-	catalogSyncDefaultInterval = 12 * time.Hour
+	catalogSyncDefaultInterval = 2 * time.Hour
 )
 
 // DefaultCatalogSyncConfig returns the documented default: sync enabled on a
-// 12h interval. A missing "catalog_sync" block resolves to this value.
+// 2h interval. A missing "catalog_sync" block resolves to this value.
 func DefaultCatalogSyncConfig() CatalogSyncConfig {
-	return CatalogSyncConfig{Enabled: true, Interval: "12h"}
+	return CatalogSyncConfig{Enabled: true, Interval: "2h"}
 }
 
 // ValidateCatalogSyncConfig checks csc fail-closed (mirrors ValidateNudgeConfig).
 // An empty Interval is allowed (resolves to the default). A non-empty Interval
-// must be parseable by time.ParseDuration AND fall within [5h, 24h]; anything
+// must be parseable by time.ParseDuration AND fall within [2h, 24h]; anything
 // else is rejected so a typo or out-of-range value cannot silently degrade the
 // sync cadence.
 func ValidateCatalogSyncConfig(csc CatalogSyncConfig) error {
@@ -322,7 +323,7 @@ func ValidateCatalogSyncConfig(csc CatalogSyncConfig) error {
 }
 
 // parseClampCatalogSyncInterval parses s and defensively clamps the result to
-// [5h, 24h], returning the 12h default for an empty or unparseable string. It
+// [2h, 24h], returning the 2h default for an empty or unparseable string. It
 // never returns 0 and never panics — it is the load-bearing accessor relied on
 // by the sync scheduler even if validation was somehow bypassed (mirrors the
 // gateway drift.go parse-then-default idiom).
@@ -344,7 +345,7 @@ func parseClampCatalogSyncInterval(s string) time.Duration {
 }
 
 // CatalogSyncInterval returns the effective sync interval, parsed and clamped to
-// [5h, 24h] (default 12h on empty/invalid/nil). The OS-scheduled `catalogs sync`
+// [2h, 24h] (default 2h on empty/invalid/nil). The OS-scheduled `catalogs sync`
 // no-ops unless time.Since(LastSuccess) >= this value (D-T1-interval).
 func (c Config) CatalogSyncInterval() time.Duration {
 	if c.CatalogSync == nil {

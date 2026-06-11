@@ -317,7 +317,7 @@ func TestNudgeMalformedDriftIntervalErrors(t *testing.T) {
 // TestValidateCatalogSyncConfig verifies fail-closed interval validation:
 // empty + in-range accepted; unparseable + out-of-range rejected.
 func TestValidateCatalogSyncConfig(t *testing.T) {
-	accept := []string{"", "5h", "12h", "24h", "6h30m"}
+	accept := []string{"", "2h", "5h", "12h", "24h", "6h30m"}
 	for _, iv := range accept {
 		if err := ValidateCatalogSyncConfig(CatalogSyncConfig{Enabled: true, Interval: iv}); err != nil {
 			t.Errorf("ValidateCatalogSyncConfig(interval=%q) = %v, want nil", iv, err)
@@ -332,19 +332,19 @@ func TestValidateCatalogSyncConfig(t *testing.T) {
 }
 
 // TestCatalogSyncIntervalClamp verifies the accessor defensively clamps to
-// [5h,24h] and defaults to 12h for empty/nil — it never returns 0 or panics.
+// [2h,24h] and defaults to 2h for empty/nil — it never returns 0 or panics.
 func TestCatalogSyncIntervalClamp(t *testing.T) {
 	tests := []struct {
 		name string
 		cfg  Config
 		want time.Duration
 	}{
-		{"nil block -> 12h", Config{}, 12 * time.Hour},
-		{"empty -> 12h", Config{CatalogSync: &CatalogSyncConfig{Interval: ""}}, 12 * time.Hour},
+		{"nil block -> 2h", Config{}, 2 * time.Hour},
+		{"empty -> 2h", Config{CatalogSync: &CatalogSyncConfig{Interval: ""}}, 2 * time.Hour},
 		{"in-range 6h", Config{CatalogSync: &CatalogSyncConfig{Interval: "6h"}}, 6 * time.Hour},
-		{"too-short 1h -> 5h", Config{CatalogSync: &CatalogSyncConfig{Interval: "1h"}}, 5 * time.Hour},
+		{"too-short 1h -> 2h", Config{CatalogSync: &CatalogSyncConfig{Interval: "1h"}}, 2 * time.Hour},
 		{"too-long 48h -> 24h", Config{CatalogSync: &CatalogSyncConfig{Interval: "48h"}}, 24 * time.Hour},
-		{"unparseable -> 12h", Config{CatalogSync: &CatalogSyncConfig{Interval: "nope"}}, 12 * time.Hour},
+		{"unparseable -> 2h", Config{CatalogSync: &CatalogSyncConfig{Interval: "nope"}}, 2 * time.Hour},
 	}
 	for _, tt := range tests {
 		if got := tt.cfg.CatalogSyncInterval(); got != tt.want {
@@ -354,7 +354,7 @@ func TestCatalogSyncIntervalClamp(t *testing.T) {
 }
 
 // TestLoadCatalogSyncDefault verifies a missing catalog_sync block resolves to
-// the documented default (enabled, 12h).
+// the documented default (enabled, 2h).
 func TestLoadCatalogSyncDefault(t *testing.T) {
 	path := writeConfig(t, `{"fail_mode":"closed"}`)
 	cfg, err := Load(path)
@@ -367,8 +367,8 @@ func TestLoadCatalogSyncDefault(t *testing.T) {
 	if !cfg.CatalogSyncEnabled() {
 		t.Error("CatalogSyncEnabled() = false, want true (default)")
 	}
-	if got := cfg.CatalogSyncInterval(); got != 12*time.Hour {
-		t.Errorf("CatalogSyncInterval() = %s, want 12h (default)", got)
+	if got := cfg.CatalogSyncInterval(); got != 2*time.Hour {
+		t.Errorf("CatalogSyncInterval() = %s, want 2h (default)", got)
 	}
 }
 

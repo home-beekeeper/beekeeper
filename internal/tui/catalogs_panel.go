@@ -31,13 +31,14 @@ type syncDoneMsg struct {
 }
 
 // catalogScheduleOptions is the admin-gated background-sync cadence selector:
-// 5h / 10h / 24h tighten or relax the interval; "off" disables background sync.
-// Each is persisted via validate-before-write (ValidateCatalogSyncConfig).
+// 2h / 5h / 10h / 24h tighten or relax the interval; "off" disables background
+// sync. Each is persisted via validate-before-write (ValidateCatalogSyncConfig).
 var catalogScheduleOptions = []struct {
 	Label    string
 	Interval string
 	Enabled  bool
 }{
+	{Label: "2h", Interval: "2h", Enabled: true},
 	{Label: "5h", Interval: "5h", Enabled: true},
 	{Label: "10h", Interval: "10h", Enabled: true},
 	{Label: "24h", Interval: "24h", Enabled: true},
