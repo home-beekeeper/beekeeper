@@ -186,7 +186,7 @@ Recent decisions from Phase 07 (v1.2.0 — Sensitive-Path Runtime Enforcement):
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 260611-mpe | Pollen Windows test coverage (model 100% · walk 0→84.8% · scanner 79.6% · VAL-01-style coveragegate gate). Code in `../pollen` repo. | 2026-06-11 | pollen `da58af7`..`c8ff8de` | [260611-mpe-pollen-windows-test-coverage](./quick/260611-mpe-pollen-windows-test-coverage/) |
+| 260611-mpe | Pollen Windows test coverage (model 100% · walk 0→84.8% · scanner 79.6% · editorext 64.6→98.5% · cmd/pollen 62.8→80.4% · VAL-01-style coveragegate gate). cmd/pollen ceiling = main()/os.Exit + platform-exclusive mac/linux roots (out of Windows scope). Code in `../pollen` repo. | 2026-06-11 | pollen `da58af7`..`c896175` | [260611-mpe-pollen-windows-test-coverage](./quick/260611-mpe-pollen-windows-test-coverage/) |
 
 ## Deferred Items
 

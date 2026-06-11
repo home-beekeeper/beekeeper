@@ -5,7 +5,7 @@ description: Pollen Windows test coverage
 date: 2026-06-11
 status: complete
 target_repo: ../pollen (github.com/bantuson/pollen)
-pollen_commits: [da58af7, eeaf529, f7e5bad, c8ff8de]
+pollen_commits: [da58af7, eeaf529, f7e5bad, c8ff8de, 27e4748, d2c6f35, 032c92a, a29d71f, c896175]
 ---
 
 # Quick Task 260611-mpe — Pollen Windows Test Coverage — SUMMARY
@@ -35,8 +35,8 @@ work. Full suite green, `go vet ./...` clean.
 | internal/ecosystem/rubygems | 73.7% | 74.3% |
 | internal/endpoint | 70.0% | 70.0% (remainder = non-Windows UID branches) |
 | internal/coveragegate | — | NEW (gate; no executable statements) |
-| internal/ecosystem/editorext | 64.6% | 64.6% (**not raised** — see below) |
-| cmd/pollen | 62.8% | 62.8% (**not raised** — see below) |
+| internal/ecosystem/editorext | 64.6% | **98.5%** |
+| cmd/pollen | 62.8% | **80.4%** |
 | (others) | 77–92% | unchanged |
 
 ## The coverage gate (`internal/coveragegate`) — the durable deliverable
@@ -59,14 +59,34 @@ be one number — non-Windows branches are uncoverable here by construction).
 All 19 packages already have tests, so the presence contract is satisfied
 repo-wide.
 
-## Honest scope notes (NOT done this pass)
+## Second pass — editorext + cmd/pollen raised (maintainer: "to 100")
 
-- **`internal/ecosystem/editorext` (64.6%)** and **`cmd/pollen` (62.8%)** were
-  NOT raised. Their uncovered surface is fixture-heavy (editor-extension
-  manifest parsing; `readBounded`/`hostFromExtRoot`) and CLI-flag/`Run`-heavy.
-  Both **have tests** so they pass the presence gate; pushing them toward 100%
-  is a larger fixture-writing effort — a candidate follow-up if the maintainer
-  wants the numbers higher.
+- **`editorext` 64.6% → 98.5%** (`27e4748`): ScanExtension fallback + error
+  branches, every `hostFromExtRoot` switch arm, `readBounded` edge cases. The
+  remaining ~1.5% is the `f.Stat()`-error branch (Stat failing on an
+  already-open file) — unreachable without OS-level mocking; defensive.
+- **`cmd/pollen` 62.8% → 80.4%** (`d2c6f35`/`032c92a`/`a29d71f`/`c896175`):
+  version + sink helpers, `classifyRoot` arms + users-dir cluster, a `runScan`/
+  `runRoots`/`usage` integration test (scan a temp npm-lockfile fixture →
+  `--output=file`), and the `runSelftest` verbose branch.
+
+### Why cmd/pollen is not literally 100% (honest ceiling on Windows)
+
+- **`main()` (0%)** — it reads `os.Args` and calls `os.Exit`. A subprocess
+  re-exec can verify its behavior but **won't merge into the `-cover` profile**
+  (separate process; `os.Exit` skips coverage flush), so it can't raise the
+  number without GOCOVERDIR integration-coverage scaffolding. Canonical
+  uncoverable-by-unit-test case for a CLI entrypoint.
+- **Platform-exclusive roots** — `systemRoots` (22%) and
+  `browserExtensionCandidateRoots` (50%) carry macOS/Linux path branches that
+  **only execute on those OSes**. On Pollen's Windows target only the Windows
+  arm runs; the rest is upstream Bumblebee's domain (out of scope, per the
+  maintainer directive — do not build mac/linux CI).
+- **`versionString` vcs settings** — depend on the build environment's VCS
+  stamping, not deterministically reachable from a unit test.
+- Remaining `runScan` branches (http output, exposure-catalog, `--all-users`,
+  signal handling) and defensive selftest error paths are lower-ROI.
+
 - **`internal/endpoint` (70%)**: the uncovered lines are the non-Windows numeric
   UID branches — uncoverable on Windows by design; acknowledged via the gate's
   philosophy (the file is tested; the branches are platform-exclusive).
