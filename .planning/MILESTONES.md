@@ -1,5 +1,30 @@
 # Milestones
 
+## v1.3.0 — Web Presence & Documentation (Shipped: 2026-06-11)
+
+**Phases:** 13 (10–21, numbering continues from v1.2.0; Phase 18.1 inserted) · **Plans:** 43 (+1 quick task) · **Timeline:** 2026-06-05 → 2026-06-11
+**Audit:** none — every phase was individually verified (per-phase verifier / UAT / code review). Archive: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md) / [`milestones/v1.3.0-REQUIREMENTS.md`](milestones/v1.3.0-REQUIREMENTS.md).
+
+**Delivered:** Beekeeper's public-facing presence and pre-ship validation gate. A greenfield Next.js 16 static-export site under `web/` — a distinctive marketing home, a complete Fumadocs documentation set accurate to the shipped binary, a versioned changelog, an R3F hive hero, and a path-filtered web CI — plus the Go-core hardening + release gate: Runtime Hardening II (catalog sync daemon, a now-functional LlamaFirewall opt-in, expanded Sentry coverage + honesty edits) and Full-System Validation (coverage gate, 17-harness conformance, cross-platform CI matrix, fuzz gate, live e2e, signed-off validation register). The Phase 10 seed (multi-harness hook-block protocol fix, config-as-secret self-protection, `$VAR` hardening, TUI real-data) shipped 2026-06-05 and is folded in.
+
+**Key accomplishments:**
+
+1. **Marketing home + accurate docs** — hero with dual CTA + go-install chip, Nx Console origin story, how-it-works, six shipped-capability cards, 15-harness matrix, and a known-gaps honesty callout; a full Fumadocs docs set (getting-started → installation → configuration → CLI reference → security posture + co-located gaps → integration → troubleshooting → audit-log) authored research-first and gated accurate-to-binary (`source_doc:` provenance + accuracy spec + human THREAT-MODEL.md review).
+2. **Static-export pipeline + 3D + SEO** — Next.js 16 / Tailwind v4 / shadcn/ui / Fumadocs / React-Three-Fiber, fully Go-isolated under `web/`; an R3F hive hero behind `dynamic(ssr:false)` with a static-SVG fallback (LCP < 2.5s, no WebGL leaks); sitemap/robots/canonical metadata + a static OG card; a versioned changelog with cosign/SLSA verify commands and the red exit-1→exit-2 breaking-change callout.
+3. **Runtime Hardening II (Phase 20)** — an unprivileged background `catalogs daemon` (interval-gated, ETag-conditional); the LlamaFirewall opt-in made actually-functional (silent fail-open fixed, AlignmentCheck/cloud path removed, loopback-TCP+token IPC, venv + gated-22M-model bootstrap, Windows StateDir fix); Sentry coverage expanded (SENTRY-006/007/008 + `EventFileWrite` per-OS ingestion + cloud-cred watchlist) with honesty edits to PROJECT/THREAT-MODEL/home.
+4. **Full-System Validation (Phase 21)** — `internal/coveragegate` (package-level linkage + a fail-closed reason-coded allowlist, self-defense VAL-08) closing the surfaced Tier-A gaps; a 17-harness golden-file deny + installer conformance suite (incl. Hermes fail-open + Kilo/Trae UNGUARDED); a cross-platform CI matrix (2 Linux kernels + macOS + Windows, 3 GOOS, eBPF/eslogger/ETW/peer-cred); a blocking Sentry fuzz gate; a Claude Code live exit-2 canary e2e; and a signed-off `docs/validation-register.md`.
+5. **Test suite + CI isolation (Phase 19)** — Vitest unit (33) + Playwright e2e (12, all 4 critical paths) + postbuild SEO (29), a 6-gate path-filtered `web.yml`, and bidirectional `paths-ignore` so web and Go CI never cross-trigger; the 4 legacy Python specs retired after byte-for-byte JS parity.
+6. **Pollen v0.2.0 released in-cycle** — the parked v1.1.0 fork was license-cleared (Apache-2.0 derivative of `perplexityai/bumblebee`), coverage-hardened, and shipped as a public, signed (cosign + SLSA + CycloneDX SBOM) standalone Windows tool; beekeeper's bumblebee→pollen scanner seam now resolves on all OSes and beekeeper gained its own Apache-2.0 LICENSE.
+
+**Known deferred / stale-at-close:**
+- **SITE-03** (live Vercel deploy) — the one intentional requirement deferral; static export retained, page build-verified locally. Carried forward.
+- 4 stale bookkeeping items acknowledged at close (NOT real gaps — each phase was individually verified): Phase 13 UAT `passed`/0-pending, Phase 11 VERIFICATION `human_needed` (SITE-01/02 complete), the `docs-styling-polish` todo (already promoted → Phase 18.1 + shipped), Phase 10 CONTEXT open questions (resolved at ship). See STATE.md "Deferred Items".
+- Command-card-per-copy docs split + a future full Fumadocs-theme redesign → backlog.
+- **v1.1.0 "Pollen" remains PARKED** at its maintainer release checkpoint — independent of this close; the standalone tool shipped as v0.2.0 but the GSD milestone is not archived (resume via `docs/release-runbook.md` + the 05-05 `.continue-here.md`).
+- `docs/nudge.md` (Go-side) is stale relative to the accurate web docs (it understates `config set nudge.mode block`).
+
+---
+
 ## v1.2.0 — Runtime Behavioral Hardening (Shipped: 2026-06-04)
 
 **Phases:** 4 (6–9, numbering continues from v1.1.0 "Pollen") · **Plans:** 19 (+1 pre-existing policy fuzz-build fix) · **Timeline:** 2026-06-03 → 2026-06-04
