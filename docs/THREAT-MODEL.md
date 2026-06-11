@@ -674,9 +674,13 @@ watchlist expansion. The remaining honest gaps are:
 2. **SENTRY-003 has no domain allowlist** and is not tied to extension
    activation — it fires on the first outbound by any monitored descendant, so it
    is noisy and cannot identify the destination.
-3. **No DNS or process-memory event sources**, so DNS-TXT tunneling and
-   `/proc/<pid>/maps` secret-scraping are undetected. (Persistence-write injection
-   is now covered by SENTRY-008 wherever file-write ingestion is active.)
+3. **DNS queries are ingested but not yet correlated; no process-memory event
+   source.** DNS query events are now captured on Linux (eBPF kprobe on
+   `udp_sendmsg`/`tcp_sendmsg`) and Windows (ETW DNS-Client), but no correlation
+   rule consumes them yet, so DNS-TXT tunneling is ingested-but-undetected.
+   `/proc/<pid>/maps` secret-scraping still has no event source and is undetected.
+   (Persistence-write injection is covered by SENTRY-008 wherever file-write
+   ingestion is active.)
 4. **Sentry is detection-only**; no rule triggers automated containment
    (extension quarantine lives in the separate watch/scan layer).
 5. **On Windows, file/network events carry no parent-PID**, so a short-lived or
