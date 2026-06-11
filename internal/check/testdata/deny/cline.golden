@@ -1,0 +1,3 @@
+exit=2
+stdout={"cancel":true,"errorMessage":"credential read blocked by beekeeper policy"}
+stderr=credential read blocked by beekeeper policy

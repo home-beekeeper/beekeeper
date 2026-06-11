@@ -1,0 +1,3 @@
+exit=2
+stdout={"decision":"deny","reason":"credential read blocked by beekeeper policy"}
+stderr=credential read blocked by beekeeper policy

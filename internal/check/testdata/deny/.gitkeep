@@ -1,0 +1,2 @@
+# Golden deny-contract fixtures for TestRenderDenyGolden (VAL-02).
+# Regenerate: go test -run TestRenderDenyGolden -update ./internal/check/
