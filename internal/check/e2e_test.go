@@ -11,6 +11,7 @@ package check
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -230,6 +231,58 @@ func TestE2ELiveBinary(t *testing.T) {
 		}
 		if rec.Decision == "block" {
 			t.Errorf("NUDGE-bun: audit decision = %q, want non-block", rec.Decision)
+		}
+	})
+
+	// -------------------------------------------------------------------------
+	// Case 5 (VAL-05): Claude Code --hook exit-2 canary block — the documented
+	// true-block reference.
+	//
+	// Phase 10 changed the HOOK contract to exit 2 via `--hook <harness>`; the
+	// exit-1 SPATH/CORR cases above are the DEFAULT-mode block (Pitfall 2 — they
+	// are NOT the hook contract). This proves the shipped `beekeeper check
+	// --hook claude-code` path denies a canary credential read end-to-end:
+	// exit 2 + Family-A hookSpecificOutput permissionDecision:deny on stdout +
+	// audit decision "block". Both ~/.ssh and ~/.aws canaries are exercised
+	// (matching the Phase-10 live proof).
+	// -------------------------------------------------------------------------
+	t.Run("SPATH_hook_claude_code_exit2", func(t *testing.T) {
+		for _, canary := range []string{"~/.ssh/id_rsa", "~/.aws/credentials"} {
+			t.Run(canary, func(t *testing.T) {
+				homeDir, auditPath, catalogsDir, _ := newHome(t)
+				seedCatalog(t, catalogsDir, nil)
+
+				stdinJSON := fmt.Sprintf(`{"agent_name":"e2e-agent","tool_name":"Read","tool_input":{"file_path":%q}}`, canary)
+				cmd := exec.Command(binPath, "check", "--hook", "claude-code")
+				cmd.Stdin = strings.NewReader(stdinJSON)
+				cmd.Env = append(os.Environ(), fmt.Sprintf("BEEKEEPER_HOME=%s", homeDir))
+				var stdout, stderr bytes.Buffer
+				cmd.Stdout = &stdout
+				cmd.Stderr = &stderr
+
+				exitCode := 0
+				if err := cmd.Run(); err != nil {
+					if exitErr, ok := err.(*exec.ExitError); ok {
+						exitCode = exitErr.ProcessState.ExitCode()
+					} else {
+						t.Fatalf("cmd.Run non-exit error: %v", err)
+					}
+				}
+
+				// The HOOK deny contract is exit 2 — NOT exit 1 (Pitfall 2).
+				if exitCode != 2 {
+					t.Errorf("--hook claude-code %s: exit code = %d, want 2 (hook deny contract); stderr=%s", canary, exitCode, stderr.String())
+				}
+				// Family-A nested hookSpecificOutput deny on stdout.
+				if !strings.Contains(stdout.String(), `"permissionDecision":"deny"`) {
+					t.Errorf("--hook claude-code %s: stdout = %q, want it to contain \"permissionDecision\":\"deny\"", canary, stdout.String())
+				}
+				// The block is still recorded in the audit log.
+				rec := readE2EAuditRecord(t, auditPath, "policy_decision")
+				if rec.Decision != "block" {
+					t.Errorf("--hook claude-code %s: audit decision = %q, want \"block\"", canary, rec.Decision)
+				}
+			})
 		}
 	})
 }
