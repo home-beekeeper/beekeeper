@@ -170,12 +170,13 @@ from `internal/check/deny_render.go` and that matrix).
 
 ## Gated-model end-to-end (Tier C — human-gated)
 
-### LlamaFirewall Llama-Prompt-Guard-2-22M e2e (Tier C — PENDING human HF-license gate)
+### LlamaFirewall Llama-Prompt-Guard-2-22M e2e (Tier C — human HF-license gate)
 - **Prereq:** accept the `meta-llama/Llama-Prompt-Guard-2-22M` license on huggingface.co; `huggingface-cli login`; run `beekeeper llamafirewall install` (bootstraps the CPU-only venv + pre-pulls the gated 22M model into `HF_HOME` under the Beekeeper state dir); set `BEEKEEPER_LLMF_E2E=1`.
 - **Run:** `go test -tags e2e -run TestLlamaFirewallE2E ./internal/llamafirewall/`
 - **Expected:** benign prompt → allow; prompt-injection → injection verdict; unsafe code → CodeShield unsafe; sidecar crash → fail-closed (never silently "clean").
-- **Result / sign-off:** **PENDING** — Claude cannot accept the Llama license (a human-only web action). This entry may remain PENDING past phase close (D-07 / deferred); it is the only Tier-C item that is gated on an external human action.
-- **Verified by / date:** ______________
+- **Platform note:** the real-sidecar e2e is **CI/Linux-only by design**. The sidecar constructs the CodeShield scanner at startup, and CodeShield depends on `semgrep`, which has **no native Windows build** ([semgrep#1330](https://github.com/semgrep/semgrep/issues/1330)); `pip install` of `llamafirewall` aborts on native Windows while building `semgrep` from source. The e2e therefore runs in the gated CI Linux job, not on a Windows dev box (WSL or Linux/macOS also work for a local run). The test header documents the same constraint.
+- **Human HF-license gate — VERIFIED 2026-06-11 (Windows):** the Llama license was accepted and a read-only HF token was placed at `HF_HOME/token` under the state dir. A direct `huggingface_hub.snapshot_download("meta-llama/Llama-Prompt-Guard-2-22M")` with `HF_HOME` pinned to the state dir succeeded (11 files, ~279 MB, including `model.safetensors`, `config.json`, `tokenizer.json`, and the license docs), confirming the accepted license + token authorize the gated weights into the exact cache the install uses. This closes the human-gated portion (license + token + gated-weights fetch). The prompt-injection/CodeShield scan assertions remain the CI-Linux e2e above.
+- **Verified by / date:** maintainer (HF license acceptance + `huggingface-cli login`) + automated gated-weights download — 2026-06-11 (Windows). Full real-sidecar scan e2e: CI Linux job.
 
 ---
 
@@ -185,6 +186,6 @@ from `internal/check/deny_render.go` and that matrix).
 |---------|-------|--------|
 | Claude Code live block | 1 | ✅ Automated (VAL-05 e2e — the true-block reference) |
 | Non-Claude-Code harnesses | 16 | ☐ UNVERIFIED by design (manual; fill rows above) |
-| Gated-22M-model LlamaFirewall e2e | 1 | ⏳ PENDING (human HF-license gate) |
+| Gated-22M-model LlamaFirewall e2e | 1 | ✅ HF-license gate verified 2026-06-11 (license + token + gated-weights download, Windows); full prompt-injection/CodeShield scan e2e is CI/Linux-only (semgrep) |
 
 *An unsigned row is honest: it means that harness has NOT been live-block-verified, only contract-shape unit-tested (`internal/hooks` installer conformance + `internal/check` golden deny contract). See [validation-posture.md](validation-posture.md).*
