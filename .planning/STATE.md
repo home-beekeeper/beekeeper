@@ -182,6 +182,12 @@ Recent decisions from Phase 07 (v1.2.0 — Sensitive-Path Runtime Enforcement):
 - [RESOLVED 2026-06-04] Phase 8 (NUDGE): Flag 2 + Flag 4 settled in 08-RESEARCH.md and encoded in the plans (Flag 5 PRD corrections — minimumReleaseAge weakness baseline 1440, Node 24 recommended / floor 22 — also baked in). detect.go signature locked (cache-free `DetectStateFn` seam + gateway-only Cache wrapper). No longer a blocker.
 - PLCY-07 (Phase 6) self-defense: [RESOLVED in 06-01] escalation + sanity gate shipped atomically; all-versions guard + SeverityOverrides in one commit
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260611-mpe | Pollen Windows test coverage (model 100% · walk 0→84.8% · scanner 79.6% · VAL-01-style coveragegate gate). Code in `../pollen` repo. | 2026-06-11 | pollen `da58af7`..`c8ff8de` | [260611-mpe-pollen-windows-test-coverage](./quick/260611-mpe-pollen-windows-test-coverage/) |
+
 ## Deferred Items
 
 Items acknowledged and carried forward:
