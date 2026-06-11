@@ -42,7 +42,7 @@ jobs:
       # beekeeper CI runs this step (Pitfall 3, 05-RESEARCH.md). This step is local
       # prep; CI resolves it after the plan-05 checkpoint push.
       - name: Install Pollen (BKINT-02 — pinned binary for inventory tests)
-        run: go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
+        run: go install github.com/bantuson/pollen/cmd/pollen@v0.2.0
 
       - name: Install clang/llvm/libbpf for eBPF bytecode generation (Linux only)
         if: runner.os == 'Linux'

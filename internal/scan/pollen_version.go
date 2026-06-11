@@ -26,8 +26,8 @@ package scan
 // PinnedPollenVersion is the Pollen binary version pinned for beekeeper CI
 // inventory tests (BKINT-02). CI installs this version via:
 //
-//	go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
+//	go install github.com/bantuson/pollen/cmd/pollen@v0.2.0
 //
 // This is a subprocess-boundary pin — NOT a Go-module dependency.
 // See .github/workflows/ci.yml "Install Pollen (BKINT-02)" step.
-const PinnedPollenVersion = "v0.1.1-pollen.4"
+const PinnedPollenVersion = "v0.2.0"
