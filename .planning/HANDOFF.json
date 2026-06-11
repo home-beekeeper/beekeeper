@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-11T17:49:40.167Z",
+  "phase": "milestone-close + pollen-release (cross-cutting; not a single phase)",
+  "phase_name": "v1.3.0 milestone close (PAUSED) + Pollen v0.2.0 release (DONE)",
+  "phase_dir": ".planning",
+  "plan": 0,
+  "task": 0,
+  "total_tasks": 0,
+  "status": "paused",
+  "milestone_context": "ALL v1.3.0 phases (10-21) are done. The Phase-20 20-02 LlamaFirewall HF-license gate was CLOSED this session. The standalone Pollen tool was license-cleared, coverage-hardened, and RELEASED as v0.2.0 (signed + SBOM + SLSA, public). The ONLY remaining tracked item is the v1.3.0 milestone close, which is PAUSED at its confirmation gate (readiness diagnostics already gathered).",
+  "completed_tasks": [
+    {"id": 1, "name": "Phase-20 20-02 LlamaFirewall HF-license gate CLOSED (gated-model download verified on Windows; full sidecar/e2e is CI/Linux-only by design — codeshield->semgrep has no Windows build)", "status": "done", "commit": "5776857"},
+    {"id": 2, "name": "Pollen license verdict: Apache-2.0 derivative, SAFE to release (verified perplexityai/bumblebee is Apache-2.0 at pinned v0.1.1)", "status": "done"},
+    {"id": 3, "name": "Pollen coverage quick task 260611-mpe (model 100/walk 84.8/scanner 79.6/editorext 98.5/cmd-pollen 80.4 + internal/coveragegate VAL-01-style gate)", "status": "done", "commit": "pollen da58af7..c896175"},
+    {"id": 4, "name": "beekeeper scanner fix: prefer bumblebee, fall back to pollen (was pollen-only on all OSes)", "status": "done", "commit": "5d4135c"},
+    {"id": 5, "name": "Docs positioning (Bumblebee=mac/linux upstream; Pollen=Windows stopgap; Beekeeper inspired-by) + Apache-2.0 LICENSE for beekeeper", "status": "done", "commit": "37d853f, 5910924"},
+    {"id": 6, "name": "Pollen Apache-2.0 §4(b) repo-level NOTICE statement", "status": "done", "commit": "pollen c5ff9a9"},
+    {"id": 7, "name": "Pollen v0.2.0 RELEASED (single clean semver, scrapped the 4-tag pollen.2-.5 scheme): signed cosign + SLSA + CycloneDX SBOM + 6 platform binaries; main CI green after a backslash-test fix; beekeeper pin -> v0.2.0", "status": "done", "commit": "pollen 2029b8c+tag v0.2.0+b72ba04 / beekeeper 453b4a5"}
+  ],
+  "remaining_tasks": [
+    {"id": 8, "name": "Run /gsd-complete-milestone v1.3.0 (PAUSED at confirmation gate; readiness diagnostics already done)", "status": "not_started"},
+    {"id": 9, "name": "OPTIONAL: cosign verify-blob the v0.2.0 release locally; surface the v0.2.0 binary in install docs", "status": "not_started"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [
+    {"action": "Decide whether to run /gsd-complete-milestone v1.3.0 now (archives REQUIREMENTS.md + rewrites ROADMAP.md + tags v1.3.0 locally)", "context": "Destructive but git-checkpointed; the readiness picture is already gathered (see continue-here)", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "beekeeper resolves scanner bumblebee->pollen on ALL OSes (not pollen-only)", "rationale": "bumblebee is recommended mac/linux; pollen is the Windows fallback (bumblebee has no Windows build)"},
+    {"decision": "beekeeper licensed Apache-2.0 (Copyright 2026 Bantuson)", "rationale": "matches Bumblebee/Pollen lineage + patent grant; beekeeper is original work (subprocess boundary, no code copied)"},
+    {"decision": "Pollen §4(b) = repo-level NOTICE statement, NOT per-file headers", "rationale": "module-path rewrite makes the modification pervasive across all files; per-file would be noise"},
+    {"decision": "Single v0.2.0 release instead of the 4 batched pollen.2/.3/.4/.5 tags", "rationale": "the -pollen.N scheme was a GSD per-phase-tag artifact, not a real cadence; clean semver is simpler"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Confirm with the maintainer, then run /gsd-complete-milestone v1.3.0. Preserve the parked v1.1.0 Pollen section in ROADMAP.md (do the ROADMAP reorg BY HAND, not the generic CLI rewrite). REQUIREMENTS.md is cleanly v1.3.0-only so archive+git-rm is safe. No git remote on beekeeper (local-only) so no tag push. No v1.3.0-MILESTONE-AUDIT.md exists (every phase was individually verified; the 4 audit-open items are stale; SITE-03 Vercel deploy is the one intentional deferral).",
+  "context_notes": "Massive session. Started by resuming the Phase-20 LlamaFirewall gate, closed it, then the maintainer pivoted to the real blocker for the parked v1.1.0: whether releasing the Pollen fork is license-permissible. It is (Apache-2.0). That unblocked a full Pollen release sprint: coverage -> license/docs hardening -> bumblebee-first scanner fix -> public push -> v0.2.0 signed release. Pollen is now a public, signed, standalone Windows-focused tool. Beekeeper itself is unpushed/local-only (no remote). The v1.3.0 milestone close is the only loose thread, deliberately paused for the maintainer's go-ahead. Reusable lesson burned in this session: filepath.ToSlash only rewrites the HOST-OS separator, so backslash-path test assertions pass on Windows but fail on Linux/macOS CI."
+}
