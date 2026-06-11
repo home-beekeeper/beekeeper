@@ -1,0 +1,4 @@
+# Golden deny-contract fixtures are compared byte-exact against Go's LF output
+# (TestRenderDenyGolden). Pin them to LF so a Windows checkout (core.autocrlf=true)
+# does not rewrite them to CRLF and break the comparison cross-platform.
+internal/check/testdata/deny/*.golden text eol=lf
