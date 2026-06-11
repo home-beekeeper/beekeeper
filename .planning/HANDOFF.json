@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-11T11:16:08.025Z",
+  "phase": "20",
+  "phase_name": "Runtime Hardening II — 20-02 LlamaFirewall live bootstrap (the last v1.3.0 item)",
+  "phase_dir": ".planning/phases/20-runtime-hardening",
+  "plan": 2,
+  "task": 3,
+  "total_tasks": 4,
+  "status": "paused",
+  "milestone_context": "Phase 21 (Full-System Validation, VAL-01..08) is COMPLETE & verified 2026-06-11. ALL v1.3.0 phases (10-21) are code-complete. The ONLY remaining milestone item is the Phase-20 20-02 LlamaFirewall HF-license live bootstrap + e2e, then /gsd-complete-milestone v1.3.0.",
+  "completed_tasks": [
+    {"id": 1, "name": "Phase 21 planned + executed + finalized (VAL-01..08)", "status": "done", "commit": "f111d25"},
+    {"id": 2, "name": "LlamaFirewall HF token guidance (perms, storage location, git-credential)", "status": "done"},
+    {"id": 3, "name": "fix(llamafirewall): transformers pin >=4.51.3 (source asset)", "status": "done", "commit": "61c77b9"}
+  ],
+  "remaining_tasks": [
+    {"id": 4, "name": "Rebuild binary (go install) so the fixed requirements.txt embeds, re-run `beekeeper llamafirewall install`", "status": "not_started"},
+    {"id": 5, "name": "Run gated-model e2e + tick the validation-register gated-model row", "status": "not_started"},
+    {"id": 6, "name": "Land the per-operator docs clarification (security.mdx + cli-reference.mdx) + pnpm build/accuracy_spec", "status": "not_started"},
+    {"id": 7, "name": "/gsd-complete-milestone v1.3.0", "status": "not_started"}
+  ],
+  "blockers": [
+    {"description": "`beekeeper llamafirewall install` fails ResolutionImpossible: deployed requirements.txt still pins transformers==4.44.2 but llamafirewall 1.0.3 needs >=4.51.3", "type": "technical", "workaround": "ROOT CAUSE: the requirements.txt is //go:embed-ed in the binary; the SOURCE is FIXED (61c77b9, transformers>=4.51.3) but the INSTALLED binary still embeds the OLD pin. FIX: `go install ./cmd/beekeeper` then re-run `beekeeper llamafirewall install` (new embed stamp re-deploys the fixed file). Alt (no rebuild): manually edit %APPDATA%\\beekeeper\\llamafirewall\\requirements.txt to transformers>=4.51.3 (InstallSidecar hash-skips, won't clobber the edit on the same binary)."}
+  ],
+  "human_actions_pending": [
+    {"action": "go install ./cmd/beekeeper (rebuild with the fixed embedded requirements.txt)", "context": "Source fix 61c77b9 only takes effect after a rebuild — the old binary keeps deploying transformers==4.44.2", "blocking": true},
+    {"action": "huggingface-cli login / set HF_TOKEN (read-only token); store at %APPDATA%\\beekeeper\\llamafirewall\\hf\\token", "context": "Llama license ACCEPTED by user. Token under StateDir-pinned HF_HOME = reliable (install reads $HF_HOME/token) + beekeeper self-protected (StateDir in ReadWritePrefixes, EvaluateSelfPath blocks agent reads). Decline the git-credential prompt.", "blocking": true},
+    {"action": "BEEKEEPER_LLMF_E2E=1 go test -tags e2e -run TestLlamaFirewallE2E ./internal/llamafirewall/ then tick the gated-model row in docs/validation-register.md", "context": "The Tier-C register's gated-model row is PENDING until this passes", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "HF token = read-only (fine-grained 'read access to public gated repos you can access', or classic Read); no write/admin/inference/billing", "rationale": "snapshot_download of a gated model only needs read; least-privilege for a security project"},
+    {"decision": "Store the HF token at %APPDATA%\\beekeeper\\llamafirewall\\hf\\token (= HFHome(StateDir))", "rationale": "Reliable: install pins HF_HOME there so huggingface_hub reads $HF_HOME/token. Protected: StateDir is in beekeeper's ReadWritePrefixes -> EvaluateSelfPath blocks ANY agent read/write under it (selfpath.go:20). HF_TOKEN env var is reliable but NOT SPATH-protectable (env != file)."},
+    {"decision": "Decline the huggingface-cli 'add token as git credential?' prompt", "rationale": "snapshot_download uses the HF HTTP API, not git clone; the git credential is unused here and is one more secret copy"},
+    {"decision": "requirements.txt transformers pin must track llamafirewall's floor (>=4.51.3), not an independent stale pin", "rationale": "The hard pin transformers==4.44.2 conflicted with llamafirewall 1.0.3's own transformers>=4.51.3 requirement -> ResolutionImpossible"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Run `go install ./cmd/beekeeper` (embeds the fixed requirements.txt from 61c77b9), then re-run `beekeeper llamafirewall install`. If pip surfaces a SECOND conflict (e.g. torch vs transformers/tokenizers), bump that pin in internal/llamafirewall/assets/requirements.txt the same way and rebuild. The local pip resolve was never run this session (downloads torch+transformers, ~hundreds of MB), so a follow-on pin conflict is possible and untested.",
+  "context_notes": "Phase 21 is DONE. We are doing the post-completion Phase-20 20-02 human gate (LlamaFirewall gated-model live bootstrap) before /gsd-complete-milestone v1.3.0. The gated-model deps were never install-tested behind the license gate (exactly why the register row was PENDING) - this is the first real run, so expect untested-deps friction. Also pending: a docs-clarity follow-up (the gated-model setup is per-operator / one-time-per-machine / not bundleable due to Llama license + no-redistribution; security.mdx + cli-reference.mdx state the STEPS but not the WHY-per-user; a one-sentence fix was drafted in conversation, not yet landed - confirm-before-edit on the public site + rebuild-verify)."
+}
