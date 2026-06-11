@@ -58,6 +58,20 @@ jobs:
       - name: Build
         run: go build -v -trimpath -buildvcs=false ./...
 
+      # VAL-03: gate cross-compilation of all 3 GOOS (build-only). Run on the
+      # Linux leg, where eBPF bytecode has been generated above, so GOOS=linux
+      # builds the real sentry/linux package while GOOS=darwin/windows build
+      # their platform files. Pure-Go cross-builds (CGO off) — eslogger/ETW have
+      # no cgo deps.
+      - name: Cross-compile (3 GOOS, build-only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          for os in linux darwin windows; do
+            echo "GOOS=$os go build ./..."
+            GOOS=$os go build -trimpath -buildvcs=false ./...
+          done
+
       - name: Test
         run: go test -v -race ./...
         env:
@@ -116,6 +130,20 @@ jobs:
           cache: true
       - name: Smoke fuzz LlamaFirewall IPC
         run: go test -run FuzzLlamaFirewallProto -fuzztime=5s ./internal/llamafirewall/...
+
+  fuzz-sentry:
+    # Phase 21 release gate (VAL-04): fuzz the Sentry rule evaluator
+    # (FuzzEvaluateEvent). The evaluator is pure (TestRulesImportsArePure); a
+    # discovered panic or out-of-contract severity blocks release.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Fuzz Sentry rule evaluator (FuzzEvaluateEvent)
+        run: go test -tags fuzz -run FuzzEvaluateEvent -fuzz FuzzEvaluateEvent -fuzztime 30s ./internal/sentry/
 
   test-sentry-kernel-5-4:
     runs-on: ubuntu-22.04
@@ -190,6 +218,6 @@ jobs:
 
   release-gate:
     runs-on: ubuntu-22.04
-    needs: [test-sentry-kernel-5-4, test-sentry-kernel-5-15, fuzz-ipc, fuzz-llamafirewall, test-eslogger-fields]
+    needs: [test-sentry-kernel-5-4, test-sentry-kernel-5-15, fuzz-ipc, fuzz-llamafirewall, test-eslogger-fields, fuzz-sentry]
     steps:
       - run: echo "All release gates passed"
