@@ -8,6 +8,11 @@
 # torch is pinned to a CPU build: `beekeeper llamafirewall install` passes
 #   --extra-index-url https://download.pytorch.org/whl/cpu
 # so pip resolves the CPU wheel instead of the multi-GB default CUDA wheels.
+#
+# transformers MUST satisfy llamafirewall 1.0.3's own floor (`transformers>=4.51.3`).
+# The earlier `transformers==4.44.2` hard-pin was stale and conflicted with it
+# (ResolutionImpossible). Keep this floor in lockstep with the pinned
+# llamafirewall version's requirement, not an independent pin.
 llamafirewall==1.0.3
 torch==2.4.1
-transformers==4.44.2
+transformers>=4.51.3
