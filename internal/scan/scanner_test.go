@@ -28,6 +28,41 @@ func TestPollenScanArgs(t *testing.T) {
 	}
 }
 
+// TestResolveScannerBinary verifies the inventory scanner resolution order:
+// upstream bumblebee is preferred; pollen is the fallback (the case that resolves
+// on Windows, where bumblebee has no native build); neither-on-PATH is an error.
+func TestResolveScannerBinary(t *testing.T) {
+	t.Run("bumblebee preferred", func(t *testing.T) {
+		look := func(name string) (string, error) {
+			return "/usr/local/bin/" + name, nil // both present
+		}
+		path, name, err := resolveScannerBinary(look)
+		if err != nil || name != "bumblebee" || path != "/usr/local/bin/bumblebee" {
+			t.Errorf("got (%q, %q, %v); want bumblebee preferred", path, name, err)
+		}
+	})
+
+	t.Run("pollen fallback when bumblebee absent", func(t *testing.T) {
+		look := func(name string) (string, error) {
+			if name == "bumblebee" {
+				return "", exec.ErrNotFound
+			}
+			return `C:\tools\` + name + ".exe", nil
+		}
+		path, name, err := resolveScannerBinary(look)
+		if err != nil || name != "pollen" || path != `C:\tools\pollen.exe` {
+			t.Errorf("got (%q, %q, %v); want pollen fallback", path, name, err)
+		}
+	})
+
+	t.Run("neither on PATH", func(t *testing.T) {
+		look := func(string) (string, error) { return "", exec.ErrNotFound }
+		if _, _, err := resolveScannerBinary(look); err == nil {
+			t.Error("expected an error when neither bumblebee nor pollen is on PATH")
+		}
+	})
+}
+
 // TestHelperPollenFail is a subprocess helper (standard os/exec idiom): when the
 // env var is set it mimics pollen exiting non-zero with a stderr reason and no
 // stdout. It is a no-op during a normal test run.
@@ -46,7 +81,7 @@ func TestDefaultRunPollenNonZeroExitEmitsScanError(t *testing.T) {
 	oldLook, oldCmd := lookPollenFn, pollenCommand
 	defer func() { lookPollenFn, pollenCommand = oldLook, oldCmd }()
 
-	lookPollenFn = func() (string, error) { return os.Args[0], nil }
+	lookPollenFn = func() (string, string, error) { return os.Args[0], "pollen", nil }
 	pollenCommand = func(ctx context.Context, bin string, args ...string) *exec.Cmd {
 		c := exec.CommandContext(ctx, os.Args[0], "-test.run=TestHelperPollenFail")
 		c.Env = append(os.Environ(), "GO_WANT_HELPER_POLLEN_FAIL=1")

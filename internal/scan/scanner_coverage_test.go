@@ -274,7 +274,7 @@ func TestScanMalformedPollenLine(t *testing.T) {
 	if !strings.Contains(out, `"record_type":"scan_error"`) {
 		t.Errorf("malformed pollen line did not produce scan_error; got:\n%s", out)
 	}
-	if !strings.Contains(out, "malformed NDJSON from pollen subprocess") {
+	if !strings.Contains(out, "malformed NDJSON from the inventory scanner subprocess") {
 		t.Errorf("expected malformed-NDJSON reason; got:\n%s", out)
 	}
 	// The valid record after the malformed one must still pass through (loop continues).

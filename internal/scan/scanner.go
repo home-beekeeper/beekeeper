@@ -54,10 +54,29 @@ type FindingRecord struct {
 }
 
 // Package-level injectable vars for tests.
-var lookPollenFn = func() (string, error) { return exec.LookPath("pollen") }
+
+// resolveScannerBinary locates the external inventory scanner on PATH, preferring
+// upstream bumblebee (the recommended macOS/Linux tool) and falling back to pollen
+// (the Windows-support fork — which is what resolves on Windows, where bumblebee has
+// no native build). It returns the resolved executable path, the logical scanner
+// name ("bumblebee" or "pollen") for provenance labelling, and an error if neither
+// is on PATH. lookPath is injected so the resolution order is unit-testable.
+func resolveScannerBinary(lookPath func(string) (string, error)) (path, name string, err error) {
+	for _, candidate := range []string{"bumblebee", "pollen"} {
+		if p, lerr := lookPath(candidate); lerr == nil {
+			return p, candidate, nil
+		}
+	}
+	return "", "", exec.ErrNotFound
+}
+
+// lookPollenFn resolves the inventory scanner binary (bumblebee-preferred,
+// pollen-fallback, per resolveScannerBinary). The historical name is retained for
+// continuity; it returns (path, scannerName, err) and is injectable for tests.
+var lookPollenFn = func() (string, string, error) { return resolveScannerBinary(exec.LookPath) }
 
 // runPollenFn is replaced in tests to yield canned lines without spawning a real process.
-// Returns (channel, true) when pollen is available, (nil, false) otherwise.
+// Returns (channel, true) when the scanner is available, (nil, false) otherwise.
 var runPollenFn = func(ctx context.Context, deep bool) (<-chan []byte, bool) {
 	return defaultRunPollen(ctx, deep)
 }
@@ -91,7 +110,7 @@ var pollenCommand = func(ctx context.Context, bin string, args ...string) *exec.
 // A non-zero pollen exit is surfaced as a scan_error line (fail-closed/observable)
 // rather than a silent empty scan, so a failed subprocess is never a false success.
 func defaultRunPollen(ctx context.Context, deep bool) (<-chan []byte, bool) {
-	bin, err := lookPollenFn()
+	bin, scannerName, err := lookPollenFn()
 	if err != nil {
 		return nil, false
 	}
@@ -123,8 +142,8 @@ func defaultRunPollen(ctx context.Context, deep bool) (<-chan []byte, bool) {
 			rec := map[string]any{
 				"record_type":  "scan_error",
 				"scanner_name": "beekeeper",
-				"source":       "pollen",
-				"error":        fmt.Sprintf("pollen subprocess exited non-zero: %v", werr),
+				"source":       scannerName,
+				"error":        fmt.Sprintf("%s subprocess exited non-zero: %v", scannerName, werr),
 			}
 			if detail := strings.TrimSpace(stderr.String()); detail != "" {
 				rec["detail"] = detail
@@ -222,8 +241,8 @@ func Scan(ctx context.Context, cfg Config, out io.Writer) error {
 				warn := map[string]any{
 					"record_type":  "scan_error",
 					"scanner_name": "beekeeper",
-					"source":       "pollen",
-					"error":        "malformed NDJSON from pollen subprocess",
+					"source":       "scanner",
+					"error":        "malformed NDJSON from the inventory scanner subprocess",
 				}
 				_ = writeJSONLine(out, warn)
 				continue
