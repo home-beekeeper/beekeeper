@@ -465,11 +465,11 @@ The coverage allowlist is the new tamper-evident surface (CLAUDE.md "every phase
 
 **Note:** This research is unusually low-assumption because the phase is an audit of existing code, not a greenfield build. Every structural claim (rosters, deny families, CI jobs, gap files, exit codes) was read directly from source at commit `04857cc`.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the 4 `sanity.go` delegators be tested (via `catalog.ResolveHealthy`) or allowlisted as `thin-delegator`?** (RESOLVED, MEDIUM) — Recommend testing `catalog.ResolveHealthy` once (covers all 4, plus it is the fail-open-on-read security path worth a real test) and NOT allowlisting them. Planner may allowlist if a per-package delegation test is judged pure ceremony.
 2. **One coverage-gate test at repo root vs an `internal/coveragegate` package?** (RESOLVED, MEDIUM) — Recommend a small `internal/coveragegate` package with the walker + allowlist parser + `TestCoverageManifest` + `TestAllowlistFailsClosed`, so the gate logic is itself unit-tested and importable. Repo-root `_test.go` also works but can't be imported.
-3. **Does `internal/sentry/windows` have a live-ETW CI gate analogous to `test-eslogger-fields`?** (OPEN, LOW) — Not confirmed in this pass; planner should grep `ci.yml`/Phase-20 SUMMARYs during execution. If absent and a live-ETW field-validation is feasible on windows-latest, mirror the eslogger job; otherwise the windows matrix leg's `go test ./...` is the coverage and the register notes ETW as CI-build-validated.
+3. **Does `internal/sentry/windows` have a live-ETW CI gate analogous to `test-eslogger-fields`?** (RESOLVED, LOW — confirmed 2026-06-11) — **No.** `ci.yml` jobs are `test` (matrix incl. `windows-latest`), `fuzz`, `fuzz-ipc`, `fuzz-llamafirewall`, `test-sentry-kernel-5-4`, `test-sentry-kernel-5-15`, `test-eslogger-fields` (macOS only), and `release-gate` — there is no Windows/ETW live job (the lone eslogger reference is the macOS job). Resolution per the documented fallback: the `windows-latest` matrix leg's `go test ./...` IS the ETW coverage (build + unit), and `docs/validation-register.md` notes ETW as CI-build-validated. A live-ETW field-validation mirroring eslogger is feasible-in-principle but OUT of scope for Phase 21 (no audit finding mandates it; D-03 bounds fixes to audit-/test-traceable work) — captured as a future Tier-B enhancement, not a Phase-21 task.
 
 ## Environment Availability
 
