@@ -37,6 +37,7 @@ CI pipeline or developer workstation.
 9. [Declarative Policy Overlay: Escape Hatch and Known Limitations](#9-declarative-policy-overlay-escape-hatch-and-known-limitations)
 10. [Multi-Harness Hook Enforcement (v1.3.0)](#10-multi-harness-hook-enforcement-v130)
 11. [Runtime Hardening (v1.2.0): SPATH, CORR, NUDGE](#11-runtime-hardening-v120-spath-corr-nudge)
+12. [First-Responder Quarantine and Catalog-to-Sentry Targeting (v1.3.0)](#12-first-responder-quarantine-and-catalog-to-sentry-targeting-v130-post-ship)
 
 ---
 
@@ -1131,8 +1132,88 @@ parser.
 
 ---
 
+## 12. First-Responder Quarantine and Catalog-to-Sentry Targeting (v1.3.0 post-ship)
+
+The "detection-only first responder" closes the loop from a catalog sync hit to a
+reversible quarantine, and feeds flagged artifacts to the Sentry correlation
+engine. It introduces two new trust inputs, both reviewed and hardened (security
+review 2026-06-12: 0 Critical, 1 High, 3 Medium; all actionable findings
+remediated. See
+`.planning/quick/260612-f80-detection-only-first-responder-sync-hit-/260612-f80-SECURITY-REVIEW.md`).
+
+### New trust input 1: a Pollen `project_path` becomes a filesystem move source
+
+When auto-quarantine is enabled, a corroborated scan hit moves the installed
+artifact (whose on-disk path comes from a Pollen scan record) into a quarantine
+directory via `os.Rename`. The move is therefore driven by attacker-influenceable
+input (a malicious dependency controls its own install path). Controls:
+
+- **Opt-in plus dry-run by default.** `auto_quarantine` defaults to
+  `{enabled:false, dry_run:true, threshold:2}`. A fresh install moves nothing; two
+  explicit config changes are required before any rename occurs, and dry-run
+  performs zero filesystem mutation.
+- **Corroboration gate.** A move only fires at `CorroborationCount >= threshold`
+  (default 2 signed sources), so a single compromised catalog source cannot
+  weaponize the mover (the §3/§4 2FA principle, applied to the move action).
+- **Reversible, human-gated destruction.** Quarantine is a reversible directory
+  move plus a `0600` owner-only manifest. The only destructive operation, purge, is
+  never automatic: it is gated behind an explicit TUI `[P]` action or a CLI `y/N`
+  prompt. Restore (`[R]`) is likewise a human action.
+- **Source refusals (F-2/F-8).** The move source must be absolute, must not be a
+  symlink/junction/reparse point (rejected via `Lstat` plus a Windows
+  reparse-attribute check, closing a TOCTOU confused-deputy redirection), and must
+  not be a system-critical root (filesystem/drive roots, `C:\Windows`,
+  `Program Files`, the StateDir, or the quarantine directory itself).
+- **Restore guard (F-3).** A restored `OriginalPath` is read from the on-disk
+  manifest (which lives inside the self-protected StateDir, §9 "Self-Protection").
+  The Restore guard rejects any path inside the quarantine directory, any raw `..`
+  segment (checked before `filepath.Clean`), and, on Windows, drive-relative
+  (`C:foo`), extended-length (`\\?\`), alternate-data-stream (`name:stream`), and
+  trailing dot/space forms, so a tampered manifest cannot become an arbitrary-write
+  primitive.
+
+### New trust input 2: `sentry-targets.json` tightens live correlation
+
+A corroborated scan hit also records the flagged artifact (name/path/expected
+process) into a target list the Sentry daemon consults to tighten correlation on
+that process subtree. Controls:
+
+- **Detection-only.** Tightening can only *lower* the credential-access/CLI
+  thresholds (more sensitive), never raise or loosen them, and adds no kill,
+  isolate, or network-cut action. A nil/empty target list is identical to baseline
+  behavior, and the change cannot be inverted into a detection-loosening primitive.
+- **Corroboration gate (F-4).** A target is recorded only at
+  `CorroborationCount >= threshold`, so a single compromised catalog source cannot
+  tighten detection on a legitimate package (which would otherwise enable an
+  alert-flood / denial-of-attention abuse).
+- **Integrity and availability.** The file is written `0600` with a Windows
+  owner-only DACL under the self-protected StateDir, so the agent cannot read or
+  write it through the hook. A corrupt file is logged and skipped at startup
+  (detection degrades to baseline, never crashes the daemon); a mid-run corruption
+  keeps the last-good list.
+
+### Audit redaction invariant (F-1)
+
+The first-responder and cross-reference audit writes route every record through
+`audit.RedactRecord` before persistence, matching the redaction chokepoint applied
+by all other audit producers, so attacker-influenced package names, reasons, and
+paths cannot leak credential-shaped strings into the NDJSON audit log or its remote
+sinks.
+
+### Residual
+
+The move source remains attacker-influenceable by design (you cannot quarantine a
+thing without naming where it lives); the corroboration gate plus the symlink and
+system-root refusals are the controls. Writing the quarantine manifest or
+`sentry-targets.json` directly still requires defeating the whole-StateDir
+self-protection block (§9), which is out of scope for the monitored agent. Live
+Sentry OS-tap escalation is exercised in CI only; the target-list logic itself is
+unit-tested.
+
+---
+
 *This document was first published with the Beekeeper v1.0.0 release and has been
 refreshed to cover v1.2.0 (Runtime Hardening) and v1.3.0 (Multi-Harness Hook
-Enforcement). It will be updated again when new threats are identified or
-mitigations change. For the vulnerability disclosure process, see
-[SECURITY.md](../SECURITY.md).*
+Enforcement and the first-responder quarantine, §12). It will be updated again when
+new threats are identified or mitigations change. For the vulnerability disclosure
+process, see [SECURITY.md](../SECURITY.md).*
