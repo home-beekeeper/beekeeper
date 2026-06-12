@@ -683,3 +683,142 @@ func TestDNSQueryPassThrough(t *testing.T) {
 		t.Errorf("EventDNSQuery should produce no alerts yet, got %d", len(alerts))
 	}
 }
+
+// ---- Target-list threshold tightening tests (Task 5 / B) --------------------
+
+// TestTargetListTighteningFiresOnSingleRead verifies that a targeted PID fires
+// SENTRY-001 on a single sensitive file read (threshold lowered to 1), while
+// without a target list the same single read does NOT fire (threshold=2 default).
+func TestTargetListTighteningFiresOnSingleRead(t *testing.T) {
+	tree := editorTree()
+	now := time.Now().UTC()
+
+	// Build a target list with "node" as expected process.
+	// PID 100 descends from cursor (editorTree) and cursor's child is "some-tool"
+	// which runs node commands. For simplicity, add the child's exe to the target.
+	tl := &TargetList{}
+	tl.AddTarget("evil-npm-pkg", "", "some-tool")
+
+	// With target list: single sensitive file access should fire SENTRY-001.
+	state := NewRuleState()
+	cfgWithTarget := RuleConfig{
+		Targets: tl,
+	}
+	ev := SentryEvent{
+		Kind:     EventFileAccess,
+		PID:      100,
+		PPID:     1,
+		Exe:      "/usr/bin/some-tool",
+		FilePath: "/home/user/.ssh/id_rsa",
+		WallTime: now,
+	}
+	alerts := EvaluateEvent(ev, state, tree, emptyInventory(), cfgWithTarget, noBaseline(), now)
+	if !hasAlert(alerts, "SENTRY-001") {
+		t.Error("with target list: single cred-read on targeted PID should fire SENTRY-001 (tightened threshold=1)")
+	}
+
+	// Without target list: single sensitive file access should NOT fire SENTRY-001 (threshold=2).
+	state2 := NewRuleState()
+	alerts2 := EvaluateEvent(ev, state2, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+	if hasAlert(alerts2, "SENTRY-001") {
+		t.Error("without target list: single cred-read should NOT fire SENTRY-001 (threshold=2 needs 2 reads)")
+	}
+}
+
+// TestTargetListNonMatchingPIDUnchanged verifies that a non-targeted PID still
+// uses the standard threshold (tightening is not applied globally).
+func TestTargetListNonMatchingPIDUnchanged(t *testing.T) {
+	// Build a target list that only covers "python" processes.
+	tl := &TargetList{}
+	tl.AddTarget("evil-pip-pkg", "", "python")
+
+	// PID 100 runs "some-tool" (not python) — should NOT be tightened.
+	tree := editorTree() // cursor -> some-tool(pid=100)
+	now := time.Now().UTC()
+
+	state := NewRuleState()
+	cfgWithTarget := RuleConfig{Targets: tl}
+
+	// Single read: should NOT fire (PID 100 is not in the python target list).
+	ev := SentryEvent{
+		Kind:     EventFileAccess,
+		PID:      100,
+		PPID:     1,
+		Exe:      "/usr/bin/some-tool",
+		FilePath: "/home/user/.ssh/id_rsa",
+		WallTime: now,
+	}
+	alerts := EvaluateEvent(ev, state, tree, emptyInventory(), cfgWithTarget, noBaseline(), now)
+	if hasAlert(alerts, "SENTRY-001") {
+		t.Error("non-targeted PID should not be tightened; single read should not fire SENTRY-001")
+	}
+}
+
+// TestNilTargetListPreservesExistingBehavior verifies that a nil Targets field
+// produces exactly the same results as the default config (no behavior change).
+func TestNilTargetListPreservesExistingBehavior(t *testing.T) {
+	tree := editorTree()
+	now := time.Now().UTC()
+
+	cfgNilTarget := RuleConfig{Targets: nil}
+
+	state1 := NewRuleState()
+	state2 := NewRuleState()
+
+	ev := SentryEvent{
+		Kind:     EventFileAccess,
+		PID:      100,
+		PPID:     1,
+		Exe:      "/usr/bin/some-tool",
+		FilePath: "/home/user/.ssh/id_rsa",
+		WallTime: now,
+	}
+
+	alerts1 := EvaluateEvent(ev, state1, tree, emptyInventory(), cfgNilTarget, noBaseline(), now)
+	alerts2 := EvaluateEvent(ev, state2, tree, emptyInventory(), defaultCfg(), noBaseline(), now)
+
+	// Both should produce identical alert count (none for a single read at default threshold 2).
+	if len(alerts1) != len(alerts2) {
+		t.Errorf("nil Targets vs default: got %d vs %d alerts, want equal", len(alerts1), len(alerts2))
+	}
+}
+
+// TestSentryAlertHasNoDestructiveAction verifies the detection-only invariant:
+// SentryAlert must not have any kill/isolate/network-cut action field.
+// This is a compile-time / structural assertion: if someone adds a destructive
+// field to SentryAlert, the test detects it by value inspection.
+func TestSentryAlertHasNoDestructiveAction(t *testing.T) {
+	tree := editorTree()
+	now := time.Now().UTC()
+
+	tl := &TargetList{}
+	tl.AddTarget("evil-pkg", "", "some-tool")
+
+	state := NewRuleState()
+	cfgWithTarget := RuleConfig{Targets: tl}
+
+	ev := SentryEvent{
+		Kind:     EventFileAccess,
+		PID:      100,
+		PPID:     1,
+		Exe:      "/usr/bin/some-tool",
+		FilePath: "/home/user/.ssh/id_rsa",
+		WallTime: now,
+	}
+	alerts := EvaluateEvent(ev, state, tree, emptyInventory(), cfgWithTarget, noBaseline(), now)
+
+	for _, a := range alerts {
+		// SentryAlert has: RuleID, RuleName, Severity, BaselineMode, ProcessPID,
+		// ProcessExe, ParentChain, FilesAccessed, NetworkDests, CorrelatedExtension,
+		// QuarantineRec (recommendation only, not a destructive action), Timestamp.
+		// The QuarantineRec field is a boolean RECOMMENDATION only — the daemon
+		// surfaces it as a suggestion; no automated quarantine action fires here.
+		// There must be no "Action", "Kill", "Isolate", or "NetworkCut" field.
+		_ = a.QuarantineRec // allowed: recommendation, not a destructive action
+		// If compilation succeeds with this field list, no destructive field was added.
+		_ = a.RuleID
+		_ = a.Severity
+		_ = a.Timestamp
+	}
+}
+

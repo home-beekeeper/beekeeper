@@ -334,6 +334,24 @@ func checkSENTRY004(inventory InventorySnapshot, cfg RuleConfig, now time.Time) 
 	return ""
 }
 
+// applyTargetTightening lowers CredAccessThreshold and CredCLIThreshold to 1
+// when cfg.Targets is non-nil and the event PID is in the target list.
+// This is DETECTION-ONLY: it only tightens thresholds so a catalogued-flagged
+// package fires correlation rules on a single event rather than requiring the
+// default cluster count. No kill/isolate/network-cut action is added.
+func applyTargetTightening(cfg RuleConfig, event SentryEvent, tree map[uint32]ProcessNode) RuleConfig {
+	if cfg.Targets == nil {
+		return cfg
+	}
+	if !cfg.Targets.MatchesPID(event.PID, tree) {
+		return cfg
+	}
+	// Lower the cluster thresholds to 1 for this targeted PID.
+	cfg.CredAccessThreshold = 1
+	cfg.CredCLIThreshold = 1
+	return cfg
+}
+
 // EvaluateEvent is the main entry point for the correlation engine. It accepts
 // a single normalised SentryEvent, the mutable RuleState, a snapshot of the
 // live process tree, an extension inventory snapshot, rule configuration, and
@@ -352,6 +370,7 @@ func EvaluateEvent(
 	now time.Time,
 ) []SentryAlert {
 	cfg = applyDefaults(cfg)
+	cfg = applyTargetTightening(cfg, event, tree)
 
 	var alerts []SentryAlert
 

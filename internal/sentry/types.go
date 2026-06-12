@@ -140,6 +140,14 @@ type RuleConfig struct {
 	FreshExtWindowMin time.Duration
 	// ExfilFusionWindowMin is the look-back window for SENTRY-005. Default: 5 min.
 	ExfilFusionWindowMin time.Duration
+	// Targets is an optional catalog-driven target list (populated by the
+	// first-responder after cross-referencing installed packages). When non-nil
+	// and a match is found for the event PID, the effective CredAccessThreshold
+	// and CredCLIThreshold are tightened to 1 so that a SINGLE sensitive-file
+	// read or credential-CLI spawn fires the correlation rules. DETECTION-ONLY:
+	// this only lowers thresholds; no kill/isolate/network-cut action is added.
+	// A nil Targets value means "no tightening" — identical to today's behavior.
+	Targets *TargetList
 }
 
 // InventorySnapshot is an immutable view of the extension/plugin inventory at

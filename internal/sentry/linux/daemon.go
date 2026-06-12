@@ -203,7 +203,8 @@ func RunDaemon(ctx context.Context, cfg *config.Config, auditPath string) error 
 	}()
 
 	baselinePath := filepath.Join(stateDir, "sentry-baseline.json")
-	go correlationEngineLoop(ctx, events, treeCh, auditWriter, baselinePath, state, invStore)
+	targetsPath := filepath.Join(stateDir, "sentry-targets.json")
+	go correlationEngineLoop(ctx, events, treeCh, auditWriter, baselinePath, targetsPath, state, invStore)
 
 	go func() {
 		_ = ipcSrv.Serve(ctx, func(conn net.Conn) {
@@ -311,24 +312,41 @@ func handleIPCConn(conn net.Conn, state *daemonState, stateDir string) {
 // invStore is the live extension inventory maintained by the daemon; its
 // Snapshot() is taken on each event so SENTRY-004/005 can fire in production
 // (TM-RS-01 fix — previously an empty InventorySnapshot{} was always passed).
+//
+// targetsPath is the sentry-targets.json produced by the first-responder. The
+// targets are reloaded every 60 s so a first-responder run while the daemon is
+// live tightens thresholds without requiring a daemon restart. DETECTION-ONLY:
+// the TargetList only lowers correlation thresholds; it adds no destructive action.
 func correlationEngineLoop(
 	ctx context.Context,
 	events <-chan sentry.SentryEvent,
 	treeCh <-chan map[uint32]sentry.ProcessNode,
 	auditWriter *audit.Writer,
 	baselinePath string,
+	targetsPath string,
 	state *daemonState,
 	invStore *sentry.InventoryStore,
 ) {
 	baseline, _ := sentry.LoadBaseline(baselinePath)
+	targets, _ := sentry.LoadTargets(targetsPath) // nil-safe: missing file → empty list
 	ruleState := sentry.NewRuleState()
 	tree := make(map[uint32]sentry.ProcessNode)
 	const gcCutoff = 10 * time.Minute
+
+	targetsTicker := time.NewTicker(60 * time.Second)
+	defer targetsTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-targetsTicker.C:
+			// Reload targets periodically so a first-responder run tightens
+			// thresholds without a daemon restart (best-effort; error is ignored
+			// so a missing/malformed file never stops the engine loop).
+			if tl, err := sentry.LoadTargets(targetsPath); err == nil {
+				targets = tl
+			}
 		case newTree, ok := <-treeCh:
 			if ok {
 				tree = newTree
@@ -362,7 +380,7 @@ func correlationEngineLoop(
 			alerts := sentry.EvaluateEvent(
 				ev, ruleState, tree,
 				invStore.Snapshot(now),
-				sentry.RuleConfig{},
+				sentry.RuleConfig{Targets: targets},
 				baseline,
 				now,
 			)
