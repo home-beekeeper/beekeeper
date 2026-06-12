@@ -56,6 +56,15 @@ var scanOnDeltaFn = func(ctx context.Context, cfg scan.Config, out io.Writer) er
 	return scan.Scan(ctx, cfg, out)
 }
 
+// runFirstResponderFn is the function called by the catalogs watch onDelta
+// callback to cross-reference installed packages against the updated catalog
+// and optionally auto-quarantine high-corroboration hits. It is a package-level
+// var so tests can replace it without spawning a real pollen process.
+// Production code leaves this as the default (watch.RunFirstResponder).
+var runFirstResponderFn = func(ctx context.Context, cfg watch.FirstResponderConfig) error {
+	return watch.RunFirstResponder(ctx, cfg)
+}
+
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "beekeeper",
@@ -492,6 +501,28 @@ func newCatalogsCmd() *cobra.Command {
 					}
 					if scanErr := scanOnDeltaFn(ctx, scanCfg, out); scanErr != nil {
 						fmt.Fprintf(os.Stderr, "beekeeper watch: extension scan on delta failed: %v\n", scanErr)
+						// Non-fatal: daemon keeps running; next delta will retry.
+					}
+
+					// First-responder: cross-reference installed packages against the
+					// updated catalog and auto-quarantine high-corroboration hits when
+					// configured (auto_quarantine.enabled=true in config). Runs AFTER
+					// the extension scan so the audit log records are ordered correctly.
+					// Fail-closed semantics are inside RunFirstResponder (any move error
+					// leaves the artifact in place and logs a quarantine_error record).
+					frCfg := watch.FirstResponderConfig{
+						Enabled:           beekeeperCfg.AutoQuarantineEnabled(),
+						DryRun:            beekeeperCfg.AutoQuarantineDryRun(),
+						Threshold:         beekeeperCfg.AutoQuarantineThreshold(),
+						QuarantineDir:     filepath.Join(stateDir, "quarantine"),
+						AuditPath:         filepath.Join(auditDir, "beekeeper.ndjson"),
+						IndexPath:         filepath.Join(catalogDir, "bumblebee.idx"),
+						CacheDir:          catalogDir,
+						SocketToken:       beekeeperCfg.SocketAPIToken(),
+						SentryTargetsPath: filepath.Join(stateDir, "sentry-targets.json"),
+					}
+					if frErr := runFirstResponderFn(ctx, frCfg); frErr != nil {
+						fmt.Fprintf(os.Stderr, "beekeeper watch: first-responder on delta failed: %v\n", frErr)
 						// Non-fatal: daemon keeps running; next delta will retry.
 					}
 				}
