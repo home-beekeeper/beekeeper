@@ -342,6 +342,70 @@ func TestQuarantineRestoreWindowsTamperedOriginalPath(t *testing.T) {
 	}
 }
 
+// TestMoveTypedRefusesSystemCriticalSource verifies F-8: MoveTyped refuses to
+// use a system-critical or self root as the move source, while still allowing a
+// normal package directory.
+func TestMoveTypedRefusesSystemCriticalSource(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	m := quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "evil",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}
+
+	// Build the platform-appropriate set of forbidden source roots.
+	var forbidden []string
+	if runtime.GOOS == "windows" {
+		sysDrive := os.Getenv("SystemDrive")
+		if sysDrive == "" {
+			sysDrive = "C:"
+		}
+		forbidden = append(forbidden,
+			sysDrive+`\`,
+			sysDrive+`\Windows`,
+			sysDrive+`\Program Files`,
+		)
+	} else {
+		forbidden = append(forbidden, "/")
+	}
+	// The quarantine dir itself is forbidden on every platform.
+	forbidden = append(forbidden, quarantineDir)
+
+	for _, src := range forbidden {
+		if _, err := quarantine.MoveTyped(quarantineDir, src, m); err == nil {
+			t.Errorf("MoveTyped must refuse system-critical source %q, got nil error", src)
+		}
+	}
+
+	// Sanity: a normal package directory is still allowed.
+	pkg := filepath.Join(t.TempDir(), "node_modules", "left-pad")
+	if err := os.MkdirAll(pkg, 0o700); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+	if _, err := quarantine.MoveTyped(quarantineDir, pkg, m); err != nil {
+		t.Errorf("MoveTyped must allow a normal package dir, got error: %v", err)
+	}
+}
+
+// TestMoveTypedRefusesRelativeSource verifies F-8: a non-absolute source path is
+// refused (the move source must be absolute).
+func TestMoveTypedRefusesRelativeSource(t *testing.T) {
+	quarantineDir := t.TempDir()
+	m := quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "evil",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}
+	if _, err := quarantine.MoveTyped(quarantineDir, filepath.Join("relative", "pkg"), m); err == nil {
+		t.Error("MoveTyped must refuse a non-absolute source path, got nil error")
+	}
+}
+
 // --- F-2: symlink / junction move + restore refusal ---
 
 // TestMoveTypedRefusesSymlinkSource verifies F-2: MoveTyped refuses a source

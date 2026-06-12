@@ -116,6 +116,15 @@ func subdirForType(quarantineDir string, at ArtifactType) string {
 func MoveTyped(quarantineDir, artifactPath string, m Manifest) (id string, err error) {
 	typeDir := subdirForType(quarantineDir, m.ArtifactType)
 
+	// F-8: the move SOURCE is fully attacker-influenced (pollen project_path).
+	// Refuse to move a non-absolute path or a system-critical / self root. This
+	// is defense-in-depth behind the corroboration gate: even a corroborated
+	// catalog entry must never relocate a filesystem root, the OS dirs, the
+	// beekeeper StateDir, or the quarantine dir itself. Fail closed.
+	if err := validateMoveSource(quarantineDir, artifactPath); err != nil {
+		return "", err
+	}
+
 	// Sanitize attacker-controlled fields before composing the entry id.
 	pub := filepath.Base(m.Publisher)
 	name := filepath.Base(m.Name)
@@ -174,6 +183,90 @@ func MoveTyped(quarantineDir, artifactPath string, m Manifest) (id string, err e
 	}
 
 	return id, nil
+}
+
+// validateMoveSource (F-8) refuses to use artifactPath as a quarantine move
+// source when it is not absolute, or when it equals OR is an ancestor of a
+// system-critical / self root. On Windows the comparison is case-insensitive.
+// Returns a clear fail-closed error on rejection; nil when the source is safe.
+func validateMoveSource(quarantineDir, artifactPath string) error {
+	if !filepath.IsAbs(artifactPath) {
+		return fmt.Errorf("quarantine: refusing to move %q: source path is not absolute", artifactPath)
+	}
+
+	cleanSource := filepath.Clean(artifactPath)
+
+	for _, root := range criticalSourceRoots(quarantineDir) {
+		if root == "" {
+			continue
+		}
+		cleanRoot := filepath.Clean(root)
+		if pathEqual(cleanSource, cleanRoot) {
+			return fmt.Errorf("quarantine: refusing to move %q: source is a system-critical or self root", artifactPath)
+		}
+		// Reject when the source is an ANCESTOR of a protected root (e.g. moving
+		// "/" or "C:\" would relocate everything, including the protected dir).
+		if pathHasPrefix(cleanRoot, cleanSource+string(filepath.Separator)) {
+			return fmt.Errorf("quarantine: refusing to move %q: source is an ancestor of system-critical root %q", artifactPath, cleanRoot)
+		}
+	}
+	return nil
+}
+
+// criticalSourceRoots returns the denylist of roots a quarantine move source
+// must never equal or be an ancestor of: filesystem roots, the Windows OS
+// directories, the beekeeper StateDir, and the quarantine dir itself.
+func criticalSourceRoots(quarantineDir string) []string {
+	roots := []string{
+		string(filepath.Separator), // POSIX "/" and the volume-relative root
+		quarantineDir,
+	}
+	if sd, err := platform.StateDir(); err == nil && sd != "" {
+		roots = append(roots, sd)
+	}
+	if runtime.GOOS == "windows" {
+		// Drive roots and the OS directories. SystemDrive defaults to C:.
+		sysDrive := os.Getenv("SystemDrive")
+		if sysDrive == "" {
+			sysDrive = "C:"
+		}
+		roots = append(roots,
+			sysDrive+`\`,
+			sysDrive+`\Windows`,
+			sysDrive+`\Program Files`,
+			sysDrive+`\Program Files (x86)`,
+		)
+		if wd := os.Getenv("windir"); wd != "" {
+			roots = append(roots, wd)
+		}
+		if pf := os.Getenv("ProgramFiles"); pf != "" {
+			roots = append(roots, pf)
+		}
+		if pf86 := os.Getenv("ProgramFiles(x86)"); pf86 != "" {
+			roots = append(roots, pf86)
+		}
+	}
+	return roots
+}
+
+// pathEqual compares two cleaned paths, case-insensitively on Windows.
+func pathEqual(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+// pathHasPrefix reports whether s starts with prefix, case-insensitively on
+// Windows. Both arguments are expected to be cleaned paths.
+func pathHasPrefix(s, prefix string) bool {
+	if runtime.GOOS == "windows" {
+		if len(s) < len(prefix) {
+			return false
+		}
+		return strings.EqualFold(s[:len(prefix)], prefix)
+	}
+	return strings.HasPrefix(s, prefix)
 }
 
 // Move quarantines the extension at extensionPath by moving it into the
