@@ -229,6 +229,12 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 		if cfg.AuditPath != "" {
 			auditRec := audit.FromDecision(tc, decision, generateRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 			auditRec.RecordType = "finding"
+			// F-1 (TM-D-03): route the record through the redaction chokepoint
+			// before writing, exactly as the check + watch handlers do. The
+			// finding record carries attacker-influenced strings (decision.Reason,
+			// CatalogMatches[].Package/EntryID) that must never reach the on-disk
+			// or remote-sink audit log verbatim.
+			auditRec = audit.RedactRecord(auditRec, audit.DefaultRedactPatterns())
 			if w, err := audit.NewWriter(cfg.AuditPath); err == nil {
 				_ = w.Write(auditRec)
 				w.Close()

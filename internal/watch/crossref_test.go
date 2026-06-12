@@ -2,11 +2,71 @@ package watch
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bantuson/beekeeper/internal/catalog"
 )
+
+// TestCrossReferenceFindingRedacted verifies F-1 (TM-D-03): the "finding" audit
+// record written by CrossReference is routed through audit.RedactRecord before
+// it lands on disk, so a credential-shaped string carried in the catalog match
+// (CatalogMatches[].Package, which is attacker-influenced) is masked and never
+// reaches the NDJSON forensic log verbatim.
+func TestCrossReferenceFindingRedacted(t *testing.T) {
+	// JWT-shaped token embedded as the package name. CatalogMatch.Package is
+	// derived directly from the catalog Entry.Package (catalog/multi.go), so a
+	// poisoned catalog entry can plant this string into the audit record.
+	const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.signature123"
+
+	indexPath := buildTestIndex(t, []catalog.Entry{
+		{
+			ID:               "evil-pkg-redact",
+			Ecosystem:        "npm",
+			Package:          jwt, // poisoned package name carrying a JWT token
+			Versions:         []string{"1.0.0"},
+			CatalogSignature: "fake-sig", // non-empty = signed
+			CatalogSource:    "bumblebee",
+		},
+	})
+
+	oldRun := crossRefPollenFn
+	defer func() { crossRefPollenFn = oldRun }()
+
+	// The pollen record's normalized_name must match the entry to trigger a hit.
+	pkgLine := `{"record_type":"package","ecosystem":"npm","normalized_name":"` + jwt + `","version":"1.0.0","project_path":"/home/user/project"}`
+	crossRefPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
+		ch := make(chan []byte, 1)
+		ch <- []byte(pkgLine)
+		close(ch)
+		return ch, true
+	}
+
+	auditPath := filepath.Join(t.TempDir(), "beekeeper.ndjson")
+	cfg := CrossRefConfig{
+		IndexPath: indexPath,
+		CacheDir:  t.TempDir(),
+		AuditPath: auditPath,
+	}
+
+	if _, err := CrossReference(context.Background(), cfg); err != nil {
+		t.Fatalf("CrossReference error: %v", err)
+	}
+
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+	got := string(data)
+	if strings.Contains(got, jwt) {
+		t.Errorf("finding record leaked raw JWT token into audit log:\n%s", got)
+	}
+	if !strings.Contains(got, "[JWT_REDACTED]") {
+		t.Errorf("finding record missing [JWT_REDACTED] marker (redaction not applied):\n%s", got)
+	}
+}
 
 // buildTestIndex is a helper that creates a minimal mmap index with the given entries.
 func buildTestIndex(t *testing.T, entries []catalog.Entry) string {

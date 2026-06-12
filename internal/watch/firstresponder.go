@@ -195,6 +195,11 @@ func writeFirstResponderAudit(auditPath, recordType string, hit ScanHit) {
 		rec.RuleIDs = append([]string{"FRSP-01"}, rec.RuleIDs...)
 	}
 
+	// F-1 (TM-D-03): redact before write, matching the check + watch handler
+	// discipline. hit.Decision.Reason and CatalogMatches[].Package/EntryID carry
+	// attacker-influenced strings that must not reach the audit log verbatim.
+	rec = audit.RedactRecord(rec, audit.DefaultRedactPatterns())
+
 	if w, wErr := audit.NewWriter(auditPath); wErr == nil {
 		if err := w.Write(rec); err != nil {
 			log.Printf("beekeeper first-responder: write audit record failed: %v", err)

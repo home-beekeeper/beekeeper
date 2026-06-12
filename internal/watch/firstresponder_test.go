@@ -8,8 +8,75 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bantuson/beekeeper/internal/policy"
 	"github.com/bantuson/beekeeper/internal/watch"
 )
+
+// TestFirstResponderAuditRedacted verifies F-1 (TM-D-03): the audit record
+// emitted by the first-responder is routed through audit.RedactRecord before it
+// is written, so a credential-shaped string carried in the hit's policy decision
+// (Decision.Reason / CatalogMatches[].Package) is masked on disk.
+func TestFirstResponderAuditRedacted(t *testing.T) {
+	quarantineDir := t.TempDir()
+	auditPath := filepath.Join(t.TempDir(), "beekeeper.ndjson")
+
+	pkgDir := filepath.Join(t.TempDir(), "evil-pkg")
+	if err := os.MkdirAll(pkgDir, 0o700); err != nil {
+		t.Fatalf("mkdir pkgDir: %v", err)
+	}
+
+	const bearer = "Authorization: Bearer secret-token-abc123"
+	const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.signature123"
+
+	hits := []watch.ScanHit{
+		{
+			Ecosystem:          "npm",
+			Package:            "evil-package",
+			Version:            "1.0.0",
+			InstalledPath:      pkgDir,
+			PathResolved:       true,
+			CorroborationCount: 2,
+			Decision: policy.Decision{
+				Level:  "block",
+				Reason: "catalog match; tool output contained " + bearer,
+				CatalogMatches: []policy.CatalogMatch{
+					{CatalogSource: "bumblebee", Package: jwt, EntryID: "id-1"},
+				},
+			},
+		},
+	}
+
+	cfg := watch.FirstResponderConfig{
+		Enabled:           true,
+		DryRun:            true, // dry-run: still writes the would-quarantine audit record
+		Threshold:         2,
+		QuarantineDir:     quarantineDir,
+		AuditPath:         auditPath,
+		SentryTargetsPath: filepath.Join(t.TempDir(), "sentry-targets.json"),
+		CrossRefFn: func(_ context.Context, _ watch.CrossRefConfig) ([]watch.ScanHit, error) {
+			return hits, nil
+		},
+	}
+
+	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+		t.Fatalf("RunFirstResponder error: %v", err)
+	}
+
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+	got := string(data)
+	if strings.Contains(got, "secret-token-abc123") {
+		t.Errorf("first-responder audit leaked raw Bearer token:\n%s", got)
+	}
+	if strings.Contains(got, jwt) {
+		t.Errorf("first-responder audit leaked raw JWT in CatalogMatches.Package:\n%s", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") && !strings.Contains(got, "[JWT_REDACTED]") {
+		t.Errorf("first-responder audit missing redaction marker (redaction not applied):\n%s", got)
+	}
+}
 
 // TestFirstResponderDryRun verifies that in dry-run mode:
 // - a scan hit above threshold produces a "would-quarantine" audit record
