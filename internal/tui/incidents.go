@@ -149,6 +149,92 @@ func plural(n int) string {
 	return "s"
 }
 
+// CatalogQuarantineIncidentFromRecord builds a catalog-quarantine or
+// pending-quarantine incident card from a FRSP-01 audit record.
+//
+// When pending is false (artifact was quarantined): the card exposes
+// human-gated [P]urge and [R]estore buttons.
+// When pending is true (path unknown): only [A]cknowledge is shown —
+// there is nothing to restore or purge yet.
+//
+// Honesty invariants:
+//   - Purge is NEVER auto-triggered; it requires explicit [P] keypress.
+//   - The card never claims a containment action it cannot perform.
+//   - No em-dashes in visible copy; no colored left-edge accent stripes.
+func CatalogQuarantineIncidentFromRecord(rec audit.AuditRecord, pending bool) IncidentModel {
+	ts := rec.Timestamp
+	if t, err := time.Parse(time.RFC3339, rec.Timestamp); err == nil {
+		ts = t.Format("15:04:05")
+	}
+
+	ruleID := "FRSP-01"
+	if rec.RecordID != "" {
+		// Use the first rule ID from the record if present.
+		for _, r := range rec.RuleIDs {
+			if r != "" {
+				ruleID = r
+				break
+			}
+		}
+	}
+
+	var ruleName, desc string
+	var actions []IncidentAction
+
+	if pending {
+		ruleName = "Pending Quarantine"
+		desc = buildCatalogQuarantineDesc(rec, true)
+		// Pending: path unknown, no move yet — only acknowledge.
+		actions = []IncidentAction{
+			{Key: "a", Cls: "warn", Lbl: "acknowledge"},
+		}
+	} else {
+		ruleName = "Catalog Quarantine"
+		desc = buildCatalogQuarantineDesc(rec, false)
+		// Quarantined: expose human-gated Purge and Restore.
+		// The purge action is labelled "danger" (destructive); restore is "info".
+		// Neither fires automatically — both require explicit keypress by the operator.
+		actions = []IncidentAction{
+			{Key: "r", Cls: "info", Lbl: "restore"},
+			{Key: "p", Cls: "danger", Lbl: "purge (irreversible)"},
+			{Key: "a", Cls: "warn", Lbl: "acknowledge"},
+		}
+	}
+
+	return IncidentModel{
+		RuleID:    ruleID,
+		RuleName:  ruleName,
+		Timestamp: ts,
+		Desc:      desc,
+		Actions:   actions,
+		SelAction: 0, // default to first action (restore for quarantined, acknowledge for pending)
+	}
+}
+
+// buildCatalogQuarantineDesc renders a one-to-two line description for the
+// catalog-quarantine / pending-quarantine incident card from real record fields.
+func buildCatalogQuarantineDesc(rec audit.AuditRecord, pending bool) string {
+	base := lipgloss.NewStyle().Foreground(colorFg)
+	amber := lipgloss.NewStyle().Foreground(colorAmber).Bold(true)
+	coral := lipgloss.NewStyle().Foreground(colorCoral)
+	var sb strings.Builder
+
+	pkg := rec.ToolName
+	if pkg == "" {
+		pkg = "unknown package"
+	}
+	if pending {
+		sb.WriteString(base.Render("Scan hit on ") + amber.Render(pkg) + base.Render(" — path unresolved, quarantine pending."))
+	} else {
+		sb.WriteString(base.Render("Scan hit on ") + amber.Render(pkg) + base.Render(" — moved to quarantine (reversible)."))
+	}
+
+	if rec.Reason != "" {
+		sb.WriteString("\n" + coral.Render(rec.Reason))
+	}
+	return sb.String()
+}
+
 // Update handles key navigation across action buttons.
 func (m IncidentModel) Update(msg tea.Msg) (IncidentModel, tea.Cmd) {
 	if kp, ok := msg.(tea.KeyPressMsg); ok {

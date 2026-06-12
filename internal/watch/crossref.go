@@ -1,8 +1,10 @@
-package scan
+package watch
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -62,8 +64,62 @@ type pollenPackageRecord struct {
 	ProjectPath    string `json:"project_path,omitempty"`
 }
 
+// crossRefPollenFn is the injectable pollen runner for the cross-reference path.
+// It mirrors scan.runPollenFn and is replaced in tests.
+// Returns (channel, true) when the scanner is available, (nil, false) otherwise.
+var crossRefPollenFn = func(ctx context.Context, deep bool) (<-chan []byte, bool) {
+	return defaultRunPollenForCrossRef(ctx, deep)
+}
+
+// defaultRunPollenForCrossRef is the production pollen runner for cross-reference.
+// It resolves the scanner binary exactly as scan.defaultRunPollen does, but is
+// defined here to avoid an import of internal/scan (which imports internal/watch,
+// creating a cycle).
+func defaultRunPollenForCrossRef(ctx context.Context, deep bool) (<-chan []byte, bool) {
+	bin, _, err := resolveCrossRefScanner()
+	if err != nil {
+		return nil, false
+	}
+	args := []string{"scan"}
+	if deep {
+		args = append(args, "--profile", "deep")
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, false
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, false
+	}
+	ch := make(chan []byte, 64)
+	go func() {
+		defer close(ch)
+		sc := bufio.NewScanner(stdout)
+		for sc.Scan() {
+			line := sc.Bytes()
+			out := make([]byte, len(line))
+			copy(out, line)
+			ch <- out
+		}
+		_ = cmd.Wait()
+	}()
+	return ch, true
+}
+
+// resolveCrossRefScanner resolves the inventory scanner binary (bumblebee preferred,
+// pollen fallback). Mirrors scan.resolveScannerBinary.
+func resolveCrossRefScanner() (path, name string, err error) {
+	for _, candidate := range []string{"bumblebee", "pollen"} {
+		if p, lerr := exec.LookPath(candidate); lerr == nil {
+			return p, candidate, nil
+		}
+	}
+	return "", "", exec.ErrNotFound
+}
+
 // CrossReference reads the Pollen/Bumblebee "package" inventory records
-// (via the injectable runPollenFn) and, for each installed package, evaluates
+// (via the injectable crossRefPollenFn) and, for each installed package, evaluates
 // it against the threat catalog via policy.Evaluate. Each match that reaches
 // at least the warn tier emits a ScanHit.
 //
@@ -76,13 +132,12 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 	// Collect all "package" type records from the pollen stream.
 	var pkgRecords []pollenPackageRecord
 
-	ch, ok := runPollenFn(ctx, false /* shallow scan; no --root needed for inventory */)
+	ch, ok := crossRefPollenFn(ctx, false /* shallow scan for inventory */)
 	if ok {
 		for line := range ch {
 			if len(line) == 0 {
 				continue
 			}
-			// Filter to "package" record_type only.
 			var probe struct {
 				RecordType string `json:"record_type"`
 			}
@@ -102,20 +157,19 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 			pkgRecords = append(pkgRecords, rec)
 		}
 	}
-	// If pollen is unavailable, pkgRecords is empty — return no hits (graceful degrade).
+	// Pollen unavailable: pkgRecords is empty — return no hits (graceful degrade).
 
 	if len(pkgRecords) == 0 {
 		return nil, nil
 	}
 
-	// Open the mmap index; if unavailable, proceed with nil (OSV/Socket only).
+	// Open the mmap index; if unavailable, proceed with nil.
 	var bbIdx *catalog.Index
 	if cfg.IndexPath != "" {
 		if idx, err := catalog.OpenIndex(cfg.IndexPath); err == nil {
 			bbIdx = idx
 			defer bbIdx.Close()
 		}
-		// Index unavailable is non-fatal; we continue with OSV/Socket only.
 	}
 
 	// Load policy overlay files and derive corroboration thresholds.
@@ -130,7 +184,6 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 	var hits []ScanHit
 
 	for _, rec := range pkgRecords {
-		// Build adapters (no socket for cross-reference; can be extended later).
 		multiIdx := catalog.NewMultiIndex(bbIdx, nil, nil)
 
 		tc := policy.ToolCall{
@@ -143,13 +196,11 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 		}
 		decision := policy.Evaluate(tc, multiIdx, thresholds, policy.AgentContext{})
 
-		// Apply policy overlay.
 		if len(policyFiles) > 0 {
 			decision = policyloader.ApplyPolicyOverlay(policyFiles, tc, decision)
 		}
 
-		// Only emit a ScanHit for packages that have at least one catalog match
-		// (warn or block). Allow decisions with 0 corroboration are skipped.
+		// Only emit a ScanHit for packages with at least one catalog match.
 		if decision.Allow && decision.CorroborationCount == 0 {
 			continue
 		}
@@ -176,7 +227,7 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 
 		// Audit the finding as a "finding" record — read-only, no package mutation.
 		if cfg.AuditPath != "" {
-			auditRec := audit.FromDecision(tc, decision, generateScanID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
+			auditRec := audit.FromDecision(tc, decision, generateRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 			auditRec.RecordType = "finding"
 			if w, err := audit.NewWriter(cfg.AuditPath); err == nil {
 				_ = w.Write(auditRec)

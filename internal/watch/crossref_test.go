@@ -1,4 +1,4 @@
-package scan
+package watch
 
 import (
 	"context"
@@ -34,14 +34,14 @@ func TestCrossReferenceHit(t *testing.T) {
 	})
 
 	// Inject canned package records via runPollenFn.
-	oldRun := runPollenFn
-	defer func() { runPollenFn = oldRun }()
+	oldRun := crossRefPollenFn
+	defer func() { crossRefPollenFn = oldRun }()
 
 	// Emit one matching npm package record and one non-matching package.
 	pkgLine := `{"record_type":"package","ecosystem":"npm","normalized_name":"evil-package","version":"1.0.0","project_path":"/home/user/project"}`
 	cleanLine := `{"record_type":"package","ecosystem":"npm","normalized_name":"safe-package","version":"2.0.0"}`
 
-	runPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
+	crossRefPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
 		ch := make(chan []byte, 2)
 		ch <- []byte(pkgLine)
 		ch <- []byte(cleanLine)
@@ -89,11 +89,11 @@ func TestCrossReferenceNoHit(t *testing.T) {
 		},
 	})
 
-	oldRun := runPollenFn
-	defer func() { runPollenFn = oldRun }()
+	oldRun := crossRefPollenFn
+	defer func() { crossRefPollenFn = oldRun }()
 
 	// Emit a package that is NOT in the catalog.
-	runPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
+	crossRefPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
 		ch := make(chan []byte, 1)
 		ch <- []byte(`{"record_type":"package","ecosystem":"npm","normalized_name":"totally-safe","version":"3.0.0"}`)
 		close(ch)
@@ -125,11 +125,11 @@ func TestCrossReferenceUnresolvedPath(t *testing.T) {
 		},
 	})
 
-	oldRun := runPollenFn
-	defer func() { runPollenFn = oldRun }()
+	oldRun := crossRefPollenFn
+	defer func() { crossRefPollenFn = oldRun }()
 
 	// Record has no project_path — path cannot be resolved.
-	runPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
+	crossRefPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
 		ch := make(chan []byte, 1)
 		ch <- []byte(`{"record_type":"package","ecosystem":"npm","normalized_name":"evil-package2","version":"1.0.0"}`)
 		close(ch)
@@ -156,9 +156,9 @@ func TestCrossReferenceUnresolvedPath(t *testing.T) {
 // TestCrossReferenceReadOnly verifies that CrossReference performs no writes to
 // the packages referenced in scan records — it is purely a read operation.
 func TestCrossReferenceReadOnly(t *testing.T) {
-	oldRun := runPollenFn
-	defer func() { runPollenFn = oldRun }()
-	runPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
+	oldRun := crossRefPollenFn
+	defer func() { crossRefPollenFn = oldRun }()
+	crossRefPollenFn = func(_ context.Context, _ bool) (<-chan []byte, bool) {
 		return nil, false // pollen unavailable
 	}
 
