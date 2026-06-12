@@ -1,9 +1,29 @@
 package sentry
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+// TestLoadTargetsCorruptFileReturnsError verifies the contract F-5 relies on:
+// a corrupt sentry-targets.json yields (nil, err) so the daemon startup path
+// can detect the parse failure, log it, and emit a targets_load_error audit
+// record rather than silently disabling detection tightening.
+func TestLoadTargetsCorruptFileReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sentry-targets.json")
+	if err := os.WriteFile(path, []byte("{ this is not valid json"), 0o600); err != nil {
+		t.Fatalf("write corrupt file: %v", err)
+	}
+
+	tl, err := LoadTargets(path)
+	if err == nil {
+		t.Fatal("LoadTargets on corrupt file returned nil error, want a parse error")
+	}
+	if tl != nil {
+		t.Errorf("LoadTargets on corrupt file returned non-nil list %+v, want nil", tl)
+	}
+}
 
 // TestTargetListAddTargetIdempotent verifies that AddTarget is idempotent:
 // adding the same name twice results in only one entry.

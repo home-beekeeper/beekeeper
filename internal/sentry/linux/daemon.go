@@ -328,7 +328,27 @@ func correlationEngineLoop(
 	invStore *sentry.InventoryStore,
 ) {
 	baseline, _ := sentry.LoadBaseline(baselinePath)
-	targets, _ := sentry.LoadTargets(targetsPath) // nil-safe: missing file → empty list
+	// F-5: a corrupt sentry-targets.json silently disables detection tightening
+	// (LoadTargets returns nil on a parse error and applyTargetTightening then
+	// short-circuits). Surface the startup error to stderr AND emit a
+	// targets_load_error audit record so an operator notices the degraded
+	// posture. Log-and-continue: a single corrupt file must NOT DoS the Sentry
+	// daemon, so the loop still runs with the empty/last-good target list.
+	targets, targetsErr := sentry.LoadTargets(targetsPath) // nil-safe: missing file → empty list
+	if targetsErr != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper sentry: load sentry-targets.json failed: %v (detection tightening disabled until the file is repaired)\n", targetsErr)
+		if auditWriter != nil {
+			_ = auditWriter.Write(audit.AuditRecord{
+				RecordType:  "targets_load_error",
+				RecordID:    fmt.Sprintf("targets-load-err-%d", time.Now().UTC().UnixNano()),
+				Timestamp:   time.Now().UTC().Format(time.RFC3339),
+				ScannerName: "beekeeper",
+				Decision:    "warn",
+				Reason:      fmt.Sprintf("sentry-targets.json failed to load at daemon startup: %v", targetsErr),
+				RuleIDs:     []string{"SENT-TGT-LOAD"},
+			})
+		}
+	}
 	ruleState := sentry.NewRuleState()
 	tree := make(map[uint32]sentry.ProcessNode)
 	const gcCutoff = 10 * time.Minute
