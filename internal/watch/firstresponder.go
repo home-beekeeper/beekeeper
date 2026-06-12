@@ -62,7 +62,8 @@ func defaultFirstResponder(ctx context.Context, cfg FirstResponderConfig) error 
 //     - DryRun:          audit "would-quarantine", no move.
 //     - PathResolved:    quarantine.MoveTyped the artifact, audit "catalog_quarantine".
 //     - path unknown:    audit "pending-quarantine", no move.
-//  3. Record each hit (regardless of threshold) into the Sentry target list.
+//  3. Record each hit whose CorroborationCount >= Threshold into the Sentry
+//     target list (F-4: a single-source warn-tier hit must not tighten Sentry).
 //
 // Fail-closed contract:
 //   - A MoveTyped error logs and leaves the artifact in place (never half-deletes).
@@ -110,9 +111,14 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 	}
 
 	for _, hit := range hits {
-		// Always record into the Sentry target list regardless of threshold
-		// (even warn-tier hits are worth tracking for correlation tightening).
-		if targets != nil {
+		// F-4: gate Sentry target-list recording on the same corroboration
+		// discipline the move path uses. A single warn-tier (1-source) hit must
+		// NOT tighten Sentry detection on a legitimate package — that would let
+		// one compromised catalog source flood the victim with false-positive
+		// credential alerts (the exact single-source threat corroboration is
+		// meant to neutralize). Record a target ONLY when the hit is corroborated
+		// to threshold, regardless of the Enabled/DryRun move gate below.
+		if targets != nil && hit.CorroborationCount >= threshold {
 			expectedProcess := ecosystemToProcess(hit.Ecosystem)
 			targets.AddTarget(hit.Package, hit.InstalledPath, expectedProcess)
 		}

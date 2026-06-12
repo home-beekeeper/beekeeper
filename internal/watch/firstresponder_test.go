@@ -327,6 +327,114 @@ func TestFirstResponderMoveTypedErrorFailClosed(t *testing.T) {
 	}
 }
 
+// TestFirstResponderSentryTargetsCorroborationGate verifies F-4: the Sentry
+// target list is only updated for hits that meet the corroboration threshold.
+// A single-source (CorroborationCount:1) warn-tier hit with auto-quarantine
+// disabled must NOT tighten Sentry; a corroborated (>=threshold) hit records
+// exactly one target.
+func TestFirstResponderSentryTargetsCorroborationGate(t *testing.T) {
+	t.Run("single-source hit does not tighten sentry", func(t *testing.T) {
+		sentryTargetsPath := filepath.Join(t.TempDir(), "sentry-targets.json")
+
+		hits := []watch.ScanHit{
+			{
+				Ecosystem:          "npm",
+				Package:            "legit-but-flagged",
+				Version:            "1.0.0",
+				InstalledPath:      "/some/path",
+				PathResolved:       true,
+				CorroborationCount: 1, // below threshold — single source
+			},
+		}
+
+		cfg := watch.FirstResponderConfig{
+			Enabled:           false, // auto-quarantine disabled (the default)
+			DryRun:            true,
+			Threshold:         2,
+			QuarantineDir:     t.TempDir(),
+			AuditPath:         filepath.Join(t.TempDir(), "beekeeper.ndjson"),
+			SentryTargetsPath: sentryTargetsPath,
+			CrossRefFn: func(_ context.Context, _ watch.CrossRefConfig) ([]watch.ScanHit, error) {
+				return hits, nil
+			},
+		}
+
+		if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+			t.Fatalf("RunFirstResponder error: %v", err)
+		}
+
+		// The file may be written (empty list) or absent; either way it must
+		// contain NO target entry for the single-source package.
+		data, err := os.ReadFile(sentryTargetsPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return // absent file = no target recorded, correct
+			}
+			t.Fatalf("read sentry-targets.json: %v", err)
+		}
+		if strings.Contains(string(data), "legit-but-flagged") {
+			t.Errorf("single-source hit must NOT be recorded as a Sentry target; got:\n%s", string(data))
+		}
+		var tl struct {
+			Targets []json.RawMessage `json:"targets"`
+		}
+		if err := json.Unmarshal(data, &tl); err != nil {
+			t.Fatalf("sentry-targets.json invalid JSON: %v", err)
+		}
+		if len(tl.Targets) != 0 {
+			t.Errorf("expected 0 targets for single-source hit, got %d", len(tl.Targets))
+		}
+	})
+
+	t.Run("corroborated hit records exactly one target", func(t *testing.T) {
+		sentryTargetsPath := filepath.Join(t.TempDir(), "sentry-targets.json")
+
+		hits := []watch.ScanHit{
+			{
+				Ecosystem:          "npm",
+				Package:            "corroborated-evil",
+				Version:            "1.0.0",
+				InstalledPath:      "/some/path",
+				PathResolved:       true,
+				CorroborationCount: 2, // meets threshold
+			},
+		}
+
+		cfg := watch.FirstResponderConfig{
+			Enabled:           false, // even with move disabled, a corroborated hit tightens detection
+			DryRun:            true,
+			Threshold:         2,
+			QuarantineDir:     t.TempDir(),
+			AuditPath:         filepath.Join(t.TempDir(), "beekeeper.ndjson"),
+			SentryTargetsPath: sentryTargetsPath,
+			CrossRefFn: func(_ context.Context, _ watch.CrossRefConfig) ([]watch.ScanHit, error) {
+				return hits, nil
+			},
+		}
+
+		if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+			t.Fatalf("RunFirstResponder error: %v", err)
+		}
+
+		data, err := os.ReadFile(sentryTargetsPath)
+		if err != nil {
+			t.Fatalf("read sentry-targets.json: %v", err)
+		}
+		if !strings.Contains(string(data), "corroborated-evil") {
+			t.Errorf("corroborated hit must be recorded as a target; got:\n%s", string(data))
+		}
+		var tl struct {
+			Targets []json.RawMessage `json:"targets"`
+		}
+		if err := json.Unmarshal(data, &tl); err != nil {
+			t.Fatalf("sentry-targets.json invalid JSON: %v", err)
+		}
+		if len(tl.Targets) != 1 {
+			t.Errorf("expected exactly 1 target for corroborated hit, got %d", len(tl.Targets))
+		}
+	})
+}
+
 // TestFirstResponderSentryTargetsWritten verifies that a scan hit records into
 // the Sentry target list JSON file.
 func TestFirstResponderSentryTargetsWritten(t *testing.T) {
