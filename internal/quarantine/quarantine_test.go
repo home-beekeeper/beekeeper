@@ -276,3 +276,259 @@ func TestQuarantineRestoreTamperedOriginalPath(t *testing.T) {
 		})
 	}
 }
+
+// --- NEW TESTS FOR TYPE-AWARE QUARANTINE (Task 1 / C1) ---
+
+// TestMoveTypedEditorExtensionBackCompat verifies that a MoveTyped call with
+// ArtifactType="editor-extension" places the entry under extensions/ (back-compat
+// with the existing layout, so EDXT-03 callers are unchanged).
+func TestMoveTypedEditorExtensionBackCompat(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	extPath := filepath.Join(t.TempDir(), "my-extension")
+	if err := os.MkdirAll(extPath, 0o700); err != nil {
+		t.Fatalf("mkdir ext: %v", err)
+	}
+
+	m := quarantine.Manifest{
+		Publisher:    "pub",
+		Name:         "myext",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeEditorExtension,
+		Reason:       "test",
+	}
+
+	id, err := quarantine.MoveTyped(quarantineDir, extPath, m)
+	if err != nil {
+		t.Fatalf("MoveTyped error: %v", err)
+	}
+
+	// Must live under extensions/ subdir.
+	extDir := quarantine.ExtensionsDir(quarantineDir)
+	entryDir := filepath.Join(extDir, id)
+	if _, statErr := os.Stat(entryDir); statErr != nil {
+		t.Errorf("editor-extension entry not found under extensions/: %v", statErr)
+	}
+}
+
+// TestMoveTypedLanguagePackageRoundTrip verifies that a language-package can be
+// moved into quarantine (under packages/) and fully restored to OriginalPath.
+func TestMoveTypedLanguagePackageRoundTrip(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	// Create a fake npm package directory.
+	pkgPath := filepath.Join(t.TempDir(), "node_modules", "left-pad")
+	if err := os.MkdirAll(pkgPath, 0o700); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+	sentinelPath := filepath.Join(pkgPath, "index.js")
+	if err := os.WriteFile(sentinelPath, []byte("module.exports = leftPad;"), 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	m := quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "left-pad",
+		Version:      "1.3.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "catalog match",
+	}
+
+	id, err := quarantine.MoveTyped(quarantineDir, pkgPath, m)
+	if err != nil {
+		t.Fatalf("MoveTyped error: %v", err)
+	}
+
+	// Package dir should no longer exist at original location.
+	if _, statErr := os.Stat(pkgPath); !os.IsNotExist(statErr) {
+		t.Errorf("pkgPath %q still exists after MoveTyped, want gone", pkgPath)
+	}
+
+	// Entry should be under packages/ subdir.
+	pkgDir := quarantine.PackagesDir(quarantineDir)
+	entryDir := filepath.Join(pkgDir, id)
+	if _, statErr := os.Stat(entryDir); statErr != nil {
+		t.Fatalf("language-package entry not found under packages/: %v", statErr)
+	}
+
+	// Restore must put it back byte-identical.
+	if err := quarantine.Restore(quarantineDir, id); err != nil {
+		t.Fatalf("Restore error: %v", err)
+	}
+	if _, statErr := os.Stat(pkgPath); statErr != nil {
+		t.Errorf("pkgPath not restored: %v", statErr)
+	}
+	if _, statErr := os.Stat(sentinelPath); statErr != nil {
+		t.Errorf("sentinel file not found after Restore: %v", statErr)
+	}
+}
+
+// TestListBothSubdirs verifies that List enumerates entries from BOTH extensions/
+// and packages/ subdirectories.
+func TestListBothSubdirs(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	// Create one extension entry.
+	ext := filepath.Join(t.TempDir(), "myext")
+	if err := os.MkdirAll(ext, 0o700); err != nil {
+		t.Fatalf("mkdir ext: %v", err)
+	}
+	if _, err := quarantine.MoveTyped(quarantineDir, ext, quarantine.Manifest{
+		Publisher:    "pub",
+		Name:         "myext",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeEditorExtension,
+		Reason:       "test",
+	}); err != nil {
+		t.Fatalf("MoveTyped ext: %v", err)
+	}
+
+	// Create one package entry.
+	pkg := filepath.Join(t.TempDir(), "mypkg")
+	if err := os.MkdirAll(pkg, 0o700); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+	if _, err := quarantine.MoveTyped(quarantineDir, pkg, quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "mypkg",
+		Version:      "2.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}); err != nil {
+		t.Fatalf("MoveTyped pkg: %v", err)
+	}
+
+	manifests, err := quarantine.List(quarantineDir)
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(manifests) != 2 {
+		t.Errorf("List returned %d entries, want 2 (one ext + one pkg)", len(manifests))
+	}
+}
+
+// TestPurgeBothSubdirs verifies that Purge removes entries from both subdirs.
+func TestPurgeBothSubdirs(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	ext := filepath.Join(t.TempDir(), "myext")
+	if err := os.MkdirAll(ext, 0o700); err != nil {
+		t.Fatalf("mkdir ext: %v", err)
+	}
+	if _, err := quarantine.MoveTyped(quarantineDir, ext, quarantine.Manifest{
+		Publisher:    "pub",
+		Name:         "myext",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeEditorExtension,
+		Reason:       "test",
+	}); err != nil {
+		t.Fatalf("MoveTyped ext: %v", err)
+	}
+
+	pkg := filepath.Join(t.TempDir(), "mypkg")
+	if err := os.MkdirAll(pkg, 0o700); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+	if _, err := quarantine.MoveTyped(quarantineDir, pkg, quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "mypkg",
+		Version:      "2.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}); err != nil {
+		t.Fatalf("MoveTyped pkg: %v", err)
+	}
+
+	purged, err := quarantine.Purge(quarantineDir)
+	if err != nil {
+		t.Fatalf("Purge error: %v", err)
+	}
+	if len(purged) != 2 {
+		t.Errorf("Purge returned %d ids, want 2", len(purged))
+	}
+
+	remaining, err := quarantine.List(quarantineDir)
+	if err != nil {
+		t.Fatalf("List after Purge: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Errorf("List after Purge returned %d entries, want 0", len(remaining))
+	}
+}
+
+// TestMoveTypedTraversalGuardPackages verifies that path-traversal attacks on
+// publisher/name/version fields for language-package entries are sanitized.
+func TestMoveTypedTraversalGuardPackages(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	pkg := filepath.Join(t.TempDir(), "mypkg")
+	if err := os.MkdirAll(pkg, 0o700); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+
+	// Attacker-controlled publisher/name with traversal components.
+	m := quarantine.Manifest{
+		Publisher:    "../../etc",
+		Name:         "../passwd",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}
+
+	// MoveTyped must not place files outside the packages/ subdir.
+	id, err := quarantine.MoveTyped(quarantineDir, pkg, m)
+	if err != nil {
+		// Guard triggered — acceptable.
+		t.Logf("MoveTyped correctly returned error on traversal attempt: %v", err)
+		return
+	}
+
+	// If it succeeded, the entry must be inside packages/ (not escaped).
+	pkgDir := quarantine.PackagesDir(quarantineDir)
+	entryDir := filepath.Join(pkgDir, id)
+	if _, statErr := os.Stat(entryDir); statErr != nil {
+		t.Errorf("entry should be under packages/ if MoveTyped succeeded, but not found: %v", statErr)
+	}
+}
+
+// TestMoveWrapperDefaultsToEditorExtension verifies that the legacy Move wrapper
+// sets ArtifactType="editor-extension" and places entries under extensions/.
+func TestMoveWrapperDefaultsToEditorExtension(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	extPath := filepath.Join(t.TempDir(), "legacy-ext")
+	if err := os.MkdirAll(extPath, 0o700); err != nil {
+		t.Fatalf("mkdir ext: %v", err)
+	}
+
+	m := quarantine.Manifest{
+		Publisher: "ms",
+		Name:      "pylance",
+		Version:   "2026.1.0",
+		Reason:    "catalog match",
+	}
+
+	id, err := quarantine.Move(quarantineDir, extPath, m)
+	if err != nil {
+		t.Fatalf("Move error: %v", err)
+	}
+
+	// Must land under extensions/.
+	extDir := quarantine.ExtensionsDir(quarantineDir)
+	entryDir := filepath.Join(extDir, id)
+	if _, statErr := os.Stat(entryDir); statErr != nil {
+		t.Errorf("Move wrapper: entry not under extensions/: %v", statErr)
+	}
+
+	// List must include it.
+	manifests, err := quarantine.List(quarantineDir)
+	if err != nil {
+		t.Fatalf("List error: %v", err)
+	}
+	if len(manifests) != 1 {
+		t.Errorf("List returned %d entries, want 1", len(manifests))
+	}
+	if manifests[0].ArtifactType != quarantine.ArtifactTypeEditorExtension {
+		t.Errorf("ArtifactType = %q, want %q", manifests[0].ArtifactType, quarantine.ArtifactTypeEditorExtension)
+	}
+}
