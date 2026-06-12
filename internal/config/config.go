@@ -363,6 +363,107 @@ func (c Config) CatalogSyncEnabled() bool {
 	return c.CatalogSync.Enabled
 }
 
+// AutoQuarantineConfig holds the auto-quarantine knob for the first-responder
+// scan-hit -> reversible quarantine path (FRSP-01, Task C1).
+//
+// Auto-quarantine is REVERSIBLE (os.Rename + manifest); the DESTRUCTIVE purge
+// is NEVER automatic and stays human-gated via the existing CLI/TUI purge path.
+//
+// The field is a POINTER on Config so the layered merge can distinguish an
+// absent block (nil -> use defaults) from an explicit disable, exactly like
+// Nudge and CatalogSync.
+type AutoQuarantineConfig struct {
+	// Enabled controls whether auto-quarantine fires at all. Default false (opt-in).
+	// Set to true to activate the first-responder reversible-move at >= Threshold.
+	Enabled bool `json:"enabled"`
+	// DryRun, when true, audits what WOULD be quarantined without moving anything.
+	// Default true: new deployments observe findings before committing to moves.
+	DryRun bool `json:"dry_run"`
+	// Threshold is the minimum CorroborationCount (distinct signed sources) needed
+	// to trigger auto reversible-quarantine. Default 2 (the "block" tier).
+	// Clamped to [1, 3]: 1 = warn-tier opt-in; 3 = engine quarantine tier.
+	// A zero or absent value resolves to 2 (NOT to the clamp floor 1).
+	Threshold int `json:"threshold,omitempty"`
+}
+
+// DefaultAutoQuarantineConfig returns the documented default: opt-in disabled,
+// dry-run enabled, threshold 2. A missing "auto_quarantine" block resolves here.
+func DefaultAutoQuarantineConfig() AutoQuarantineConfig {
+	return AutoQuarantineConfig{
+		Enabled:   false,
+		DryRun:    true,
+		Threshold: 2,
+	}
+}
+
+// autoQuarantineThresholdMin and autoQuarantineThresholdMax define the valid
+// range [1, 3] for AutoQuarantineConfig.Threshold. These match the three
+// corroboration tiers: 1=warn, 2=block, 3=block+quarantine.
+const (
+	autoQuarantineThresholdMin     = 1
+	autoQuarantineThresholdMax     = 3
+	autoQuarantineThresholdDefault = 2
+)
+
+// ValidateAutoQuarantineConfig checks ac fail-closed (mirrors ValidateCatalogSyncConfig).
+// A Threshold of 0 is allowed (resolves to the default 2 in the accessor).
+// A non-zero Threshold outside [1, 3] is rejected so out-of-range values never
+// silently degrade the security posture.
+func ValidateAutoQuarantineConfig(ac AutoQuarantineConfig) error {
+	if ac.Threshold != 0 && (ac.Threshold < autoQuarantineThresholdMin || ac.Threshold > autoQuarantineThresholdMax) {
+		return fmt.Errorf("invalid auto_quarantine threshold %d (want 0 or %d..%d)",
+			ac.Threshold, autoQuarantineThresholdMin, autoQuarantineThresholdMax)
+	}
+	return nil
+}
+
+// parseClampAutoQuarantineThreshold parses t and defensively applies:
+//   - zero -> default 2 (NOT clamp floor 1 — "absent -> default" path is distinct).
+//   - < 1  -> clamped to 1 (clamp floor).
+//   - > 3  -> clamped to 3 (clamp ceiling).
+//
+// This mirrors parseClampCatalogSyncInterval and avoids the default-vs-clamp-floor
+// bug class where a zero value becomes the floor instead of the documented default.
+func parseClampAutoQuarantineThreshold(t int) int {
+	if t == 0 {
+		return autoQuarantineThresholdDefault
+	}
+	if t < autoQuarantineThresholdMin {
+		return autoQuarantineThresholdMin
+	}
+	if t > autoQuarantineThresholdMax {
+		return autoQuarantineThresholdMax
+	}
+	return t
+}
+
+// AutoQuarantineEnabled returns whether auto-quarantine is enabled.
+// A nil block (absent config) defaults to false (opt-in).
+func (c Config) AutoQuarantineEnabled() bool {
+	if c.AutoQuarantine == nil {
+		return false
+	}
+	return c.AutoQuarantine.Enabled
+}
+
+// AutoQuarantineDryRun returns whether dry-run mode is enabled.
+// A nil block (absent config) defaults to true (safe default: observe before move).
+func (c Config) AutoQuarantineDryRun() bool {
+	if c.AutoQuarantine == nil {
+		return true
+	}
+	return c.AutoQuarantine.DryRun
+}
+
+// AutoQuarantineThreshold returns the effective corroboration threshold,
+// applying the zero-to-default and out-of-range-to-clamp logic. Never returns 0.
+func (c Config) AutoQuarantineThreshold() int {
+	if c.AutoQuarantine == nil {
+		return autoQuarantineThresholdDefault
+	}
+	return parseClampAutoQuarantineThreshold(c.AutoQuarantine.Threshold)
+}
+
 // SelfCatalogConfig holds configuration for the beekeeper-self catalog source
 // (Phase 9, CTLG-04/SFDF-06). The self-catalog is a separately-hosted feed
 // verified against a distinct public key embedded in the binary. It is checked
@@ -432,6 +533,14 @@ type Config struct {
 	// An untrusted (project/env) layer cannot disable sync or loosen the
 	// interval (mergeCatalogSyncUntrusted) — disabling sync reduces security.
 	CatalogSync *CatalogSyncConfig `json:"catalog_sync,omitempty"`
+
+	// AutoQuarantine holds the first-responder auto-reversible-quarantine knob
+	// (FRSP-01, Task C1). A nil pointer means the block was absent; accessors
+	// resolve nil to the documented defaults (opt-in disabled, dry_run=true,
+	// threshold=2). An explicit block is validated fail-closed via
+	// ValidateAutoQuarantineConfig so an out-of-range threshold is rejected
+	// at load time rather than silently clamped.
+	AutoQuarantine *AutoQuarantineConfig `json:"auto_quarantine,omitempty"`
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.
@@ -523,6 +632,15 @@ func Load(path string) (Config, error) {
 		cfg.CatalogSync = &cs
 	} else if err := ValidateCatalogSyncConfig(*cfg.CatalogSync); err != nil {
 		return Config{}, fmt.Errorf("invalid catalog_sync config: %w", err)
+	}
+
+	// FRSP-01: resolve the AutoQuarantine block — absent (nil) leaves nil (accessors
+	// handle nil safely); present → validated fail-closed via ValidateAutoQuarantineConfig
+	// so an out-of-range threshold is rejected here rather than silently clamped.
+	if cfg.AutoQuarantine != nil {
+		if err := ValidateAutoQuarantineConfig(*cfg.AutoQuarantine); err != nil {
+			return Config{}, fmt.Errorf("invalid auto_quarantine config: %w", err)
+		}
 	}
 
 	return cfg, nil
