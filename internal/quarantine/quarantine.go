@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -324,7 +325,60 @@ func Restore(quarantineDir, id string) error {
 	//   2. Reject any path whose individual components contain ".." — this
 	//      catches relative traversals regardless of whether the path is
 	//      absolute or relative.
-	cleanOriginal := filepath.Clean(m.OriginalPath)
+	//
+	// validationPath is the form used for the containment + ".." checks below.
+	// On Windows it is the extended-length-prefix-stripped form so the prefix
+	// containment check cannot be evaded with a \\?\ prefix; on POSIX it is the
+	// raw OriginalPath.
+	validationPath := m.OriginalPath
+
+	// F-3: Windows-complete canonicalization. These path forms are Windows-only
+	// (filepath.VolumeName is "" and absolute paths start with "/" on POSIX), so
+	// guard the whole block on GOOS to avoid disturbing POSIX behavior.
+	if runtime.GOOS == "windows" {
+		// Reject drive-relative paths like "C:foo" (no separator after the
+		// volume). These resolve against the current directory on drive C:, not
+		// the drive root, and contain no ".." — filepath.IsAbs is false for them.
+		if !filepath.IsAbs(m.OriginalPath) {
+			return fmt.Errorf("quarantine: manifest original_path %q is not absolute (drive-relative or relative) — refusing restore", m.OriginalPath)
+		}
+
+		// Reject extended-length / UNC prefixes (\\?\ and \\?\UNC\). filepath.Clean
+		// does not strip \\?\, so a prefixed absolute path could otherwise dodge
+		// the HasPrefix(quarantineDir) containment check while still naming an
+		// arbitrary location. A restored artifact's OriginalPath has no legitimate
+		// reason to carry an extended-length prefix, so reject outright (and also
+		// strip it for the residual checks below, belt-and-suspenders).
+		stripped := m.OriginalPath
+		if strings.HasPrefix(stripped, `\\?\UNC\`) || strings.HasPrefix(stripped, `\\?\`) {
+			return fmt.Errorf("quarantine: manifest original_path %q uses an extended-length (\\\\?\\) prefix — refusing restore", m.OriginalPath)
+		}
+		validationPath = stripped
+
+		// Reject Alternate Data Stream syntax: a ":" appearing AFTER the volume
+		// name (e.g. C:\x\y.txt:ads). The volume colon (index 1) is legitimate.
+		vol := filepath.VolumeName(stripped)
+		rest := stripped[len(vol):]
+		if strings.Contains(rest, ":") {
+			return fmt.Errorf("quarantine: manifest original_path %q contains an alternate-data-stream ':' — refusing restore", m.OriginalPath)
+		}
+
+		// Reject any path component with a trailing dot or space. Windows strips
+		// these silently at the filesystem layer, so "C:\x " and "C:\x." can name
+		// an unintended target while comparing unequal byte-wise.
+		for _, part := range strings.FieldsFunc(stripped, func(r rune) bool {
+			return r == '/' || r == '\\'
+		}) {
+			if part == "" {
+				continue
+			}
+			if last := part[len(part)-1]; last == '.' || last == ' ' {
+				return fmt.Errorf("quarantine: manifest original_path component %q has a trailing dot or space — refusing restore", part)
+			}
+		}
+	}
+
+	cleanOriginal := filepath.Clean(validationPath)
 	cleanQuarantine := filepath.Clean(quarantineDir)
 
 	// Rule 1: restoring into the quarantine directory itself is always wrong.
@@ -335,8 +389,9 @@ func Restore(quarantineDir, id string) error {
 
 	// Rule 2: reject ".." traversal components in the manifest-supplied path.
 	// filepath.Clean normalises "a/../b" -> "b", so we must check for ".."
-	// segments in the RAW path (before cleaning), not in cleanOriginal.
-	for _, part := range strings.FieldsFunc(m.OriginalPath, func(r rune) bool {
+	// segments in the RAW path (before cleaning), not in cleanOriginal. Use the
+	// prefix-stripped validationPath so a \\?\-prefixed traversal is also caught.
+	for _, part := range strings.FieldsFunc(validationPath, func(r rune) bool {
 		return r == '/' || r == '\\'
 	}) {
 		if part == ".." {

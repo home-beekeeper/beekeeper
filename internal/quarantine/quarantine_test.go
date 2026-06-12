@@ -279,6 +279,69 @@ func TestQuarantineRestoreTamperedOriginalPath(t *testing.T) {
 	}
 }
 
+// TestQuarantineRestoreWindowsTamperedOriginalPath verifies F-3: the Restore
+// guard rejects Windows-specific tampered OriginalPath forms that contain no
+// "..": drive-relative (C:foo), extended-length (\\?\C:\Windows\x), ADS
+// (C:\x\y.txt:ads), and trailing-dot/space components. These assertions are
+// meaningful only on Windows (VolumeName is "" on POSIX); the test skips on
+// non-Windows so POSIX behavior is unaffected.
+func TestQuarantineRestoreWindowsTamperedOriginalPath(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("F-3 Windows path-form rejections are Windows-only")
+	}
+
+	cases := []struct {
+		name         string
+		originalPath string
+	}{
+		{"drive-relative", `C:foo`},
+		{"extended-length prefix", `\\?\C:\Windows\x`},
+		{"alternate data stream", `C:\x\y.txt:ads`},
+		{"trailing space component", `C:\x `},
+		{"trailing dot component", `C:\x.`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			quarantineDir := t.TempDir()
+			extDir := quarantine.ExtensionsDir(quarantineDir)
+
+			const entryID = "evil.pkg-1.0.0-88888888888"
+			entryDir := filepath.Join(extDir, entryID)
+			if err := os.MkdirAll(entryDir, 0o700); err != nil {
+				t.Fatalf("mkdir entry: %v", err)
+			}
+
+			m := quarantine.Manifest{
+				ID:           entryID,
+				Publisher:    "evil",
+				Name:         "pkg",
+				Version:      "1.0.0",
+				OriginalPath: tc.originalPath,
+			}
+			data, err := json.MarshalIndent(m, "", "  ")
+			if err != nil {
+				t.Fatalf("marshal manifest: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(entryDir, "beekeeper-manifest.json"), data, 0o600); err != nil {
+				t.Fatalf("write manifest: %v", err)
+			}
+
+			err = quarantine.Restore(quarantineDir, entryID)
+			if err == nil {
+				t.Errorf("Restore with Windows-tampered original_path %q should return error, got nil", tc.originalPath)
+			} else {
+				t.Logf("correctly rejected %q: %v", tc.originalPath, err)
+			}
+
+			// The quarantine entry must still be intact (nothing was moved).
+			if _, statErr := os.Stat(entryDir); statErr != nil {
+				t.Errorf("quarantine entry dir was removed even though restore was rejected")
+			}
+		})
+	}
+}
+
 // --- F-2: symlink / junction move + restore refusal ---
 
 // TestMoveTypedRefusesSymlinkSource verifies F-2: MoveTyped refuses a source
