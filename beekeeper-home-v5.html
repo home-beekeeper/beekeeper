@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beekeeper v5 concept: Terminal hero (brand dark)</title>
+<!--
+  V5 "LIVE SESSION" — brand-dark refined, terminal IS the hero.
+  Canonical site tokens (#0a0d12 / amber / teal / JetBrains Mono) so this can
+  ship into web/ later. The hero terminal plays a looping typed scene: an agent
+  session tries to install a poisoned package, beekeeper blocks it in red, the
+  audit line lands, the agent recovers. Scenario two: a credential read denied.
+  The quickstart keeps the typed ~/dev card. GSAP only; no WebGL.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d12; --surface:#0d1117; --surface-2:#11161d; --surface-3:#161b22;
+    --border:#21262e; --border-strong:#2b3543;
+    --fg:#d4dae3; --fg-strong:#ffffff; --dim:#8b95a5; --dimmer:#4d5664;
+    --red:#f85149; --coral:#f0883e; --amber:#e3b341; --green:#3fb950;
+    --teal:#39c5cf; --teal-hover:#6fd9e0;
+    --sans:"Inter",system-ui,sans-serif;
+    --mono:"JetBrains Mono",Menlo,Consolas,monospace;
+    --header-h:60px; --max:1180px; --r:6px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+    font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+    background-image:
+      radial-gradient(circle at 12% -10%, rgba(227,179,65,.05), transparent 40%),
+      radial-gradient(circle at 90% 10%, rgba(57,197,207,.04), transparent 35%);}
+  ::selection{background:var(--amber);color:var(--bg);}
+  a{color:var(--teal);text-decoration:none;}
+  a:hover{color:var(--teal-hover);}
+  :focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:2px;}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 24px;}
+
+  /* ============ header ============ */
+  header.site{position:sticky;top:0;z-index:50;height:var(--header-h);
+    background:color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;padding:0 24px;}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.5px;
+    font-size:17px;color:var(--fg-strong);text-transform:uppercase;}
+  .logo .mark{color:var(--amber);font-size:20px;}
+  .logo .ver{font-family:var(--mono);font-weight:400;color:var(--dim);font-size:11px;
+    letter-spacing:0;text-transform:lowercase;padding:2px 6px;
+    border:1px solid var(--border);border-radius:4px;}
+  nav.primary{margin-left:40px;display:flex;gap:28px;font-size:14px;font-weight:500;}
+  nav.primary a{color:var(--dim);transition:color .15s;}
+  nav.primary a:hover{color:var(--fg-strong);}
+  .header-tools{margin-left:auto;display:flex;align-items:center;gap:12px;}
+  .gh-link{color:var(--dim);font-size:13px;font-weight:500;padding:7px 12px;
+    border:1px solid var(--border);border-radius:var(--r);transition:.15s;}
+  .gh-link:hover{color:var(--fg-strong);border-color:var(--border-strong);}
+  .header-cta{background:var(--fg-strong);color:var(--bg);font-size:13px;font-weight:600;
+    padding:8px 14px;border-radius:var(--r);transition:.15s;}
+  .header-cta:hover{background:#d8d8d8;color:var(--bg);}
+
+  /* ============ hero ============ */
+  .hero{max-width:var(--max);margin:0 auto;padding:72px 24px 64px;
+    display:grid;grid-template-columns:minmax(0,11fr) minmax(0,10fr);gap:52px;align-items:center;}
+  .pill{display:inline-flex;align-items:center;gap:10px;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:999px;padding:5px 14px 5px 6px;
+    font-size:13px;color:var(--dim);margin-bottom:26px;transition:border-color .15s;}
+  .pill:hover{border-color:var(--border-strong);}
+  .pill .tag{background:rgba(63,185,80,.15);color:var(--green);font-family:var(--mono);
+    font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;
+    text-transform:uppercase;letter-spacing:.5px;}
+  .pill a{color:var(--fg-strong);font-weight:500;}
+  h1.hero-title{font-size:clamp(34px,3.2vw,46px);font-weight:800;
+    letter-spacing:-0.025em;line-height:1.06;color:var(--fg-strong);margin-bottom:22px;}
+  h1.hero-title .accent{color:var(--amber);}
+  .h-line{display:block;overflow:hidden;padding-bottom:.06em;}
+  .h-line-inner{display:block;}
+  .hero .sub{font-size:17.5px;line-height:1.62;color:var(--dim);max-width:480px;margin-bottom:32px;}
+  .hero-ctas{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+  .install-chip{display:flex;align-items:center;gap:12px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--r);padding:11px 16px;
+    font-family:var(--mono);font-size:13px;color:var(--fg);min-width:0;}
+  .install-chip .prompt{color:var(--teal);user-select:none;}
+  .install-chip .cmd{min-width:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;}
+  .install-chip .cmd::-webkit-scrollbar{display:none;}
+  .install-chip .cmd .em{color:var(--fg-strong);font-weight:600;}
+  .install-chip .copy{color:var(--dim);cursor:pointer;background:none;border:1px solid var(--border);
+    border-radius:4px;padding:3px 9px;font-size:11.5px;font-family:var(--mono);transition:.12s;flex-shrink:0;}
+  .install-chip .copy:hover{color:var(--fg-strong);border-color:var(--border-strong);}
+  .docs-btn{display:inline-flex;align-items:center;gap:7px;background:var(--surface-2);
+    border:1px solid var(--border);color:var(--fg);padding:11px 16px;border-radius:var(--r);
+    font-size:13.5px;font-weight:500;transition:.15s;}
+  .docs-btn:hover{border-color:var(--border-strong);color:var(--fg-strong);}
+  .hero-verify{font-size:12.5px;color:var(--dim);font-family:var(--mono);}
+  .hero-verify .ok{color:var(--green);}
+  .hero-verify a{color:var(--dim);text-decoration:underline;text-underline-offset:3px;}
+  .hero-verify a:hover{color:var(--teal);}
+
+  /* ---- the hero terminal ---- */
+  .term{background:var(--surface);border:1px solid var(--border-strong);border-radius:10px;
+    overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5);
+    transition:border-color .25s, box-shadow .25s;}
+  .term.alert{border-color:var(--red);
+    box-shadow:0 30px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(248,81,73,.35);}
+  .term-bar{background:var(--surface-2);border-bottom:1px solid var(--border);padding:9px 14px;
+    display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--dim);}
+  .dot3{width:11px;height:11px;border-radius:50%;}
+  .dot3.r{background:#ff5f57;}.dot3.y{background:#febc2e;}.dot3.g{background:#28c840;}
+  .term-bar .t{margin-left:8px;}
+  .term-bar .hook{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--green);}
+  .term-bar .hook .pip{width:7px;height:7px;border-radius:50%;background:var(--green);}
+  .term-body{padding:20px 22px;font-family:var(--mono);font-size:13px;line-height:1.85;
+    height:430px;overflow:hidden;color:var(--fg);font-variant-ligatures:none;}
+  .term-body .ln{white-space:pre-wrap;word-break:break-word;min-height:24px;}
+  .term-body .ln.hidden{display:none;}
+  .ln .p{color:var(--teal);user-select:none;}
+  .ln .p.agent{color:var(--coral);}
+  .ln.dim{color:var(--dim);}
+  .ln.dimmer{color:var(--dimmer);}
+  .ln.block{color:var(--red);font-weight:700;}
+  .ln.warn{color:var(--coral);}
+  .ln.ok{color:var(--green);}
+  .ln .strong{color:var(--fg-strong);font-weight:600;}
+  .ln .red{color:var(--red);font-weight:600;}
+  .cursor{display:inline-block;width:8px;height:15px;background:var(--amber);
+    vertical-align:-2px;animation:blink 1.05s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+
+  /* ============ section chrome ============ */
+  section{max-width:var(--max);margin:0 auto;padding:88px 24px;}
+  .section-head{max-width:660px;margin-bottom:48px;}
+  .section-head.center{text-align:center;margin-left:auto;margin-right:auto;}
+  h2.section-title{font-size:clamp(28px,3.4vw,38px);font-weight:700;
+    letter-spacing:-.02em;line-height:1.18;color:var(--fg-strong);margin-bottom:14px;}
+  .section-lede{font-size:17px;line-height:1.65;color:var(--dim);}
+
+  /* ============ features bento ============ */
+  .features{display:grid;gap:14px;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;}
+  .feature{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:26px 26px 24px;transition:border-color .2s,transform .2s;}
+  .feature:hover{border-color:var(--border-strong);transform:translateY(-2px);}
+  .feature.wide{grid-column:span 2;}
+  .feature .icon-row{display:flex;align-items:center;gap:10px;margin-bottom:13px;}
+  .feature .glyph{width:30px;height:30px;background:var(--surface-2);border:1px solid var(--border-strong);
+    border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--amber);
+    font-weight:700;font-size:13px;font-family:var(--mono);}
+  .feature.coral .glyph{color:var(--coral);border-color:rgba(240,136,62,.3);}
+  .feature.teal .glyph{color:var(--teal);border-color:rgba(57,197,207,.3);}
+  .feature .name{font-size:16.5px;font-weight:700;color:var(--fg-strong);}
+  .feature .body{color:var(--dim);font-size:14px;line-height:1.62;}
+  .feature .body strong{color:var(--fg);font-weight:600;}
+  .feature .body code{font-family:var(--mono);background:var(--surface-2);padding:1px 5px;
+    border-radius:3px;color:var(--teal);font-size:12px;}
+
+  /* ============ threats ============ */
+  .threats{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);}
+  .threats-head{background:var(--surface-2);border-bottom:1px solid var(--border);padding:13px 18px;
+    display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);
+    font-size:11.5px;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;}
+  .threats-head .live{display:flex;align-items:center;gap:7px;color:var(--green);
+    text-transform:none;letter-spacing:0;font-size:12px;font-weight:500;}
+  .threats-head .live .dp{width:7px;height:7px;border-radius:50%;background:var(--green);}
+  .threat-row{display:grid;grid-template-columns:84px 1fr 230px 108px;gap:18px;align-items:center;
+    padding:15px 18px;border-bottom:1px solid var(--border);font-size:14px;transition:background .15s;}
+  .threat-row:hover{background:var(--surface-2);}
+  .threat-row:last-child{border-bottom:none;}
+  .threat-row .sev{font-family:var(--mono);font-weight:700;font-size:11px;padding:3px 8px;
+    border-radius:3px;text-align:center;letter-spacing:.5px;}
+  .threat-row .sev.crit{background:var(--red);color:#0d1117;}
+  .threat-row .sev.high{background:var(--coral);color:#0d1117;}
+  .threat-row .name{color:var(--fg-strong);font-weight:600;}
+  .threat-row .name .pkg{font-family:var(--mono);font-size:13px;color:var(--dim);font-weight:400;margin-left:8px;}
+  .threat-row .impact{color:var(--dim);font-size:13px;}
+  .threat-row .date{font-family:var(--mono);font-size:12px;color:var(--dimmer);text-align:right;}
+  .threats-foot{padding:14px 18px;background:var(--surface-2);border-top:1px solid var(--border);
+    font-size:13px;color:var(--dim);text-align:center;}
+
+  /* ============ two layers ============ */
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;}
+  .col-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 26px;}
+  .col-card .pill-mini{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;
+    letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:4px;margin-bottom:14px;}
+  .col-card.reactive .pill-mini{background:rgba(57,197,207,.13);color:var(--teal);}
+  .col-card.proactive .pill-mini{background:rgba(240,136,62,.13);color:var(--coral);}
+  .col-card h3{font-size:22px;font-weight:700;color:var(--fg-strong);
+    margin-bottom:12px;line-height:1.3;letter-spacing:-.01em;}
+  .col-card p{color:var(--dim);font-size:15px;line-height:1.65;margin-bottom:10px;}
+  .col-card p strong{color:var(--fg);font-weight:600;}
+  .col-card .footer-line{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);
+    font-family:var(--mono);font-size:12.5px;color:var(--dim);}
+  .col-card.reactive .footer-line strong{color:var(--teal);font-weight:600;}
+  .col-card.proactive .footer-line strong{color:var(--coral);font-weight:600;}
+
+  /* ============ self defense ============ */
+  .self-defense{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:44px;display:grid;grid-template-columns:1fr 1.2fr;gap:40px;align-items:center;}
+  .self-defense .left h3{font-size:26px;font-weight:700;color:var(--fg-strong);
+    margin-bottom:14px;line-height:1.25;letter-spacing:-.01em;}
+  .self-defense .left p{color:var(--dim);font-size:15px;line-height:1.65;}
+  .self-defense .right{display:grid;gap:14px;}
+  .sd-item{display:flex;gap:14px;align-items:flex-start;}
+  .sd-item .ic{flex-shrink:0;width:22px;height:22px;background:rgba(227,179,65,.12);
+    border:1px solid rgba(227,179,65,.3);border-radius:5px;color:var(--amber);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px;}
+  .sd-item .text{font-size:14px;line-height:1.55;color:var(--dim);}
+  .sd-item .text strong{color:var(--fg-strong);font-weight:600;display:block;margin-bottom:2px;}
+  .sd-item .text code{font-family:var(--mono);font-size:12px;color:var(--teal);}
+
+  /* ============ quickstart: the ~/dev typed card ============ */
+  .qs-panel{max-width:720px;margin:0 auto;background:var(--surface);border:1px solid var(--border-strong);
+    border-radius:10px;overflow:hidden;font-family:var(--mono);font-size:13.5px;
+    box-shadow:0 24px 60px rgba(0,0,0,.4);}
+  .qs-bar{background:var(--surface-2);border-bottom:1px solid var(--border);padding:9px 14px;
+    display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim);}
+  .qs-bar .t{margin-left:8px;}
+  .qs-body{padding:24px 26px 28px;display:grid;gap:24px;}
+  .qs-block .lbl{font-family:var(--sans);font-size:13.5px;font-weight:700;color:var(--fg-strong);margin-bottom:7px;}
+  .qs-block .lbl .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--surface-2);
+    border:1px solid var(--border-strong);color:var(--amber);align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:11.5px;font-weight:700;margin-right:9px;}
+  .qs-block .line{color:var(--fg);white-space:nowrap;overflow-x:auto;scrollbar-width:none;
+    font-variant-ligatures:none;}
+  .qs-block .line::-webkit-scrollbar{display:none;}
+  .qs-block .line .prompt{color:var(--teal);margin-right:9px;user-select:none;}
+  .qs-block .note{font-family:var(--sans);font-size:13px;color:var(--dim);margin-top:5px;}
+
+  /* ============ faq ============ */
+  .faq{max-width:760px;margin:0 auto;}
+  .faq-item{border-bottom:1px solid var(--border);padding:22px 0;}
+  .faq-item:first-child{border-top:1px solid var(--border);}
+  .faq-item summary{list-style:none;cursor:pointer;display:flex;align-items:center;
+    justify-content:space-between;gap:16px;font-size:16.5px;font-weight:600;color:var(--fg-strong);transition:color .15s;}
+  .faq-item summary::-webkit-details-marker{display:none;}
+  .faq-item summary:hover{color:var(--amber);}
+  .faq-item summary .icon{color:var(--dim);font-family:var(--mono);font-weight:400;font-size:18px;
+    transition:.2s;flex-shrink:0;}
+  .faq-item[open] summary .icon{transform:rotate(45deg);color:var(--amber);}
+  .faq-item p{margin-top:14px;color:var(--dim);font-size:15px;line-height:1.7;max-width:640px;}
+  .faq-item p code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:2px 6px;
+    border-radius:4px;color:var(--teal);}
+  .faq-item p strong{color:var(--fg);}
+
+  /* ============ cta ============ */
+  .cta-banner{position:relative;text-align:center;padding:90px 24px;
+    background:radial-gradient(ellipse at center,rgba(227,179,65,.07),transparent 70%),var(--surface);
+    border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+  .cta-banner h2{font-size:clamp(28px,4vw,40px);font-weight:700;
+    color:var(--fg-strong);letter-spacing:-.015em;margin-bottom:14px;line-height:1.2;}
+  .cta-banner p{color:var(--dim);font-size:16.5px;margin-bottom:28px;}
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .cta-primary{background:var(--fg-strong);color:var(--bg);padding:11px 22px;border-radius:8px;
+    font-weight:600;font-size:14.5px;display:inline-flex;align-items:center;gap:8px;transition:.15s;}
+  .cta-primary:hover{background:#d8d8d8;color:var(--bg);}
+  .cta-secondary{background:var(--surface-2);border:1px solid var(--border-strong);color:var(--fg);
+    padding:11px 20px;border-radius:8px;font-weight:500;font-size:14.5px;display:inline-flex;
+    align-items:center;gap:8px;transition:.15s;}
+  .cta-secondary:hover{color:var(--fg-strong);border-color:var(--teal);}
+
+  /* ============ footer ============ */
+  footer.site{padding:40px 24px 32px;font-size:13px;color:var(--dim);}
+  footer.site .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
+  footer.site .meta{display:flex;gap:20px;align-items:center;}
+  footer.site a{color:var(--dim);}footer.site a:hover{color:var(--fg-strong);}
+  footer.site .brand{color:var(--amber);font-weight:700;}
+
+  /* ============ responsive ============ */
+  @media(max-width:980px){
+    .hero{grid-template-columns:1fr;padding-top:52px;gap:40px;}
+    .term-body{height:380px;}
+    .features{grid-template-columns:1fr 1fr;}
+    .feature.wide{grid-column:span 2;}
+    .two-col{grid-template-columns:1fr;}
+    .self-defense{grid-template-columns:1fr;padding:32px 28px;}
+    .threat-row{grid-template-columns:74px 1fr 90px;gap:12px;}
+    .threat-row .impact{display:none;}
+  }
+  @media(max-width:600px){
+    nav.primary{display:none;}
+    .features{grid-template-columns:1fr;}
+    .feature.wide{grid-column:span 1;}
+    section{padding:60px 20px;}
+    h1.hero-title{font-size:36px;}
+    .term-body{height:360px;font-size:12px;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto;}
+    *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important;}
+    .cursor{animation:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <a href="#" class="logo"><span class="mark">&#11041;</span> Beekeeper <span class="ver">v1.0.0</span></a>
+  <nav class="primary" aria-label="Primary">
+    <a href="#">Docs</a><a href="#">Threat intel</a><a href="#">Pollen</a><a href="#">Changelog</a>
+  </nav>
+  <div class="header-tools">
+    <a href="#" class="gh-link">GitHub</a>
+    <a href="#" class="header-cta">Get started</a>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<div class="hero">
+  <div class="hero-copy">
+    <div class="pill">
+      <span class="tag">v1.0</span>
+      <a href="#">Beekeeper 1.0 is here: Windows, Sentry, and TUI</a>
+      <span aria-hidden="true">&rarr;</span>
+    </div>
+    <h1 class="hero-title">
+      <span class="h-line"><span class="h-line-inner">A safety harness for</span></span>
+      <span class="h-line"><span class="h-line-inner accent">autonomous coding agents</span></span>
+    </h1>
+    <p class="sub">Beekeeper mediates every tool call, package install, file read, and network
+      request your agent makes. A hijacked agent cannot act on your machine without permission.</p>
+    <div class="hero-ctas">
+      <div class="install-chip">
+        <span class="prompt">$</span>
+        <span class="cmd">go install <span class="em">github.com/bantuson/beekeeper</span>/cmd/beekeeper@latest</span>
+        <button class="copy" type="button">copy</button>
+      </div>
+      <a href="#" class="docs-btn">Read the docs</a>
+    </div>
+    <p class="hero-verify"><span class="ok">&#10003;</span> Reproducible builds &middot; Sigstore signed &middot; SLSA L3 &middot; <a href="#">verify a release</a></p>
+  </div>
+
+  <!-- the live session -->
+  <div class="term" id="hero-term">
+    <div class="term-bar">
+      <span class="dot3 r"></span><span class="dot3 y"></span><span class="dot3 g"></span>
+      <span class="t">~/dev</span>
+      <span class="hook"><span class="pip"></span> beekeeper hook active</span>
+    </div>
+    <div class="term-body" id="term-body" aria-live="off">
+      <!-- lines are rendered fully in markup (no-JS / reduced-motion default);
+           the GSAP scene re-plays them as a typed loop -->
+      <div class="ln"><span class="p">$ </span><span class="tx">claude</span></div>
+      <div class="ln dim"><span class="tx">&#9656; session started &middot; hooks wired &middot; catalogs fresh</span></div>
+      <div class="ln"><span class="p">&gt; </span><span class="tx">fix the failing date tests in utils/</span></div>
+      <div class="ln dim"><span class="tx">agent: parsing helper needed. Installing:</span></div>
+      <div class="ln"><span class="p agent">$ </span><span class="tx">npm install http-parser-utils@9.4.1</span></div>
+      <div class="ln block"><span class="tx">&#9940; BLOCKED &middot; beekeeper</span></div>
+      <div class="ln warn"><span class="tx">   corroborated malicious &middot; 2 of 3 catalogs agree</span></div>
+      <div class="ln dim"><span class="tx">   bumblebee &#10003;  osv &#10003;  socket &middot;</span></div>
+      <div class="ln ok"><span class="tx">   &#10003; audited &rarr; ~/.beekeeper/audit/beekeeper.ndjson</span></div>
+      <div class="ln dim"><span class="tx">agent: switching to a stdlib implementation instead.</span></div>
+      <div class="ln dimmer"><span class="tx">&nbsp;</span></div>
+      <div class="ln"><span class="p agent">$ </span><span class="tx">cat ~/.ssh/id_ed25519</span></div>
+      <div class="ln block"><span class="tx">&#9940; DENIED &middot; sensitive path policy</span></div>
+      <div class="ln ok"><span class="tx">   &#10003; audited &middot; session continues</span></div>
+      <div class="ln" id="cursor-line"><span class="tx"></span><span class="cursor" aria-hidden="true"></span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ FEATURES ============ -->
+<section>
+  <div class="section-head center" data-reveal>
+    <h2 class="section-title">Stop supply chain attacks before they reach your agents.</h2>
+    <p class="section-lede">Beekeeper sits between your coding agent and your machine. Every install,
+      file read, and network call passes through a policy engine that knows what attackers do.</p>
+  </div>
+  <div class="features" data-reveal>
+    <div class="feature wide">
+      <div class="icon-row"><span class="glyph">&#11041;</span><span class="name">Hook into every agent</span></div>
+      <p class="body">First-class integration for Claude Code, Cursor, Codex CLI, OpenCode, Continue,
+        and any MCP-speaking client. <strong>Tool calls cannot bypass the harness.</strong> Native-tool
+        agents route through the gateway; package managers are caught by the shim layer.</p>
+    </div>
+    <div class="feature teal">
+      <div class="icon-row"><span class="glyph">&#9672;</span><span class="name">Corroboration matching</span></div>
+      <p class="body"><strong>One source warns. Two enforce.</strong> Three quarantine. The 2FA
+        principle for threat intel.</p>
+    </div>
+    <div class="feature coral">
+      <div class="icon-row"><span class="glyph">&#9673;</span><span class="name">Real-time correlation</span></div>
+      <p class="body">Sentry catches the credential-read signature live. <strong>Fires on behavior,
+        not catalog identity.</strong></p>
+    </div>
+    <div class="feature">
+      <div class="icon-row"><span class="glyph">&#9638;</span><span class="name">Calm-mode TUI</span></div>
+      <p class="body">Quiet by design. <strong>Escalates on its own</strong> when something fires.</p>
+    </div>
+    <div class="feature">
+      <div class="icon-row"><span class="glyph">&#8644;</span><span class="name">Hardened nudge</span></div>
+      <p class="body">Steers <code>npm install</code> to pnpm or Bun with structural defenses npm lacks.</p>
+    </div>
+    <div class="feature wide">
+      <div class="icon-row"><span class="glyph">&#9671;</span><span class="name">Open from day one</span></div>
+      <p class="body">Apache 2.0. Reproducible builds, Sigstore-signed releases, SLSA L3 provenance.
+        <strong>No telemetry, no upsell, no SaaS lock-in.</strong> Every release verifiable from source.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THREATS ============ -->
+<section>
+  <div class="section-head center" data-reveal>
+    <h2 class="section-title">Real attacks Beekeeper catches.</h2>
+    <p class="section-lede">Not hypothetical. Every entry is a documented 2026 campaign present in
+      Beekeeper's catalog the day after disclosure.</p>
+  </div>
+  <div class="threats">
+    <div class="threats-head">
+      <span>Live threat catalog</span>
+      <span class="live"><span class="dp"></span> synced 6 minutes ago</span>
+    </div>
+    <div class="threat-row">
+      <span class="sev crit">CRIT</span>
+      <span class="name">Nx Console compromise <span class="pkg">nrwl.angular-console 18.95.0</span></span>
+      <span class="impact">18-minute exposure &middot; ~3,800 GitHub repos exfiltrated</span>
+      <span class="date">2026-05-18</span>
+    </div>
+    <div class="threat-row">
+      <span class="sev crit">CRIT</span>
+      <span class="name">TanStack Mini Shai-Hulud <span class="pkg">@tanstack +170 pkgs</span></span>
+      <span class="impact">OIDC token theft from CI runner &middot; self-propagating worm</span>
+      <span class="date">2026-05-11</span>
+    </div>
+    <div class="threat-row">
+      <span class="sev crit">CRIT</span>
+      <span class="name">TrapDoor Crypto Stealer <span class="pkg">npm + PyPI + Cargo</span></span>
+      <span class="impact">28 packages &middot; 378 malicious versions</span>
+      <span class="date">2026-05-24</span>
+    </div>
+    <div class="threat-row">
+      <span class="sev crit">CRIT</span>
+      <span class="name">Laravel Lang compromise <span class="pkg">laravel-lang/lang +3</span></span>
+      <span class="impact">Composer / Packagist supply chain &middot; stealth release</span>
+      <span class="date">2026-05-23</span>
+    </div>
+    <div class="threat-row">
+      <span class="sev high">HIGH</span>
+      <span class="name">AntV worm wave <span class="pkg">324 npm + PyPI packages</span></span>
+      <span class="impact">643 versions &middot; Mini Shai-Hulud variant</span>
+      <span class="date">2026-05-19</span>
+    </div>
+    <div class="threat-row">
+      <span class="sev high">HIGH</span>
+      <span class="name">shopsprint typosquat <span class="pkg">shopsprint/decimal</span></span>
+      <span class="impact">Go module with DNS TXT backdoor</span>
+      <span class="date">2026-05-19</span>
+    </div>
+    <div class="threat-row">
+      <span class="sev high">HIGH</span>
+      <span class="name">GemStuffer <span class="pkg">123 RubyGems</span></span>
+      <span class="impact">155 versions &middot; UK local government targeted</span>
+      <span class="date">2026-05-13</span>
+    </div>
+    <div class="threats-foot">Catalogs sourced from Bumblebee threat_intel, OSV, and Socket public API.
+      <a href="#">See the full live catalog &rarr;</a></div>
+  </div>
+</section>
+
+<!-- ============ TWO LAYERS ============ -->
+<section>
+  <div class="section-head center" data-reveal>
+    <h2 class="section-title">Two layers, working together.</h2>
+    <p class="section-lede">Reactive defense catches what's been catalogued. Proactive defense catches
+      what hasn't. Each compensates for the other's blind spots.</p>
+  </div>
+  <div class="two-col" data-reveal>
+    <div class="col-card reactive">
+      <span class="pill-mini">Layer 1 / reactive</span>
+      <h3>Match every install against intelligence</h3>
+      <p>Catalogs sync hourly from Bumblebee, OSV, and Socket. When a new entry lands for a package
+        on your machine, Beekeeper flags it within minutes.</p>
+      <p>The 2FA principle keeps false positives bounded: a single source can only warn. Real blocks
+        require two independent catalogs to agree.</p>
+      <div class="footer-line">Best at: <strong>known campaigns, named packages, post-disclosure threats.</strong></div>
+    </div>
+    <div class="col-card proactive">
+      <span class="pill-mini">Layer 2 / proactive</span>
+      <h3>Watch behavior, not just identity</h3>
+      <p>Sentry runs as a privileged daemon. It correlates process events, file access on sensitive
+        paths, and outbound connections into the exfiltration signature.</p>
+      <p>Fires when an extension host descendant reads credentials and opens a connection: the Nx
+        Console pattern, expressed in behavior.</p>
+      <div class="footer-line">Best at: <strong>zero-day campaigns, novel malware, pre-disclosure.</strong></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SELF DEFENSE ============ -->
+<section>
+  <div class="self-defense" data-reveal>
+    <div class="left">
+      <h3>A security tool that takes its own integrity seriously.</h3>
+      <p>Checkmarx. Trivy. SAP. TanStack. Bitwarden. Every name on TeamPCP's kill list in 2026 was a
+        security vendor that became an attack vector. Beekeeper plans for its own compromise from day one.</p>
+    </div>
+    <div class="right">
+      <div class="sd-item"><span class="ic">&#10003;</span><div class="text">
+        <strong>Reproducible builds, anyone can verify.</strong>
+        Same commit produces identical bytes. <code>make verify-release</code> ships with every tag.</div></div>
+      <div class="sd-item"><span class="ic">&#10003;</span><div class="text">
+        <strong>Sigstore signed via GitHub Actions OIDC.</strong>
+        No long-lived signing keys to steal. Transparency log entry per release.</div></div>
+      <div class="sd-item"><span class="ic">&#10003;</span><div class="text">
+        <strong>Beekeeper detects Beekeeper compromise.</strong>
+        The <code>beekeeper-self</code> catalog auto-quarantines known-bad releases on next startup.</div></div>
+      <div class="sd-item"><span class="ic">&#10003;</span><div class="text">
+        <strong>Zero non-stdlib dependencies in the core.</strong>
+        Every import is a supply chain link. We minimize ours.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUICKSTART ============ -->
+<section>
+  <div class="section-head center" data-reveal>
+    <h2 class="section-title">Protected in 60 seconds.</h2>
+    <p class="section-lede">Three commands. No configuration required. Beekeeper ships with sane defaults.</p>
+  </div>
+  <div class="qs-panel" data-reveal id="qs-panel">
+    <div class="qs-bar">
+      <span class="dot3 r"></span><span class="dot3 y"></span><span class="dot3 g"></span>
+      <span class="t">~/dev</span>
+    </div>
+    <div class="qs-body">
+      <div class="qs-block">
+        <div class="lbl"><span class="n">1</span>Install</div>
+        <div class="line"><span class="prompt">$</span><span class="typed" data-cmd="go install github.com/bantuson/beekeeper@latest">go install github.com/bantuson/beekeeper@latest</span></div>
+        <div class="note">Drop the binary into your path. Requires Go 1.25+ or use brew/scoop.</div>
+      </div>
+      <div class="qs-block">
+        <div class="lbl"><span class="n">2</span>Wire your agent</div>
+        <div class="line"><span class="prompt">$</span><span class="typed" data-cmd="beekeeper hooks install --target claude-code">beekeeper hooks install --target claude-code</span></div>
+        <div class="note">Auto-installs the hook into Claude Code. Cursor, Codex, others supported.</div>
+      </div>
+      <div class="qs-block">
+        <div class="lbl"><span class="n">3</span>Open the dashboard</div>
+        <div class="line"><span class="prompt">$</span><span class="typed" data-cmd="beekeeper dashboard">beekeeper dashboard</span></div>
+        <div class="note">Launches the calm-mode TUI. Stays quiet until something fires.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section>
+  <div class="section-head center" data-reveal>
+    <h2 class="section-title">Common questions.</h2>
+  </div>
+  <div class="faq" data-reveal>
+    <details class="faq-item" open>
+      <summary>Is Beekeeper a replacement for Snyk, Socket, or Dependabot? <span class="icon">+</span></summary>
+      <p>No. Those answer "is this package vulnerable according to its CVE database?" That question is
+        reactive by design and tuned for human workflows. Beekeeper answers "did an autonomous agent
+        just attempt something an attacker would do?" That needs real-time interception at the
+        tool-call layer. They complement each other.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Does Beekeeper send my code or data anywhere? <span class="icon">+</span></summary>
+      <p>No. The audit log writes to disk locally by default. Optional sinks exist for teams that want
+        centralized logging, but they require explicit configuration. No telemetry, no phone-home.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What's the performance cost? <span class="icon">+</span></summary>
+      <p>Hook latency targets sub-100ms p99. The optional Sentry daemon averages 0.5-3% of one CPU
+        core and 200MB resident. Lighter than Slack desktop.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Does it work on Windows? <span class="icon">+</span></summary>
+      <p>Yes, fully. Cross-platform parity was a v1.0 ship requirement. Beekeeper uses <a href="#">Pollen</a>
+        (our Windows-compatible inventory layer derived from Bumblebee) as the on-disk scanner.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Can I trust the binary I just downloaded? <span class="icon">+</span></summary>
+      <p>Verify it yourself. Every release ships with Sigstore signatures, SLSA L3 provenance, and
+        reproducible build instructions. The <code>make verify-release</code> target reproduces the
+        binary and compares hashes. <strong>Distrust is the appropriate posture.</strong> Don't trust
+        us; verify us.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<div class="cta-banner">
+  <h2>Run agents like you mean it.</h2>
+  <p>Beekeeper is open source, dogfooded daily, and ready for your machine.</p>
+  <div class="cta-row">
+    <a href="#" class="cta-primary">Get started <span aria-hidden="true">&rarr;</span></a>
+    <a href="#" class="cta-secondary"><span style="color:var(--amber)">&#9733;</span> Star on GitHub</a>
+  </div>
+</div>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="meta"><span><span class="brand">&#11041;</span> Beekeeper</span>
+      <span style="color:var(--dimmer)">&middot;</span><span>Apache 2.0</span>
+      <span style="color:var(--dimmer)">&middot;</span><span>v1.0.0</span></div>
+    <div class="meta"><a href="#">Docs</a><a href="#">GitHub</a><a href="#">Threat intel</a>
+      <a href="#">Pollen</a><a href="#">Security disclosure</a><a href="#">Status</a></div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+/* =========================================================
+   HERO TERMINAL — the looping live session.
+   The full transcript exists in markup (the no-JS and
+   reduced-motion default). Under normal motion, GSAP hides
+   the lines and re-plays them: commands type character by
+   character, output lines land instantly, BLOCK lines flash
+   the card border red. Loops forever with a hold at the end.
+========================================================= */
+(function(){
+  if(!window.gsap) return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  const mm = gsap.matchMedia();
+  mm.add('(prefers-reduced-motion: no-preference)', () => {
+
+    /* ---- hero entrance ---- */
+    const intro = gsap.timeline({defaults:{ease:'power4.out'}});
+    intro.from('.h-line-inner', {yPercent:112, duration:0.85, stagger:0.1})
+      .from('.pill', {y:-10, opacity:0, duration:0.5}, '-=0.55')
+      .from('.hero .sub', {y:16, opacity:0, duration:0.6}, '-=0.5')
+      .from('.hero-ctas, .hero-verify', {y:14, opacity:0, duration:0.55, stagger:0.08}, '-=0.4')
+      .from('#hero-term', {y:24, opacity:0, duration:0.8, ease:'power3.out'}, '-=0.5');
+
+    /* ---- the typed session loop ---- */
+    const term = document.getElementById('hero-term');
+    const body = document.getElementById('term-body');
+    const lines = Array.from(body.querySelectorAll('.ln')).filter(l => l.id !== 'cursor-line');
+    const cursorLine = document.getElementById('cursor-line');
+
+    // capture full text, then blank everything for the replay
+    const script = lines.map(ln => ({
+      el: ln,
+      tx: ln.querySelector('.tx'),
+      full: ln.querySelector('.tx').textContent,
+      typed: !!ln.querySelector('.p'),            // prompt lines get typed
+      block: ln.classList.contains('block')
+    }));
+
+    function resetTerm(){
+      script.forEach(s => { s.el.classList.add('hidden'); s.tx.textContent = ''; });
+      term.classList.remove('alert');
+      body.appendChild(cursorLine);               // keep cursor at the end
+    }
+
+    const loop = gsap.timeline({repeat:-1, repeatDelay:0.4, delay:1.2});
+    resetTerm();
+
+    script.forEach(s => {
+      loop.call(() => {
+        s.el.classList.remove('hidden');
+        s.el.parentNode.insertBefore(cursorLine, s.el.nextSibling);
+      });
+      if(s.typed){
+        const proxy = {n:0};
+        loop.to(proxy, {
+          n: s.full.length,
+          duration: Math.min(1.3, Math.max(0.4, s.full.length*0.045)),
+          ease:'none',
+          onUpdate(){ s.tx.textContent = s.full.slice(0, Math.round(proxy.n)); }
+        }, '+=0.35');
+      } else {
+        loop.call(() => { s.tx.textContent = s.full; }, null, '+=0.32');
+        if(s.block){
+          loop.call(() => { term.classList.add('alert'); });
+          loop.to({}, {duration:0.05});
+        }
+      }
+      // the agent recovers after the first block: calm the border again
+      if(s.full.indexOf('stdlib') !== -1){
+        loop.call(() => { term.classList.remove('alert'); });
+      }
+    });
+    // hold the finished transcript, then wipe for the next pass
+    loop.to({}, {duration:4.2});
+    loop.call(resetTerm);
+
+    /* ---- section reveals ---- */
+    gsap.utils.toArray('[data-reveal]').forEach(el => {
+      gsap.from(el, {y:26, opacity:0, duration:0.75, ease:'power3.out',
+        scrollTrigger:{trigger:el, start:'top 86%'}});
+    });
+
+    /* threat rows cascade */
+    gsap.from('.threat-row', {y:14, opacity:0, stagger:0.06, duration:0.5, ease:'power2.out',
+      scrollTrigger:{trigger:'.threats', start:'top 80%'}});
+
+    /* ---- quickstart: the ~/dev card types its three commands once ---- */
+    const typedEls = gsap.utils.toArray('.typed');
+    ScrollTrigger.create({
+      trigger:'#qs-panel', start:'top 75%', once:true,
+      onEnter(){
+        const tt = gsap.timeline();
+        typedEls.forEach(el => {
+          const full = el.dataset.cmd;
+          const proxy = {n:0};
+          el.textContent = '';
+          tt.to(proxy, {n:full.length, duration:Math.min(1.4, full.length*0.028), ease:'none',
+            onUpdate(){ el.textContent = full.slice(0, Math.round(proxy.n)); }}, '+=0.25');
+        });
+      }
+    });
+
+    return () => {
+      // cleanup: restore the static transcript
+      loop.kill();
+      script.forEach(s => { s.el.classList.remove('hidden'); s.tx.textContent = s.full; });
+      term.classList.remove('alert');
+    };
+  });
+})();
+
+/* ---- copy button ---- */
+(function(){
+  const copy = document.querySelector('.install-chip .copy');
+  if(!copy) return;
+  copy.addEventListener('click',()=>{
+    const cmd = document.querySelector('.install-chip .cmd').innerText;
+    navigator.clipboard && navigator.clipboard.writeText(cmd);
+    const old = copy.textContent; copy.textContent='copied'; copy.style.color='var(--green)';
+    setTimeout(()=>{copy.textContent=old; copy.style.color='';},1400);
+  });
+})();
+</script>
+</body>
+</html>

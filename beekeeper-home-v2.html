@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beekeeper: a safety harness for autonomous coding agents</title>
+<style>
+  :root{
+    --bg:#080b10; --surface:#0d1117; --surface-2:#11161d; --surface-3:#161b22;
+    --border:#21262e; --border-strong:#2b3543;
+    --fg:#d4dae3; --fg-strong:#ffffff; --dim:#8b95a5; --dimmer:#4d5664;
+    --red:#f85149; --coral:#f0883e; --amber:#e3b341; --green:#3fb950;
+    --teal:#39c5cf; --teal-d:#2da5af; --purple:#bc8cff;
+    --sans:"Inter","SF Pro Text",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --mono:"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;
+    --display:"Inter Display","Inter",system-ui,sans-serif;
+    --header-h:60px; --max:1180px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+    font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  /* subtle film grain over everything for texture */
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+    opacity:.025;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  a{color:var(--teal);text-decoration:none;}
+  a:hover{color:#6fd9e0;}
+
+  /* header */
+  header.site{position:sticky;top:0;z-index:50;height:var(--header-h);
+    background:rgba(8,11,16,.8);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;}
+  .logo{display:flex;align-items:center;gap:10px;font-family:var(--display);
+    font-weight:800;letter-spacing:.5px;font-size:17px;color:var(--fg-strong);text-transform:uppercase;}
+  .logo .mark{color:var(--amber);font-size:20px;filter:drop-shadow(0 0 8px rgba(227,179,65,.5));}
+  .logo .ver{font-family:var(--mono);font-weight:400;color:var(--dim);font-size:11px;
+    letter-spacing:0;text-transform:lowercase;margin-left:4px;padding:2px 6px;
+    border:1px solid var(--border);border-radius:4px;}
+  nav.primary{margin-left:40px;display:flex;gap:28px;font-size:14px;font-weight:500;}
+  nav.primary a{color:var(--dim);transition:color .15s;}
+  nav.primary a.active,nav.primary a:hover{color:var(--fg-strong);}
+  nav.primary a.active{position:relative;}
+  nav.primary a.active::after{content:"";position:absolute;left:0;right:0;bottom:-19px;
+    height:2px;background:var(--amber);box-shadow:0 0 8px rgba(227,179,65,.6);}
+  .header-tools{margin-left:auto;display:flex;align-items:center;gap:12px;}
+  .gh-link{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:13px;
+    padding:6px 10px;border:1px solid var(--border);border-radius:6px;transition:.15s;}
+  .gh-link:hover{color:var(--fg-strong);border-color:var(--border-strong);}
+  .gh-link .stars{color:var(--amber);font-weight:600;}
+  .header-cta{background:var(--fg-strong);color:var(--bg);font-size:13px;font-weight:600;
+    padding:7px 14px;border-radius:6px;transition:.15s;}
+  .header-cta:hover{background:#d8d8d8;}
+
+  /* ===================== HERO ===================== */
+  .hero{position:relative;max-width:var(--max);margin:0 auto;
+    padding:64px 24px 40px;text-align:center;z-index:2;}
+  #hive-canvas{position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:100%;max-width:1280px;height:100%;z-index:0;pointer-events:none;
+    -webkit-mask-image:radial-gradient(ellipse 70% 80% at 50% 42%,#000 55%,transparent 100%);
+    mask-image:radial-gradient(ellipse 70% 80% at 50% 42%,#000 55%,transparent 100%);}
+  .hero-copy{position:relative;z-index:3;max-width:680px;margin:0 auto;}
+  .hero-visual{display:none;}
+
+  .pill{display:inline-flex;align-items:center;gap:10px;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:999px;padding:5px 14px 5px 6px;
+    font-size:13px;color:var(--dim);margin-bottom:26px;transition:border-color .15s;}
+  .pill:hover{border-color:var(--border-strong);}
+  .pill .tag{background:rgba(63,185,80,.15);color:var(--green);font-family:var(--mono);
+    font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;
+    text-transform:uppercase;letter-spacing:.5px;}
+  .pill a{color:var(--fg-strong);font-weight:500;}
+  .pill .arrow{color:var(--dim);}
+
+  h1.hero-title{font-family:var(--display);font-size:clamp(40px,5.4vw,60px);
+    font-weight:800;letter-spacing:-1.6px;line-height:1.04;color:var(--fg-strong);
+    margin-bottom:22px;}
+  h1.hero-title .accent{color:var(--amber);position:relative;}
+  .hero .sub{font-size:18px;line-height:1.62;color:var(--dim);max-width:520px;
+    margin:0 auto 34px;}
+
+  .install{max-width:560px;margin:0 auto 22px;background:rgba(13,17,23,.7);
+    backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;
+    overflow:hidden;text-align:left;}
+  .install-tabs{display:flex;border-bottom:1px solid var(--border);
+    background:var(--surface-2);padding:0 8px;}
+  .install-tab{background:none;border:none;color:var(--dim);font-family:var(--mono);
+    font-size:12.5px;padding:11px 13px;cursor:pointer;border-bottom:2px solid transparent;
+    margin-bottom:-1px;transition:.15s;white-space:nowrap;}
+  .install-tab:hover{color:var(--fg);}
+  .install-tab.active{color:var(--fg-strong);border-bottom-color:var(--amber);}
+  .install-tab .os{color:var(--dimmer);font-size:10px;margin-left:4px;}
+  .install-tab.active .os{color:var(--dim);}
+  .install-body{padding:16px 18px;display:flex;align-items:center;justify-content:space-between;
+    gap:10px;font-family:var(--mono);font-size:13px;color:var(--fg);}
+  .install-body .left{display:flex;align-items:baseline;min-width:0;flex:1;}
+  .install-body .prompt{color:var(--teal);user-select:none;margin-right:10px;flex-shrink:0;}
+  .install-body .cmd{min-width:0;word-break:break-all;line-height:1.5;}
+  .install-body .cmd .em{color:var(--fg-strong);font-weight:600;}
+  .install-body .copy{color:var(--dim);cursor:pointer;padding:4px 10px;border:1px solid var(--border);
+    border-radius:4px;font-size:11.5px;transition:.12s;flex-shrink:0;align-self:center;}
+  .install-body .copy:hover{color:var(--fg-strong);border-color:var(--border-strong);}
+  .install-foot{padding:10px 18px;background:var(--surface-2);border-top:1px solid var(--border);
+    font-size:12px;color:var(--dim);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .install-foot .icon{color:var(--green);}
+
+  .hero-secondary{display:flex;gap:10px;justify-content:center;}
+  .secondary-btn{background:var(--surface-2);border:1px solid var(--border);color:var(--fg);
+    padding:9px 16px;border-radius:6px;font-size:13.5px;font-weight:500;
+    display:flex;align-items:center;gap:7px;transition:.15s;}
+  .secondary-btn:hover{border-color:var(--border-strong);color:var(--fg-strong);}
+  .secondary-btn .icon{color:var(--dim);font-size:13px;}
+
+  /* ===================== SHARED SECTION CHROME ===================== */
+  section{max-width:var(--max);margin:0 auto;padding:84px 24px;position:relative;z-index:2;}
+  .section-head{text-align:center;margin-bottom:52px;max-width:680px;margin-left:auto;margin-right:auto;}
+  .eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:2px;
+    color:var(--amber);margin-bottom:14px;}
+  .eyebrow.coral{color:var(--coral);} .eyebrow.teal{color:var(--teal);} .eyebrow.red{color:var(--red);}
+  h2.section-title{font-family:var(--display);font-size:clamp(28px,4vw,40px);font-weight:700;
+    letter-spacing:-.5px;line-height:1.2;color:var(--fg-strong);margin-bottom:14px;}
+  .section-lede{font-size:17px;line-height:1.65;color:var(--dim);}
+
+  /* reveal animation */
+  .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1);}
+  .reveal.in{opacity:1;transform:none;}
+
+  /* ===================== DEMO ===================== */
+  .demo-wrap{max-width:var(--max);margin:0 auto;padding:0 24px 90px;position:relative;z-index:2;}
+  .demo-frame{background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;
+    overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.55),0 0 0 1px rgba(227,179,65,.06),
+    0 0 60px rgba(248,81,73,.06);}
+  .demo-titlebar{background:var(--surface-2);border-bottom:1px solid var(--border);padding:9px 14px;
+    display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--dim);}
+  .dot3{width:11px;height:11px;border-radius:50%;}
+  .dot3.r{background:#ff5f57;}.dot3.y{background:#febc2e;}.dot3.g{background:#28c840;}
+  .demo-titlebar .t{margin-left:8px;}
+  .demo-titlebar .live{margin-left:auto;display:flex;align-items:center;gap:6px;}
+  .demo-titlebar .live .p{width:7px;height:7px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .demo-screen{padding:24px 28px;font-family:var(--mono);font-size:13.5px;
+    background:radial-gradient(circle at 50% 0%,rgba(248,81,73,.05),transparent 50%),var(--surface);min-height:400px;}
+  .demo-statusline{display:flex;align-items:baseline;gap:14px;margin-bottom:20px;flex-wrap:wrap;}
+  .demo-brand{color:var(--amber);font-weight:800;font-size:18px;letter-spacing:.8px;}
+  .demo-statusmsg{color:var(--red);font-weight:700;font-size:14px;}
+  .demo-health{display:flex;gap:24px;margin-bottom:20px;font-size:13px;color:var(--dim);flex-wrap:wrap;}
+  .demo-health .h{display:flex;align-items:center;gap:6px;}
+  .pip{width:8px;height:8px;border-radius:50%;background:var(--green);}
+  .pip.red{background:var(--red);animation:pulse 1.1s infinite;}
+  .demo-incident{border:1px solid var(--red);background:linear-gradient(180deg,rgba(248,81,73,.08),transparent 60%);
+    border-radius:8px;overflow:hidden;}
+  .demo-inc-head{padding:11px 16px;display:flex;align-items:center;gap:11px;
+    border-bottom:1px solid rgba(248,81,73,.25);flex-wrap:wrap;}
+  .badge{font-family:var(--mono);font-weight:700;padding:1px 6px;border-radius:3px;font-size:11px;letter-spacing:.3px;}
+  .b-crit{background:var(--red);color:#0d1117;}
+  .demo-inc-head .ttl{color:var(--fg-strong);font-weight:700;font-size:14.5px;}
+  .demo-inc-head .tm{margin-left:auto;color:var(--dim);font-size:11.5px;}
+  .demo-inc-body{padding:16px 18px;}
+  .demo-inc-body .desc{color:var(--fg);font-size:13.5px;line-height:1.7;margin-bottom:14px;}
+  .demo-inc-body .desc .em-red{color:var(--red);font-weight:700;}
+  .demo-inc-body .label{font-size:10.5px;font-weight:700;color:var(--dim);margin-bottom:6px;
+    text-transform:uppercase;letter-spacing:1.5px;}
+  .demo-tree{color:var(--dim);line-height:1.85;margin-bottom:16px;}
+  .demo-tree .response{color:var(--coral);}.demo-tree .threat{color:var(--red);}.demo-tree .muted{color:var(--dimmer);}
+  .demo-actions{display:flex;gap:10px;flex-wrap:wrap;}
+  .demo-act{font-size:12px;padding:5px 11px;border-radius:4px;border:1px solid var(--border);
+    background:var(--surface-2);color:var(--fg);}
+  .demo-act .k{font-weight:700;}
+  .demo-act.q .k{color:var(--coral);}.demo-act.i .k{color:var(--amber);}.demo-act.d .k{color:var(--teal);}
+  .demo-keybar{background:var(--surface-2);border-top:1px solid var(--border);padding:8px 16px;
+    font-family:var(--mono);font-size:11.5px;color:var(--dim);display:flex;gap:18px;flex-wrap:wrap;}
+  .demo-keybar .k{color:var(--teal);font-weight:700;}.demo-keybar .sep{color:var(--dimmer);}
+
+  /* ===================== FEATURES (bento) ===================== */
+  .features{display:grid;gap:14px;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;}
+  .feature{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:26px 26px 24px;position:relative;overflow:hidden;transition:border-color .2s,transform .2s;}
+  .feature:hover{border-color:var(--border-strong);transform:translateY(-2px);}
+  .feature.wide{grid-column:span 2;}
+  .feature .icon-row{display:flex;align-items:center;gap:10px;margin-bottom:13px;}
+  .feature .glyph{width:30px;height:30px;background:var(--surface-2);border:1px solid var(--border-strong);
+    border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--amber);
+    font-weight:700;font-size:13px;font-family:var(--mono);}
+  .feature.coral .glyph{color:var(--coral);border-color:rgba(240,136,62,.3);}
+  .feature.teal .glyph{color:var(--teal);border-color:rgba(57,197,207,.3);}
+  .feature .name{font-size:16.5px;font-weight:700;color:var(--fg-strong);}
+  .feature .body{color:var(--dim);font-size:14px;line-height:1.62;}
+  .feature .body strong{color:var(--fg);font-weight:600;}
+  .feature .body code{font-family:var(--mono);background:var(--surface-2);padding:1px 5px;
+    border-radius:3px;color:var(--teal);font-size:12px;}
+
+  /* ===================== THREATS ===================== */
+  .threats{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);}
+  .threats-head{background:var(--surface-2);border-bottom:1px solid var(--border);padding:13px 18px;
+    display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);
+    font-size:11.5px;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;}
+  .threats-head .live{display:flex;align-items:center;gap:7px;color:var(--green);
+    text-transform:none;letter-spacing:0;font-size:12px;font-weight:500;}
+  .threats-head .live .dp{width:7px;height:7px;border-radius:50%;background:var(--green);
+    animation:gp 2s infinite;}
+  @keyframes gp{0%{box-shadow:0 0 0 0 rgba(63,185,80,.5);}70%{box-shadow:0 0 0 8px rgba(63,185,80,0);}100%{box-shadow:0 0 0 0 rgba(63,185,80,0);}}
+  .threat-row{display:grid;grid-template-columns:84px 1fr 230px 108px;gap:18px;align-items:center;
+    padding:15px 18px 15px 16px;border-bottom:1px solid var(--border);font-size:14px;position:relative;
+    border-left:3px solid transparent;transition:background .15s,border-left-color .15s;}
+  .threat-row:hover{background:var(--surface-2);}
+  .threat-row.crit{border-left-color:var(--red);}
+  .threat-row.high{border-left-color:var(--coral);}
+  .threat-row:last-child{border-bottom:none;}
+  .threat-row .sev{font-family:var(--mono);font-weight:700;font-size:11px;padding:3px 8px;
+    border-radius:3px;text-align:center;letter-spacing:.5px;}
+  .threat-row .sev.crit{background:var(--red);color:#0d1117;}
+  .threat-row .sev.high{background:var(--coral);color:#0d1117;}
+  .threat-row .name{color:var(--fg-strong);font-weight:600;}
+  .threat-row .name .pkg{font-family:var(--mono);font-size:13px;color:var(--dim);font-weight:400;margin-left:8px;}
+  .threat-row .impact{color:var(--dim);font-size:13px;}
+  .threat-row .date{font-family:var(--mono);font-size:12px;color:var(--dimmer);text-align:right;}
+  .threats-foot{padding:14px 18px;background:var(--surface-2);border-top:1px solid var(--border);
+    font-size:13px;color:var(--dim);text-align:center;}
+
+  /* ===================== TWO LAYERS ===================== */
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;}
+  .col-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 26px;
+    position:relative;overflow:hidden;}
+  .col-card .pill-mini{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;
+    letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:4px;margin-bottom:14px;}
+  .col-card.reactive .pill-mini{background:rgba(57,197,207,.13);color:var(--teal);}
+  .col-card.proactive .pill-mini{background:rgba(240,136,62,.13);color:var(--coral);}
+  .col-card h3{font-family:var(--display);font-size:22px;font-weight:700;color:var(--fg-strong);
+    margin-bottom:12px;line-height:1.3;letter-spacing:-.3px;}
+  .col-card p{color:var(--dim);font-size:15px;line-height:1.65;margin-bottom:10px;}
+  .col-card p strong{color:var(--fg);font-weight:600;}
+  .col-card .footer-line{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);
+    font-family:var(--mono);font-size:12.5px;color:var(--dim);}
+  .col-card.reactive .footer-line strong{color:var(--teal);font-weight:600;}
+  .col-card.proactive .footer-line strong{color:var(--coral);font-weight:600;}
+
+  /* ===================== SELF DEFENSE ===================== */
+  .self-defense{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:44px;display:grid;grid-template-columns:1fr 1.2fr;gap:40px;align-items:center;
+    position:relative;overflow:hidden;}
+  .self-defense .left h3{font-family:var(--display);font-size:26px;font-weight:700;color:var(--fg-strong);
+    margin-bottom:14px;line-height:1.2;letter-spacing:-.3px;}
+  .self-defense .left p{color:var(--dim);font-size:15px;line-height:1.65;}
+  .self-defense .right{display:grid;gap:14px;}
+  .sd-item{display:flex;gap:14px;align-items:flex-start;}
+  .sd-item .ic{flex-shrink:0;width:22px;height:22px;background:rgba(227,179,65,.12);
+    border:1px solid rgba(227,179,65,.3);border-radius:5px;color:var(--amber);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px;}
+  .sd-item .text{font-size:14px;line-height:1.55;color:var(--dim);}
+  .sd-item .text strong{color:var(--fg-strong);font-weight:600;display:block;margin-bottom:2px;}
+  .sd-item .text code{font-family:var(--mono);font-size:12px;color:var(--teal);}
+
+  /* ===================== QUICKSTART ===================== */
+  .quickstart{display:grid;gap:18px;grid-template-columns:repeat(3,1fr);}
+  .qs-step{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:22px 24px 24px;}
+  .qs-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .qs-step .ttl{font-size:16px;font-weight:700;color:var(--fg-strong);}
+  .qs-step .num{width:26px;height:26px;border-radius:50%;background:var(--surface-2);
+    border:1px solid var(--border-strong);color:var(--amber);font-family:var(--mono);
+    font-weight:700;font-size:12.5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .qs-step .desc{font-size:13.5px;color:var(--dim);margin-bottom:14px;line-height:1.6;}
+  .qs-step .code{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--border);
+    border-radius:6px;padding:9px 12px;color:var(--fg);overflow-x:auto;white-space:nowrap;}
+  .qs-step .code .prompt{color:var(--teal);user-select:none;margin-right:8px;}
+
+  /* ===================== FAQ ===================== */
+  .faq{max-width:760px;margin:0 auto;}
+  .faq-item{border-bottom:1px solid var(--border);padding:22px 0;}
+  .faq-item:first-child{border-top:1px solid var(--border);}
+  .faq-item summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+    font-size:16.5px;font-weight:600;color:var(--fg-strong);transition:color .15s;}
+  .faq-item summary::-webkit-details-marker{display:none;}
+  .faq-item summary:hover{color:var(--amber);}
+  .faq-item summary .icon{color:var(--dim);font-family:var(--mono);font-weight:400;font-size:18px;transition:.2s;}
+  .faq-item[open] summary .icon{transform:rotate(45deg);color:var(--amber);}
+  .faq-item p{margin-top:14px;color:var(--dim);font-size:15px;line-height:1.7;max-width:640px;}
+  .faq-item p code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:2px 6px;
+    border-radius:4px;color:var(--teal);}
+
+  /* ===================== CTA ===================== */
+  .cta-banner{position:relative;text-align:center;padding:90px 24px;
+    background:radial-gradient(ellipse at center,rgba(227,179,65,.07),transparent 70%),var(--surface);
+    border-top:1px solid var(--border);border-bottom:1px solid var(--border);overflow:hidden;}
+  .cta-banner h2{font-family:var(--display);font-size:clamp(28px,4vw,40px);font-weight:700;
+    color:var(--fg-strong);letter-spacing:-.3px;margin-bottom:14px;line-height:1.2;}
+  .cta-banner p{color:var(--dim);font-size:16.5px;margin-bottom:28px;}
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .cta-primary{background:var(--fg-strong);color:var(--bg);padding:11px 22px;border-radius:8px;
+    font-weight:600;font-size:14.5px;display:inline-flex;align-items:center;gap:8px;}
+  .cta-primary:hover{background:#d8d8d8;}
+  .cta-secondary{background:var(--surface-2);border:1px solid var(--border-strong);color:var(--fg);
+    padding:11px 20px;border-radius:8px;font-weight:500;font-size:14.5px;display:inline-flex;align-items:center;gap:8px;}
+  .cta-secondary:hover{color:var(--fg-strong);border-color:var(--teal);}
+
+  /* footer */
+  footer.site{padding:40px 24px 32px;background:var(--bg);font-size:13px;color:var(--dim);position:relative;z-index:2;}
+  footer.site .wrap{max-width:var(--max);margin:0 auto;display:flex;align-items:center;
+    justify-content:space-between;flex-wrap:wrap;gap:16px;}
+  footer.site .meta{display:flex;gap:20px;align-items:center;}
+  footer.site a{color:var(--dim);}footer.site a:hover{color:var(--fg-strong);}
+  footer.site .brand{color:var(--amber);font-weight:700;}
+
+  @media(max-width:980px){
+    #hive-canvas{max-width:760px;}
+    .features{grid-template-columns:1fr 1fr;}
+    .feature.wide{grid-column:span 2;}
+    .two-col,.self-defense,.quickstart{grid-template-columns:1fr;}
+    .self-defense{padding:32px 28px;}
+    .threat-row{grid-template-columns:74px 1fr 90px;gap:12px;}
+    .threat-row .impact{display:none;}
+  }
+  @media(max-width:600px){
+    nav.primary{display:none;}
+    .features{grid-template-columns:1fr;}
+    .feature.wide{grid-column:span 1;}
+    h1.hero-title{font-size:40px;letter-spacing:-1px;}
+    section{padding:60px 20px;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none;transition:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <a href="#" class="logo"><span class="mark">⬡</span> BEEKEEPER <span class="ver">v1.0.0</span></a>
+  <nav class="primary">
+    <a href="#" class="active">Home</a><a href="#">Docs</a><a href="#">Threat intel</a>
+    <a href="#">Pollen</a><a href="#">Changelog</a>
+  </nav>
+  <div class="header-tools">
+    <a href="#" class="gh-link"><span>GitHub</span><span class="stars">★ 2.4k</span></a>
+    <a href="#" class="header-cta">Get started</a>
+  </div>
+</header>
+
+<!-- ===================== HERO ===================== -->
+<div class="hero">
+  <canvas id="hive-canvas"></canvas>
+  <div class="hero-copy">
+    <div class="pill">
+      <span class="tag">v1.0</span>
+      <a href="#">Beekeeper 1.0 is here: Windows, Sentry, and TUI</a>
+      <span class="arrow">→</span>
+    </div>
+    <h1 class="hero-title">A safety harness for<br><span class="accent">autonomous coding agents</span></h1>
+    <p class="sub">Beekeeper mediates every tool call, package install, file read, and network
+      request your agent makes. A hijacked agent cannot act on your machine without permission.</p>
+
+    <div class="install">
+      <div class="install-tabs">
+        <button class="install-tab active">go install <span class="os">recommended</span></button>
+        <button class="install-tab">brew <span class="os">mac / linux</span></button>
+        <button class="install-tab">scoop <span class="os">windows</span></button>
+        <button class="install-tab">docker</button>
+      </div>
+      <div class="install-body">
+        <span class="left"><span class="prompt">$</span>
+          <span class="cmd">go install <span class="em">github.com/bantuson/beekeeper</span>/cmd/beekeeper@latest</span></span>
+        <span class="copy">copy</span>
+      </div>
+      <div class="install-foot"><span class="icon">✓</span>
+        <span>Reproducible builds · Sigstore signed · SLSA L3 · </span><a href="#">verify a release</a></div>
+    </div>
+
+    <div class="hero-secondary">
+      <a href="#" class="secondary-btn"><span class="icon">▶</span> Watch the 90s demo</a>
+      <a href="#" class="secondary-btn"><span class="icon">⌘</span> Read the docs</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== DEMO ===================== -->
+<div class="demo-wrap reveal">
+  <div class="demo-frame">
+    <div class="demo-titlebar">
+      <span class="dot3 r"></span><span class="dot3 y"></span><span class="dot3 g"></span>
+      <span class="t">beekeeper dashboard: calm mode</span>
+      <span class="live"><span class="p"></span> 1 critical active</span>
+    </div>
+    <div class="demo-screen">
+      <div class="demo-statusline">
+        <span class="demo-brand">BEEKEEPER</span>
+        <span class="demo-statusmsg">⚠ 1 CRITICAL: credential exfiltration pattern detected</span>
+      </div>
+      <div class="demo-health">
+        <div class="h"><span class="pip"></span>hooks</div>
+        <div class="h"><span class="pip"></span>gateway</div>
+        <div class="h"><span class="pip red"></span>sentry firing</div>
+        <div class="h"><span class="pip"></span>catalogs fresh</div>
+        <div class="h" style="color:var(--dimmer)">last block just now</div>
+      </div>
+      <div class="demo-incident">
+        <div class="demo-inc-head">
+          <span class="badge b-crit">CRITICAL</span>
+          <span class="ttl">exfil-signature-fusion</span>
+          <span class="tm">14:21:54 · sentry · rule R5</span>
+        </div>
+        <div class="demo-inc-body">
+          <div class="desc">A process from the VS Code extension host read three credential files
+            and opened an outbound connection, within 4 minutes of installing an extension flagged
+            by <span class="em-red">2 of 3 catalogs</span>.</div>
+          <div class="label">PROCESS TREE</div>
+          <div class="demo-tree">
+            Code Helper (Plugin) <span class="muted">pid 8821</span><br>
+            └─ <span class="response">node extension.js</span> <span class="muted">pid 8847</span><br>
+            &nbsp;&nbsp;&nbsp;├─ read <span class="threat">~/.aws/credentials</span><br>
+            &nbsp;&nbsp;&nbsp;├─ read <span class="threat">~/.config/op/config</span><br>
+            &nbsp;&nbsp;&nbsp;├─ read <span class="threat">~/.ssh/id_ed25519</span><br>
+            &nbsp;&nbsp;&nbsp;└─ POST <span class="threat">185.2.x.x:443</span> <span class="muted">4.2KB</span>
+          </div>
+          <div class="demo-actions">
+            <span class="demo-act q"><span class="k">[Q]</span> quarantine extension</span>
+            <span class="demo-act i"><span class="k">[I]</span> isolate process</span>
+            <span class="demo-act d"><span class="k">[d]</span> full record</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="demo-keybar">
+      <span><span class="k">:</span> palette</span><span class="sep">·</span>
+      <span><span class="k">!</span> alerts</span><span class="sep">·</span>
+      <span><span class="k">g</span> go to</span><span class="sep">·</span>
+      <span><span class="k">?</span> help</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== FEATURES ===================== -->
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">What it does</div>
+    <h2 class="section-title">Stop supply chain attacks before they reach your agents.</h2>
+    <p class="section-lede">Beekeeper sits between your coding agent and your machine. Every install,
+      file read, and network call passes through a policy engine that knows what attackers do.</p>
+  </div>
+  <div class="features reveal">
+    <div class="feature wide">
+      <div class="icon-row"><span class="glyph">⬡</span><span class="name">Hook into every agent</span></div>
+      <p class="body">First-class integration for Claude Code, Cursor, Codex CLI, OpenCode, Continue,
+        and any MCP-speaking client. <strong>Tool calls cannot bypass the harness.</strong> Native-tool
+        agents route through the gateway; package managers are caught by the shim layer.</p>
+    </div>
+    <div class="feature teal">
+      <div class="icon-row"><span class="glyph">◈</span><span class="name">Corroboration matching</span></div>
+      <p class="body"><strong>One source warns. Two enforce.</strong> Three quarantine. The 2FA
+        principle for threat intel.</p>
+    </div>
+    <div class="feature coral">
+      <div class="icon-row"><span class="glyph">◉</span><span class="name">Real-time correlation</span></div>
+      <p class="body">Sentry catches the credential-read signature live. <strong>Fires on behavior,
+        not catalog identity.</strong></p>
+    </div>
+    <div class="feature">
+      <div class="icon-row"><span class="glyph">▦</span><span class="name">Calm-mode TUI</span></div>
+      <p class="body">Quiet by design. <strong>Escalates on its own</strong> when something fires.</p>
+    </div>
+    <div class="feature">
+      <div class="icon-row"><span class="glyph">⇄</span><span class="name">Hardened nudge</span></div>
+      <p class="body">Steers <code>npm install</code> to pnpm or Bun with structural defenses npm lacks.</p>
+    </div>
+    <div class="feature wide">
+      <div class="icon-row"><span class="glyph">◇</span><span class="name">Open from day one</span></div>
+      <p class="body">Apache 2.0. Reproducible builds, Sigstore-signed releases, SLSA L3 provenance.
+        <strong>No telemetry, no upsell, no SaaS lock-in.</strong> Every release verifiable from source.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== THREATS ===================== -->
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow red">Recent supply chain compromises</div>
+    <h2 class="section-title">Real attacks Beekeeper catches.</h2>
+    <p class="section-lede">Not hypothetical. Every entry is a documented 2026 campaign present in
+      Beekeeper's catalog the day after disclosure.</p>
+  </div>
+  <div class="threats reveal">
+    <div class="threats-head">
+      <span>Live threat catalog</span>
+      <span class="live"><span class="dp"></span> synced 6 minutes ago</span>
+    </div>
+    <div class="threat-row crit">
+      <span class="sev crit">CRIT</span>
+      <span class="name">Nx Console compromise <span class="pkg">nrwl.angular-console 18.95.0</span></span>
+      <span class="impact">18-minute exposure · ~3,800 GitHub repos exfiltrated</span>
+      <span class="date">2026-05-18</span>
+    </div>
+    <div class="threat-row crit">
+      <span class="sev crit">CRIT</span>
+      <span class="name">TanStack Mini Shai-Hulud <span class="pkg">@tanstack +170 pkgs</span></span>
+      <span class="impact">OIDC token theft from CI runner · self-propagating worm</span>
+      <span class="date">2026-05-11</span>
+    </div>
+    <div class="threat-row crit">
+      <span class="sev crit">CRIT</span>
+      <span class="name">TrapDoor Crypto Stealer <span class="pkg">npm + PyPI + Cargo</span></span>
+      <span class="impact">28 packages · 378 malicious versions</span>
+      <span class="date">2026-05-24</span>
+    </div>
+    <div class="threat-row crit">
+      <span class="sev crit">CRIT</span>
+      <span class="name">Laravel Lang compromise <span class="pkg">laravel-lang/lang +3</span></span>
+      <span class="impact">Composer / Packagist supply chain · stealth release</span>
+      <span class="date">2026-05-23</span>
+    </div>
+    <div class="threat-row high">
+      <span class="sev high">HIGH</span>
+      <span class="name">AntV worm wave <span class="pkg">324 npm + PyPI packages</span></span>
+      <span class="impact">643 versions · Mini Shai-Hulud variant</span>
+      <span class="date">2026-05-19</span>
+    </div>
+    <div class="threat-row high">
+      <span class="sev high">HIGH</span>
+      <span class="name">shopsprint typosquat <span class="pkg">shopsprint/decimal</span></span>
+      <span class="impact">Go module with DNS TXT backdoor</span>
+      <span class="date">2026-05-19</span>
+    </div>
+    <div class="threat-row high">
+      <span class="sev high">HIGH</span>
+      <span class="name">GemStuffer <span class="pkg">123 RubyGems</span></span>
+      <span class="impact">155 versions · UK local government targeted</span>
+      <span class="date">2026-05-13</span>
+    </div>
+    <div class="threats-foot">Catalogs sourced from Bumblebee threat_intel, OSV, and Socket public API.
+      <a href="#">See the full live catalog →</a></div>
+  </div>
+</section>
+
+<!-- ===================== TWO LAYERS ===================== -->
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow teal">How it works</div>
+    <h2 class="section-title">Two layers, working together.</h2>
+    <p class="section-lede">Reactive defense catches what's been catalogued. Proactive defense catches
+      what hasn't. Each compensates for the other's blind spots.</p>
+  </div>
+  <div class="two-col reveal">
+    <div class="col-card reactive">
+      <span class="pill-mini">Layer 1 / reactive</span>
+      <h3>Match every install against intelligence</h3>
+      <p>Catalogs sync hourly from Bumblebee, OSV, and Socket. When a new entry lands for a package
+        on your machine, Beekeeper flags it within minutes.</p>
+      <p>The 2FA principle keeps false positives bounded: a single source can only warn. Real blocks
+        require two independent catalogs to agree.</p>
+      <div class="footer-line">Best at: <strong>known campaigns, named packages, post-disclosure threats.</strong></div>
+    </div>
+    <div class="col-card proactive">
+      <span class="pill-mini">Layer 2 / proactive</span>
+      <h3>Watch behavior, not just identity</h3>
+      <p>Sentry runs as a privileged daemon. It correlates process events, file access on sensitive
+        paths, and outbound connections into the exfiltration signature.</p>
+      <p>Fires when an extension host descendant reads credentials and opens a connection: the Nx
+        Console pattern, expressed in behavior.</p>
+      <div class="footer-line">Best at: <strong>zero-day campaigns, novel malware, pre-disclosure.</strong></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SELF DEFENSE ===================== -->
+<section>
+  <div class="self-defense reveal">
+    <div class="left">
+      <div class="eyebrow coral" style="margin-bottom:10px">Built different</div>
+      <h3>A security tool that takes its own integrity seriously.</h3>
+      <p>Checkmarx. Trivy. SAP. TanStack. Bitwarden. Every name on TeamPCP's kill list in 2026 was a
+        security vendor that became an attack vector. Beekeeper plans for its own compromise from day one.</p>
+    </div>
+    <div class="right">
+      <div class="sd-item"><span class="ic">✓</span><div class="text">
+        <strong>Reproducible builds, anyone can verify.</strong>
+        Same commit produces identical bytes. <code>make verify-release</code> ships with every tag.</div></div>
+      <div class="sd-item"><span class="ic">✓</span><div class="text">
+        <strong>Sigstore signed via GitHub Actions OIDC.</strong>
+        No long-lived signing keys to steal. Transparency log entry per release.</div></div>
+      <div class="sd-item"><span class="ic">✓</span><div class="text">
+        <strong>Beekeeper detects Beekeeper compromise.</strong>
+        The <code>beekeeper-self</code> catalog auto-quarantines known-bad releases on next startup.</div></div>
+      <div class="sd-item"><span class="ic">✓</span><div class="text">
+        <strong>Zero non-stdlib dependencies in the core.</strong>
+        Every import is a supply chain link. We minimize ours.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== QUICKSTART ===================== -->
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">Quickstart</div>
+    <h2 class="section-title">Protected in 60 seconds.</h2>
+    <p class="section-lede">Three commands. No configuration required. Beekeeper ships with sane defaults.</p>
+  </div>
+  <div class="quickstart reveal">
+    <div class="qs-step">
+      <div class="qs-head"><span class="ttl">Install</span><span class="num">1</span></div>
+      <div class="desc">Drop the binary into your path. Requires Go 1.25+ or use brew/scoop.</div>
+      <div class="code"><span class="prompt">$</span>go install github.com/bantuson/beekeeper@latest</div>
+    </div>
+    <div class="qs-step">
+      <div class="qs-head"><span class="ttl">Wire your agent</span><span class="num">2</span></div>
+      <div class="desc">Auto-installs the hook into Claude Code. Cursor, Codex, others supported.</div>
+      <div class="code"><span class="prompt">$</span>beekeeper hooks install --target claude-code</div>
+    </div>
+    <div class="qs-step">
+      <div class="qs-head"><span class="ttl">Open the dashboard</span><span class="num">3</span></div>
+      <div class="desc">Launches the calm-mode TUI. Stays quiet until something fires.</div>
+      <div class="code"><span class="prompt">$</span>beekeeper dashboard</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FAQ ===================== -->
+<section>
+  <div class="section-head reveal">
+    <div class="eyebrow">FAQ</div>
+    <h2 class="section-title">Common questions.</h2>
+  </div>
+  <div class="faq reveal">
+    <details class="faq-item" open>
+      <summary>Is Beekeeper a replacement for Snyk, Socket, or Dependabot? <span class="icon">+</span></summary>
+      <p>No. Those answer "is this package vulnerable according to its CVE database?" That question is
+        reactive by design and tuned for human workflows. Beekeeper answers "did an autonomous agent
+        just attempt something an attacker would do?" That needs real-time interception at the
+        tool-call layer. They complement each other.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Does Beekeeper send my code or data anywhere? <span class="icon">+</span></summary>
+      <p>No. The audit log writes to disk locally by default. Optional sinks exist for teams that want
+        centralized logging, but they require explicit configuration. No telemetry, no phone-home.</p>
+    </details>
+    <details class="faq-item">
+      <summary>What's the performance cost? <span class="icon">+</span></summary>
+      <p>Hook latency targets sub-100ms p99. The optional Sentry daemon averages 0.5-3% of one CPU
+        core and 200MB resident. Lighter than Slack desktop.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Does it work on Windows? <span class="icon">+</span></summary>
+      <p>Yes, fully. Cross-platform parity was a v1.0 ship requirement. Beekeeper uses <a href="#">Pollen</a>
+        (our Windows-compatible inventory layer derived from Bumblebee) as the on-disk scanner.</p>
+    </details>
+    <details class="faq-item">
+      <summary>Can I trust the binary I just downloaded? <span class="icon">+</span></summary>
+      <p>Verify it yourself. Every release ships with Sigstore signatures, SLSA L3 provenance, and
+        reproducible build instructions. The <code>make verify-release</code> target reproduces the
+        binary and compares hashes. <strong>Distrust is the appropriate posture.</strong> Don't trust
+        us; verify us.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ===================== CTA ===================== -->
+<div class="cta-banner">
+  <h2>Run agents like you mean it.</h2>
+  <p>Beekeeper is open source, dogfooded daily, and ready for your machine.</p>
+  <div class="cta-row">
+    <a href="#" class="cta-primary">Get started <span>→</span></a>
+    <a href="#" class="cta-secondary"><span style="color:var(--amber)">★</span> Star on GitHub</a>
+  </div>
+</div>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="meta"><span><span class="brand">⬡</span> Beekeeper</span>
+      <span style="color:var(--dimmer)">·</span><span>Apache 2.0</span>
+      <span style="color:var(--dimmer)">·</span><span>v1.0.0</span></div>
+    <div class="meta"><a href="#">Docs</a><a href="#">GitHub</a><a href="#">Threat intel</a>
+      <a href="#">Pollen</a><a href="#">Security disclosure</a><a href="#">Status</a></div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =========================================================
+   HIVE GRID: the hero backdrop.
+   A wide, near-rectangular honeycomb of hex cells sitting
+   behind the hero text. Cells rest in dim amber. Sequences
+   of cells light up and travel across the grid in diagonal
+   waves, like signal propagating through the lattice. No
+   particles, no badges. Calm by default, occasional brighter
+   coral sweep to suggest a caught event. Graceful fallback
+   to a static dim honeycomb if WebGL is unavailable.
+========================================================= */
+(function(){
+  const canvas = document.getElementById('hive-canvas');
+  let gl;
+  try { gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl'); }
+  catch(e){ gl = null; }
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(!gl || !window.THREE){ canvas.style.display='none'; return; }
+
+  const C = { amber:0xe3b341, coral:0xf0883e, dim:0x2b3543 };
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.set(0, 0, 20);
+
+  const renderer = new THREE.WebGLRenderer({canvas, alpha:true, antialias:true});
+  renderer.setClearColor(0x000000, 0);
+
+  const group = new THREE.Group();
+  scene.add(group);
+
+  // ---- build a wide, near-rectangular pointy-top hex grid ----
+  // columns wider than rows so it fills page width as a rectangle-ish field
+  const COLS = 22, ROWS = 9;
+  const hexR = 0.62;            // cell radius
+  const hStep = hexR * 1.5;     // horizontal spacing (pointy-top)
+  const vStep = hexR * Math.sqrt(3); // vertical spacing
+  const cells = [];
+
+  const ringGeo = new THREE.EdgesGeometry(new THREE.CircleGeometry(hexR, 6));
+  const fillGeo = new THREE.CircleGeometry(hexR*0.92, 6);
+
+  const wOff = (COLS-1)*hStep/2;
+  const hOff = (ROWS-1)*vStep/2;
+
+  for(let c=0;c<COLS;c++){
+    for(let r=0;r<ROWS;r++){
+      const x = c*hStep - wOff;
+      const y = r*vStep - hOff + (c%2 ? vStep/2 : 0);
+      // slight z curvature so edges fall away gently
+      const edge = Math.abs(x)/wOff;
+      const z = -edge*edge*2.2;
+
+      const ring = new THREE.LineSegments(ringGeo,
+        new THREE.LineBasicMaterial({color:C.dim, transparent:true, opacity:0.22}));
+      ring.position.set(x,y,z);
+      ring.rotation.z = Math.PI/6; // pointy-top
+      group.add(ring);
+
+      const fill = new THREE.Mesh(fillGeo,
+        new THREE.MeshBasicMaterial({color:C.amber, transparent:true, opacity:0.0, side:THREE.DoubleSide}));
+      fill.position.set(x,y,z);
+      fill.rotation.z = Math.PI/6;
+      fill.userData = { c, r, x, y, lit:0, hue:0 }; // lit 0..1, hue 0=amber 1=coral
+      group.add(fill);
+      cells.push(fill);
+    }
+  }
+
+  // ---- traveling wave sequences ----
+  // a wave is a diagonal line that sweeps across columns over time,
+  // lighting cells whose phase matches. occasional coral wave.
+  const waves = [];
+  function spawnWave(coral){
+    waves.push({
+      pos: -3,                       // leading column position
+      speed: 0.05 + Math.random()*0.04,
+      slope: (Math.random()*2-1)*0.5, // diagonal tilt
+      width: 1.6 + Math.random()*1.2, // how many columns wide the glow band is
+      coral: !!coral,
+      life: 1
+    });
+  }
+  // seed a couple calm waves
+  spawnWave(false);
+  setTimeout(()=>spawnWave(false), 1400);
+
+  let waveTimer = 0;
+  let coralTimer = 0;
+
+  function resize(){
+    const r = canvas.getBoundingClientRect();
+    const w = r.width, h = r.height || 460;
+    renderer.setSize(w, h, false);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    camera.aspect = w/h; camera.updateProjectionMatrix();
+    // frame the grid: pull camera so the wide grid fills width
+    camera.position.z = Math.max(15, 26 - (w/100));
+  }
+  window.addEventListener('resize', resize);
+
+  let t = 0;
+  function animate(){
+    requestAnimationFrame(animate);
+    t++;
+
+    // very gentle parallax tilt, no full rotation
+    group.rotation.y = Math.sin(t*0.0009)*0.10;
+    group.rotation.x = Math.sin(t*0.0007)*0.05;
+
+    // schedule new calm waves periodically
+    waveTimer--;
+    if(waveTimer<=0){ spawnWave(false); waveTimer = 180 + (Math.random()*160|0); }
+    // occasional coral "caught event" sweep, rarer
+    coralTimer--;
+    if(coralTimer<=0){ spawnWave(true); coralTimer = 620 + (Math.random()*400|0); }
+
+    // advance waves, compute target lit per cell
+    for(let i=cells.length;i--;){ cells[i].userData._target = 0; cells[i].userData._th = 0; }
+
+    for(let w=waves.length;w--;){
+      const wv = waves[w];
+      wv.pos += wv.speed;
+      // map wave column position; the "front" is at wv.pos, tilted by slope*row
+      for(let i=0;i<cells.length;i++){
+        const ud = cells[i].userData;
+        const front = wv.pos + ud.r*wv.slope;
+        const dC = Math.abs(ud.c - front);
+        if(dC < wv.width){
+          const intensity = (1 - dC/wv.width);
+          if(intensity > ud._target){ ud._target = intensity; ud._th = wv.coral?1:0; }
+        }
+      }
+      if(wv.pos > COLS + 4) waves.splice(w,1);
+    }
+
+    // ease each cell toward its target, render color
+    const amberC = new THREE.Color(C.amber);
+    const coralC = new THREE.Color(C.coral);
+    for(let i=0;i<cells.length;i++){
+      const ud = cells[i].userData;
+      ud.lit += (ud._target - ud.lit) * 0.14;
+      ud.hue += (ud._th - ud.hue) * 0.10;
+      const baseGlow = 0.04; // resting dim amber fill
+      const op = baseGlow + ud.lit*0.62;
+      cells[i].material.opacity = op;
+      if(ud.hue > 0.02){
+        const col = amberC.clone().lerp(coralC, ud.hue);
+        cells[i].material.color.copy(col);
+      } else {
+        cells[i].material.color.copy(amberC);
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  resize();
+  if(reduced){
+    // static: light a soft diagonal band once, no loop
+    for(let i=0;i<cells.length;i++){
+      const ud = cells[i].userData;
+      ud.lit = Math.max(0, 0.5 - Math.abs(ud.c - COLS*0.5 + ud.r*0.3)/6);
+      cells[i].material.opacity = 0.04 + ud.lit*0.4;
+    }
+    renderer.render(scene, camera);
+  } else {
+    animate();
+  }
+})();
+/* ---- install tab switcher ---- */
+(function(){
+  const tabs = document.querySelectorAll('.install-tab');
+  const cmd = document.querySelector('.install-body .cmd');
+  const map = {
+    0:'go install <span class="em">github.com/bantuson/beekeeper</span>/cmd/beekeeper@latest',
+    1:'brew install <span class="em">bantuson/tap/beekeeper</span>',
+    2:'scoop install <span class="em">beekeeper</span>',
+    3:'docker run <span class="em">ghcr.io/bantuson/beekeeper</span>:latest'
+  };
+  tabs.forEach((tab,i)=>{
+    tab.addEventListener('click',()=>{
+      tabs.forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      if(map[i]) cmd.innerHTML = map[i];
+    });
+  });
+})();
+
+/* ---- scroll reveal ---- */
+(function(){
+  const els = document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window)){ els.forEach(e=>e.classList.add('in')); return; }
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {threshold:0.12});
+  els.forEach(e=>io.observe(e));
+})();
+
+/* ---- copy button ---- */
+(function(){
+  const copy = document.querySelector('.install-body .copy');
+  if(!copy) return;
+  copy.addEventListener('click',()=>{
+    const cmd = document.querySelector('.install-body .cmd').innerText;
+    navigator.clipboard && navigator.clipboard.writeText(cmd);
+    const old = copy.textContent; copy.textContent='copied'; copy.style.color='#3fb950';
+    setTimeout(()=>{copy.textContent=old; copy.style.color='';},1400);
+  });
+})();
+</script>
+</body>
+</html>
