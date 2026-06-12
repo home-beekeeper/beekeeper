@@ -141,6 +141,17 @@ func MoveTyped(quarantineDir, artifactPath string, m Manifest) (id string, err e
 		m.ArtifactType = ArtifactTypeEditorExtension
 	}
 
+	// F-2: refuse to move a symlink/junction source. os.Rename on a path that
+	// resolves through a reparse point would relocate the redirected target (a
+	// sibling project or shared cache the install never owned) into quarantine.
+	// Fail closed and leave the artifact in place, mirroring the cross-device
+	// refusal contract above.
+	if isLink, lerr := isReparsePoint(artifactPath); lerr != nil {
+		return "", fmt.Errorf("quarantine: stat source %q: %w", artifactPath, lerr)
+	} else if isLink {
+		return "", fmt.Errorf("quarantine: refusing to move %q: source is a symlink or reparse point (junction)", artifactPath)
+	}
+
 	// Move the artifact directory into quarantine.
 	if err := os.Rename(artifactPath, destDir); err != nil {
 		return "", fmt.Errorf("quarantine: move %q -> %q: %w", artifactPath, destDir, err)
@@ -330,6 +341,30 @@ func Restore(quarantineDir, id string) error {
 	}) {
 		if part == ".." {
 			return fmt.Errorf("quarantine: manifest original_path %q contains path traversal — refusing restore", m.OriginalPath)
+		}
+	}
+
+	// F-2: refuse to restore through a symlink/junction. Reject if the quarantine
+	// entry source itself is a reparse point.
+	if isLink, lerr := isReparsePoint(entryDir); lerr != nil {
+		return fmt.Errorf("quarantine: stat entry %q: %w", entryDir, lerr)
+	} else if isLink {
+		return fmt.Errorf("quarantine: refusing to restore %q: quarantine entry is a symlink or reparse point", safeID)
+	}
+
+	// F-2: re-assert the RESOLVED parent of the destination is not inside the
+	// quarantine dir. A junctioned restore target (parent of OriginalPath is a
+	// junction pointing back into quarantine, or the destination parent is a
+	// symlink) would otherwise route the rename to an operator-unexpected
+	// location. EvalSymlinks may fail when the parent does not yet exist; in
+	// that case fall back to the lexical parent (already validated above), which
+	// preserves the fail-closed posture.
+	destParent := filepath.Dir(m.OriginalPath)
+	if resolvedParent, evalErr := filepath.EvalSymlinks(destParent); evalErr == nil {
+		cleanResolvedParent := filepath.Clean(resolvedParent)
+		if cleanResolvedParent == cleanQuarantine ||
+			strings.HasPrefix(cleanResolvedParent, cleanQuarantine+string(filepath.Separator)) {
+			return fmt.Errorf("quarantine: resolved restore parent %q is inside quarantine dir %q — refusing restore", cleanResolvedParent, cleanQuarantine)
 		}
 	}
 

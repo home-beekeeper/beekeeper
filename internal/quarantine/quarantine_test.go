@@ -3,7 +3,9 @@ package quarantine_test
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -274,6 +276,145 @@ func TestQuarantineRestoreTamperedOriginalPath(t *testing.T) {
 				t.Errorf("[%s] quarantine entry dir was removed even though restore was rejected", tt.name)
 			}
 		})
+	}
+}
+
+// --- F-2: symlink / junction move + restore refusal ---
+
+// TestMoveTypedRefusesSymlinkSource verifies F-2: MoveTyped refuses a source
+// path that is a symlink, leaving the symlink's target directory untouched.
+func TestMoveTypedRefusesSymlinkSource(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	// Real sentinel directory that the symlink will point at. This must NOT be
+	// moved into quarantine.
+	targetDir := filepath.Join(t.TempDir(), "real-sibling")
+	if err := os.MkdirAll(targetDir, 0o700); err != nil {
+		t.Fatalf("mkdir target: %v", err)
+	}
+	sentinel := filepath.Join(targetDir, "do-not-touch.txt")
+	if err := os.WriteFile(sentinel, []byte("sentinel"), 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	// Create the symlink source. On unprivileged Windows os.Symlink fails;
+	// skip in that case (the junction case below is covered separately).
+	linkPath := filepath.Join(t.TempDir(), "node_modules-link")
+	if err := os.Symlink(targetDir, linkPath); err != nil {
+		t.Skipf("os.Symlink unavailable (likely unprivileged Windows): %v", err)
+	}
+
+	m := quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "evil",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}
+
+	_, err := quarantine.MoveTyped(quarantineDir, linkPath, m)
+	if err == nil {
+		t.Fatal("MoveTyped must refuse a symlink source, got nil error")
+	}
+
+	// The symlink target and its sentinel must be untouched.
+	if _, statErr := os.Stat(sentinel); statErr != nil {
+		t.Errorf("symlink target sentinel was disturbed: %v", statErr)
+	}
+	if _, statErr := os.Lstat(linkPath); statErr != nil {
+		t.Errorf("symlink itself should still exist after refusal: %v", statErr)
+	}
+}
+
+// TestMoveTypedRefusesJunctionSource verifies F-2 on Windows junctions created
+// via `mklink /J`. Junctions do not require elevation on most systems, but the
+// test skips cleanly if junction creation is unavailable.
+func TestMoveTypedRefusesJunctionSource(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("junction test is Windows-only")
+	}
+
+	quarantineDir := t.TempDir()
+
+	targetDir := filepath.Join(t.TempDir(), "real-sibling")
+	if err := os.MkdirAll(targetDir, 0o700); err != nil {
+		t.Fatalf("mkdir target: %v", err)
+	}
+	sentinel := filepath.Join(targetDir, "do-not-touch.txt")
+	if err := os.WriteFile(sentinel, []byte("sentinel"), 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	junctionPath := filepath.Join(t.TempDir(), "junction-link")
+	// mklink is a cmd.exe builtin; /J creates a directory junction.
+	cmd := exec.Command("cmd", "/c", "mklink", "/J", junctionPath, targetDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("mklink /J unavailable: %v (%s)", err, string(out))
+	}
+
+	m := quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "evil",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}
+
+	_, err := quarantine.MoveTyped(quarantineDir, junctionPath, m)
+	if err == nil {
+		t.Fatal("MoveTyped must refuse a junction source, got nil error")
+	}
+
+	// The junction target sentinel must be untouched.
+	if _, statErr := os.Stat(sentinel); statErr != nil {
+		t.Errorf("junction target sentinel was disturbed: %v", statErr)
+	}
+}
+
+// TestRestoreRefusesSymlinkEntry verifies F-2: Restore refuses when the
+// quarantine entry directory is itself a symlink.
+func TestRestoreRefusesSymlinkEntry(t *testing.T) {
+	quarantineDir := t.TempDir()
+	extDir := quarantine.ExtensionsDir(quarantineDir)
+	if err := os.MkdirAll(extDir, 0o700); err != nil {
+		t.Fatalf("mkdir extDir: %v", err)
+	}
+
+	// A real directory holding the manifest that the symlinked entry points at.
+	realEntry := filepath.Join(t.TempDir(), "real-entry")
+	if err := os.MkdirAll(realEntry, 0o700); err != nil {
+		t.Fatalf("mkdir real entry: %v", err)
+	}
+	restoreTarget := filepath.Join(t.TempDir(), "restore-target")
+	m := quarantine.Manifest{
+		ID:           "evil.pkg-1.0.0-1",
+		Publisher:    "evil",
+		Name:         "pkg",
+		Version:      "1.0.0",
+		OriginalPath: restoreTarget,
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(realEntry, "beekeeper-manifest.json"), data, 0o600); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	// The quarantine entry directory is a symlink to realEntry.
+	const entryID = "evil.pkg-1.0.0-1"
+	entrySymlink := filepath.Join(extDir, entryID)
+	if err := os.Symlink(realEntry, entrySymlink); err != nil {
+		t.Skipf("os.Symlink unavailable (likely unprivileged Windows): %v", err)
+	}
+
+	err = quarantine.Restore(quarantineDir, entryID)
+	if err == nil {
+		t.Fatal("Restore must refuse a symlinked quarantine entry, got nil error")
+	}
+	// The restore target must not have been created.
+	if _, statErr := os.Stat(restoreTarget); statErr == nil {
+		t.Errorf("restore target should not exist after refusal: %q", restoreTarget)
 	}
 }
 
