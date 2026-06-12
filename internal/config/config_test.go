@@ -380,3 +380,84 @@ func TestLoadCatalogSyncInvalidErrors(t *testing.T) {
 		t.Fatal("Load with out-of-range catalog_sync interval returned nil error, want non-nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// AutoQuarantineConfig knob tests (Task 3 / C1)
+// ---------------------------------------------------------------------------
+
+// TestAutoQuarantineMissingBlockDefaults verifies that an absent auto_quarantine
+// block yields the documented defaults: disabled, dry_run=true, threshold=2.
+func TestAutoQuarantineMissingBlockDefaults(t *testing.T) {
+	path := writeConfig(t, `{}`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AutoQuarantineEnabled() {
+		t.Error("AutoQuarantineEnabled() = true, want false (opt-in default)")
+	}
+	if !cfg.AutoQuarantineDryRun() {
+		t.Error("AutoQuarantineDryRun() = false, want true (dry-run default)")
+	}
+	if got := cfg.AutoQuarantineThreshold(); got != 2 {
+		t.Errorf("AutoQuarantineThreshold() = %d, want 2 (default threshold)", got)
+	}
+}
+
+// TestAutoQuarantineExplicitThreshold3 verifies that an explicit threshold=3
+// is kept verbatim (clamp upper bound).
+func TestAutoQuarantineExplicitThreshold3(t *testing.T) {
+	path := writeConfig(t, `{"auto_quarantine":{"enabled":true,"dry_run":false,"threshold":3}}`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got := cfg.AutoQuarantineThreshold(); got != 3 {
+		t.Errorf("AutoQuarantineThreshold() = %d, want 3", got)
+	}
+	if !cfg.AutoQuarantineEnabled() {
+		t.Error("AutoQuarantineEnabled() = false, want true")
+	}
+	if cfg.AutoQuarantineDryRun() {
+		t.Error("AutoQuarantineDryRun() = true, want false (explicit false)")
+	}
+}
+
+// TestAutoQuarantineThreshold5Rejected verifies that an explicit threshold=5
+// is rejected fail-closed by Load (not silently clamped to 3).
+func TestAutoQuarantineThreshold5Rejected(t *testing.T) {
+	path := writeConfig(t, `{"auto_quarantine":{"enabled":true,"threshold":5}}`)
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load with threshold=5 (out of range) returned nil error, want non-nil")
+	}
+}
+
+// TestAutoQuarantineThreshold0ResolvesToDefault2 verifies the "absent -> default 2"
+// path: a zero/absent threshold must NOT become 1 (the clamp floor); it must become
+// the documented default 2. This mirrors the CatalogSync anti-pattern guard.
+func TestAutoQuarantineThreshold0ResolvesToDefault2(t *testing.T) {
+	// A threshold of 0 is absent/unset — must resolve to 2.
+	path := writeConfig(t, `{"auto_quarantine":{"enabled":false,"threshold":0}}`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got := cfg.AutoQuarantineThreshold(); got != 2 {
+		t.Errorf("AutoQuarantineThreshold() = %d, want 2 (zero -> default 2, not clamp floor 1)", got)
+	}
+}
+
+// TestAutoQuarantineAccessorsOnNilPointer verifies that all three accessors
+// work safely when AutoQuarantine is nil (returns defaults, does not panic).
+func TestAutoQuarantineAccessorsOnNilPointer(t *testing.T) {
+	cfg := Config{} // AutoQuarantine is nil
+	if cfg.AutoQuarantineEnabled() {
+		t.Error("AutoQuarantineEnabled() on nil = true, want false")
+	}
+	if !cfg.AutoQuarantineDryRun() {
+		t.Error("AutoQuarantineDryRun() on nil = false, want true")
+	}
+	if got := cfg.AutoQuarantineThreshold(); got != 2 {
+		t.Errorf("AutoQuarantineThreshold() on nil = %d, want 2", got)
+	}
+}
