@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"log"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -183,9 +184,31 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 
 	var hits []ScanHit
 
-	for _, rec := range pkgRecords {
-		multiIdx := catalog.NewMultiIndex(bbIdx, nil, nil)
+	// F-7: construct the MultiIndex ONCE per pass — it was previously rebuilt
+	// identically on every iteration (bbIdx/nil/nil never change within a pass),
+	// which is pure allocation churn on the catalog-watch goroutine.
+	multiIdx := catalog.NewMultiIndex(bbIdx, nil, nil)
 
+	// F-7: open a single audit Writer for the whole pass (deferred Close) instead
+	// of open/close per finding. A nil writer (open failed or AuditPath empty)
+	// disables audit writes without affecting hit detection.
+	var auditWriter *audit.Writer
+	if cfg.AuditPath != "" {
+		if w, werr := audit.NewWriter(cfg.AuditPath); werr == nil {
+			auditWriter = w
+			defer auditWriter.Close()
+		}
+	}
+
+	// F-7: cap the number of findings audited per pass so a catalog delta that
+	// matches a very large inventory cannot stall the watch loop with unbounded
+	// file writes. Detection (the returned hits slice) is NOT capped; only the
+	// per-finding audit write is. Truncation is logged (no silent cap).
+	const maxAuditedFindings = 1000
+	auditedFindings := 0
+	auditTruncated := false
+
+	for _, rec := range pkgRecords {
 		tc := policy.ToolCall{
 			ToolName: "scan",
 			ToolInput: map[string]any{
@@ -226,7 +249,7 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 		hits = append(hits, hit)
 
 		// Audit the finding as a "finding" record — read-only, no package mutation.
-		if cfg.AuditPath != "" {
+		if auditWriter != nil && auditedFindings < maxAuditedFindings {
 			auditRec := audit.FromDecision(tc, decision, generateRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 			auditRec.RecordType = "finding"
 			// F-1 (TM-D-03): route the record through the redaction chokepoint
@@ -235,11 +258,16 @@ func CrossReference(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error) 
 			// CatalogMatches[].Package/EntryID) that must never reach the on-disk
 			// or remote-sink audit log verbatim.
 			auditRec = audit.RedactRecord(auditRec, audit.DefaultRedactPatterns())
-			if w, err := audit.NewWriter(cfg.AuditPath); err == nil {
-				_ = w.Write(auditRec)
-				w.Close()
-			}
+			_ = auditWriter.Write(auditRec)
+			auditedFindings++
+		} else if auditWriter != nil && auditedFindings >= maxAuditedFindings {
+			auditTruncated = true
 		}
+	}
+
+	// F-7: surface the cap so a truncated audit is never silent (no-silent-cap rule).
+	if auditTruncated {
+		log.Printf("beekeeper cross-reference: audited findings capped at %d this pass; remaining matches detected but not written to the audit log", maxAuditedFindings)
 	}
 
 	return hits, nil
