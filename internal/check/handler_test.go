@@ -1385,3 +1385,132 @@ func TestHermesHookNoRawDecisionLeak(t *testing.T) {
 		t.Errorf("Hermes ExitCode = %d, want 0", out.ExitCode)
 	}
 }
+
+// ─── Phase 23 Task 1/3: Corpus write error injection + BenchmarkRunCheck ─────
+
+// TestCorpusWriteErrorDoesNotChangeExitCode verifies ADJ-01 (fail-closed invariant):
+// an injected corpus write error MUST NOT change the hook exit code. A block stays
+// a block (exit 1) and an allow stays an allow (exit 0) regardless of the corpus.
+//
+// The corpus write error is injected by pointing cfg.Corpus.Path at a directory
+// (causing "is a directory" OS error when opening the file). The test confirms
+// that:
+//   (a) a policy BLOCK with a bad corpus path exits 1 (block preserved)
+//   (b) a policy ALLOW with a bad corpus path exits 0 (allow preserved)
+//
+// handler.go MUST NOT import corpus's adjudicator or call RunAdjudicationBatch
+// on the hot path — only the corpus StoreSink write goes through the chokepoint.
+func TestCorpusWriteErrorDoesNotChangeExitCode(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+
+	// Use a directory path as the corpus path to force a write error.
+	// os.OpenFile on a directory returns "is a directory" on both Unix and Windows.
+	corpusErrPath := filepath.Join(dir, "not-a-file-this-is-a-dir")
+	if err := os.MkdirAll(corpusErrPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll corpus dir: %v", err)
+	}
+
+	// Corpus-enabled config pointing at a directory (will error on write).
+	corpusCfg := config.Config{
+		FailMode: config.FailModeClosed,
+		Corpus: config.CorpusConfig{
+			Enabled: true,
+			// Path is resolved by the handler; we override StateDir via env
+			// so ResolveCorpusPath uses our bad path.
+			// Actually: set BEEKEEPER_HOME to a custom dir that ResolveCorpusPath
+			// would default to — but easier to use a bad corpus stateDir.
+			// The handler calls platform.StateDir() internally; on Windows that's
+			// %APPDATA%\beekeeper. We can't trivially override it in tests without
+			// env manipulation. Instead, set Corpus.Path directly to the directory.
+			Path: corpusErrPath,
+		},
+	}
+
+	// Case (a): policy BLOCK — a catalog hit that produces a block-level decision.
+	// Use the Nx Console compromised package from our test index. Single unsigned
+	// source → warn, not block. To get a real block we need two signed sources,
+	// which requires CLI-level plumbing. Instead, test that a catalog-hit (warn)
+	// with corpus error still exits 0 (allow path in warn context), and separately
+	// test a syntactically fail-closed path (malformed JSON) with corpus enabled.
+	//
+	// Real-block test: use the fail-closed malformed-JSON path (which fails with
+	// Allow=false, ExitCode=1 via failDecision) — the corpus write attempt happens
+	// inside finalizeWithAC, so we test that path too.
+	stdinBlock := strings.NewReader("{bad json")
+	resBlock := runCheck(context.Background(), stdinBlock, corpusCfg, idxPath, auditPathIn(t), t.TempDir(), defaultOpener, io.Discard)
+	if resBlock.Decision.Allow {
+		t.Errorf("(block path) Allow = true, want false (fail-closed on malformed JSON)")
+	}
+	if resBlock.ExitCode != exitBlock {
+		t.Errorf("(block path) ExitCode = %d, want %d — corpus write error must not change block to allow",
+			resBlock.ExitCode, exitBlock)
+	}
+
+	// Case (b): policy ALLOW — a clean fictional package with corpus error.
+	stdinAllow := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-test-clean-package-xyz-not-real@1.0.0"}}`)
+	resAllow := runCheck(context.Background(), stdinAllow, corpusCfg, idxPath, auditPathIn(t), t.TempDir(), defaultOpener, io.Discard)
+	if !resAllow.Decision.Allow {
+		t.Errorf("(allow path) Allow = false, want true — clean package should be allowed")
+	}
+	if resAllow.ExitCode != exitAllow {
+		t.Errorf("(allow path) ExitCode = %d, want %d — corpus write error must not change allow to block",
+			resAllow.ExitCode, exitAllow)
+	}
+}
+
+// BenchmarkRunCheck measures the end-to-end RunCheck latency with corpus enabled.
+// The benchmark drives runCheck with cfg.Corpus.Enabled=true and a real temp
+// StoreSink backed by a temp file. The p99 latency must be < 100ms (ADJ-01 /
+// LAUNCH-03 gate).
+//
+// Note: Go benchmarks report ns/op (nanoseconds per operation). The p99 eyeball
+// is a manual check: run with -bench=BenchmarkRunCheck -benchtime=10s and confirm
+// the reported ns/op < 100,000,000 (100ms). This is documented in
+// 23-VALIDATION.md §Manual-Only.
+func BenchmarkRunCheck(b *testing.B) {
+	dir := b.TempDir()
+	idxPath := buildTestIndexB(b, dir)
+
+	// Corpus enabled; the temp stateDir will be used for ResolveCorpusPath default.
+	// We set Corpus.Path to a writable temp file to avoid hitting the real StateDir.
+	corpusPath := filepath.Join(dir, "corpus", "bench-corpus.ndjson")
+	if err := os.MkdirAll(filepath.Dir(corpusPath), 0o700); err != nil {
+		b.Fatalf("MkdirAll corpus dir: %v", err)
+	}
+	cfg := config.Config{
+		FailMode: config.FailModeClosed,
+		Corpus: config.CorpusConfig{
+			Enabled: true,
+			Path:    corpusPath,
+		},
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-test-clean-package-xyz-not-real@1.0.0"}}`)
+		runCheck(context.Background(), stdin, cfg, idxPath, filepath.Join(dir, "audit.ndjson"), dir, defaultOpener, io.Discard)
+	}
+}
+
+// buildTestIndexB is the benchmark helper variant of buildTestIndex.
+func buildTestIndexB(b *testing.B, dir string) string {
+	b.Helper()
+	entries := []catalog.Entry{
+		{
+			ID:            "stepsecurity-2026-05-18-vscode-nrwl-angular-console-compromised",
+			Name:          "nrwl.angular-console compromise",
+			Ecosystem:     "editor-extension",
+			Package:       "nrwl.angular-console",
+			Versions:      []string{"18.95.0"},
+			Severity:      "critical",
+			CatalogSource: "bumblebee",
+		},
+	}
+	idxPath := filepath.Join(dir, "bumblebee.idx")
+	if err := catalog.BuildIndex(idxPath, entries); err != nil {
+		b.Fatalf("BuildIndex: %v", err)
+	}
+	return idxPath
+}
