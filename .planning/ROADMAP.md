@@ -94,12 +94,12 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
   4. `scope` zero-value resolves to `org_only`; the only scope-changing path errors in v1 (SCOPE-01/02).
   5. `behavior_signature_hash` input + `ruleset_version` are frozen and documented (SCHEMA-05).
 
-- [ ] **Phase 23: Corpus Store & Adjudication Engine** (ADJ-01..07, STORE-01..05, ENV-01..03) — **Plans:** 3 plans (2 waves), planned 2026-06-13
+- [x] **Phase 23: Corpus Store & Adjudication Engine** (ADJ-01..07, STORE-01..05, ENV-01..03) — ✅ COMPLETE 2026-06-14 (3/3 plans; verifier 5/5; full suite green + ENV-03 fuzz 316k/0 + BenchmarkRunCheck ~25ms; orchestrator-caught ADJ-01 benchmark defect fixed before verify)
   Goal: Stand up the append-only local corpus store (as an `audit.Sink`) and the off-hot-path adjudication engine assigning the outcome layer with corroboration-gated confidence, emitting records in envelope shape.
   Plans:
-  - [ ] 23-01-PLAN.md — Corpus store (StoreSink as audit.Sink, redaction-first, append-only, 0600) + HMAC-SHA256 fingerprints + per-install salt (Wave 1) — STORE-01/02/03/04/05, ENV-01
-  - [ ] 23-02-PLAN.md — Emitter adapter (MapToCorpusRecord) + BuildPushEnvelope purge gate + Ed25519 signer stub + ENV-03 FuzzBuildPushEnvelope release gate (Wave 1) — ENV-01/02/03, ADJ-04/05
-  - [ ] 23-03-PLAN.md — Adjudicator (pure Adjudicate + bounded RunAdjudicationBatch) + runCatalogsSync batch-pass wiring + hot-path corpus write + MultiSink integration + BenchmarkRunCheck (Wave 2) — ADJ-01/02/03/04/05/06/07, ENV-01
+  - [x] 23-01-PLAN.md — Corpus store (StoreSink as audit.Sink, redaction-first, append-only, 0600) + HMAC-SHA256 fingerprints + per-install salt (Wave 1) — STORE-01/02/03/04/05, ENV-01
+  - [x] 23-02-PLAN.md — Emitter adapter (MapToCorpusRecord) + BuildPushEnvelope purge gate + Ed25519 signer stub + ENV-03 FuzzBuildPushEnvelope release gate (Wave 1) — ENV-01/02/03, ADJ-04/05
+  - [x] 23-03-PLAN.md — Adjudicator (pure Adjudicate + bounded RunAdjudicationBatch) + runCatalogsSync batch-pass wiring + hot-path corpus write + MultiSink integration + BenchmarkRunCheck (Wave 2) — ADJ-01/02/03/04/05/06/07, ENV-01
   Success criteria:
   1. A synthetic incident records all four layers; a two-source adjudication is marked `enforce` weight, a one-source adjudication `watch` weight, with `source_count` from DISTINCT sources (ADJ-04/05).
   2. Records emit in push-envelope shape and persist append-only + owner-only; an injected secret-shaped field is redacted in the persisted file (STORE-01/02/04, ENV-01).
@@ -169,6 +169,6 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 | 20. Runtime Hardening II (Tiers 1–3) | v1.3.0 | 6/6 | Complete | 2026-06-11 |
 | 21. Full-System Validation & CI Calibration | v1.3.0 | 4/4 | Complete | 2026-06-11 |
 | 22. Schema & Envelope Lock | v1.4.0 | 3/3 | Complete | 2026-06-13 |
-| 23. Corpus Store & Adjudication Engine | v1.4.0 | 0/3 | Planned (3 plans / 2 waves) | — |
+| 23. Corpus Store & Adjudication Engine | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 24. First Responder Corpus Binding | v1.4.0 | 0/? | Not started | — |
 | 25. Launch Readiness | v1.4.0 | 0/? | Not started | — |
