@@ -115,6 +115,40 @@ func findSeverityOverride(
 	return best
 }
 
+// CorroborationOutcome is the pure-function result consumed by the corpus
+// adjudication engine (Phase 23, internal/corpus). It contains only the fields
+// needed for corpus source_count and confidence_tier derivation.
+//
+// confidence_tier mapping (Pitfall 4 / 2FA invariant):
+//
+//	count >= t.BlockAt → "enforce" (two or more independent signed sources)
+//	count < t.BlockAt  → "watch"   (single source, or no sources)
+//
+// CRITICAL: the tier is derived from count >= t.BlockAt, NEVER from level ==
+// "block". A single-source critical-severity block (severity override BlockAt:1)
+// has level "block" but count 1, and must map to confidence_tier "watch" in the
+// corpus record — it records the corroboration tier, not the enforcement action.
+type CorroborationOutcome struct {
+	SourceCount    int    // number of distinct SIGNED sources that agreed
+	ConfidenceTier string // "watch" (count < BlockAt) | "enforce" (count >= BlockAt)
+}
+
+// CorroborateOutcome is an exported wrapper over the unexported corroborate()
+// function, returning only the fields the corpus adjudication engine needs.
+// It is a pure function — no I/O, no goroutines, no side effects.
+// Imports remain only "fmt" and "sort" (the unexported corroborate already uses
+// them; no new imports are added by this wrapper).
+//
+// See CorroborationOutcome for the tier-mapping contract.
+func CorroborateOutcome(matches []CatalogMatch, t CorroborationThresholds) CorroborationOutcome {
+	_, _, count, _, _ := corroborate(matches, t)
+	tier := "watch"
+	if count >= t.BlockAt {
+		tier = "enforce"
+	}
+	return CorroborationOutcome{SourceCount: count, ConfidenceTier: tier}
+}
+
 func corroborate(matches []CatalogMatch, t CorroborationThresholds) (level string, quarantine bool, count int, agreed, dissented []string) {
 	if err := validateCorroborationThresholds(t); err != nil {
 		// Misconfigured thresholds — fail closed to block.

@@ -461,3 +461,59 @@ func TestAutoQuarantineAccessorsOnNilPointer(t *testing.T) {
 		t.Errorf("AutoQuarantineThreshold() on nil = %d, want 2", got)
 	}
 }
+
+// TestCorpusConfig verifies Phase 22 CorpusConfig JSON round-trip (SCHEMA-01/05).
+//
+// A config document containing {"corpus":{...}} must unmarshal into Config.Corpus
+// with the correct values. A config with no corpus key must leave Corpus at its
+// zero value (Enabled:false).
+func TestCorpusConfig(t *testing.T) {
+	t.Run("corpus block round-trips from JSON", func(t *testing.T) {
+		path := writeConfig(t, `{"corpus":{"enabled":true,"path":"/x/corpus.ndjson","scope":"org_only"}}`)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if !cfg.Corpus.Enabled {
+			t.Errorf("Corpus.Enabled = false, want true")
+		}
+		if cfg.Corpus.Path != "/x/corpus.ndjson" {
+			t.Errorf("Corpus.Path = %q, want %q", cfg.Corpus.Path, "/x/corpus.ndjson")
+		}
+		if cfg.Corpus.Scope != "org_only" {
+			t.Errorf("Corpus.Scope = %q, want %q", cfg.Corpus.Scope, "org_only")
+		}
+	})
+
+	t.Run("missing corpus key leaves Corpus at zero value (Enabled false)", func(t *testing.T) {
+		path := writeConfig(t, `{"fail_mode":"closed"}`)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.Corpus.Enabled {
+			t.Error("Corpus.Enabled = true, want false (absent corpus block must default to disabled)")
+		}
+		if cfg.Corpus.Path != "" {
+			t.Errorf("Corpus.Path = %q, want empty", cfg.Corpus.Path)
+		}
+		if cfg.Corpus.Scope != "" {
+			t.Errorf("Corpus.Scope = %q, want empty", cfg.Corpus.Scope)
+		}
+	})
+
+	t.Run("corpus block with community_shareable scope parses without error", func(t *testing.T) {
+		path := writeConfig(t, `{"corpus":{"enabled":false,"scope":"community_shareable"}}`)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.Corpus.Scope != "community_shareable" {
+			t.Errorf("Corpus.Scope = %q, want %q", cfg.Corpus.Scope, "community_shareable")
+		}
+		// Enabled must be false (v1: community_shareable has no effect, PromoteScope errors)
+		if cfg.Corpus.Enabled {
+			t.Error("Corpus.Enabled = true, want false")
+		}
+	})
+}

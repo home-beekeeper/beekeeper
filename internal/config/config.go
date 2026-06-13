@@ -464,6 +464,27 @@ func (c Config) AutoQuarantineThreshold() int {
 	return parseClampAutoQuarantineThreshold(c.AutoQuarantine.Threshold)
 }
 
+// CorpusConfig holds Phase 22+ corpus configuration (SCHEMA-01/02/05).
+//
+// Follows the same pattern as AuditConfig. This block is additive and backward-
+// compatible: a missing "corpus" key in config.json leaves Corpus at its zero
+// value (Enabled:false, empty Path/Scope), which is the safe default until
+// Phase 23 wires the store.
+type CorpusConfig struct {
+	// Enabled controls whether the corpus store is active. Default false until
+	// Phase 23 wires the append-only NDJSON store. Setting true before Phase 23
+	// has no effect — the store is not yet implemented.
+	Enabled bool `json:"enabled"`
+	// Path overrides the default corpus file location.
+	// Default (when empty): StateDir()/corpus/beekeeper-corpus.ndjson
+	Path string `json:"path,omitempty"`
+	// Scope is the default scope for new records.
+	// Valid values: "org_only" (default) or "community_shareable".
+	// "community_shareable" is reserved for v2.0 — setting it in v1 has no effect
+	// (PromoteScope always returns an error until anonymization is implemented).
+	Scope string `json:"scope,omitempty"`
+}
+
 // SelfCatalogConfig holds configuration for the beekeeper-self catalog source
 // (Phase 9, CTLG-04/SFDF-06). The self-catalog is a separately-hosted feed
 // verified against a distinct public key embedded in the binary. It is checked
@@ -541,6 +562,13 @@ type Config struct {
 	// ValidateAutoQuarantineConfig so an out-of-range threshold is rejected
 	// at load time rather than silently clamped.
 	AutoQuarantine *AutoQuarantineConfig `json:"auto_quarantine,omitempty"`
+
+	// Corpus holds Phase 22+ corpus configuration (SCHEMA-01/02/05).
+	// Absent or zero-value means corpus is disabled (Enabled:false), which is the
+	// safe default until Phase 23 wires the append-only store. The corpus block
+	// defines the type and config shape only; no decision behavior is changed in
+	// Phase 22 (store wiring is Phase 23, T-22-04).
+	Corpus CorpusConfig `json:"corpus,omitempty"`
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.

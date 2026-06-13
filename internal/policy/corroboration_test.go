@@ -353,6 +353,61 @@ func TestDefaultThresholdsIncludeSeverityOverrides(t *testing.T) {
 	}
 }
 
+// TestCorroborateOutcome verifies the exported CorroborateOutcome wrapper.
+//
+// CRITICAL: confidence_tier is derived from count >= t.BlockAt, NEVER from
+// level == "block" (Pitfall 4 / 2FA invariant). A single-source critical-severity
+// block has level "block" but count 1 (< BlockAt=2) and must return "watch".
+func TestCorroborateOutcome(t *testing.T) {
+	t.Run("two signed independent sources returns enforce", func(t *testing.T) {
+		// Two independent signed sources (count=2, default BlockAt=2) → enforce.
+		matches := []CatalogMatch{
+			{CatalogSource: "bumblebee", Signed: true},
+			{CatalogSource: "osv", Signed: true},
+		}
+		got := CorroborateOutcome(matches, DefaultCorroborationThresholds())
+		if got.SourceCount != 2 {
+			t.Errorf("SourceCount = %d, want 2", got.SourceCount)
+		}
+		if got.ConfidenceTier != "enforce" {
+			t.Errorf("ConfidenceTier = %q, want %q (count=%d >= BlockAt=%d)",
+				got.ConfidenceTier, "enforce", got.SourceCount, DefaultCorroborationThresholds().BlockAt)
+		}
+	})
+
+	t.Run("single-source critical block returns watch (Pitfall 4 / 2FA invariant)", func(t *testing.T) {
+		// One signed source (OSV) with a critical-severity match from bumblebee
+		// (unsigned). The default SeverityOverrides["critical"].BlockAt=1 causes
+		// corroborate() to return level="block" but count=1 (only OSV is signed).
+		// CorroborateOutcome must derive tier from count < BlockAt=2, NOT from
+		// level="block" — so it must return "watch" (the 2FA invariant).
+		matches := []CatalogMatch{
+			{CatalogSource: "bumblebee", Severity: "critical", Signed: false},
+			{CatalogSource: "osv", Severity: "unknown", Signed: true},
+		}
+		thresholds := DefaultCorroborationThresholds() // critical override BlockAt:1
+		got := CorroborateOutcome(matches, thresholds)
+		if got.SourceCount != 1 {
+			t.Errorf("SourceCount = %d, want 1 (only OSV is signed)", got.SourceCount)
+		}
+		// CRITICAL: must be "watch", NOT "enforce" — tier from count, not level.
+		if got.ConfidenceTier != "watch" {
+			t.Errorf("ConfidenceTier = %q, want %q — single-source critical block must be watch (Pitfall 4)",
+				got.ConfidenceTier, "watch")
+		}
+	})
+
+	t.Run("no matches returns watch with zero source count", func(t *testing.T) {
+		got := CorroborateOutcome(nil, DefaultCorroborationThresholds())
+		if got.SourceCount != 0 {
+			t.Errorf("SourceCount = %d, want 0", got.SourceCount)
+		}
+		if got.ConfidenceTier != "watch" {
+			t.Errorf("ConfidenceTier = %q, want %q", got.ConfidenceTier, "watch")
+		}
+	})
+}
+
 // TestCorroborationImportsArePure enforces the purity contract: corroboration.go
 // must not import any package that performs I/O, concurrency, or wall-clock
 // access. Replicates the pattern from TestEngineImportsArePure.
