@@ -22,6 +22,26 @@ Shipped: single static Go binary; pure corroboration policy engine; editor-exten
 
 **Carried to v1.x:** live external `beekeeper-self` hosting (separate host + signing key) + end-to-end refuse-to-run; independent external security review + VDP publication; distributed mode / team-shared catalogs; weighted corroboration. Tech stack: Go 1.25, no CGO in core; Python 3.11+ optional sidecar; Bubble Tea v2.
 
+## Current Milestone: v1.4.0 — Adjudicated Corpus (Local Loop)
+
+**Goal:** Capture the moat — incidents with confirmed ground-truth outcomes attached — from the first run on a single, offline machine; wire confirmed adjudications into First Responder; and freeze the push-envelope wire format without standing up any transport.
+
+**Scope source:** `beekeeper-corpus-milestone-prd.md` (repo root), §3 "v1 scope (build now)" only. The PRD's own v1.1–1.9 (org self-host aggregation + push) and v2.0 (community shared corpus feed) are deferred to future milestones. Detailed REQ-IDs in `.planning/REQUIREMENTS.md`.
+
+**Why it's the moat:** the behavior and decision layers of an event are cheap to reproduce and cheap for a competitor to copy. The outcome layer — the confirmed `true_label` and how it was established — cannot be retrofitted onto incidents already discarded, so the schema must capture it from the first run, on one machine, with zero network. Distribution (push) propagates the moat but is not the moat; it is built and hardened after launch.
+
+**Target features:**
+- Moat-grade four-layer event schema (behavior / decision / outcome / context), captured from the first offline run; conditional fields per `source_surface`; `cluster_id` binds correlated non-agent incidents (§3.1)
+- Adjudication engine assigning `true_label` {malicious | benign | policy_correct | unresolved} + `adjudication_source` (6 values), corroboration-gated warn(1)/enforce(2+) with `source_count` recorded, async and off the hot path (§3.2)
+- Append-only, owner-only local corpus store extending the NDJSON audit log (same sink model); never transmitted in v1; records emitted in push-envelope shape (§3.3)
+- First Responder corpus binding — a confirmed-malicious adjudication arms a TUI quarantine card for any matching local install; purge stays human/org-policy gated (never automatic, never fleet-pushable); restore intact; red = attacker, coral = Beekeeper response (§3.4)
+- Push-envelope wire format defined and emitted-in-shape, with NO transport stood up; `watch_and_block` the only pushable `action_hint`; `auto_purge` never present in a pushable envelope (§3.5)
+- Scope tagging on every record from birth — `org_only` (default) vs `community_shareable`; promotion explicit + anonymization-gated (v2.0), never automatic (§3.6)
+
+**Enforcement-stays-local invariant (held across all versions):** the policy engine, Sentry detection, First Responder, and the install-time catalog block all run locally, offline, fail-closed, against the last synced catalog. The corpus loop and (later) push are out of the hot path. The pure libraries (`internal/policy` / `nudge` / `pkgparse`) stay I/O-free.
+
+**Self-defense (this milestone):** the corpus store is owner-only, append-only, and never transmitted in v1; the envelope's pushable-action allowlist (`watch_and_block` only, `auto_purge` never pushable) is the blast-radius guard baked in from the first record, so a future push channel cannot carry a destructive action.
+
 ## Shipped: v1.2.0 — Runtime Behavioral Hardening (2026-06-04)
 
 Closed the three runtime-enforcement gaps live `beekeeper check` validation exposed (F1 critical-malware warn-only, F2 credential reads ALLOW, F3 pnpm/bun catalog bypass), each locked by a behavioral test suite. Delivered: per-severity sanity-gated corroboration escalation (CORR-01/02); `EvaluatePath` wired live into `check` with canonicalization + evasion hardening (SPATH-01..04 + HARDEN-01..03); a single pure `internal/pkgparse` + `internal/nudge` soft-advise/hard-rewrite nudge with the `beekeeper nudge` CLI (NUDGE-01..08); a hermetic live-binary E2E + fuzz release gate (BTEST-01..03). An audit-inserted Phase 9 then cleared the residual tech debt (hermetic CORR E2E gate, `LoadLayered` Nudge-merge root fix, SPATH ancestor-symlink/ADS/verb-boundary hardening, live `version_drift` registry query, Phase-6 Nyquist reconcile, +1 carried-over policy fuzz-build fix). Full detail: [`milestones/v1.2.0-ROADMAP.md`](milestones/v1.2.0-ROADMAP.md).
@@ -38,7 +58,7 @@ Plus Go-core hardening: **Runtime Hardening II (Phase 20)** — an unprivileged 
 
 **One intentional deferral:** SITE-03 (live Vercel deploy) — static export retained, page build-verified locally; carried forward.
 
-> **Next milestone:** TBD. Carried-forward candidates: SITE-03 live Vercel deploy; live external `beekeeper-self` hosting + refuse-to-run E2E; independent external security review + VDP publication; deferred nudge/corroboration follow-ups (NUDGE-F1/F2/F3, CORR-F1); docs command-card-copy split + a full Fumadocs-theme redesign. **Independent of any milestone:** v1.1.0 "Pollen" remains PARKED (see below) — its release train resumes via `docs/release-runbook.md` when the maintainer chooses (the standalone Pollen tool already shipped as v0.2.0 in this cycle).
+> **Next milestone:** v1.4.0 — Adjudicated Corpus (Local Loop) — IN PLANNING (see "Current Milestone" above; scope = `beekeeper-corpus-milestone-prd.md` §3). Carried-forward candidates NOT folded into v1.4.0 scope: SITE-03 live Vercel deploy; live external `beekeeper-self` hosting + refuse-to-run E2E; independent external security review + VDP publication; deferred nudge/corroboration follow-ups (NUDGE-F1/F2/F3, CORR-F1); docs command-card-copy split + a full Fumadocs-theme redesign; the deferred first-responder follow-ons C2 (destructive package-manager uninstall) and C3 (browser-extension + mcp-config quarantine) from quick task 260612-f80. **Independent of any milestone:** v1.1.0 "Pollen" remains PARKED (see below) — its release train resumes via `docs/release-runbook.md` when the maintainer chooses (the standalone Pollen tool already shipped as v0.2.0 in this cycle).
 
 ## Parked Milestone: v1.1.0 Pollen (paused at maintainer release checkpoint — NOT closed)
 
@@ -215,4 +235,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-11 after the v1.3.0 "Web Presence & Documentation" milestone close. v1.3.0 SHIPPED & ARCHIVED (`milestones/v1.3.0-*`) — Next.js home + Fumadocs docs + R3F + Runtime Hardening II + Full-System Validation; one intentional deferral (SITE-03 Vercel deploy). The standalone Pollen tool shipped publicly as signed v0.2.0 in-cycle. v1.0.0 + v1.2.0 SHIPPED & ARCHIVED. v1.1.0 "Pollen" remains PARKED at its maintainer release checkpoint (independent — not archived). Next milestone: TBD.*
+*Last updated: 2026-06-13 — started milestone v1.4.0 "Adjudicated Corpus (Local Loop)" (scope = `beekeeper-corpus-milestone-prd.md` §3; phases 22–25; push transport deferred to a later milestone). v1.3.0 SHIPPED & ARCHIVED 2026-06-11 (`milestones/v1.3.0-*`) — Next.js home + Fumadocs docs + R3F + Runtime Hardening II + Full-System Validation; one intentional deferral (SITE-03 Vercel deploy). The standalone Pollen tool shipped publicly as signed v0.2.0 in-cycle. v1.0.0 + v1.2.0 SHIPPED & ARCHIVED. v1.1.0 "Pollen" remains PARKED at its maintainer release checkpoint (independent — not archived).*
