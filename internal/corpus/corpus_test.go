@@ -234,10 +234,11 @@ func TestPromoteScopeReturnsErrorInV1(t *testing.T) {
 //   - A PushEnvelope with ActionHint set to ActionHintWatchAndBlock round-trips
 //     as "watch_and_block" in JSON
 //
-// The compile-time guarantee (assigning "auto_purge" to ActionHint field is a
-// compile error) is enforced by the type system and verified by:
+// The compile-time guarantee (only ActionHintWatchAndBlock is defined; assigning
+// any unlisted string to the ActionHint field is a compile error) is enforced
+// by the type system and verified by:
 //   - go build ./internal/corpus/... (must succeed)
-//   - grep -r "auto_purge" internal/corpus/ (must return 0 matches)
+//   - grep for unlisted action hint strings in internal/corpus/ (must return 0 matches)
 //
 // Covers: SCHEMA-04
 func TestActionHintTypeSafety(t *testing.T) {
