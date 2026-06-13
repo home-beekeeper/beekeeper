@@ -26,7 +26,7 @@ type AuditRecord struct {
 	ScannerName    string              `json:"scanner_name"` // always "beekeeper"
 	AgentName      string              `json:"agent_name"`
 	ToolName       string              `json:"tool_name"`
-	Decision       string              `json:"decision"` // allow|warn|block
+	Decision       string              `json:"decision"` // allow|warn|block|alert (alert = Sentry detection-only, set by the corpus emitter in Phase 23)
 	Reason         string              `json:"reason"`
 	RuleIDs        []string            `json:"rule_ids"`
 	CatalogMatches []CatalogProvenance `json:"catalog_matches"`
@@ -82,6 +82,29 @@ type AuditRecord struct {
 	ReasonCode       string `json:"reason_code,omitempty"`
 	PMState          string `json:"pm_state,omitempty"` // flattened JSON-string view per §9
 	NudgeAction      string `json:"nudge_action,omitempty"` // closed §9 enum: advise|proceed|rewrite|block
+
+	// Phase 22 corpus-schema additions (SCHEMA-01/02/05):
+	// These three fields are additive omitempty — existing audit consumers are
+	// unaffected (records written before Phase 22 serialize without these keys).
+	// They are set by the corpus emitter (Phase 23) or directly by the Sentry
+	// surface, not by FromDecision (which continues to produce policy_decision
+	// records unchanged).
+
+	// SourceSurface is the branch key identifying which Beekeeper surface produced
+	// this record. Valid values: hook|mcp_gateway|shim|file_watcher|sentry|scan.
+	// Populated by the corpus emitter (Phase 23) from context, or by the Sentry
+	// surface directly. (SCHEMA-01)
+	SourceSurface string `json:"source_surface,omitempty"`
+
+	// ClusterID binds correlated non-agent events (e.g. a Sentry correlation
+	// window). Agent-mediated surfaces (hook/mcp_gateway/shim) adjudicate per
+	// event; non-agent surfaces (file_watcher/sentry/scan) adjudicate per cluster.
+	// Sentry surface may set this directly; the corpus emitter reads it. (SCHEMA-02)
+	ClusterID string `json:"cluster_id,omitempty"`
+
+	// RulesetVersion is the catalog snapshot version at decision time. Populated
+	// by the policy loader. Recorded so schema/rule evolution is detectable. (SCHEMA-05)
+	RulesetVersion string `json:"ruleset_version,omitempty"`
 }
 
 // CatalogProvenance is the audit-record view of a single catalog hit. It mirrors
