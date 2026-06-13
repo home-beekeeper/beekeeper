@@ -16,7 +16,10 @@
 - ✅ **v1.3.0 — "Web Presence & Documentation"** — Phases 10–21 (shipped 2026-06-11)
   Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). Summary: [`MILESTONES.md`](MILESTONES.md).
 
-- 📋 **Next milestone** — TBD (carried candidates below; v1.1.0 Pollen resume is independent)
+- 🚧 **v1.4.0 — "Adjudicated Corpus (Local Loop)"** — Phases 22–25 (IN PROGRESS, started 2026-06-13)
+  Scope: `beekeeper-corpus-milestone-prd.md` §3 (local loop only); PRD §6 (v1.1–1.9 org self-host push) + §7 (v2.0 community feed) are future milestones. Requirements: [`REQUIREMENTS.md`](REQUIREMENTS.md). Research: [`research/SUMMARY.md`](research/SUMMARY.md).
+
+- 📋 **Next milestone (after v1.4.0)** — TBD (carried candidates below; v1.1.0 Pollen resume is independent)
 
 ## Phases
 
@@ -78,6 +81,44 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 
 </details>
 
+### 🚧 v1.4.0 "Adjudicated Corpus (Local Loop)" — Phases 22–25 (IN PROGRESS)
+
+> Scope = `beekeeper-corpus-milestone-prd.md` §3 only. The moat is the OUTCOME layer (confirmed `true_label` + how it was established): it cannot be retrofitted onto incidents already discarded, so the schema captures it from the first offline run. Enforcement stays local/offline/fail-closed in every version; the corpus loop and (future) push are off the hot path. PRD §6 (org push) + §7 (community feed) are future milestones. Three open decisions (OQ-1 `downstream_clean` window / OQ-2 scan `cluster_id` unit / OQ-3 adjudicator lifecycle) carry proposed defaults in `REQUIREMENTS.md`, finalized at the owning phase's discuss step.
+
+- [ ] **Phase 22: Schema & Envelope Lock** (SCHEMA-01..06, SCOPE-01..02)
+  Goal: Freeze the four-layer event schema (behavior/decision/outcome/context) and the push-envelope wire format — including `scope`, corroboration fields, and the `signing` stub — before any corpus record is written. Sign-off freezes the format.
+  Success criteria:
+  1. Every field in the Nx Console worked trace maps to a schema field with no gaps (SCHEMA-06).
+  2. The envelope can represent a `watch_and_block` push carrying `confidence_tier` + `source_count`; `auto_purge` is unrepresentable in a pushable envelope (compile-time guard) (SCHEMA-03/04).
+  3. The four-layer record's outcome fields serialize as `unresolved` placeholders from the first write; conditional fields validate for all six `source_surface` branches (SCHEMA-01).
+  4. `scope` zero-value resolves to `org_only`; the only scope-changing path errors in v1 (SCOPE-01/02).
+  5. `behavior_signature_hash` input + `ruleset_version` are frozen and documented (SCHEMA-05).
+
+- [ ] **Phase 23: Corpus Store & Adjudication Engine** (ADJ-01..07, STORE-01..05, ENV-01..03)
+  Goal: Stand up the append-only local corpus store (as an `audit.Sink`) and the off-hot-path adjudication engine assigning the outcome layer with corroboration-gated confidence, emitting records in envelope shape.
+  Success criteria:
+  1. A synthetic incident records all four layers; a two-source adjudication is marked `enforce` weight, a one-source adjudication `watch` weight, with `source_count` from DISTINCT sources (ADJ-04/05).
+  2. Records emit in push-envelope shape and persist append-only + owner-only; an injected secret-shaped field is redacted in the persisted file (STORE-01/02/04, ENV-01).
+  3. Adjudication runs off the hot path — `beekeeper check` is never blocked and `internal/policy` stays I/O-free (ADJ-01).
+  4. `repo_fingerprint`/`fleet_node_id` are non-reversible HMAC values; two installs of the same repo differ (STORE-05).
+  5. A fuzz/property test confirms no envelope escapes with a non-allowlisted `action_hint` (ENV-02/03).
+
+- [ ] **Phase 24: First Responder Corpus Binding** (FRB-01..05)
+  Goal: A confirmed-malicious adjudication arms the TUI quarantine card and elevates detection (Sentry watch + local catalog overlay) without ever auto-purging.
+  Success criteria:
+  1. A confirmed local Nx-Console-style match arms the quarantine card and does NOT auto-purge (FRB-01/02).
+  2. Restore reverses a purge cleanly; the red=attacker / coral=Beekeeper TUI semantic is preserved (FRB-03).
+  3. The Sentry watch elevates only at corroboration ≥ threshold (a single source does not tighten), detection-only (FRB-04).
+  4. A local-only catalog overlay entry is added (owner-only) and survives `catalogs sync` (FRB-05).
+
+- [ ] **Phase 25: Launch Readiness** (LAUNCH-01..04)
+  Goal: Prove the end-to-end moat loop on the Nx Console incident + all eight Sentry patterns, confirm offline-protective + sub-100ms hot path, and ship honest docs naming the residual gaps.
+  Success criteria:
+  1. The Nx Console incident runs trace → record → adjudication → signature → local feedback (catalog overlay + Sentry watch), all four layers populated (LAUNCH-01).
+  2. Each of the eight Sentry patterns (SENTRY-001..008) produces a moat-grade record with all four layers (LAUNCH-02).
+  3. A disconnected machine remains fully protective on the last synced catalog; `beekeeper check` p99 stays sub-100ms with the corpus enabled (benchmark gate) (LAUNCH-03).
+  4. No corpus data leaves the machine (verified); `docs/THREAT-MODEL.md` states local-first and NAMES the residual gaps (SENTRY-008 CI-runner OIDC theft, GitHub API dead-drop, DNS-tunnel ingested-but-undetected) (LAUNCH-04).
+
 ## Carried Candidates for the Next Milestone
 
 - Live external `beekeeper-self` hosting (separate host + signing key) + end-to-end refuse-to-run validation; independent external security review + VDP publication (from v1.0.0).
@@ -123,3 +164,7 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 | 19. Test Suite & CI | v1.3.0 | 3/3 | Complete | 2026-06-10 |
 | 20. Runtime Hardening II (Tiers 1–3) | v1.3.0 | 6/6 | Complete | 2026-06-11 |
 | 21. Full-System Validation & CI Calibration | v1.3.0 | 4/4 | Complete | 2026-06-11 |
+| 22. Schema & Envelope Lock | v1.4.0 | 0/? | Not started | — |
+| 23. Corpus Store & Adjudication Engine | v1.4.0 | 0/? | Not started | — |
+| 24. First Responder Corpus Binding | v1.4.0 | 0/? | Not started | — |
+| 25. Launch Readiness | v1.4.0 | 0/? | Not started | — |

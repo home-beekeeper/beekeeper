@@ -12,7 +12,7 @@ Requirements for this milestone. Each maps to exactly one phase (22–25).
 ### Schema (SCHEMA) — Phase 22
 
 - [ ] **SCHEMA-01**: A four-layer event record (behavior / decision / outcome / context) is defined as a typed Go schema; `CorpusRecord` embeds the existing `AuditRecord` (which already carries behavior + decision) and adds the outcome + context layers; `source_surface` is an additive field on the base record with six branch values (`hook | mcp_gateway | shim | file_watcher | sentry | scan`). Conditional fields populate only for the relevant surface; the outcome-layer fields are present as `unresolved` placeholders from the very first corpus write (non-retrofittable).
-- [ ] **SCHEMA-02**: `cluster_id` binds correlated events into one incident. Non-agent surfaces (`file_watcher`, `sentry`, `scan`) adjudicate the cluster keyed by `cluster_id`; agent-mediated surfaces (`hook`, `mcp_gateway`, `shim`) adjudicate per event.
+- [ ] **SCHEMA-02**: `cluster_id` binds correlated events into one incident. Non-agent surfaces (`file_watcher`, `sentry`, `scan`) adjudicate the cluster keyed by `cluster_id`; agent-mediated surfaces (`hook`, `mcp_gateway`, `shim`) adjudicate per event. For the `scan` surface the unit is per-package-hit with a STABLE key `cluster_id = hash(package_or_extension_id + version + repo_fingerprint)`, so re-scans of the same flagged version map to the same (already-adjudicated) incident rather than minting duplicates (OQ-2 locked).
 - [ ] **SCHEMA-03**: The push-envelope wire format is frozen as a typed schema: `signature{package_or_extension_id, version, behavior_signature_hash, iocs}`, `true_label`, `confidence_tier`, `source_count`, `scope`, `action_hint`, and a `signing{issuer, signature, issued_at, nonce}` block (zero-value in v1).
 - [ ] **SCHEMA-04**: `action_hint` is a typed constant whose only pushable value is `watch_and_block`; `auto_purge` is unrepresentable in a pushable envelope (enforced as a compile-time guard, not a runtime string check).
 - [ ] **SCHEMA-05**: The `behavior_signature_hash` input definition is frozen in this phase (hash over `action_type` + normalized `target_resource` + normalized `network_destination`) and is stable across schema versions; a `ruleset_version` field is recorded on every record so later schema evolution is detectable.
@@ -25,13 +25,13 @@ Requirements for this milestone. Each maps to exactly one phase (22–25).
 
 ### Adjudication (ADJ) — Phase 23
 
-- [ ] **ADJ-01**: The adjudication engine assigns the outcome layer asynchronously, off the hot path — it never blocks the synchronous fail-closed hook handler, and any pre-exit flush has a bounded deadline. The engine lives in a new impure package and consumes the existing pure corroboration logic; `internal/policy` stays I/O-free.
+- [ ] **ADJ-01**: The adjudication engine assigns the outcome layer asynchronously, off the hot path — it never blocks the synchronous fail-closed hook handler, and any pre-exit flush has a bounded deadline. The engine lives in a new impure package and consumes the existing pure corroboration logic; `internal/policy` stays I/O-free. The AUTOMATIC adjudication loop (`catalog_confirmation`, `downstream_clean`) runs as a background goroutine in the long-lived `catalogs daemon`, with a bounded batch pass at the start of each `catalogs sync` as the no-daemon fallback; it never runs in the `beekeeper check` hot path. Operator-driven sources (`forensic_review`, `breach_confirmation`, `user_override`, `benign_explained`) are synchronous CLI/TUI writes regardless (OQ-3 locked).
 - [ ] **ADJ-02**: `true_label` ∈ {`malicious`, `benign`, `policy_correct`, `unresolved`}; the initial state is always `unresolved`. `policy_correct` distinguishes a correct deterministic policy hit (where no attack occurred) from `benign`.
 - [ ] **ADJ-03**: `adjudication_source` ∈ {`catalog_confirmation`, `forensic_review`, `breach_confirmation`, `user_override`, `downstream_clean`, `benign_explained`}, assigned per the documented confidence mapping (forensic/breach = high; catalog/benign_explained = medium; downstream_clean/user_override = weak).
 - [ ] **ADJ-04**: `source_count` is derived from the count of DISTINCT corroborating sources (deduplicated by source name), never from event count.
 - [ ] **ADJ-05**: `confidence_tier` = `watch` when `source_count == 1` and `enforce` when `source_count >= 2`; `enforce` requires `source_count >= 2` in all cases (a single-source critical escalation is never tagged `enforce`).
 - [ ] **ADJ-06**: `was_correct` is derived from `true_label` vs the recorded `verdict` (`policy_correct` counts as `was_correct = true`); `resolved_at` (RFC3339) is set when a label leaves `unresolved` and is absent while still unresolved.
-- [ ] **ADJ-07**: Corrections are append-only superseding records that reference the prior event/cluster — never in-place mutation. `downstream_clean` labels an allow `benign` only after a defined observation window (default per OQ-1).
+- [ ] **ADJ-07**: Corrections are append-only superseding records that reference the prior event/cluster — never in-place mutation. `downstream_clean` labels an allow `benign` only after a **30-day (configurable) observation window** with no correlated follow-on incident, correlation scoped per-machine to the package/extension identity; it remains the weakest benign signal (never enforce) (OQ-1 locked).
 
 ### Corpus Store (STORE) — Phase 23
 
@@ -62,15 +62,15 @@ Requirements for this milestone. Each maps to exactly one phase (22–25).
 - [ ] **LAUNCH-03**: A disconnected / offline machine remains fully protective on the last synced catalog; `beekeeper check` p99 stays sub-100ms with the corpus enabled (benchmark gate confirms the corpus loop is off the hot path).
 - [ ] **LAUNCH-04**: No corpus data leaves the machine (verified); documentation states local-first and NAMES the residual gaps — SENTRY-008 CI-runner OIDC theft, GitHub API dead-drop exfil, and DNS-tunnel ingested-but-undetected — in `docs/THREAT-MODEL.md`.
 
-## Open Decisions
+## Locked Decisions
 
-Genuine gray areas surfaced by research. Proposed defaults below; confirm or adjust at `/gsd-discuss-phase` for the owning phase. None change the requirement, only the implemented value/shape.
+Three research-surfaced gray areas, resolved with the maintainer at milestone setup (2026-06-13). These fix the implemented value/shape; they do not change the requirements. The owning phase's `/gsd-discuss-phase` may refine details but should treat these as the agreed starting point.
 
-| ID | Decision | Proposed default | Owning phase |
-|----|----------|------------------|--------------|
-| OQ-1 | `downstream_clean` observation window (after which an allow with no subsequent incident is labeled `benign`) | 30 days, configurable | Phase 23 (ADJ-07) |
-| OQ-2 | `scan` surface `cluster_id` unit | Per-package-hit — each flagged package/extension is its own adjudicable cluster (`cluster_id = hash(scan_pass_id + package_id)`) | Phase 22 (SCHEMA-02) |
-| OQ-3 | Adjudication-engine lifecycle | Background goroutine in the long-lived `catalogs daemon`, with a batch fallback on the next `catalogs sync` when the daemon is not running | Phase 23 (ADJ-01) |
+| ID | Decision | Resolution | Owning phase |
+|----|----------|-----------|--------------|
+| OQ-1 | `downstream_clean` observation window | **30 days, configurable.** Weakest benign signal — never enforce, supersedable; correlation scoped per-machine to the package/extension identity. Balances delayed supply-chain detonation against label-coverage latency. | Phase 23 (ADJ-07) |
+| OQ-2 | `scan` surface `cluster_id` unit | **Per-package-hit, stable key** `cluster_id = hash(package_or_extension_id + version + repo_fingerprint)`. Independently adjudicable, idempotent across re-scans (no duplicate incidents), aligned with one-card-per-install First Responder. | Phase 22 (SCHEMA-02) |
+| OQ-3 | Adjudication-engine lifecycle (automatic sources) | **Background goroutine in the existing `catalogs daemon`** + a bounded batch pass on each `catalogs sync` as the no-daemon fallback; never in the `beekeeper check` hot path. Operator-driven sources stay synchronous CLI/TUI writes. No new dedicated daemon. | Phase 23 (ADJ-01) |
 
 ## v2 Requirements
 
@@ -152,4 +152,4 @@ Explicitly excluded for v1.4.0. Anti-features carry version scope.
 
 ---
 *Requirements defined: 2026-06-13 (research-first; derived from `beekeeper-corpus-milestone-prd.md` §3 + `.planning/research/`)*
-*Last updated: 2026-06-13 after initial definition*
+*Last updated: 2026-06-13 — locked the three open decisions (OQ-1 30-day window / OQ-2 per-package stable cluster key / OQ-3 daemon-goroutine + sync fallback) with the maintainer; ADJ-01/ADJ-07/SCHEMA-02 tightened accordingly.*

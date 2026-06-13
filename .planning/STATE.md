@@ -29,8 +29,17 @@ See: .planning/PROJECT.md (updated 2026-06-13 -- v1.4.0 milestone start)
 
 Milestone: v1.4.0 -- Adjudicated Corpus (Local Loop). Scope = beekeeper-corpus-milestone-prd.md section 3 (local loop only); the PRD's own v1.1-1.9 (org self-host aggregation + push) and v2.0 (community shared feed) are deferred to future milestones.
 Phase: Not started (defining requirements). Planned phases: 22 schema + envelope lock / 23 corpus store + adjudication engine / 24 First Responder corpus binding / 25 launch readiness.
-Status: Planning. PROJECT.md + STATE.md updated + committed; research-first chosen (4 gsd-project-researcher agents + synthesizer); REQUIREMENTS.md + ROADMAP.md to follow, hand-authored to preserve the multi-milestone master + the parked v1.1.0 section (SDK state/roadmap verbs avoided per the documented frontmatter-regression + phase-resolver caveat).
-Last activity: 2026-06-13 -- started milestone v1.4.0 via /gsd-new-milestone --prd beekeeper-corpus-milestone-prd. Last completed milestone: v1.3.0 (Phases 10-21; SHIPPED & ARCHIVED 2026-06-11).
+Status: Milestone setup COMPLETE. PROJECT.md + STATE.md + research (4 researchers + synthesis) + REQUIREMENTS.md (32 reqs) + ROADMAP.md (phases 22-25, maintainer-approved) all written + committed; the 3 open decisions LOCKED with the maintainer (OQ-1 30-day downstream_clean window / OQ-2 per-package stable scan cluster key / OQ-3 adjudicator = catalogs-daemon goroutine + sync-batch fallback). All hand-authored to preserve the multi-milestone master + the parked v1.1.0 section (SDK state/roadmap verbs avoided per the documented frontmatter-regression + phase-resolver caveat). Ready to plan Phase 22.
+Last activity: 2026-06-13 -- completed /gsd-new-milestone setup for v1.4.0 (research-first; requirements + roadmap approved; 3 open decisions discussed + locked). Last completed milestone: v1.3.0 (Phases 10-21; SHIPPED & ARCHIVED 2026-06-11). NEXT: /gsd-discuss-phase 22 (or /gsd-plan-phase 22).
+
+## Phase Summary (v1.4.0)
+
+| Phase | Name | Requirements | Status |
+|-------|------|--------------|--------|
+| 22 | Schema & Envelope Lock | SCHEMA-01..06, SCOPE-01..02 | Not started (planning) |
+| 23 | Corpus Store & Adjudication Engine | ADJ-01..07, STORE-01..05, ENV-01..03 | Not started |
+| 24 | First Responder Corpus Binding | FRB-01..05 | Not started |
+| 25 | Launch Readiness | LAUNCH-01..04 | Not started |
 
 ## Phase Summary (v1.3.0)
 
