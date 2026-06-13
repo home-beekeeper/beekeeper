@@ -203,7 +203,7 @@ func TestSupersedingRecords(t *testing.T) {
 	}
 
 	// Run the adjudication batch pass with a fake catalog index that confirms the match.
-	idx := &fakeCatalogIndex{matchCluster: originalClusterID}
+	idx := &fakeCatalogIndex{alwaysMatch: true}
 	thresholds := defaultThresholds()
 
 	ctx := context.Background()
@@ -282,8 +282,8 @@ func TestDownstreamCleanWindow(t *testing.T) {
 		t.Fatalf("StoreSink.Close: %v", err)
 	}
 
-	// Index returns no matches for this cluster → no catalog_confirmation.
-	noMatchIdx := &fakeCatalogIndex{matchCluster: "different-cluster"}
+	// Index returns no matches → no catalog_confirmation; downstream_clean logic applies.
+	noMatchIdx := &fakeCatalogIndex{alwaysMatch: false}
 	thresholds := defaultThresholds()
 
 	ctx := context.Background()
@@ -377,20 +377,18 @@ func splitNDJSON(data []byte) []string {
 	return lines
 }
 
-// fakeCatalogIndex is a test-only MultiCatalogLookup that returns a match when
-// the tool call's ClusterID matches matchCluster (simulating catalog_confirmation).
+// fakeCatalogIndex is a test-only MultiCatalogLookup.
+//   - alwaysMatch=true  → every LookupAll returns a signed Bumblebee match
+//   - alwaysMatch=false → every LookupAll returns nil (no match)
 // It does NOT implement io.Closer — it's passed as policy.MultiCatalogLookup.
 type fakeCatalogIndex struct {
-	matchCluster string
+	alwaysMatch bool
 }
 
-func (f *fakeCatalogIndex) LookupAll(tc policy.ToolCall) []policy.CatalogMatch {
-	// The adjudicator re-queries with a reconstructed ToolCall based on the
-	// package/version info from the corpus record. For test purposes, we
-	// simulate a match when the tool name contains the expected cluster prefix.
-	if f.matchCluster != "" && tc.ToolName != "" {
+func (f *fakeCatalogIndex) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
+	if f.alwaysMatch {
 		return []policy.CatalogMatch{
-			{CatalogSource: "bumblebee", Signed: true, Package: "nrwl.angular-console", Version: "18.95.0"},
+			{CatalogSource: "bumblebee", Signed: true, Ecosystem: ecosystem, Package: pkg, Version: "18.95.0"},
 		}
 	}
 	return nil
