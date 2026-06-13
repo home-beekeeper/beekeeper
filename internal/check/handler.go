@@ -143,7 +143,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "beekeeper check: recovered panic: %v\n", r)
 			d := failDecision(cfg, "internal error (fail-closed)")
-			result = finalizeWithAC(d, cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+			result = finalizeWithAC(d, cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 		}
 	}()
 
@@ -177,9 +177,9 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		// Distinguish oversized input from genuinely malformed JSON: if the
 		// limited reader is exhausted we very likely truncated a large payload.
 		if limited.N <= 0 {
-			return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+			return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 		}
-		return finalizeWithAC(failDecision(cfg, "invalid tool call JSON (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+		return finalizeWithAC(failDecision(cfg, "invalid tool call JSON (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 	}
 	toolCall = hi.ToolCall
 	stdinAgentID := hi.AgentID
@@ -188,19 +188,19 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// that consumed everything up to (and including) the extra cap byte means
 	// the payload was at least maxStdin+1 bytes.
 	if limited.N <= 0 {
-		return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+		return finalizeWithAC(failDecision(cfg, "stdin exceeds 1MB cap (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 	}
 
 	// Early timeout check after the (potentially slow) stdin read.
 	if ctx.Err() != nil {
-		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 	}
 
 	// HOOK-02: load the catalog via the mmap index, never a cold JSON parse.
 	bbIdx, err := open(indexPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: catalog index unavailable: %v\n", err)
-		return finalizeWithAC(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+		return finalizeWithAC(failDecision(cfg, "catalog index unavailable (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 	}
 	defer bbIdx.Close()
 
@@ -237,7 +237,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 
 	// Re-check the deadline before the pure evaluation.
 	if ctx.Err() != nil {
-		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 	}
 
 	// Build agent context from env vars + stdin agent_id (INTG-07).
@@ -260,7 +260,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		if policyErr != nil {
 			// Cannot read the policies directory. Honor fail_mode (T-09-33).
 			fmt.Fprintf(os.Stderr, "beekeeper check: policies directory unreadable: %v\n", policyErr)
-			return finalizeWithAC(failDecision(cfg, "policies directory unreadable (fail-closed)"), cfg, toolCall, auditPath, ac, decisionOut)
+			return finalizeWithAC(failDecision(cfg, "policies directory unreadable (fail-closed)"), cfg, toolCall, auditPath, ac, decisionOut, cacheDir)
 		}
 	}
 
@@ -370,12 +370,12 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.
 	if ctx.Err() != nil {
-		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut)
+		return finalizeWithAC(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath, policy.AgentContext{}, decisionOut, cacheDir)
 	}
 
 	// Successful evaluation results are NOT subject to fail-mode overrides —
 	// fail modes only govern the failure paths above.
-	return finalizeWithAC(decision, cfg, toolCall, auditPath, ac, decisionOut)
+	return finalizeWithAC(decision, cfg, toolCall, auditPath, ac, decisionOut, cacheDir)
 }
 
 // readAgentContext builds a policy.AgentContext from environment variables
@@ -457,18 +457,22 @@ func failDecision(cfg config.Config, reason string) policy.Decision {
 //
 // Deprecated: prefer finalizeWithAC which carries AgentContext for lineage tracking.
 func finalize(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string) Result {
-	return finalizeWithAC(d, cfg, tc, auditPath, policy.AgentContext{}, os.Stdout)
+	return finalizeWithAC(d, cfg, tc, auditPath, policy.AgentContext{}, os.Stdout, "")
 }
 
 // finalizeWithAC maps a decision to an exit code, writes the audit record with
 // agent lineage fields, and emits the decision JSON to out. This is the single
 // chokepoint that all code paths (including the panic recover) run through.
 //
+// stateDir is the beekeeper state directory used for corpus path validation
+// (T-23-04). Pass cacheDir from runCheck. Pass "" from deprecated callers that
+// do not thread cacheDir (corpus.Enabled is always false in those paths).
+//
 // out is the writer for the structured Decision JSON. In normal (non-hook) mode
 // this is os.Stdout so the raw {"Allow":...} line appears on stdout as before.
 // In --hook mode it is io.Discard so the harness sees ONLY its own deny form.
-func finalizeWithAC(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string, ac policy.AgentContext, out io.Writer) Result {
-	writeAuditWithAC(tc, d, auditPath, ac, cfg)
+func finalizeWithAC(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string, ac policy.AgentContext, out io.Writer, stateDir string) Result {
+	writeAuditWithAC(tc, d, auditPath, ac, cfg, stateDir)
 
 	// Emit the structured decision to the caller-supplied writer.
 	if data, err := json.Marshal(d); err == nil {
@@ -491,12 +495,16 @@ func exitCodeFor(d policy.Decision) int {
 // writeAudit appends one NDJSON record for the decision with a zero AgentContext.
 // Retained for compatibility; prefer writeAuditWithAC.
 func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
-	writeAuditWithAC(tc, d, auditPath, policy.AgentContext{}, config.Config{})
+	writeAuditWithAC(tc, d, auditPath, policy.AgentContext{}, config.Config{}, "")
 }
 
 // writeAuditWithAC appends one NDJSON record for the decision with the given
 // AgentContext lineage. An audit-write failure is logged to stderr but NEVER
 // downgrades the decision — a block stays a block even if it could not be recorded.
+//
+// stateDir is passed through to writeCorpusRecord for T-23-04 path validation.
+// It must be the same value as the cacheDir threaded into runCheck. Pass "" from
+// deprecated callers where cfg.Corpus.Enabled is always false.
 //
 // Redaction (T-04-05-02): default patterns (Bearer tokens, JWT tokens, common API
 // key prefixes) are applied to every record before writing. This prevents sensitive
@@ -508,7 +516,7 @@ func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
 // the corpus write is strictly best-effort. handler.go MUST NOT import the
 // adjudicator or call RunAdjudicationBatch (adjudication never runs on the hot
 // path — Pitfall 3 / T-23-09).
-func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, ac policy.AgentContext, cfg config.Config) {
+func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, ac policy.AgentContext, cfg config.Config, stateDir string) {
 	w, err := audit.NewWriter(auditPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: audit writer unavailable: %v\n", err)
@@ -532,7 +540,7 @@ func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, a
 	// Errors are logged to stderr only; they NEVER change the hook exit code.
 	// handler.go MUST NOT import corpus.adjudicator or call RunAdjudicationBatch.
 	if cfg.Corpus.Enabled {
-		writeCorpusRecord(rec, cfg)
+		writeCorpusRecord(rec, cfg, stateDir)
 	}
 }
 
@@ -541,18 +549,30 @@ func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, a
 // Every error path logs to stderr and returns — no error ever propagates to the
 // caller (ADJ-01 fail-closed invariant: corpus error must not change exit code).
 //
+// stateDir is the beekeeper state directory used for both the HMAC-salt state.json
+// path and the T-23-04 corpus-path boundary check (ResolveCorpusPath). It is
+// threaded in from runCheck's cacheDir parameter so that hermetic benchmark and
+// test setups use a temp directory rather than the live platform.StateDir().
+// In production cacheDir == platform.StateDir(), so behaviour is unchanged.
+//
 // This function is a SIBLING of the audit write (not a MultiSink consumer for the
 // check hot path — OQ-1 resolution Option C: writeAuditWithAC is the chokepoint).
 //
 // Per-invocation open: beekeeper check is a one-shot process. Per-invocation
 // O_APPEND is atomic for <4KB records (OQ-2 resolution). The benchmark gate
 // (BenchmarkRunCheck) validates the latency budget.
-func writeCorpusRecord(rec audit.AuditRecord, cfg config.Config) {
-	// Resolve the state directory for salt + corpus path.
-	stateDir, err := platform.StateDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: resolve state dir: %v\n", err)
-		return
+func writeCorpusRecord(rec audit.AuditRecord, cfg config.Config, stateDir string) {
+	// Resolve the state directory: use the threaded-in value when available;
+	// fall back to platform.StateDir() only if the caller passed "". In
+	// production runCheck always passes cacheDir (non-empty), so the fallback
+	// is defense-in-depth for deprecated callers with cfg.Corpus.Enabled=false.
+	if stateDir == "" {
+		var err error
+		stateDir, err = platform.StateDir()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "beekeeper check: corpus: resolve state dir: %v\n", err)
+			return
+		}
 	}
 
 	// Resolve the corpus file path (validates it is under stateDir — T-23-04).
