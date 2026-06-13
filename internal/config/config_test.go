@@ -517,3 +517,34 @@ func TestCorpusConfig(t *testing.T) {
 		}
 	})
 }
+
+// TestCorpusDownstreamCleanDays verifies the OQ-1 default (30 days, configurable).
+//
+// - Missing downstream_clean_days key → CorpusDownstreamCleanDays() returns 30.
+// - Explicit downstream_clean_days:7 → CorpusDownstreamCleanDays() returns 7.
+func TestCorpusDownstreamCleanDays(t *testing.T) {
+	t.Run("default 30 when field absent", func(t *testing.T) {
+		path := writeConfig(t, `{"corpus":{"enabled":true}}`)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if got := cfg.CorpusDownstreamCleanDays(); got != 30 {
+			t.Errorf("CorpusDownstreamCleanDays() = %d, want 30 (default)", got)
+		}
+	})
+
+	t.Run("explicit value overrides default", func(t *testing.T) {
+		path := writeConfig(t, `{"corpus":{"enabled":true,"downstream_clean_days":7}}`)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if got := cfg.CorpusDownstreamCleanDays(); got != 7 {
+			t.Errorf("CorpusDownstreamCleanDays() = %d, want 7", got)
+		}
+		if cfg.Corpus.DownstreamCleanDays != 7 {
+			t.Errorf("CorpusConfig.DownstreamCleanDays = %d, want 7", cfg.Corpus.DownstreamCleanDays)
+		}
+	})
+}

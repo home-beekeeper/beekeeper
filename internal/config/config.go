@@ -483,6 +483,11 @@ type CorpusConfig struct {
 	// "community_shareable" is reserved for v2.0 — setting it in v1 has no effect
 	// (PromoteScope always returns an error until anonymization is implemented).
 	Scope string `json:"scope,omitempty"`
+	// DownstreamCleanDays is the rolling window (in days) used by the
+	// adjudication engine to classify a record as "downstream_clean": if no
+	// follow-on alert with the same ClusterID appears within this window, the
+	// record is adjudicated as benign. Default 30 (OQ-1: "30 days, configurable").
+	DownstreamCleanDays int `json:"downstream_clean_days,omitempty"`
 }
 
 // SelfCatalogConfig holds configuration for the beekeeper-self catalog source
@@ -569,6 +574,17 @@ type Config struct {
 	// defines the type and config shape only; no decision behavior is changed in
 	// Phase 22 (store wiring is Phase 23, T-22-04).
 	Corpus CorpusConfig `json:"corpus,omitempty"`
+}
+
+// CorpusDownstreamCleanDays returns the downstream_clean rolling window in days.
+// If DownstreamCleanDays is unset (zero), the default of 30 days is returned
+// (OQ-1: "30 days, configurable"). The adjudication engine reads this value to
+// decide when a record with no follow-on alerts may be classified as benign.
+func (c Config) CorpusDownstreamCleanDays() int {
+	if c.Corpus.DownstreamCleanDays > 0 {
+		return c.Corpus.DownstreamCleanDays
+	}
+	return 30
 }
 
 // SocketAPIToken returns the Socket API token, or "" if not configured.
