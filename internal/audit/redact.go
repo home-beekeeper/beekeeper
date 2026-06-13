@@ -160,6 +160,22 @@ func RedactRecord(rec AuditRecord, patterns []redactPattern) AuditRecord {
 	return out
 }
 
+// RedactRecordWithDefaults returns a copy of rec with all default sensitive
+// patterns applied. This is the corpus store's cross-package redaction
+// entrypoint (Phase 23 prerequisite — research Finding 7 / T-22-02).
+//
+// The unexported redactPattern type used by RedactRecord and DefaultRedactPatterns
+// cannot cross package boundaries, so internal/corpus cannot call
+// RedactRecord(rec, DefaultRedactPatterns()) directly. This wrapper exposes a
+// cross-package-safe signature that takes only AuditRecord and returns
+// AuditRecord, with no unexported types in the signature.
+//
+// RedactRecordWithDefaults never mutates the input rec — it delegates to
+// RedactRecord which always returns a new AuditRecord (copy semantics).
+func RedactRecordWithDefaults(rec AuditRecord) AuditRecord {
+	return RedactRecord(rec, DefaultRedactPatterns())
+}
+
 // RedactString is a convenience helper for single-string redaction using the
 // default patterns. It is used in tests and for ad-hoc redaction outside of
 // audit records.

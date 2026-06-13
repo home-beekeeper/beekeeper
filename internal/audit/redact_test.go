@@ -417,6 +417,71 @@ func TestRedactRecordSentryFields(t *testing.T) {
 // untouched — the load-bearing security property for a redaction helper.
 // ---------------------------------------------------------------------------
 
+// TestRedactRecordWithDefaults verifies the Phase 22 cross-package redaction
+// entrypoint (T-22-02 / research Finding 7):
+//   - A Bearer token in rec.Reason is redacted.
+//   - A JWT in rec.Reason is redacted.
+//   - The input rec is NOT mutated (copy semantics preserved).
+func TestRedactRecordWithDefaults(t *testing.T) {
+	t.Run("bearer token in Reason is redacted", func(t *testing.T) {
+		rec := AuditRecord{
+			RecordType:  "policy_decision",
+			RecordID:    "rrd-bearer-01",
+			Timestamp:   "2026-06-13T00:00:00Z",
+			ScannerName: "beekeeper",
+			Decision:    "warn",
+			Reason:      "tool output: Authorization: Bearer abc123secrettoken; flagged",
+		}
+		got := RedactRecordWithDefaults(rec)
+
+		if strings.Contains(got.Reason, "abc123secrettoken") {
+			t.Errorf("RedactRecordWithDefaults did not redact Bearer token in Reason: %q", got.Reason)
+		}
+		if !strings.Contains(got.Reason, "Authorization: Bearer [REDACTED]") {
+			t.Errorf("RedactRecordWithDefaults Reason missing [REDACTED] marker: %q", got.Reason)
+		}
+	})
+
+	t.Run("JWT in Reason is redacted", func(t *testing.T) {
+		rec := AuditRecord{
+			RecordType:  "policy_decision",
+			RecordID:    "rrd-jwt-01",
+			Timestamp:   "2026-06-13T00:00:00Z",
+			ScannerName: "beekeeper",
+			Decision:    "warn",
+			Reason:      "token=eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.signature123 was found",
+		}
+		got := RedactRecordWithDefaults(rec)
+
+		if strings.Contains(got.Reason, "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMSJ9.signature123") {
+			t.Errorf("RedactRecordWithDefaults did not redact JWT in Reason: %q", got.Reason)
+		}
+		if !strings.Contains(got.Reason, "[JWT_REDACTED]") {
+			t.Errorf("RedactRecordWithDefaults Reason missing [JWT_REDACTED] marker: %q", got.Reason)
+		}
+	})
+
+	t.Run("input rec is not mutated", func(t *testing.T) {
+		originalReason := "Authorization: Bearer supersecrettoken"
+		rec := AuditRecord{
+			RecordType:  "policy_decision",
+			RecordID:    "rrd-mutate-01",
+			Timestamp:   "2026-06-13T00:00:00Z",
+			ScannerName: "beekeeper",
+			Decision:    "warn",
+			Reason:      originalReason,
+		}
+
+		_ = RedactRecordWithDefaults(rec)
+
+		// Input must be unchanged after the call.
+		if rec.Reason != originalReason {
+			t.Errorf("RedactRecordWithDefaults mutated input rec.Reason: got %q, want %q",
+				rec.Reason, originalReason)
+		}
+	})
+}
+
 // TestRedactString verifies RedactString masks each default secret family and
 // leaves benign / partial input unchanged.
 func TestRedactString(t *testing.T) {
