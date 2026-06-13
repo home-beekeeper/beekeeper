@@ -111,6 +111,40 @@ func NewMultiSink(auditPath string, cfg config.AuditConfig) (Sink, error) {
 	return NewMultiSinkFromSinks(sinks), nil
 }
 
+// NewMultiSinkWithCorpus is identical to NewMultiSink but appends an additional
+// caller-supplied corpus sink to the fan-out graph.
+//
+// Design (OQ-1 resolution, Option C — least invasive):
+//   - NewMultiSink is UNCHANGED. Existing call sites are unaffected.
+//   - The corpus sink is passed as an audit.Sink INTERFACE (not as a concrete
+//     *corpus.StoreSink) to avoid an audit→corpus import cycle. The caller (cmd/beekeeper)
+//     constructs the corpus.StoreSink and passes it in as audit.Sink.
+//   - Fan-out semantics match MultiSink: every Write delivers to all sinks; errors
+//     from individual sinks are accumulated and the last non-nil error is returned.
+//     A corpus sink error does NOT prevent the file sink from receiving the record.
+//
+// corpusSink may be nil (e.g. when cfg.Corpus.Enabled is false); in that case
+// NewMultiSinkWithCorpus behaves identically to NewMultiSink.
+func NewMultiSinkWithCorpus(auditPath string, auditCfg config.AuditConfig, corpusSink Sink) (Sink, error) {
+	base, err := NewMultiSink(auditPath, auditCfg)
+	if err != nil {
+		return nil, err
+	}
+	if corpusSink == nil {
+		return base, nil
+	}
+	// Extract the existing sinks from the base MultiSink and append corpusSink.
+	// NewMultiSink always returns a *MultiSink; use type assertion to access sinks.
+	ms, ok := base.(*MultiSink)
+	if !ok {
+		// Defensive: if base is not a *MultiSink (should not happen), compose as a
+		// two-sink MultiSink (base + corpus).
+		return NewMultiSinkFromSinks([]Sink{base, corpusSink}), nil
+	}
+	allSinks := append(ms.sinks, corpusSink)
+	return NewMultiSinkFromSinks(allSinks), nil
+}
+
 // containsString reports whether slice contains s.
 func containsString(slice []string, s string) bool {
 	for _, v := range slice {

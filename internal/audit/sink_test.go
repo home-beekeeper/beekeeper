@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync/atomic"
@@ -263,6 +264,92 @@ func TestHTTPSinkContinuesOnError(t *testing.T) {
 	rec := AuditRecord{RecordID: "h-err"}
 	if err := sink.Write(rec); err != nil {
 		t.Errorf("HTTPSink.Write on bad endpoint returned error %v, want nil", err)
+	}
+}
+
+// --- NewMultiSinkWithCorpus tests ---
+
+// TestNewMultiSinkWithCorpusNilCorpusSink verifies that passing nil as the
+// corpus sink makes NewMultiSinkWithCorpus behave identically to NewMultiSink.
+func TestNewMultiSinkWithCorpusNilCorpusSink(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "beekeeper.ndjson")
+
+	sink, err := NewMultiSinkWithCorpus(path, config.AuditConfig{}, nil)
+	if err != nil {
+		t.Fatalf("NewMultiSinkWithCorpus(nil): %v", err)
+	}
+	defer sink.Close()
+
+	rec := AuditRecord{RecordID: "nil-corpus", Decision: "allow"}
+	if err := sink.Write(rec); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+}
+
+// TestNewMultiSinkWithCorpusFanout verifies that a fake corpus sink receives the
+// record AND that a fake-corpus-sink error does NOT prevent the file sink write
+// (mirrors the existing MultiSink error-accumulation contract).
+func TestNewMultiSinkWithCorpusFanout(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "beekeeper.ndjson")
+
+	// corpusSink that records calls.
+	corpusSink := &mockSink{}
+
+	sink, err := NewMultiSinkWithCorpus(path, config.AuditConfig{}, corpusSink)
+	if err != nil {
+		t.Fatalf("NewMultiSinkWithCorpus: %v", err)
+	}
+	defer sink.Close()
+
+	rec := AuditRecord{RecordID: "corpus-fanout", Decision: "block"}
+	if err := sink.Write(rec); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	// The fake corpus sink must have received the record.
+	if len(corpusSink.written) != 1 {
+		t.Fatalf("corpus sink received %d records, want 1", len(corpusSink.written))
+	}
+	if corpusSink.written[0].RecordID != "corpus-fanout" {
+		t.Errorf("corpus sink RecordID = %q, want corpus-fanout", corpusSink.written[0].RecordID)
+	}
+}
+
+// TestNewMultiSinkWithCorpusErrorDoesNotBlockFileSink verifies that an error
+// from the corpus sink does not prevent the file sink from writing (mirrors
+// MultiSink's error-accumulation contract — all sinks always receive the Write).
+func TestNewMultiSinkWithCorpusErrorDoesNotBlockFileSink(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "beekeeper.ndjson")
+
+	// corpus sink that always errors.
+	errCorpusSink := &mockSink{err: io.ErrUnexpectedEOF}
+
+	sink, err := NewMultiSinkWithCorpus(path, config.AuditConfig{}, errCorpusSink)
+	if err != nil {
+		t.Fatalf("NewMultiSinkWithCorpus: %v", err)
+	}
+	defer sink.Close()
+
+	rec := AuditRecord{RecordID: "error-corpus", Decision: "allow"}
+	writeErr := sink.Write(rec)
+	// Write returns the last non-nil error (from the corpus sink), but the file
+	// sink must still have received the record.
+	if writeErr == nil {
+		t.Error("expected non-nil error from erroring corpus sink, got nil")
+	}
+	// Close to flush.
+	sink.Close()
+
+	// Verify the file sink wrote the record (file must not be empty).
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		t.Fatalf("audit file not created: %v", statErr)
+	}
+	if info.Size() == 0 {
+		t.Error("audit file is empty — file sink did not receive the record despite corpus sink error")
 	}
 }
 

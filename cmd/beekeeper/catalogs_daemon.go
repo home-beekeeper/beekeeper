@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,7 +11,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/bantuson/beekeeper/internal/corpus"
 	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/policy"
 )
 
 // catalogSyncSourceName is the SourceState key for the Bumblebee catalog in
@@ -71,6 +74,52 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 	out := cmd.OutOrStdout()
 	interval := cfg.CatalogSyncInterval()
 	now := catalogSyncNow()
+
+	// Phase 23 (OQ-3 / ADJ-01): bounded adjudication batch pass.
+	// Run BEFORE the HTTP catalog fetch (so a fetch failure never skips adjudication
+	// of already-stored incidents — per 23-RESEARCH §Adjudicator Lifecycle).
+	// Only when cfg.Corpus.Enabled; a batch-pass error MUST NOT fail runCatalogsSync.
+	if cfg.Corpus.Enabled {
+		corpusPath, cpErr := corpus.ResolveCorpusPath(cfg.Corpus, stateDir)
+		if cpErr != nil {
+			fmt.Fprintf(os.Stderr, "beekeeper: corpus: resolve corpus path for adjudication: %v\n", cpErr)
+		} else {
+			// Default corroboration thresholds (PLCY-01). Thresholds from policy files
+			// are not loaded here to keep the sync fast; catalog_confirmation uses the
+			// global defaults (WarnAt 1 / BlockAt 2 / QuarantineAt 3).
+			thresholds := policy.CorroborationThresholds{
+				WarnAt:         1,
+				BlockAt:        2,
+				QuarantineAt:   3,
+				CatalogHealthy: true,
+			}
+
+			// Open the mmap index best-effort for catalog_confirmation re-queries.
+			// *catalog.Index does not directly implement policy.MultiCatalogLookup;
+			// wrap it in a single-source MultiIndex (nil OSV/Socket for this batch pass).
+			// A nil lookup → RunAdjudicationBatch skips catalog_confirmation queries safely.
+			var idx policy.MultiCatalogLookup
+			idxPath := filepath.Join(dir, "bumblebee.idx")
+			if bbIdx, idxErr := catalog.OpenIndex(idxPath); idxErr == nil {
+				// Wrap in MultiIndex: bumblebee only (no OSV/Socket for the batch pass).
+				idx = catalog.NewMultiIndex(bbIdx, nil, nil)
+				defer bbIdx.Close()
+			}
+			// nil idx → RunAdjudicationBatch skips catalog_confirmation queries safely.
+
+			// 5-second deadline (T-23-12 / OQ-3): the batch pass is bounded so it
+			// never stalls the hourly sync. Cancelled on deadline; writes whatever completed.
+			batchCtx, batchCancel := context.WithTimeout(cmd.Context(), 5*time.Second)
+			defer batchCancel()
+
+			stateFile := filepath.Join(stateDir, "state.json")
+			cleanDays := cfg.CorpusDownstreamCleanDays()
+			if batchErr := corpus.RunAdjudicationBatch(batchCtx, corpusPath, stateFile, idx, thresholds, cleanDays); batchErr != nil {
+				// Non-fatal: log to stderr and continue. The sync must proceed.
+				fmt.Fprintf(os.Stderr, "beekeeper: corpus adjudication batch: %v\n", batchErr)
+			}
+		}
+	}
 
 	if !cfg.CatalogSyncEnabled() && !force {
 		fmt.Fprintln(out, "Catalog sync is disabled (catalog_sync.enabled=false). Use --force to sync once.")
