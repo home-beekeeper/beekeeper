@@ -28,15 +28,15 @@ See: .planning/PROJECT.md (updated 2026-06-13 -- v1.4.0 milestone start)
 ## Current Position
 
 Milestone: v1.4.0 -- Adjudicated Corpus (Local Loop). Scope = beekeeper-corpus-milestone-prd.md section 3 (local loop only); the PRD's own v1.1-1.9 (org self-host aggregation + push) and v2.0 (community shared feed) are deferred to future milestones.
-Phase: Not started (defining requirements). Planned phases: 22 schema + envelope lock / 23 corpus store + adjudication engine / 24 First Responder corpus binding / 25 launch readiness.
-Status: Milestone setup COMPLETE. PROJECT.md + STATE.md + research (4 researchers + synthesis) + REQUIREMENTS.md (32 reqs) + ROADMAP.md (phases 22-25, maintainer-approved) all written + committed; the 3 open decisions LOCKED with the maintainer (OQ-1 30-day downstream_clean window / OQ-2 per-package stable scan cluster key / OQ-3 adjudicator = catalogs-daemon goroutine + sync-batch fallback). All hand-authored to preserve the multi-milestone master + the parked v1.1.0 section (SDK state/roadmap verbs avoided per the documented frontmatter-regression + phase-resolver caveat). Ready to plan Phase 22.
-Last activity: 2026-06-13 -- completed /gsd-new-milestone setup for v1.4.0 (research-first; requirements + roadmap approved; 3 open decisions discussed + locked). Last completed milestone: v1.3.0 (Phases 10-21; SHIPPED & ARCHIVED 2026-06-11). NEXT: /gsd-discuss-phase 22 (or /gsd-plan-phase 22).
+Phase: 22 -- Schema & Envelope Lock: PLANNED (3 plans / 3 waves), ready to execute. Remaining v1.4.0 phases: 23 corpus store + adjudication engine / 24 First Responder corpus binding / 25 launch readiness.
+Status: Phase 22 PLANNED. /gsd-plan-phase 22 ran HAND-MANAGED -- the SDK could not resolve phase 22 (init.plan-phase + roadmap.get-phase returned found:false / expected_phase_dir:null), so the phase dir was created by hand and explicit paths were passed to every subagent. Produced 22-CONTEXT.md (from PRD §3 + the locked OQ decisions) + 22-RESEARCH.md (sonnet; 5 code-grounded deltas incl. the unexported redactPattern -> RedactRecordWithDefaults prereq, invalid json:",inline" -> unnamed embed, CorpusScope.MarshalJSON, CorroborateOutcome count>=BlockAt mapping, ActionHint typed-const guard) + 22-VALIDATION.md (Nyquist per-req map) + 3 PLAN.md (opus planner) -> gsd-plan-checker PASSED 0-blocker / 1-warn / 1-advisory. The 3 milestone open decisions remain LOCKED. All committed; ROADMAP + STATE hand-updated (no SDK state verbs). Ready to execute Phase 22.
+Last activity: 2026-06-13 -- PLANNED Phase 22 (Schema & Envelope Lock) hand-managed: CONTEXT + RESEARCH + VALIDATION + 3 plans, gsd-plan-checker PASSED. NEXT: /gsd-execute-phase 22 (execute INLINE on main with explicit path .planning/phases/22-schema-envelope-lock/ -- Go subagents have the toolchain here; do NOT trust phase-number SDK resolution). Executor reminders: 22-02-T1 build is not independently green until 22-02-T2 lands; after execution flip 22-VALIDATION.md nyquist_compliant + wave_0_complete to true.
 
 ## Phase Summary (v1.4.0)
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
-| 22 | Schema & Envelope Lock | SCHEMA-01..06, SCOPE-01..02 | Not started (planning) |
+| 22 | Schema & Envelope Lock | SCHEMA-01..06, SCOPE-01..02 | Planned 2026-06-13 (3 plans/3 waves; CONTEXT+RESEARCH+VALIDATION; plan-checker PASSED 0-blocker/1-warn/1-advisory) |
 | 23 | Corpus Store & Adjudication Engine | ADJ-01..07, STORE-01..05, ENV-01..03 | Not started |
 | 24 | First Responder Corpus Binding | FRB-01..05 | Not started |
 | 25 | Launch Readiness | LAUNCH-01..04 | Not started |

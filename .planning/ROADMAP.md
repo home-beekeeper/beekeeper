@@ -85,7 +85,7 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 
 > Scope = `beekeeper-corpus-milestone-prd.md` §3 only. The moat is the OUTCOME layer (confirmed `true_label` + how it was established): it cannot be retrofitted onto incidents already discarded, so the schema captures it from the first offline run. Enforcement stays local/offline/fail-closed in every version; the corpus loop and (future) push are off the hot path. PRD §6 (org push) + §7 (community feed) are future milestones. Three open decisions (OQ-1 `downstream_clean` window / OQ-2 scan `cluster_id` unit / OQ-3 adjudicator lifecycle) carry proposed defaults in `REQUIREMENTS.md`, finalized at the owning phase's discuss step.
 
-- [ ] **Phase 22: Schema & Envelope Lock** (SCHEMA-01..06, SCOPE-01..02)
+- [ ] **Phase 22: Schema & Envelope Lock** (SCHEMA-01..06, SCOPE-01..02) — PLANNED 2026-06-13 (3 plans / 3 waves; plan-checker PASSED 0-blocker)
   Goal: Freeze the four-layer event schema (behavior/decision/outcome/context) and the push-envelope wire format — including `scope`, corroboration fields, and the `signing` stub — before any corpus record is written. Sign-off freezes the format.
   Success criteria:
   1. Every field in the Nx Console worked trace maps to a schema field with no gaps (SCHEMA-06).
@@ -164,7 +164,7 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 | 19. Test Suite & CI | v1.3.0 | 3/3 | Complete | 2026-06-10 |
 | 20. Runtime Hardening II (Tiers 1–3) | v1.3.0 | 6/6 | Complete | 2026-06-11 |
 | 21. Full-System Validation & CI Calibration | v1.3.0 | 4/4 | Complete | 2026-06-11 |
-| 22. Schema & Envelope Lock | v1.4.0 | 0/? | Not started | — |
+| 22. Schema & Envelope Lock | v1.4.0 | 0/3 | Planned | — |
 | 23. Corpus Store & Adjudication Engine | v1.4.0 | 0/? | Not started | — |
 | 24. First Responder Corpus Binding | v1.4.0 | 0/? | Not started | — |
 | 25. Launch Readiness | v1.4.0 | 0/? | Not started | — |
