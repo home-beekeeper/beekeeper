@@ -1,0 +1,45 @@
+{
+  "description": "Nx Console Sentry exfil trace — Phase 22 schema-lock fixture (SCHEMA-06). A trojanized VS Code extension (nx-console.vsix) reads SSH credentials then exfiltrates to an attacker collector. Catalog confirmation + forensic breach confirmation = source_count 2, confidence_tier enforce.",
+
+  "behavior_layer": {
+    "source_surface": "sentry",
+    "action_type": "sentry_exfil_fusion",
+    "actor_lineage": ["code", "node", "nx-language-server"],
+    "target_resource": "~/.ssh/id_rsa",
+    "network_destination": "malicious-collector.example.com",
+    "agent_id": null
+  },
+
+  "decision_layer": {
+    "verdict": "alert",
+    "policy_matched": "SENTRY-005",
+    "rule_id": "SENTRY-005",
+    "correlation_window": "60s",
+    "confidence": 2,
+    "ruleset_version": "1.0"
+  },
+
+  "outcome_layer": {
+    "was_correct": null,
+    "true_label": "unresolved",
+    "adjudication_source": null,
+    "resolved_at": null,
+    "note": "run-1 is unresolved; adjudication assigns true_label=malicious after downstream_clean_30d window"
+  },
+
+  "context_layer": {
+    "cluster_id": "a3f1b2c4d5e6f7a8",
+    "baseline_deviation": "high",
+    "repo_fingerprint": "",
+    "fleet_node_id": "",
+    "scope": "org_only"
+  },
+
+  "expected_envelope": {
+    "confidence_tier_expected": "enforce",
+    "source_count_expected": 2,
+    "action_hint_expected": "watch_and_block",
+    "package_or_extension_id": "vscode:nx-console",
+    "version": "17.3.0"
+  }
+}
