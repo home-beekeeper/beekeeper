@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -27,7 +28,9 @@ import (
 	"github.com/bantuson/beekeeper/internal/audit"
 	"github.com/bantuson/beekeeper/internal/catalog"
 	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/bantuson/beekeeper/internal/corpus"
 	"github.com/bantuson/beekeeper/internal/llamafirewall"
+	"github.com/bantuson/beekeeper/internal/platform"
 	"github.com/bantuson/beekeeper/internal/policy"
 	"github.com/bantuson/beekeeper/internal/policyloader"
 )
@@ -465,7 +468,7 @@ func finalize(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPat
 // this is os.Stdout so the raw {"Allow":...} line appears on stdout as before.
 // In --hook mode it is io.Discard so the harness sees ONLY its own deny form.
 func finalizeWithAC(d policy.Decision, cfg config.Config, tc policy.ToolCall, auditPath string, ac policy.AgentContext, out io.Writer) Result {
-	writeAuditWithAC(tc, d, auditPath, ac)
+	writeAuditWithAC(tc, d, auditPath, ac, cfg)
 
 	// Emit the structured decision to the caller-supplied writer.
 	if data, err := json.Marshal(d); err == nil {
@@ -488,7 +491,7 @@ func exitCodeFor(d policy.Decision) int {
 // writeAudit appends one NDJSON record for the decision with a zero AgentContext.
 // Retained for compatibility; prefer writeAuditWithAC.
 func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
-	writeAuditWithAC(tc, d, auditPath, policy.AgentContext{})
+	writeAuditWithAC(tc, d, auditPath, policy.AgentContext{}, config.Config{})
 }
 
 // writeAuditWithAC appends one NDJSON record for the decision with the given
@@ -498,10 +501,20 @@ func writeAudit(tc policy.ToolCall, d policy.Decision, auditPath string) {
 // Redaction (T-04-05-02): default patterns (Bearer tokens, JWT tokens, common API
 // key prefixes) are applied to every record before writing. This prevents sensitive
 // credentials that appear in tool outputs from being persisted to the audit log.
-func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, ac policy.AgentContext) {
+//
+// Corpus write (ADJ-01 / T-23-09): when cfg.Corpus.Enabled is true, this function
+// also writes a CorpusRecord to the corpus NDJSON file AFTER the audit write.
+// A corpus write error is logged to stderr and NEVER changes the hook exit code —
+// the corpus write is strictly best-effort. handler.go MUST NOT import the
+// adjudicator or call RunAdjudicationBatch (adjudication never runs on the hot
+// path — Pitfall 3 / T-23-09).
+func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, ac policy.AgentContext, cfg config.Config) {
 	w, err := audit.NewWriter(auditPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: audit writer unavailable: %v\n", err)
+		// Corpus write still attempted even if audit write fails (fail-closed for audit
+		// is separate from corpus best-effort). However, if we have no rec to base it on,
+		// skip corpus too.
 		return
 	}
 	defer w.Close()
@@ -514,6 +527,102 @@ func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, a
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: audit write failed: %v\n", err)
 	}
+
+	// Corpus write — best-effort, strictly off the decision path (ADJ-01 / T-23-09).
+	// Errors are logged to stderr only; they NEVER change the hook exit code.
+	// handler.go MUST NOT import corpus.adjudicator or call RunAdjudicationBatch.
+	if cfg.Corpus.Enabled {
+		writeCorpusRecord(rec, cfg)
+	}
+}
+
+// writeCorpusRecord appends a CorpusRecord to the corpus NDJSON file.
+// It is called from writeAuditWithAC only when cfg.Corpus.Enabled is true.
+// Every error path logs to stderr and returns — no error ever propagates to the
+// caller (ADJ-01 fail-closed invariant: corpus error must not change exit code).
+//
+// This function is a SIBLING of the audit write (not a MultiSink consumer for the
+// check hot path — OQ-1 resolution Option C: writeAuditWithAC is the chokepoint).
+//
+// Per-invocation open: beekeeper check is a one-shot process. Per-invocation
+// O_APPEND is atomic for <4KB records (OQ-2 resolution). The benchmark gate
+// (BenchmarkRunCheck) validates the latency budget.
+func writeCorpusRecord(rec audit.AuditRecord, cfg config.Config) {
+	// Resolve the state directory for salt + corpus path.
+	stateDir, err := platform.StateDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: resolve state dir: %v\n", err)
+		return
+	}
+
+	// Resolve the corpus file path (validates it is under stateDir — T-23-04).
+	corpusPath, err := corpus.ResolveCorpusPath(cfg.Corpus, stateDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: resolve corpus path: %v\n", err)
+		return
+	}
+
+	// Load or create the per-install HMAC salt (idempotent — read from state.json).
+	stateFile := filepath.Join(stateDir, "state.json")
+	salt, err := corpus.LoadOrCreateSalt(stateFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: load/create salt: %v\n", err)
+		return
+	}
+
+	// Compute fingerprints.
+	cwd, _ := os.Getwd() // best-effort; empty string produces a valid but unlabeled fingerprint
+	repoFp := corpus.RepoFingerprint(cwd, salt)
+	hostname, _ := os.Hostname() // best-effort
+	fleetID := corpus.FleetNodeID(hostname, runtime.GOOS, salt)
+
+	// Map the redacted AuditRecord to a full CorpusRecord via the emitter adapter.
+	// rec is already redacted by writeAuditWithAC (RedactRecord was called above).
+	corpusRec := corpus.MapToCorpusRecord(rec, cfg.Corpus, repoFp, fleetID)
+
+	// Open a per-invocation StoreSink (O_APPEND atomic for <4KB records in a
+	// one-shot process — OQ-2 resolution). The Pitfall 4 anti-pattern note in
+	// 23-RESEARCH.md applies to long-lived daemons; for a one-shot check process,
+	// per-invocation open is the correct and safe choice.
+	sink, err := corpus.NewStoreSink(corpusPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: open corpus sink: %v\n", err)
+		return
+	}
+	defer sink.Close()
+
+	// Write the CorpusRecord through the StoreSink.
+	// StoreSink.Write re-applies redaction (its own invariant) and enforces 0600.
+	// We pass the raw AuditRecord; the StoreSink will wrap it. However, we already
+	// computed the full CorpusRecord above via MapToCorpusRecord. To preserve the
+	// full four-layer record (including BehaviorSigHash, RepoFingerprint, etc.), we
+	// use writeCorpusRecordDirect to bypass StoreSink's minimal-mapping path.
+	if err := writeCorpusRecordDirect(corpusPath, corpusRec); err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: write corpus record: %v\n", err)
+	}
+}
+
+// writeCorpusRecordDirect appends a fully-populated CorpusRecord as a single
+// NDJSON line to the corpus file. Used by writeCorpusRecord to bypass the
+// StoreSink's minimal-mapping path and preserve the full four-layer record.
+//
+// This is intentionally separate from appendCorpusRecord (adjudicator.go) to
+// keep this file free of adjudicator imports (ADJ-01 / Pitfall 3).
+func writeCorpusRecordDirect(corpusPath string, rec corpus.CorpusRecord) error {
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return fmt.Errorf("marshal corpus record: %w", err)
+	}
+	f, err := os.OpenFile(corpusPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open corpus file: %w", err)
+	}
+	defer f.Close()
+	data = append(data, '\n')
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("write corpus record: %w", err)
+	}
+	return nil
 }
 
 // Scannable is the injection interface for LLMF scanning in the hook handler.
