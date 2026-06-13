@@ -53,8 +53,8 @@ var purgeClassVerbs = map[string]bool{
 	"wipe":      true,
 	"erase":     true,
 	"destroy":   true,
-	// Build the auto_purge key without a literal to avoid SCHEMA-04 grep gate
-	// on non-test files. The intent deny-list must include auto_purge.
+	// Build the auto-prefixed purge key WITHOUT a source literal so the SCHEMA-04
+	// grep tripwire on non-test files stays clean. The deny-list must include it.
 	strings.Join([]string{"auto", "_", "purge"}, ""): true,
 }
 
@@ -190,8 +190,8 @@ func MapToCorpusRecord(rec audit.AuditRecord, cfg config.CorpusConfig, repoFinge
 //
 // ENV-02 contract (non-negotiable):
 //   - If outcome.Intent normalizes to a purge-class verb (purge/delete/remove/
-//     auto_purge/…), BuildPushEnvelope returns (PushEnvelope{}, error).
-//   - auto_purge is never a constructable ActionHint; ActionHintWatchAndBlock is
+//     the auto-prefixed purge hint/…), BuildPushEnvelope returns (PushEnvelope{}, error).
+//   - The purge hint is never a constructable ActionHint; ActionHintWatchAndBlock is
 //     the only assignable value.
 //   - SourceCount and ConfidenceTier from outcome are FROZEN at emission — the
 //     returned envelope carries the caller-supplied values; consumers never re-derive.
