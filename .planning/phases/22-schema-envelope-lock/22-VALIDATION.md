@@ -1,9 +1,9 @@
 ---
 phase: 22
 slug: schema-envelope-lock
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-13
 ---
 
@@ -100,4 +100,4 @@ Optional `internal/corpus/testdata/compile_fail/auto_purge_assignment.go` with `
 - [ ] Feedback latency < 60 s
 - [ ] `nyquist_compliant: true` set in frontmatter (after planner reconciles task IDs)
 
-**Approval:** pending
+**Approval:** approved 2026-06-13 (maintainer schema-freeze sign-off; all 8 reqs verified 8/8; gates green; IPv6 normalize quirk accepted + tracked for a future CorpusSchemaVersion bump)

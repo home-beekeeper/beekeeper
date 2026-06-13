@@ -112,14 +112,14 @@ Explicitly excluded for v1.4.0. Anti-features carry version scope.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCHEMA-01 | Phase 22 | Pending |
-| SCHEMA-02 | Phase 22 | Pending |
-| SCHEMA-03 | Phase 22 | Pending |
-| SCHEMA-04 | Phase 22 | Pending |
-| SCHEMA-05 | Phase 22 | Pending |
-| SCHEMA-06 | Phase 22 | Pending |
-| SCOPE-01 | Phase 22 | Pending |
-| SCOPE-02 | Phase 22 | Pending |
+| SCHEMA-01 | Phase 22 | Complete |
+| SCHEMA-02 | Phase 22 | Complete |
+| SCHEMA-03 | Phase 22 | Complete |
+| SCHEMA-04 | Phase 22 | Complete |
+| SCHEMA-05 | Phase 22 | Complete |
+| SCHEMA-06 | Phase 22 | Complete |
+| SCOPE-01 | Phase 22 | Complete |
+| SCOPE-02 | Phase 22 | Complete |
 | ADJ-01 | Phase 23 | Pending |
 | ADJ-02 | Phase 23 | Pending |
 | ADJ-03 | Phase 23 | Pending |

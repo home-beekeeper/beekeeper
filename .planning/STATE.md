@@ -8,10 +8,10 @@ last_updated: "2026-06-13T00:00:00.000Z"
 last_activity: "2026-06-13 -- started milestone v1.4.0 (Adjudicated Corpus, Local Loop) via /gsd-new-milestone --prd beekeeper-corpus-milestone-prd. Earlier the completed v1.2.0 (phases 06-09) + v1.3.0 (10-21, 18.1) phase dirs were archived to milestones/v1.2.0-phases + v1.3.0-phases (193 git-tracked renames, history preserved; parked v1.1.0 01-05 left in place, committed d6dab1a). Updated PROJECT.md (Current Milestone section) + STATE.md and committed. Research-first chosen; defining requirements next."
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 25
 ---
 
 # Project State
@@ -28,15 +28,15 @@ See: .planning/PROJECT.md (updated 2026-06-13 -- v1.4.0 milestone start)
 ## Current Position
 
 Milestone: v1.4.0 -- Adjudicated Corpus (Local Loop). Scope = beekeeper-corpus-milestone-prd.md section 3 (local loop only); the PRD's own v1.1-1.9 (org self-host aggregation + push) and v2.0 (community shared feed) are deferred to future milestones.
-Phase: 22 -- Schema & Envelope Lock: PLANNED (3 plans / 3 waves), ready to execute. Remaining v1.4.0 phases: 23 corpus store + adjudication engine / 24 First Responder corpus binding / 25 launch readiness.
-Status: Phase 22 PLANNED. /gsd-plan-phase 22 ran HAND-MANAGED -- the SDK could not resolve phase 22 (init.plan-phase + roadmap.get-phase returned found:false / expected_phase_dir:null), so the phase dir was created by hand and explicit paths were passed to every subagent. Produced 22-CONTEXT.md (from PRD §3 + the locked OQ decisions) + 22-RESEARCH.md (sonnet; 5 code-grounded deltas incl. the unexported redactPattern -> RedactRecordWithDefaults prereq, invalid json:",inline" -> unnamed embed, CorpusScope.MarshalJSON, CorroborateOutcome count>=BlockAt mapping, ActionHint typed-const guard) + 22-VALIDATION.md (Nyquist per-req map) + 3 PLAN.md (opus planner) -> gsd-plan-checker PASSED 0-blocker / 1-warn / 1-advisory. The 3 milestone open decisions remain LOCKED. All committed; ROADMAP + STATE hand-updated (no SDK state verbs). Ready to execute Phase 22.
-Last activity: 2026-06-13 -- PLANNED Phase 22 (Schema & Envelope Lock) hand-managed: CONTEXT + RESEARCH + VALIDATION + 3 plans, gsd-plan-checker PASSED. NEXT: /gsd-execute-phase 22 (execute INLINE on main with explicit path .planning/phases/22-schema-envelope-lock/ -- Go subagents have the toolchain here; do NOT trust phase-number SDK resolution). Executor reminders: 22-02-T1 build is not independently green until 22-02-T2 lands; after execution flip 22-VALIDATION.md nyquist_compliant + wave_0_complete to true.
+Phase: 22 -- Schema & Envelope Lock: COMPLETE & verified 2026-06-13 (schema FROZEN at CorpusSchemaVersion 1.0; maintainer freeze sign-off; verifier 8/8). NEXT: Phase 23 (Corpus Store & Adjudication Engine). Remaining v1.4.0: 23 / 24 First Responder corpus binding / 25 launch readiness.
+Status: Phase 22 COMPLETE & verified. /gsd-execute-phase 22 ran HAND-MANAGED, sequential on main (use_worktrees=false): 3 gsd-executor (sonnet) passes, waves 1->2->3, 12 atomic commits. 22-01 AuditRecord additive fields + RedactRecordWithDefaults + policy.CorroborateOutcome (count>=BlockAt) + CorpusConfig; 22-02 pure internal/corpus -- CorpusRecord (unnamed AuditRecord embed) + PushEnvelope + ActionHint compile-time auto_purge guard (grep=0) + CorpusScope.MarshalJSON(->org_only) + PromoteScope-error; 22-03 BehaviorSigHash + ScanClusterID frozen + Nx Console fixture + SCHEMA-06 gate. gsd-verifier 8/8 (human_needed -> maintainer freeze sign-off given) -> status passed. Full suite green (27 pkgs), zero new deps, internal/policy+corpus pure. Executors did NOT touch STATE/ROADMAP; orchestrator hand-managed all tracking (no SDK state verbs). 1 deferred item: IPv6 normalize quirk (see Deferred Items + todo). VALIDATION nyquist_compliant+wave_0_complete=true.
+Last activity: 2026-06-13 -- EXECUTED + VERIFIED + froze Phase 22 (Schema & Envelope Lock). 9 tasks / 3 plans / 12 commits inline on main; verifier 8/8; maintainer schema-freeze sign-off (PRD section 4 Phase 0) with the IPv6 quirk accepted + tracked for a future CorpusSchemaVersion bump. NEXT: /gsd-plan-phase 23 (Corpus Store & Adjudication Engine) -- pass explicit paths; do NOT trust phase-number SDK resolution; Go subagents have the toolchain here.
 
 ## Phase Summary (v1.4.0)
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
-| 22 | Schema & Envelope Lock | SCHEMA-01..06, SCOPE-01..02 | Planned 2026-06-13 (3 plans/3 waves; CONTEXT+RESEARCH+VALIDATION; plan-checker PASSED 0-blocker/1-warn/1-advisory) |
+| 22 | Schema & Envelope Lock | SCHEMA-01..06, SCOPE-01..02 | ✅ Complete & verified 2026-06-13 (3/3 plans, 12 commits; verifier 8/8; full suite green 27 pkgs + zero new deps + internal/corpus pure; maintainer freeze sign-off; schema FROZEN at CorpusSchemaVersion 1.0; IPv6 normalize quirk accepted + tracked) |
 | 23 | Corpus Store & Adjudication Engine | ADJ-01..07, STORE-01..05, ENV-01..03 | Not started |
 | 24 | First Responder Corpus Binding | FRB-01..05 | Not started |
 | 25 | Launch Readiness | LAUNCH-01..04 | Not started |
@@ -214,6 +214,7 @@ Items acknowledged and carried forward:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
+| Corpus schema | `behavior_signature_hash` IPv6 bare-address normalize quirk (`::1`->`::`; trailing `:digits` stripped as a port) | Accepted at the Phase 22 freeze sign-off; immaterial to the package/extension exfil threat model; fix is bracket-aware host:port parsing + a **CorpusSchemaVersion bump** (breaking). Tracked: `todos/pending/corpus-behavior-sig-ipv6-normalization.md`; pointer in `internal/corpus/schema_version.go` | Phase 22 (v1.4.0) |
 | Testing | `go test -race` requires CGO/C compiler | CI-only | Phase 1 (v1.0.0) |
 | Build | `make verify-release` requires make on Windows | CI-only | Phase 1 (v1.0.0) |
 | Watch | `notify.Config` wired to config preferences | Future phase | Phase 3 (v1.0.0) |
