@@ -109,6 +109,10 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 
 - [ ] **Phase 24: First Responder Corpus Binding** (FRB-01..05)
   Goal: A confirmed-malicious adjudication arms the TUI quarantine card and elevates detection (Sentry watch + local catalog overlay) without ever auto-purging.
+  Plans: 3 plans
+  - [ ] 24-01-PLAN.md — Corpus reader (ReadMaliciousRecords) + local catalog overlay (AddLocalOverlayEntry/MultiIndex overlay) (Wave 1) — FRB-01, FRB-05
+  - [ ] 24-02-PLAN.md — First Responder corpus wiring: arm quarantine card + detection-only Sentry watch gate + no-purge guard (Wave 2) — FRB-01, FRB-02, FRB-04
+  - [ ] 24-03-PLAN.md — runCatalogsSync FRB wiring + restore reversibility + synthetic Nx Console evaluator gate (Wave 3) — FRB-01..05
   Success criteria:
   1. A confirmed local Nx-Console-style match arms the quarantine card and does NOT auto-purge (FRB-01/02).
   2. Restore reverses a purge cleanly; the red=attacker / coral=Beekeeper TUI semantic is preserved (FRB-03).
