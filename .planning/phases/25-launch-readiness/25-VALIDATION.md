@@ -1,9 +1,9 @@
 ---
 phase: 25
 slug: 25-launch-readiness
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-14
 ---
 
@@ -78,4 +78,4 @@ created: 2026-06-14
 - [ ] Feedback latency < 90s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-06-14 (all LAUNCH-* test gates green; full suite passed; maintainer §13 honesty sign-off APPROVED)

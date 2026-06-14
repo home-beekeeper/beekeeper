@@ -119,7 +119,7 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
   3. The Sentry watch elevates only at corroboration ≥ threshold (a single source does not tighten), detection-only (FRB-04).
   4. A local-only catalog overlay entry is added (owner-only) and survives `catalogs sync` (FRB-05).
 
-- [ ] **Phase 25: Launch Readiness** (LAUNCH-01..04)
+- [x] **Phase 25: Launch Readiness** (LAUNCH-01..04) — ✅ COMPLETE & verified 2026-06-14 (3/3 plans, all Wave 1 sequential on main hand-managed; gsd-verifier 4/4 must-haves → passed; 25-03 THREAT-MODEL §13 honesty checkpoint maintainer-APPROVED live; full suite green 27 pkgs + zero new deps + internal/policy purity preserved). Tests + docs only over Phases 22-24 code.
   Goal: Prove the end-to-end moat loop on the Nx Console incident + all eight Sentry patterns, confirm offline-protective + sub-100ms hot path, and ship honest docs naming the residual gaps.
   Success criteria:
   1. The Nx Console incident runs trace → record → adjudication → signature → local feedback (catalog overlay + Sentry watch), all four layers populated (LAUNCH-01).
@@ -127,9 +127,9 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
   3. A disconnected machine remains fully protective on the last synced catalog; `beekeeper check` p99 stays sub-100ms with the corpus enabled (benchmark gate) (LAUNCH-03).
   4. No corpus data leaves the machine (verified); `docs/THREAT-MODEL.md` states local-first and NAMES the residual gaps (SENTRY-008 CI-runner OIDC theft, GitHub API dead-drop, DNS-tunnel ingested-but-undetected) (LAUNCH-04).
   Plans: 3 plans (1 wave; 25-03 has a blocking human checkpoint)
-  - [ ] 25-01-PLAN.md — Nx Console 11-point E2E gate (LAUNCH-01) + 8-pattern Sentry moat-record table (LAUNCH-02)
-  - [ ] 25-02-PLAN.md — p99 sub-100ms gate + offline-protective proof (LAUNCH-03) + corpus no-network-import static gate (LAUNCH-04)
-  - [ ] 25-03-PLAN.md — THREAT-MODEL.md §13 residual-gaps doc + grep tripwire + maintainer honesty checkpoint (LAUNCH-04)
+  - [x] 25-01-PLAN.md — Nx Console 11-point E2E gate (LAUNCH-01) + 8-pattern Sentry moat-record table (LAUNCH-02)
+  - [x] 25-02-PLAN.md — p99 sub-100ms gate + offline-protective proof (LAUNCH-03) + corpus no-network-import static gate (LAUNCH-04)
+  - [x] 25-03-PLAN.md — THREAT-MODEL.md §13 residual-gaps doc + grep tripwire + maintainer honesty checkpoint (LAUNCH-04)
 
 ## Carried Candidates for the Next Milestone
 
@@ -179,4 +179,4 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 | 22. Schema & Envelope Lock | v1.4.0 | 3/3 | Complete | 2026-06-13 |
 | 23. Corpus Store & Adjudication Engine | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 24. First Responder Corpus Binding | v1.4.0 | 3/3 | Complete | 2026-06-14 |
-| 25. Launch Readiness | v1.4.0 | 0/3 | Planned | — |
+| 25. Launch Readiness | v1.4.0 | 3/3 | Complete | 2026-06-14 |

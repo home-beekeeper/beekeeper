@@ -57,10 +57,10 @@ Requirements for this milestone. Each maps to exactly one phase (22–25).
 
 ### Launch Readiness (LAUNCH) — Phase 25
 
-- [ ] **LAUNCH-01**: End-to-end — the Nx Console incident runs through trace → record → adjudication → signature → local feedback (catalog overlay + Sentry watch), with all four layers populated.
-- [ ] **LAUNCH-02**: Each of the eight Sentry patterns (SENTRY-001..008) produces a moat-grade record with all four layers populated.
-- [ ] **LAUNCH-03**: A disconnected / offline machine remains fully protective on the last synced catalog; `beekeeper check` p99 stays sub-100ms with the corpus enabled (benchmark gate confirms the corpus loop is off the hot path).
-- [ ] **LAUNCH-04**: No corpus data leaves the machine (verified); documentation states local-first and NAMES the residual gaps — SENTRY-008 CI-runner OIDC theft, GitHub API dead-drop exfil, and DNS-tunnel ingested-but-undetected — in `docs/THREAT-MODEL.md`.
+- [x] **LAUNCH-01**: End-to-end — the Nx Console incident runs through trace → record → adjudication → signature → local feedback (catalog overlay + Sentry watch), with all four layers populated.
+- [x] **LAUNCH-02**: Each of the eight Sentry patterns (SENTRY-001..008) produces a moat-grade record with all four layers populated.
+- [x] **LAUNCH-03**: A disconnected / offline machine remains fully protective on the last synced catalog; `beekeeper check` p99 stays sub-100ms with the corpus enabled (benchmark gate confirms the corpus loop is off the hot path).
+- [x] **LAUNCH-04**: No corpus data leaves the machine (verified); documentation states local-first and NAMES the residual gaps — SENTRY-008 CI-runner OIDC theft, GitHub API dead-drop exfil, and DNS-tunnel ingested-but-undetected — in `docs/THREAT-MODEL.md`.
 
 ## Locked Decisions
 
@@ -140,10 +140,10 @@ Explicitly excluded for v1.4.0. Anti-features carry version scope.
 | FRB-03 | Phase 24 | Complete |
 | FRB-04 | Phase 24 | Complete |
 | FRB-05 | Phase 24 | Complete |
-| LAUNCH-01 | Phase 25 | Pending |
-| LAUNCH-02 | Phase 25 | Pending |
-| LAUNCH-03 | Phase 25 | Pending |
-| LAUNCH-04 | Phase 25 | Pending |
+| LAUNCH-01 | Phase 25 | Complete |
+| LAUNCH-02 | Phase 25 | Complete |
+| LAUNCH-03 | Phase 25 | Complete |
+| LAUNCH-04 | Phase 25 | Complete |
 
 **Coverage:**
 - v1 requirements: 32 total
