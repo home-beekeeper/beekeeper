@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/bantuson/beekeeper/internal/policy"
@@ -230,8 +231,14 @@ const maxRecordsToScan = 50_000
 //     the latest unresolved one per cluster.
 //   - Superseding records are append-only: prior "unresolved" lines are preserved.
 //     Consumers take the latest record per ClusterID.
-//   - ctx deadline is honored between records: RunAdjudicationBatch returns ctx.Err()
-//     (writing whatever completed) when cancelled. The 5s deadline is set by the caller.
+//   - Clusters are processed in a DETERMINISTIC order (WR-02): oldest Timestamp
+//     first, tie-broken by ClusterID. So when the 5s deadline truncates a large
+//     batch, the frontier always advances the OLDEST unresolved clusters first
+//     (guaranteed forward progress) and the output order is reproducible.
+//   - ctx deadline is honored between records: hitting the deadline after writing
+//     partial progress is an EXPECTED, designed outcome and returns nil (IN-01),
+//     so operators don't see a scary error on every large-corpus sync. The error
+//     return is reserved for genuine I/O failures.
 //   - Errors are returned for logging; the CALLER decides they are non-fatal.
 //     A batch-pass error MUST NOT cause runCatalogsSync to fail.
 //
@@ -281,16 +288,16 @@ func RunAdjudicationBatch(ctx context.Context, corpusPath, stateFile string, idx
 
 	// Step 2: Collapse to the latest record per ClusterID.
 	// "Latest" = last occurrence in the NDJSON file (NDJSON is append-only).
+	// In the same pass, build an O(1) cluster-occurrence count (WR-05) so the
+	// downstream_clean branch never re-scans allRecords per record (O(n^2)).
 	latestByCluster := make(map[string]CorpusRecord)
+	clusterCounts := make(map[string]int)
 	for _, rec := range allRecords {
-		id := rec.AuditRecord.ClusterID
-		if id == "" {
-			// Records without a ClusterID cannot be correlated; use RecordID as fallback.
-			id = rec.AuditRecord.RecordID
-		}
+		id := clusterKeyOf(rec)
 		if id == "" {
 			continue // no identifier — skip
 		}
+		clusterCounts[id]++
 		latestByCluster[id] = rec // last write wins (NDJSON order = append order)
 	}
 
@@ -301,18 +308,32 @@ func RunAdjudicationBatch(ctx context.Context, corpusPath, stateFile string, idx
 	cleanWindow := time.Duration(cleanWindowDays) * 24 * time.Hour
 	now := time.Now().UTC()
 
-	// Open the StoreSink for appending superseding records.
-	// We only open it when we actually have records to process.
-	var sink *StoreSink
-	var openErr error
+	// WR-02: process clusters in a DETERMINISTIC order — oldest Timestamp first,
+	// tie-broken by ClusterID — so the bounded-deadline frontier always advances
+	// the oldest unresolved clusters first and output is reproducible.
+	orderedKeys := make([]string, 0, len(latestByCluster))
+	for k := range latestByCluster {
+		orderedKeys = append(orderedKeys, k)
+	}
+	sort.Slice(orderedKeys, func(i, j int) bool {
+		ri := latestByCluster[orderedKeys[i]]
+		rj := latestByCluster[orderedKeys[j]]
+		ti := ri.AuditRecord.Timestamp
+		tj := rj.AuditRecord.Timestamp
+		if ti != tj {
+			return ti < tj // lexical RFC3339 sort == chronological; oldest first
+		}
+		return orderedKeys[i] < orderedKeys[j] // stable tie-break by ClusterID
+	})
 
-	for _, rec := range latestByCluster {
-		// Honor context deadline between records (T-23-12 / OQ-3).
+	for _, key := range orderedKeys {
+		rec := latestByCluster[key]
+
+		// Honor context deadline between records (T-23-12 / OQ-3). Hitting the
+		// deadline after writing partial progress is an expected outcome, not an
+		// error (IN-01): return nil so the caller doesn't log a scary message.
 		if ctx.Err() != nil {
-			if sink != nil {
-				_ = sink.Close()
-			}
-			return ctx.Err()
+			return nil
 		}
 
 		// Only process unresolved records.
@@ -359,23 +380,9 @@ func RunAdjudicationBatch(ctx context.Context, corpusPath, stateFile string, idx
 		if !catalogConfirmed && rec.AuditRecord.Timestamp != "" {
 			ts, err := time.Parse(time.RFC3339, rec.AuditRecord.Timestamp)
 			if err == nil && now.Sub(ts) >= cleanWindow {
-				// Count occurrences of this ClusterID in allRecords.
-				clusterKey := rec.AuditRecord.ClusterID
-				if clusterKey == "" {
-					clusterKey = rec.AuditRecord.RecordID
-				}
-				occurrences := 0
-				for _, r := range allRecords {
-					rKey := r.AuditRecord.ClusterID
-					if rKey == "" {
-						rKey = r.AuditRecord.RecordID
-					}
-					if rKey == clusterKey {
-						occurrences++
-					}
-				}
+				// O(1) occurrence lookup from the pre-built count map (WR-05).
 				// Only label benign if there is exactly one occurrence (no follow-on).
-				downstreamCleanElapsed = occurrences == 1
+				downstreamCleanElapsed = clusterCounts[key] == 1
 			}
 		}
 
@@ -394,14 +401,6 @@ func RunAdjudicationBatch(ctx context.Context, corpusPath, stateFile string, idx
 			continue
 		}
 
-		// Lazy-open the StoreSink on the first record that needs a superseding entry.
-		if sink == nil {
-			sink, openErr = NewStoreSink(corpusPath)
-			if openErr != nil {
-				return fmt.Errorf("open corpus sink for superseding records: %w", openErr)
-			}
-		}
-
 		// Build the superseding CorpusRecord (ADJ-07):
 		// - NEW RecordID (generated via newAdjudicationRecordID)
 		// - SAME ClusterID as the original
@@ -414,57 +413,48 @@ func RunAdjudicationBatch(ctx context.Context, corpusPath, stateFile string, idx
 		superseding.WasCorrect = result.WasCorrect
 		superseding.ResolvedAt = result.ResolvedAt
 		if superseding.PushEnvelope != nil && result.ConfidenceTier != "" {
-			// Update the push envelope outcome fields.
-			superseding.PushEnvelope.TrueLabel = result.TrueLabel
-			superseding.PushEnvelope.ConfidenceTier = result.ConfidenceTier
-			superseding.PushEnvelope.SourceCount = result.SourceCount
+			// Update the push envelope outcome fields. Copy the pointer target so
+			// mutating the superseding envelope never aliases the original record
+			// still held in latestByCluster.
+			env := *superseding.PushEnvelope
+			env.TrueLabel = result.TrueLabel
+			env.ConfidenceTier = result.ConfidenceTier
+			env.SourceCount = result.SourceCount
+			superseding.PushEnvelope = &env
 		}
 
-		// Write the superseding record through the StoreSink (which handles redaction
-		// and mutex). We pass the raw AuditRecord embed — StoreSink.Write will wrap it
-		// in a CorpusRecord again with TrueLabel="unresolved". This is NOT what we want:
-		// we need to write the fully-resolved CorpusRecord directly.
-		// Solution: write the superseding CorpusRecord directly to the file, bypassing
-		// the StoreSink's CorpusRecord construction, by encoding directly.
-		// DEVIATION: use a direct NDJSON append to preserve the full superseding record.
+		// WR-01/IN-03/WR-03: append the fully-resolved superseding record via the
+		// single shared writer (redaction-first, O_CREATE, single-Write, size cap).
+		// The dead StoreSink lazy-open machinery is gone — every write goes through
+		// AppendCorpusRecordLine, so there is no spurious second Windows write
+		// handle and the redaction invariant is uniform across both write paths.
 		if writeErr := appendCorpusRecord(corpusPath, superseding); writeErr != nil {
 			// Log to stderr via error return — caller decides non-fatal.
-			if sink != nil {
-				_ = sink.Close()
-			}
 			return fmt.Errorf("append superseding record for cluster %q: %w",
 				rec.AuditRecord.ClusterID, writeErr)
 		}
 	}
 
-	if sink != nil {
-		_ = sink.Close()
-	}
 	return nil
 }
 
-// appendCorpusRecord appends a fully-resolved CorpusRecord to the NDJSON file
-// as a raw NDJSON line (bypassing StoreSink's CorpusRecord construction so the
-// superseding record carries its full outcome layer). Enforces O_APPEND atomicity.
-// This is the correct path for superseding records where the outcome layer must
-// be preserved as written (not re-derived by StoreSink.Write).
+// clusterKeyOf returns the correlation key for a record: ClusterID, falling back
+// to RecordID when ClusterID is empty. Centralizes the key derivation used by
+// both the latest-per-cluster collapse and the occurrence count.
+func clusterKeyOf(rec CorpusRecord) string {
+	if rec.AuditRecord.ClusterID != "" {
+		return rec.AuditRecord.ClusterID
+	}
+	return rec.AuditRecord.RecordID
+}
+
+// appendCorpusRecord appends a fully-resolved superseding CorpusRecord to the
+// NDJSON file. It delegates to the shared AppendCorpusRecordLine writer (IN-03)
+// so the superseding path honors the same redaction-first (WR-03), O_CREATE
+// (IN-04), single-Write, and size-cap (WR-06) behaviour as the hook hot path,
+// with no duplicated open/marshal logic to drift.
 func appendCorpusRecord(corpusPath string, rec CorpusRecord) error {
-	data, err := json.Marshal(rec)
-	if err != nil {
-		return fmt.Errorf("marshal superseding corpus record: %w", err)
-	}
-
-	f, err := os.OpenFile(corpusPath, os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("open corpus for superseding append: %w", err)
-	}
-	defer f.Close()
-
-	data = append(data, '\n')
-	if _, err := f.Write(data); err != nil {
-		return fmt.Errorf("write superseding record: %w", err)
-	}
-	return nil
+	return AppendCorpusRecordLine(corpusPath, rec)
 }
 
 // newAdjudicationRecordID generates a random 128-bit hex identifier for a

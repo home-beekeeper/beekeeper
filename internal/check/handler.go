@@ -559,8 +559,11 @@ func writeAuditWithAC(tc policy.ToolCall, d policy.Decision, auditPath string, a
 // check hot path — OQ-1 resolution Option C: writeAuditWithAC is the chokepoint).
 //
 // Per-invocation open: beekeeper check is a one-shot process. Per-invocation
-// O_APPEND is atomic for <4KB records (OQ-2 resolution). The benchmark gate
-// (BenchmarkRunCheck) validates the latency budget.
+// O_APPEND of the full record+"\n" in a single write is atomic on POSIX up to
+// filesystem limits; the size-capped single-Write in AppendCorpusRecordLine
+// minimizes the residual torn-line window on Windows, which provides no
+// multi-process FILE_APPEND_DATA atomicity guarantee (WR-06 caveat). The
+// benchmark gate (BenchmarkRunCheck) validates the latency budget.
 func writeCorpusRecord(rec audit.AuditRecord, cfg config.Config, stateDir string) {
 	// Resolve the state directory: use the threaded-in value when available;
 	// fall back to platform.StateDir() only if the caller passed "". In
@@ -582,19 +585,31 @@ func writeCorpusRecord(rec audit.AuditRecord, cfg config.Config, stateDir string
 		return
 	}
 
-	// Load or create the per-install HMAC salt (idempotent — read from state.json).
-	stateFile := filepath.Join(stateDir, "state.json")
-	salt, err := corpus.LoadOrCreateSalt(stateFile)
+	// Load or create the per-install HMAC salt (idempotent — read from the
+	// dedicated owner-only salt file at stateDir/corpus/salt, NOT state.json).
+	// CR-01: the hot path no longer read-modify-writes the shared state.json.
+	salt, err := corpus.LoadOrCreateSalt(stateDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: load/create salt: %v\n", err)
 		return
 	}
 
-	// Compute fingerprints.
+	// Compute fingerprints. A fingerprint error means the salt was invalid
+	// (should-never-happen with the dedicated salt file — WR-04). Treat it as
+	// "corpus fingerprinting unavailable": log + skip the corpus write. This
+	// never changes the hook exit code (ADJ-01 fail-closed invariant).
 	cwd, _ := os.Getwd() // best-effort; empty string produces a valid but unlabeled fingerprint
-	repoFp := corpus.RepoFingerprint(cwd, salt)
+	repoFp, err := corpus.RepoFingerprint(cwd, salt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: repo fingerprint: %v\n", err)
+		return
+	}
 	hostname, _ := os.Hostname() // best-effort
-	fleetID := corpus.FleetNodeID(hostname, runtime.GOOS, salt)
+	fleetID, err := corpus.FleetNodeID(hostname, runtime.GOOS, salt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper check: corpus: fleet node id: %v\n", err)
+		return
+	}
 
 	// Map the redacted AuditRecord to a full CorpusRecord via the emitter adapter.
 	// rec is already redacted by writeAuditWithAC (RedactRecord was called above).
@@ -623,26 +638,15 @@ func writeCorpusRecord(rec audit.AuditRecord, cfg config.Config, stateDir string
 }
 
 // writeCorpusRecordDirect appends a fully-populated CorpusRecord as a single
-// NDJSON line to the corpus file. Used by writeCorpusRecord to bypass the
-// StoreSink's minimal-mapping path and preserve the full four-layer record.
+// NDJSON line to the corpus file. It delegates to the shared
+// corpus.AppendCorpusRecordLine helper (IN-03) so the redaction-first (WR-03),
+// O_CREATE (IN-04), single-Write, and size-cap (WR-06) behaviour is identical to
+// the adjudicator's superseding-record path.
 //
-// This is intentionally separate from appendCorpusRecord (adjudicator.go) to
-// keep this file free of adjudicator imports (ADJ-01 / Pitfall 3).
+// AppendCorpusRecordLine lives in store.go (no adjudicator symbols), so this
+// file stays free of adjudicator imports (ADJ-01 / Pitfall 3).
 func writeCorpusRecordDirect(corpusPath string, rec corpus.CorpusRecord) error {
-	data, err := json.Marshal(rec)
-	if err != nil {
-		return fmt.Errorf("marshal corpus record: %w", err)
-	}
-	f, err := os.OpenFile(corpusPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("open corpus file: %w", err)
-	}
-	defer f.Close()
-	data = append(data, '\n')
-	if _, err := f.Write(data); err != nil {
-		return fmt.Errorf("write corpus record: %w", err)
-	}
-	return nil
+	return corpus.AppendCorpusRecordLine(corpusPath, rec)
 }
 
 // Scannable is the injection interface for LLMF scanning in the hook handler.

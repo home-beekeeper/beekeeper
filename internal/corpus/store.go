@@ -131,6 +131,67 @@ func (s *StoreSink) Close() error {
 	return s.file.Close()
 }
 
+// maxCorpusRecordBytes bounds the size of a single NDJSON corpus line before it
+// is appended (WR-06). A tool call with very large SentryFilesAccessed/Reason
+// content could otherwise exceed the ~4KB the O_APPEND atomicity assumption
+// relies on; records over this cap are rejected (the caller logs + skips) rather
+// than risking a torn line that the reader silently drops. The cap is generous
+// (64KB) so legitimate records are never lost.
+const maxCorpusRecordBytes = 64 << 10
+
+// AppendCorpusRecordLine is the single shared writer for fully-resolved
+// CorpusRecords (IN-03). Both the hook hot path (writeCorpusRecordDirect in
+// internal/check/handler.go) and the adjudicator's superseding-record path
+// (appendCorpusRecord in adjudicator.go) call it, so the redaction-first
+// invariant (WR-03) and the open-flags/size-cap behaviour live in exactly one
+// place and cannot drift.
+//
+// It lives in store.go (no adjudicator symbols) so handler.go can import it
+// without pulling in RunAdjudicationBatch (ADJ-01 / Pitfall 3).
+//
+// Invariant order:
+//  1. Redact the embedded AuditRecord with RedactRecordWithDefaults (WR-03):
+//     every write path — store and adjudicator — honors redaction-first, even
+//     for records re-read off disk that may have been written by another tool.
+//  2. Marshal to a single NDJSON line and enforce the size cap (WR-06).
+//  3. Open with O_APPEND|O_CREATE|O_WRONLY (IN-04: O_CREATE, never O_TRUNC) and
+//     write the full record+"\n" buffer in a SINGLE f.Write call.
+//
+// Windows append-atomicity caveat (WR-06): POSIX guarantees O_APPEND write
+// atomicity up to filesystem limits, but Windows provides no such guarantee for
+// FILE_APPEND_DATA writes from multiple concurrent processes. The single-Write
+// of a size-capped buffer minimizes the torn-line window; a cross-process file
+// lock would be the fully robust fix but is deliberately out of scope here to
+// avoid regressing the sub-100ms hot-path latency. The reader tolerates the
+// residual risk by skipping malformed lines (adjudicator Step 1).
+func AppendCorpusRecordLine(corpusPath string, rec CorpusRecord) error {
+	// Step 1 — REDACTION FIRST (T-23-01 / WR-03, non-negotiable, uniform across
+	// every write path).
+	rec.AuditRecord = audit.RedactRecordWithDefaults(rec.AuditRecord)
+
+	// Step 2 — marshal + size cap.
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return fmt.Errorf("marshal corpus record: %w", err)
+	}
+	if len(data)+1 > maxCorpusRecordBytes {
+		return fmt.Errorf("corpus record is %d bytes, exceeds cap %d: refusing to append (WR-06 torn-line guard)", len(data)+1, maxCorpusRecordBytes)
+	}
+	data = append(data, '\n')
+
+	// Step 3 — single-Write append (IN-04: O_CREATE without O_TRUNC).
+	f, err := os.OpenFile(corpusPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open corpus file for append: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.Write(data); err != nil {
+		return fmt.Errorf("write corpus record: %w", err)
+	}
+	return nil
+}
+
 // ResolveCorpusPath resolves the corpus NDJSON file path from the provided
 // config and stateDir.
 //
