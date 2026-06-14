@@ -107,12 +107,12 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
   4. `repo_fingerprint`/`fleet_node_id` are non-reversible HMAC values; two installs of the same repo differ (STORE-05).
   5. A fuzz/property test confirms no envelope escapes with a non-allowlisted `action_hint` (ENV-02/03).
 
-- [ ] **Phase 24: First Responder Corpus Binding** (FRB-01..05)
+- [x] **Phase 24: First Responder Corpus Binding** (FRB-01..05) — ✅ COMPLETE & verified 2026-06-14 (3/3 plans; gsd-verifier 10/10 must-haves → passed; FRB-03 red/coral TUI gate maintainer-APPROVED; full suite green across 27 pkgs + synthetic Nx Console evaluator gate + zero new deps; internal/watch does not import internal/tui)
   Goal: A confirmed-malicious adjudication arms the TUI quarantine card and elevates detection (Sentry watch + local catalog overlay) without ever auto-purging.
   Plans: 3 plans
-  - [ ] 24-01-PLAN.md — Corpus reader (ReadMaliciousRecords) + local catalog overlay (AddLocalOverlayEntry/MultiIndex overlay) (Wave 1) — FRB-01, FRB-05
-  - [ ] 24-02-PLAN.md — First Responder corpus wiring: arm quarantine card + detection-only Sentry watch gate + no-purge guard (Wave 2) — FRB-01, FRB-02, FRB-04
-  - [ ] 24-03-PLAN.md — runCatalogsSync FRB wiring + restore reversibility + synthetic Nx Console evaluator gate (Wave 3) — FRB-01..05
+  - [x] 24-01-PLAN.md — Corpus reader (ReadMaliciousRecords) + local catalog overlay (AddLocalOverlayEntry/MultiIndex overlay) (Wave 1) — FRB-01, FRB-05
+  - [x] 24-02-PLAN.md — First Responder corpus wiring: arm quarantine card + detection-only Sentry watch gate + no-purge guard (Wave 2) — FRB-01, FRB-02, FRB-04
+  - [x] 24-03-PLAN.md — runCatalogsSync FRB wiring + restore reversibility + synthetic Nx Console evaluator gate (Wave 3) — FRB-01..05
   Success criteria:
   1. A confirmed local Nx-Console-style match arms the quarantine card and does NOT auto-purge (FRB-01/02).
   2. Restore reverses a purge cleanly; the red=attacker / coral=Beekeeper TUI semantic is preserved (FRB-03).
@@ -174,5 +174,5 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 | 21. Full-System Validation & CI Calibration | v1.3.0 | 4/4 | Complete | 2026-06-11 |
 | 22. Schema & Envelope Lock | v1.4.0 | 3/3 | Complete | 2026-06-13 |
 | 23. Corpus Store & Adjudication Engine | v1.4.0 | 3/3 | Complete | 2026-06-14 |
-| 24. First Responder Corpus Binding | v1.4.0 | 0/3 | Planned | — |
+| 24. First Responder Corpus Binding | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 25. Launch Readiness | v1.4.0 | 0/? | Not started | — |

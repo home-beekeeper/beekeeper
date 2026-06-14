@@ -135,11 +135,11 @@ Explicitly excluded for v1.4.0. Anti-features carry version scope.
 | ENV-01 | Phase 23 | Complete |
 | ENV-02 | Phase 23 | Complete |
 | ENV-03 | Phase 23 | Complete |
-| FRB-01 | Phase 24 | Pending |
-| FRB-02 | Phase 24 | Pending |
-| FRB-03 | Phase 24 | Pending |
-| FRB-04 | Phase 24 | Pending |
-| FRB-05 | Phase 24 | Pending |
+| FRB-01 | Phase 24 | Complete |
+| FRB-02 | Phase 24 | Complete |
+| FRB-03 | Phase 24 | Complete |
+| FRB-04 | Phase 24 | Complete |
+| FRB-05 | Phase 24 | Complete |
 | LAUNCH-01 | Phase 25 | Pending |
 | LAUNCH-02 | Phase 25 | Pending |
 | LAUNCH-03 | Phase 25 | Pending |
