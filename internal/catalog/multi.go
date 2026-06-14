@@ -12,10 +12,16 @@ import "github.com/bantuson/beekeeper/internal/policy"
 //
 // Nil sub-adapters are silently skipped — Socket is nil when no API token is
 // configured; OSV is nil in test stubs or when explicitly disabled.
+// Overlay is nil when no local-overlay.idx has been built yet (first run).
 type MultiIndex struct {
 	// Bumblebee is the mmap-backed local index (the only source in Phase 1).
 	// It is wrapped internally as a bumblebeeAdapter for LookupAll semantics.
 	Bumblebee *Index
+
+	// Overlay is the local catalog overlay index (local-overlay.idx).
+	// Nil when absent (first run or overlay not yet written). Added in Phase 24
+	// (FRB-05). Queried after Bumblebee with CatalogSource "local-overlay".
+	Overlay *Index
 
 	// OSV is the OSV REST API adapter. Nil when OSV is unavailable or disabled.
 	OSV policy.MultiCatalogLookup
@@ -33,6 +39,21 @@ func NewMultiIndex(bumblebee *Index, osv, socket policy.MultiCatalogLookup) *Mul
 		OSV:       osv,
 		Socket:    socket,
 	}
+}
+
+// NewMultiIndexWithOverlay constructs a MultiIndex that additionally queries
+// a local catalog overlay index at overlayPath. If overlayPath is empty or the
+// index cannot be opened, Overlay stays nil (silently degraded — no overlay
+// match is no block, consistent with fail-closed). Existing callers that use
+// NewMultiIndex are unaffected (additive extension, mirrors Phase 23
+// NewMultiSinkWithCorpus pattern).
+//
+// RED stub: Overlay is always nil until Task 3 implements this fully.
+func NewMultiIndexWithOverlay(bumblebee *Index, osv, socket policy.MultiCatalogLookup, overlayPath string) *MultiIndex {
+	m := NewMultiIndex(bumblebee, osv, socket)
+	// RED stub — overlayPath ignored; Overlay remains nil. Task 3 implements this.
+	_ = overlayPath
+	return m
 }
 
 // LookupAll satisfies policy.MultiCatalogLookup. It queries each non-nil source
