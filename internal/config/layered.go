@@ -252,6 +252,21 @@ func merge(dst, src Config) Config {
 	// where set, including a disable (a trusted user/global layer MAY opt out).
 	dst.CatalogSync = mergeCatalogSync(dst.CatalogSync, src.CatalogSync)
 
+	// CorpusConfig — trusted layer: src.Corpus.Enabled=true activates corpus
+	// processing; false cannot distinguish "absent" from "disabled", so a true
+	// value always wins (enabling from a higher layer is always allowed on the
+	// trusted path). Path and other string fields override only when non-empty.
+	dst.Corpus = mergeCorpus(dst.Corpus, src.Corpus)
+
+	// AutoQuarantineConfig — trusted layer: src wins where non-nil and non-zero.
+	if src.AutoQuarantine != nil {
+		if dst.AutoQuarantine == nil {
+			dst.AutoQuarantine = &AutoQuarantineConfig{}
+		}
+		merged := mergeAutoQuarantine(*dst.AutoQuarantine, *src.AutoQuarantine)
+		dst.AutoQuarantine = &merged
+	}
+
 	return dst
 }
 
@@ -333,6 +348,25 @@ func mergeUntrusted(dst, src Config, layerName string) Config {
 	// CatalogSyncConfig — use the low-trust variant (CSYNC-04): a disable or an
 	// interval-loosening from a project/env layer is refused.
 	dst.CatalogSync = mergeCatalogSyncUntrusted(dst.CatalogSync, src.CatalogSync, layerName)
+
+	// CorpusConfig — security-enhancing (enables monitoring). Allow enabling from
+	// low-trust layers (project/env) since it tightens security posture. Disable
+	// is refused: a project file must not be able to turn off corpus monitoring.
+	if src.Corpus.Enabled {
+		dst.Corpus.Enabled = true
+	}
+	if src.Corpus.Path != "" {
+		dst.Corpus.Path = src.Corpus.Path
+	}
+
+	// AutoQuarantineConfig — Enabled=true is always allowed from low-trust layers
+	// (activating quarantine tightens posture); disable is refused.
+	if src.AutoQuarantine != nil && src.AutoQuarantine.Enabled {
+		if dst.AutoQuarantine == nil {
+			dst.AutoQuarantine = &AutoQuarantineConfig{}
+		}
+		dst.AutoQuarantine.Enabled = true
+	}
 
 	return dst
 }
@@ -830,4 +864,38 @@ func parseEnvSlice(environ []string) map[string]string {
 		m[e[:idx]] = e[idx+1:]
 	}
 	return m
+}
+
+// mergeCorpus merges a CorpusConfig src over dst for the trusted layer.
+// Enabling corpus (src.Enabled=true) always wins. Disable cannot be
+// distinguished from "absent" (Go zero bool), so false never clobbers a
+// lower-layer true. String fields override when non-empty.
+func mergeCorpus(dst, src CorpusConfig) CorpusConfig {
+	if src.Enabled {
+		dst.Enabled = true
+	}
+	if src.Path != "" {
+		dst.Path = src.Path
+	}
+	if src.DownstreamCleanDays > 0 {
+		dst.DownstreamCleanDays = src.DownstreamCleanDays
+	}
+	return dst
+}
+
+// mergeAutoQuarantine merges an AutoQuarantineConfig src over dst for the
+// trusted layer. Enabling auto-quarantine (src.Enabled=true) always wins;
+// false cannot be distinguished from absent so it never clobbers a lower-layer
+// true. Threshold and DryRun override when non-zero/true.
+func mergeAutoQuarantine(dst, src AutoQuarantineConfig) AutoQuarantineConfig {
+	if src.Enabled {
+		dst.Enabled = true
+	}
+	if src.DryRun {
+		dst.DryRun = true
+	}
+	if src.Threshold != 0 {
+		dst.Threshold = src.Threshold
+	}
+	return dst
 }
