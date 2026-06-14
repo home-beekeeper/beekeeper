@@ -759,6 +759,99 @@ func TestMoveTypedTraversalGuardPackages(t *testing.T) {
 	}
 }
 
+// TestRestoreCorpusQuarantineEntry verifies FRB-03: a quarantine entry created
+// via MoveTyped with a corpus-adjudication Manifest (Reason "corpus
+// adjudication: confirmed malicious", RuleIDs ["FRSP-02"]) is reversible via
+// quarantine.Restore exactly like a scan-hit entry.
+//
+// This test confirms that no production code change to quarantine.go is required
+// for the corpus path — the corpus-adjudication entry is physically identical to
+// a scan-hit entry, so Restore works without modification (FRB-03).
+func TestRestoreCorpusQuarantineEntry(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	// Create a fake npm package directory representing @nrwl/nx-console v17.3.0.
+	pkgPath := filepath.Join(t.TempDir(), "node_modules", "@nrwl", "nx-console")
+	if err := os.MkdirAll(pkgPath, 0o700); err != nil {
+		t.Fatalf("mkdir pkg: %v", err)
+	}
+	// Write a sentinel file so we can verify the directory content moved.
+	sentinelPath := filepath.Join(pkgPath, "package.json")
+	if err := os.WriteFile(sentinelPath, []byte(`{"name":"@nrwl/nx-console","version":"17.3.0"}`), 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	// Manifest mirrors the corpus-adjudication path shape used in firstresponder.go:
+	//   Publisher = ecosystem ("npm"), Name = pkg ("@nrwl/nx-console"),
+	//   Reason = "corpus adjudication: confirmed malicious", RuleIDs = ["FRSP-02"].
+	m := quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "@nrwl/nx-console",
+		Version:      "17.3.0",
+		OriginalPath: pkgPath,
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "corpus adjudication: confirmed malicious",
+		RuleIDs:      []string{"FRSP-02"},
+		QuarantinedAt: time.Now().UTC(),
+	}
+
+	// Move the artifact into quarantine using the corpus-style manifest.
+	id, err := quarantine.MoveTyped(quarantineDir, pkgPath, m)
+	if err != nil {
+		t.Fatalf("MoveTyped error: %v", err)
+	}
+	if id == "" {
+		t.Fatal("MoveTyped returned empty id")
+	}
+
+	// pkgPath should no longer exist.
+	if _, statErr := os.Stat(pkgPath); !os.IsNotExist(statErr) {
+		t.Errorf("pkgPath %q still exists after MoveTyped, want gone", pkgPath)
+	}
+
+	// Quarantine list must show exactly one entry.
+	entries, err := quarantine.List(quarantineDir)
+	if err != nil {
+		t.Fatalf("quarantine.List: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("quarantine.List returned %d entries, want 1", len(entries))
+	}
+	if entries[0].Reason != "corpus adjudication: confirmed malicious" {
+		t.Errorf("manifest Reason = %q, want %q", entries[0].Reason, "corpus adjudication: confirmed malicious")
+	}
+	if len(entries[0].RuleIDs) == 0 || entries[0].RuleIDs[0] != "FRSP-02" {
+		t.Errorf("manifest RuleIDs = %v, want [FRSP-02]", entries[0].RuleIDs)
+	}
+
+	// Restore must put the artifact back at the original path.
+	if err := quarantine.Restore(quarantineDir, id); err != nil {
+		t.Fatalf("Restore error: %v", err)
+	}
+
+	// (a) artifact is back at OriginalPath.
+	if _, statErr := os.Stat(pkgPath); statErr != nil {
+		t.Errorf("pkgPath %q not restored: %v", pkgPath, statErr)
+	}
+	// Sentinel file must also be present.
+	if _, statErr := os.Stat(sentinelPath); statErr != nil {
+		t.Errorf("sentinel file %q not found after Restore: %v", sentinelPath, statErr)
+	}
+
+	// (b) quarantine entry is gone.
+	entryDir := filepath.Join(quarantine.PackagesDir(quarantineDir), id)
+	if _, statErr := os.Stat(entryDir); !os.IsNotExist(statErr) {
+		t.Errorf("quarantine entry dir %q still exists after Restore, want gone", entryDir)
+	}
+	remaining, err := quarantine.List(quarantineDir)
+	if err != nil {
+		t.Fatalf("quarantine.List after Restore: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Errorf("quarantine.List after Restore returned %d entries, want 0", len(remaining))
+	}
+}
+
 // TestMoveWrapperDefaultsToEditorExtension verifies that the legacy Move wrapper
 // sets ArtifactType="editor-extension" and places entries under extensions/.
 func TestMoveWrapperDefaultsToEditorExtension(t *testing.T) {
