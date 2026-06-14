@@ -14,6 +14,7 @@ import (
 	"github.com/bantuson/beekeeper/internal/corpus"
 	"github.com/bantuson/beekeeper/internal/platform"
 	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/watch"
 )
 
 // catalogSyncSourceName is the SourceState key for the Bumblebee catalog in
@@ -21,6 +22,13 @@ import (
 // daemon's source name, so the sync freshness fields live alongside the watch
 // daemon's Hash/Count/Degraded fields for the same source.
 const catalogSyncSourceName = "bumblebee"
+
+// firstResponderFn is the package-level injectable seam for runCatalogsSync.
+// Mirrors scanOnDeltaFn: production code leaves it as watch.RunFirstResponder;
+// cmd tests replace it with a no-op or a closure to isolate the FRB wiring.
+var firstResponderFn = func(ctx context.Context, cfg watch.FirstResponderConfig) error {
+	return watch.RunFirstResponder(ctx, cfg)
+}
 
 // catalogSyncNow is the clock seam for the interval gate, overridable in tests.
 var catalogSyncNow = func() time.Time { return time.Now() }
@@ -119,6 +127,51 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 				// Non-fatal: log to stderr and continue. The sync must proceed.
 				fmt.Fprintf(os.Stderr, "beekeeper: corpus adjudication batch: %v\n", batchErr)
 			}
+
+			// Phase 24 (FRB-01/04): first-responder corpus pass.
+			// Runs AFTER the adjudication batch so confirmed-malicious records are
+			// already written before the first-responder reads them.
+			// Resolve the audit directory for the audit log path.
+			auditDir, adErr := platform.AuditDir()
+			if adErr != nil {
+				fmt.Fprintf(os.Stderr, "beekeeper: corpus first-responder: resolve audit dir: %v\n", adErr)
+				// Non-fatal: continue without the first-responder pass.
+			} else {
+				if frErr := firstResponderFn(cmd.Context(), watch.FirstResponderConfig{
+					CorpusPath:            corpusPath,
+					CorpusEnabled:         cfg.Corpus.Enabled,
+					CorpusSentryThreshold: 2,
+					SentryTargetsPath:     filepath.Join(stateDir, "sentry-targets.json"),
+					QuarantineDir:         filepath.Join(stateDir, "quarantine"),
+					AuditPath:             filepath.Join(auditDir, "beekeeper.ndjson"),
+					IndexPath:             filepath.Join(dir, "bumblebee.idx"),
+					CacheDir:              dir,
+					Enabled:               cfg.AutoQuarantineEnabled(),
+					Threshold:             2,
+				}); frErr != nil {
+					// Non-fatal: log to stderr and continue. The sync must proceed.
+					fmt.Fprintf(os.Stderr, "beekeeper: corpus first-responder: %v\n", frErr)
+				}
+			}
+
+			// Phase 24 (FRB-05): local catalog overlay — one entry per malicious
+			// corpus record. Runs after the first-responder pass so the overlay
+			// reflects the same confirmed-malicious set that just armed the card.
+			malicious, rdErr := corpus.ReadMaliciousRecords(corpusPath)
+			if rdErr != nil {
+				// Non-fatal: log to stderr and continue. The sync must proceed.
+				fmt.Fprintf(os.Stderr, "beekeeper: corpus: read malicious records for overlay: %v\n", rdErr)
+			} else {
+				for _, rec := range malicious {
+					if rec.PushEnvelope == nil || rec.PushEnvelope.Signature.PackageOrExtensionID == "" {
+						continue
+					}
+					if ovErr := catalog.AddLocalOverlayEntry(dir, buildOverlayEntry(rec)); ovErr != nil {
+						// Non-fatal per record: log to stderr and continue.
+						fmt.Fprintf(os.Stderr, "beekeeper: catalog overlay: add entry: %v\n", ovErr)
+					}
+				}
+			}
 		}
 	}
 
@@ -174,6 +227,51 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 		return sqErr
 	}
 	return nil
+}
+
+// buildOverlayEntry constructs a catalog.Entry from a confirmed-malicious
+// CorpusRecord for FRB-05 (local catalog overlay).
+//
+// Key properties:
+//   - CatalogSignature is always "" (empty): unsigned overlay entries are
+//     warn-only (source_count:1) per CTLG-07 corroboration semantics (Pitfall 3).
+//   - CatalogSource is "local-overlay" so the policy engine counts it as a
+//     distinct source in corroborate() deduplication.
+//   - Ecosystem+package are parsed from PushEnvelope.Signature.PackageOrExtensionID
+//     using the same rune-by-rune first-colon split as parsePackageID in firstresponder.go.
+func buildOverlayEntry(rec corpus.CorpusRecord) catalog.Entry {
+	id := rec.PushEnvelope.Signature.PackageOrExtensionID
+	// Split on first ':' to separate ecosystem from package name.
+	// Handles scoped npm names: "npm:@org/pkg" → ("npm", "@org/pkg").
+	ecosystem, pkg := "", id
+	for i, c := range id {
+		if c == ':' {
+			ecosystem, pkg = id[:i], id[i+1:]
+			break
+		}
+	}
+
+	version := ""
+	if rec.PushEnvelope != nil {
+		version = rec.PushEnvelope.Signature.Version
+	}
+
+	var versions []string
+	if version != "" {
+		versions = []string{version}
+	}
+
+	return catalog.Entry{
+		ID:               "local-overlay-" + rec.AuditRecord.ClusterID,
+		Name:             pkg,
+		Ecosystem:        ecosystem,
+		Package:          pkg,
+		Versions:         versions,
+		Severity:         "critical",
+		SourceURL:        "",
+		CatalogSignature: "", // MUST be empty — unsigned → warn-only per Pitfall 3
+		CatalogSource:    "local-overlay",
+	}
 }
 
 // newCatalogsDaemonCmd builds the `catalogs daemon install|uninstall|status`
