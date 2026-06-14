@@ -28,7 +28,9 @@ findings:
   warning: 6
   info: 5
   total: 12
-status: issues_found
+status: resolved
+resolved: 2026-06-14
+resolution_commits: [0d1f78c, ea90dc0, 7207980, 1d70b37]
 ---
 
 # Phase 23: Code Review Report
@@ -36,7 +38,12 @@ status: issues_found
 **Reviewed:** 2026-06-14T00:00:00Z
 **Depth:** standard
 **Files Reviewed:** 19
-**Status:** issues_found
+**Status:** resolved — all 12 findings fixed 2026-06-14
+
+> **Resolution (2026-06-14):** All 12 findings fixed and committed atomically to `main`; full gate re-verified green (build/vet, `go test ./...`, `BenchmarkRunCheck` ~22 ms/op, ENV-03 fuzz, `auto_purge` tripwire 0, zero new deps).
+> - **CR-01 + WR-04** (`0d1f78c`): corpus salt moved out of shared `state.json` into a dedicated owner-only `stateDir/corpus/salt` file created with `O_CREATE|O_EXCL` (first-writer-wins → no salt rotation, no `Degraded`-flag clobber); `CorpusLocalSalt` dropped from `WatchState`; `hmacHex` now fails loud on an invalid salt instead of using a guessable key. New `TestLoadOrCreateSaltConcurrentFirstRun` (32 goroutines converge on one salt).
+> - **WR-01/02/03/05/06 + IN-01/03/04** (`ea90dc0`): shared `AppendCorpusRecordLine` (redaction-first for every write path, 64 KB cap + single `f.Write` + documented Windows `O_APPEND` caveat, `O_CREATE`); dead `StoreSink` lazy-open removed; deterministic oldest-first batch ordering; O(1) cluster-occurrence count; benign ctx-deadline return.
+> - **IN-02** (`7207980`): reuse outer `stateFile`. **IN-05** (`1d70b37`): explicit slice copy in `NewMultiSinkWithCorpus`.
 
 ## Summary
 
