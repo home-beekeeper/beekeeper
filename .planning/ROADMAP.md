@@ -174,5 +174,5 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 | 21. Full-System Validation & CI Calibration | v1.3.0 | 4/4 | Complete | 2026-06-11 |
 | 22. Schema & Envelope Lock | v1.4.0 | 3/3 | Complete | 2026-06-13 |
 | 23. Corpus Store & Adjudication Engine | v1.4.0 | 3/3 | Complete | 2026-06-14 |
-| 24. First Responder Corpus Binding | v1.4.0 | 0/? | Not started | — |
+| 24. First Responder Corpus Binding | v1.4.0 | 0/3 | Planned | — |
 | 25. Launch Readiness | v1.4.0 | 0/? | Not started | — |
