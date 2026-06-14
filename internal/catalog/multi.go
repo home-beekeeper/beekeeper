@@ -47,12 +47,15 @@ func NewMultiIndex(bumblebee *Index, osv, socket policy.MultiCatalogLookup) *Mul
 // match is no block, consistent with fail-closed). Existing callers that use
 // NewMultiIndex are unaffected (additive extension, mirrors Phase 23
 // NewMultiSinkWithCorpus pattern).
-//
-// RED stub: Overlay is always nil until Task 3 implements this fully.
 func NewMultiIndexWithOverlay(bumblebee *Index, osv, socket policy.MultiCatalogLookup, overlayPath string) *MultiIndex {
 	m := NewMultiIndex(bumblebee, osv, socket)
-	// RED stub — overlayPath ignored; Overlay remains nil. Task 3 implements this.
-	_ = overlayPath
+	if overlayPath != "" {
+		if idx, err := OpenIndex(overlayPath); err == nil {
+			m.Overlay = idx
+		}
+		// On open error: Overlay stays nil (silently degraded). No overlay match
+		// = no block — consistent with fail-closed semantics.
+	}
 	return m
 }
 
@@ -60,8 +63,9 @@ func NewMultiIndexWithOverlay(bumblebee *Index, osv, socket policy.MultiCatalogL
 // in turn and returns the concatenated results:
 //
 //  1. Bumblebee via the internal bumblebeeMultiAdapter (mmap, O(log n), no I/O).
-//  2. OSV (pre-resolved by the caller's adapter; no network call here).
-//  3. Socket (pre-resolved; nil when disabled).
+//  2. Overlay (local-overlay.idx; Phase 24 FRB-05). Nil when not yet written.
+//  3. OSV (pre-resolved by the caller's adapter; no network call here).
+//  4. Socket (pre-resolved; nil when disabled).
 //
 // Nil sub-adapters are skipped without error — degraded sources simply contribute
 // zero matches rather than blocking the entire check.
@@ -70,6 +74,9 @@ func NewMultiIndexWithOverlay(bumblebee *Index, osv, socket policy.MultiCatalogL
 // for the queried package, a dissent sentinel (CatalogMatch{Dissented: true}) is
 // appended. The policy engine's corroborate() filters these into SourcesDissented
 // so forensic provenance can trace which sources explicitly did NOT flag a package.
+//
+// Overlay does NOT emit a dissent sentinel (it is optional, not a configured
+// required source — its absence is not a meaningful dissent).
 func (m *MultiIndex) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
 	var matches []policy.CatalogMatch
 
@@ -84,6 +91,21 @@ func (m *MultiIndex) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
 				CatalogSource: "bumblebee",
 				Dissented:     true,
 			})
+		}
+	}
+
+	// Overlay query (Phase 24 FRB-05): use the same bumblebeeMultiAdapter since
+	// the binary index format is identical. Override CatalogSource to "local-overlay"
+	// so corroborate() counts it as a separate independent source.
+	// No dissent sentinel for the overlay — it is optional, not a required source.
+	if m.Overlay != nil {
+		adapter := &bumblebeeMultiAdapter{idx: m.Overlay}
+		got := adapter.LookupAll(ecosystem, pkg)
+		if len(got) > 0 {
+			for i := range got {
+				got[i].CatalogSource = "local-overlay"
+			}
+			matches = append(matches, got...)
 		}
 	}
 
@@ -116,9 +138,12 @@ func (m *MultiIndex) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
 	return matches
 }
 
-// Close releases the underlying Bumblebee mmap index. It satisfies io.Closer so
-// the hook handler can defer idx.Close() on the MultiIndex directly.
+// Close releases the underlying Bumblebee and Overlay mmap indexes. It satisfies
+// io.Closer so the hook handler can defer idx.Close() on the MultiIndex directly.
 func (m *MultiIndex) Close() error {
+	if m.Overlay != nil {
+		_ = m.Overlay.Close() // ignore overlay close error; Bumblebee error is primary
+	}
 	if m.Bumblebee != nil {
 		return m.Bumblebee.Close()
 	}
