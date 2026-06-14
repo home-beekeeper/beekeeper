@@ -67,13 +67,11 @@ type WatchState struct {
 	// re-written state.json files without an active quarantine omit the key.
 	SelfQuarantine *SelfQuarantineState `json:"self_quarantine,omitempty"`
 
-	// CorpusLocalSalt is the per-installation HMAC key for repo fingerprinting
-	// (Phase 23, STORE-05). Generated once via crypto/rand on first corpus store
-	// init and persisted here so that RepoFingerprint and FleetNodeID are stable
-	// across process restarts for a given installation, but differ between
-	// installations of the same repo. The omitempty tag ensures backward
-	// compatibility: existing state.json files without this field parse cleanly.
-	CorpusLocalSalt string `json:"corpus_local_salt,omitempty"`
+	// NOTE (Phase 23, CR-01): the per-install corpus HMAC salt used to live here
+	// (corpus_local_salt). It was moved to its own owner-only file at
+	// StateDir()/corpus/salt so the concurrent `beekeeper check` hot path never
+	// read-modify-writes the shared state.json (which could rotate the salt or
+	// clobber the watch daemon's Degraded mark). See corpus.LoadOrCreateSalt.
 }
 
 // SelfQuarantineState records the details of an active self-quarantine event
