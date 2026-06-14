@@ -1,9 +1,9 @@
 ---
 phase: 24
 slug: first-responder-corpus-binding
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-06-14
 ---
 
@@ -95,11 +95,11 @@ The PRD §4 Phase-2 gate: a confirmed local Nx-Console-style match arms the card
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (3 test files)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (Wave 0 RED skeletons in 24-01/24-02; every implementation task carries an `<automated>` `go test -run` command; the only exception is the 24-03 Task 4 human-verify checkpoint for the FRB-03 red/coral semantic, which is exempt by type)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (3 test files: `corpus/reader_test.go`, `catalog/local_overlay_test.go`, `watch/firstresponder_test.go`)
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-06-14
