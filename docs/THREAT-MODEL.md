@@ -1,9 +1,9 @@
 # Beekeeper Threat Model
 
-**Covers:** v1.0.0 + v1.2.0 (Runtime Hardening) + v1.3.0 (Multi-Harness Hook Enforcement)  
+**Covers:** v1.0.0 + v1.2.0 (Runtime Hardening) + v1.3.0 (Multi-Harness Hook Enforcement) + v1.4.0 (Adjudicated Corpus, Local Loop)  
 **Originally published:** 2026-05-29 (v1.0.0, Phase 9 capstone)  
 **Last full codebase audit:** 2026-06-05  
-**Status:** Published — refreshed for v1.2.0 and v1.3.0
+**Status:** Published — refreshed for v1.2.0, v1.3.0, and v1.4.0
 
 This document describes the security properties Beekeeper provides, the
 attack surfaces it exposes, the known gaps in its defenses, and the
@@ -38,6 +38,7 @@ CI pipeline or developer workstation.
 10. [Multi-Harness Hook Enforcement (v1.3.0)](#10-multi-harness-hook-enforcement-v130)
 11. [Runtime Hardening (v1.2.0): SPATH, CORR, NUDGE](#11-runtime-hardening-v120-spath-corr-nudge)
 12. [First-Responder Quarantine and Catalog-to-Sentry Targeting (v1.3.0)](#12-first-responder-quarantine-and-catalog-to-sentry-targeting-v130-post-ship)
+13. [Adjudicated Corpus (Local Loop) (v1.4.0)](#13-adjudicated-corpus-local-loop--v140)
 
 ---
 
@@ -1213,7 +1214,55 @@ unit-tested.
 ---
 
 *This document was first published with the Beekeeper v1.0.0 release and has been
-refreshed to cover v1.2.0 (Runtime Hardening) and v1.3.0 (Multi-Harness Hook
-Enforcement and the first-responder quarantine, §12). It will be updated again when
-new threats are identified or mitigations change. For the vulnerability disclosure
-process, see [SECURITY.md](../SECURITY.md).*
+refreshed to cover v1.2.0 (Runtime Hardening), v1.3.0 (Multi-Harness Hook
+Enforcement and the first-responder quarantine, §12), and v1.4.0 (Adjudicated
+Corpus Local Loop, §13). It will be updated again when new threats are identified
+or mitigations change. For the vulnerability disclosure process, see
+[SECURITY.md](../SECURITY.md).*
+
+---
+
+## 13. Adjudicated Corpus (Local Loop) — v1.4.0
+
+The v1.4.0 corpus is local-first, append-only, and owner-only (0600 on Unix;
+owner-only DACL on Windows). No corpus data leaves the machine in v1:
+`StoreSink.Write` has no `net`, `net/http`, or `os/exec` import, verified by
+`TestCorpusStoreHasNoNetworkImports` in `internal/corpus/store_test.go`. The
+no-exfil property is a hard requirement under STORE-03 in
+`.planning/REQUIREMENTS.md`.
+
+Three residual gaps are acknowledged as out of scope for v1.4.0. Each is an
+architectural limitation, not a defect in the local corpus loop. The framing
+below continues the v1.0.0 through v1.3.0 honesty precedent (compare §8 "Known
+Gaps and Explicit Non-Defenses"): each gap is named, its root cause is stated,
+and the architectural mitigation is identified without claiming detection coverage
+that does not yet exist.
+
+### SENTRY-008 CI-runner OIDC theft
+
+When tokens are stolen from CI runner process memory on a machine where no
+editor or host agent is running, Beekeeper's `isEditorDescendant` ancestry gate
+cannot observe the event. The CI runner process is not editor-descended, so the
+corpus never receives a record for this class of theft. Architectural mitigation
+only: hardened token scoping and short TTLs at the CI level. Out of host scope.
+
+### GitHub API dead-drop exfil
+
+A malicious agent that has already exfiltrated secrets can create a private GitHub
+repo or gist as a dead-drop via the GitHub API. A host tool cannot reliably
+distinguish a legitimate `gh repo create` from a malicious one that uses stolen
+credentials. The corpus captures the outbound network event (SENTRY-003 on first
+external connect), but the payload content is out of host scope: only the CI
+provider or the GitHub API layer can inspect the repository payload for abuse
+signals. Out of host scope.
+
+### DNS-tunnel ingested-but-undetected
+
+DNS query events are captured on Linux (eBPF `udp_sendmsg`/`tcp_sendmsg` kprobe)
+and Windows (ETW DNS-Client), but `EvaluateEvent`'s `EventDNSQuery` case is an
+explicit no-op. No correlation rule currently consumes these events. DNS-TXT
+tunneling is therefore an undetected exfil channel: the corpus ingests the raw
+event but produces no alert and no corpus record until a rule is written. This
+is consistent with the §8 "Detection-Completeness Gaps" entry for DNS and is
+named here because LAUNCH-04 treats it as a residual gap for the corpus layer
+specifically.
