@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/bantuson/beekeeper/internal/corpus"
 	"github.com/bantuson/beekeeper/internal/policy"
 	"github.com/bantuson/beekeeper/internal/quarantine"
 	"github.com/bantuson/beekeeper/internal/sentry"
@@ -42,6 +43,22 @@ type FirstResponderConfig struct {
 	// CrossRefFn is the injectable cross-reference function. Production callers
 	// leave this nil and RunFirstResponder uses CrossReference (same package).
 	CrossRefFn func(ctx context.Context, cfg CrossRefConfig) ([]ScanHit, error)
+	// CorpusPath is the beekeeper-corpus.ndjson path. When non-empty and
+	// CorpusEnabled is true, RunFirstResponder reads confirmed-malicious
+	// adjudications from this path via corpus.ReadMaliciousRecords and
+	// processes them alongside the scan-hit path (FRB-01/02/04).
+	//
+	// CALLER CONSTRAINT (ADJ-01 / Pitfall 5): this path MUST NOT be set from
+	// internal/check/handler.go or any synchronous hook path.
+	CorpusPath string
+	// CorpusEnabled gates the corpus processing path. When false (or when
+	// CorpusPath is empty), RunFirstResponder skips ReadMaliciousRecords.
+	CorpusEnabled bool
+	// CorpusSentryThreshold is the minimum PushEnvelope.SourceCount to elevate a
+	// corpus-adjudicated package into the Sentry watch target list (FRB-04).
+	// Default 2 (enforce tier — requires at least two distinct signed sources).
+	// A single-source (watch tier, SourceCount=1) record MUST NOT add a target.
+	CorpusSentryThreshold int
 }
 
 // firstResponderFn is the package-level injectable seam for cmd/beekeeper.
@@ -167,6 +184,95 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 		writeFirstResponderAudit(cfg.AuditPath, "catalog_quarantine", hit)
 	}
 
+	// FRB-01/02/04: corpus-adjudication path.
+	//
+	// Processes confirmed-malicious adjudication records from the corpus NDJSON.
+	// This runs AFTER the scan-hit loop so the scan-hit results are always
+	// computed first — a corpus read error is non-fatal (logged and skipped);
+	// the already-computed scan-hit quarantine results still persist.
+	//
+	// FRB-02 invariant: this block MUST NOT call quarantine.Purge. Only
+	// quarantine.MoveTyped (reversible) is permitted. Enforced behaviorally by
+	// TestFirstResponderCorpusNoPurge and statically by TestCorpusPathHasNoPurgeCall.
+	if cfg.CorpusEnabled && cfg.CorpusPath != "" {
+		malicious, rdErr := corpus.ReadMaliciousRecords(cfg.CorpusPath)
+		if rdErr != nil {
+			log.Printf("beekeeper first-responder: read corpus malicious records: %v (corpus path skipped)", rdErr)
+		} else {
+			// Resolve the corpus sentry threshold; default to 2 (enforce tier).
+			corpusThreshold := cfg.CorpusSentryThreshold
+			if corpusThreshold <= 0 {
+				corpusThreshold = 2
+			}
+
+			// Build an O(1) lookup from the existing scan-hit set keyed by
+			// lowercased ecosystem + NUL + package for install-path resolution.
+			type hitKey struct{ ecosystem, pkg string }
+			hitMap := make(map[hitKey]ScanHit, len(hits))
+			for _, h := range hits {
+				k := hitKey{strings.ToLower(h.Ecosystem), strings.ToLower(h.Package)}
+				hitMap[k] = h
+			}
+
+			for _, rec := range malicious {
+				if rec.PushEnvelope == nil || rec.PushEnvelope.Signature.PackageOrExtensionID == "" {
+					continue
+				}
+
+				ecosystem, pkg := parsePackageID(rec.PushEnvelope.Signature.PackageOrExtensionID)
+				version := rec.PushEnvelope.Signature.Version
+
+				// Look up a matching ScanHit to resolve the local install path.
+				k := hitKey{strings.ToLower(ecosystem), strings.ToLower(pkg)}
+				matchedHit, hasHit := hitMap[k]
+				installedPath := ""
+				pathResolved := false
+				if hasHit && matchedHit.PathResolved && matchedHit.InstalledPath != "" {
+					installedPath = matchedHit.InstalledPath
+					pathResolved = true
+				}
+
+				// FRB-04: elevate to Sentry watch only when SourceCount >= threshold.
+				// A single-source (watch-tier) record MUST NOT tighten Sentry.
+				if targets != nil && rec.PushEnvelope.SourceCount >= corpusThreshold {
+					expectedProcess := ecosystemToProcess(ecosystem)
+					targets.AddTarget(pkg, installedPath, expectedProcess)
+				}
+
+				// FRB-01: arm the TUI quarantine card.
+				if pathResolved {
+					// Real quarantine: move the artifact (reversible, not purge).
+					artifactType := quarantine.ArtifactTypeLanguagePackage
+					if ecosystem == "editor-extension" {
+						artifactType = quarantine.ArtifactTypeEditorExtension
+					}
+
+					m := quarantine.Manifest{
+						Publisher:    ecosystem,
+						Name:         pkg,
+						Version:      version,
+						OriginalPath: installedPath,
+						ArtifactType: artifactType,
+						Reason:       "corpus adjudication: confirmed malicious",
+						RuleIDs:      []string{"FRSP-02"},
+					}
+
+					_, moveErr := quarantine.MoveTyped(cfg.QuarantineDir, installedPath, m)
+					if moveErr != nil {
+						log.Printf("beekeeper first-responder: corpus quarantine move failed for %s/%s: %v (artifact left in place)", ecosystem, pkg, moveErr)
+						writeCorpusFirstResponderAudit(cfg.AuditPath, "quarantine_error", ecosystem, pkg, version)
+						continue
+					}
+
+					writeCorpusFirstResponderAudit(cfg.AuditPath, "catalog_quarantine", ecosystem, pkg, version)
+				} else {
+					// No local install found — emit pending-quarantine.
+					writeCorpusFirstResponderAudit(cfg.AuditPath, "pending-quarantine", ecosystem, pkg, version)
+				}
+			}
+		}
+	}
+
 	// Persist the updated target list (best-effort).
 	if targets != nil && cfg.SentryTargetsPath != "" {
 		if saveErr := sentry.SaveTargets(cfg.SentryTargetsPath, targets); saveErr != nil {
@@ -209,6 +315,68 @@ func writeFirstResponderAudit(auditPath, recordType string, hit ScanHit) {
 	if w, wErr := audit.NewWriter(auditPath); wErr == nil {
 		if err := w.Write(rec); err != nil {
 			log.Printf("beekeeper first-responder: write audit record failed: %v", err)
+		}
+		w.Close()
+	}
+}
+
+// parsePackageID splits a corpus PackageOrExtensionID into (ecosystem, pkg).
+//
+// The format is "ecosystem:package" (e.g. "npm:@nrwl/nx-console") or bare
+// "package" (no colon). Scoped npm names containing '@' and '/' survive intact:
+// "npm:@org/pkg" → ("npm", "@org/pkg").
+//
+// Modeled on the adjudicator.go parsing pattern (PATTERNS.md §parsePackageID).
+func parsePackageID(id string) (ecosystem, pkg string) {
+	for i, c := range id {
+		if c == ':' {
+			return id[:i], id[i+1:]
+		}
+	}
+	return "", id // no colon — treat whole string as package name
+}
+
+// writeCorpusFirstResponderAudit appends a FRSP-02 audit record to the audit
+// log for the corpus adjudication path. This mirrors writeFirstResponderAudit
+// but accepts raw ecosystem/pkg/version strings rather than a ScanHit, since
+// the corpus pending-quarantine path may have no matching ScanHit.
+//
+// Errors are logged but do not interrupt the corpus loop.
+func writeCorpusFirstResponderAudit(auditPath, recordType, ecosystem, pkg, version string) {
+	if auditPath == "" {
+		return
+	}
+
+	tc := policy.ToolCall{
+		ToolName: pkg,
+		ToolInput: map[string]any{
+			"ecosystem": ecosystem,
+			"package":   pkg,
+			"version":   version,
+		},
+	}
+
+	// Build a minimal decision for the FromDecision mapper.
+	dec := policy.Decision{
+		Level:  "block",
+		Reason: "corpus adjudication: confirmed malicious",
+	}
+
+	rec := audit.FromDecision(tc, dec, generateRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
+	rec.RecordType = recordType
+	if !containsRuleID(rec.RuleIDs, "FRSP-02") {
+		rec.RuleIDs = append([]string{"FRSP-02"}, rec.RuleIDs...)
+	}
+
+	// T-24-AUDIT-REDACT: redact before write, matching the existing
+	// writeFirstResponderAudit discipline (F-1 lesson). Corpus record fields
+	// (package id, version, reason) cross into the audit log; they are
+	// attacker-influenced strings that must not reach the log verbatim.
+	rec = audit.RedactRecord(rec, audit.DefaultRedactPatterns())
+
+	if w, wErr := audit.NewWriter(auditPath); wErr == nil {
+		if err := w.Write(rec); err != nil {
+			log.Printf("beekeeper first-responder: write corpus audit record failed: %v", err)
 		}
 		w.Close()
 	}

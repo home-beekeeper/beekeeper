@@ -139,7 +139,10 @@ func TestFirstResponderCorpusMaliciousArmsCard(t *testing.T) {
 	corpusPath := seedCorpusFile(t, nxConsoleRecord(2))
 
 	cfg := watch.FirstResponderConfig{
-		Enabled:               true,
+		// Disable the scan-hit auto-quarantine so only the corpus path moves the
+		// artifact. This ensures the catalog_quarantine record comes from the
+		// corpus path specifically (FRB-01), not the existing scan-hit path.
+		Enabled:               false,
 		DryRun:                false,
 		Threshold:             2,
 		QuarantineDir:         quarantineDir,
@@ -226,7 +229,8 @@ func TestFirstResponderCorpusSentryGate(t *testing.T) {
 // TestFirstResponderCorpusSingleSourceNoSentry verifies FRB-04 (negative gate):
 //
 // A malicious corpus record with SourceCount=1 (watch tier) below the
-// CorpusSentryThreshold (=2) must NOT add a Sentry target.
+// CorpusSentryThreshold (=2) must NOT add a Sentry target via the corpus path.
+// The CrossRefFn returns no scan hits so the scan-hit path does not interfere.
 func TestFirstResponderCorpusSingleSourceNoSentry(t *testing.T) {
 	auditPath := filepath.Join(t.TempDir(), "beekeeper.ndjson")
 	sentryPath := filepath.Join(t.TempDir(), "sentry-targets.json")
@@ -234,6 +238,7 @@ func TestFirstResponderCorpusSingleSourceNoSentry(t *testing.T) {
 	corpusPath := seedCorpusFile(t, nxConsoleRecord(1)) // source_count=1 < threshold=2
 
 	cfg := watch.FirstResponderConfig{
+		// Scan-hit path disabled; no scan hits returned — isolates the corpus path.
 		Enabled:               false,
 		DryRun:                true,
 		Threshold:             2,
@@ -243,8 +248,10 @@ func TestFirstResponderCorpusSingleSourceNoSentry(t *testing.T) {
 		CorpusPath:            corpusPath,
 		CorpusEnabled:         true,
 		CorpusSentryThreshold: 2,
+		// Return no scan hits: the corpus path should be the only Sentry-target
+		// writer. With SourceCount=1 it must not add any target.
 		CrossRefFn: func(_ context.Context, _ watch.CrossRefConfig) ([]watch.ScanHit, error) {
-			return nxConsoleScanHits(""), nil
+			return nil, nil
 		},
 	}
 
@@ -283,7 +290,9 @@ func TestFirstResponderCorpusNoPurge(t *testing.T) {
 	corpusPath := seedCorpusFile(t, nxConsoleRecord(2))
 
 	cfg := watch.FirstResponderConfig{
-		Enabled:               true,
+		// Disable the scan-hit auto-quarantine so only the corpus path acts.
+		// This ensures the artifact is moved exactly once (by the corpus path).
+		Enabled:               false,
 		DryRun:                false,
 		Threshold:             2,
 		QuarantineDir:         quarantineDir,
