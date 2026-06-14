@@ -112,7 +112,8 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 			batchCtx, batchCancel := context.WithTimeout(cmd.Context(), 5*time.Second)
 			defer batchCancel()
 
-			stateFile := filepath.Join(stateDir, "state.json")
+			// IN-02: reuse the outer stateFile computed above (line ~61); no
+			// redundant recompute.
 			cleanDays := cfg.CorpusDownstreamCleanDays()
 			if batchErr := corpus.RunAdjudicationBatch(batchCtx, corpusPath, stateFile, idx, thresholds, cleanDays); batchErr != nil {
 				// Non-fatal: log to stderr and continue. The sync must proceed.
