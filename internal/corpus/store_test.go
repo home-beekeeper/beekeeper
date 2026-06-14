@@ -3,6 +3,8 @@ package corpus
 import (
 	"bufio"
 	"encoding/json"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -203,5 +205,43 @@ func TestStoreEmitsPushEnvelopeShape(t *testing.T) {
 
 	if cr.PushEnvelope == nil {
 		t.Errorf("PushEnvelope is nil — StoreSink.Write must populate a non-nil push_envelope from the first write")
+	}
+}
+
+// TestCorpusStoreHasNoNetworkImports is a static AST gate that proves
+// internal/corpus/store.go has no direct imports of "net", "net/http", or
+// "os/exec" — the machine-verifiable half of the LAUNCH-04 / STORE-03 no-exfil
+// guarantee: "No corpus data leaves the machine in v1 (no remote sink wired)."
+//
+// Pattern mirrors TestRulesImportsArePure in internal/sentry/imports_test.go
+// (go/parser AST ImportsOnly scan, forbidden-map check, no subprocess).
+// Per 25-RESEARCH.md §LAUNCH-04 Pitfall 4, only store.go's DIRECT imports need
+// proving; the transitive graph is validated by go vet ./... and the CI cross-build.
+func TestCorpusStoreHasNoNetworkImports(t *testing.T) {
+	forbidden := map[string]bool{
+		"net":      true,
+		"net/http": true,
+		"os/exec":  true,
+	}
+
+	src, err := os.ReadFile("store.go")
+	if err != nil {
+		t.Fatalf("reading store.go: %v", err)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "store.go", src, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parsing store.go: %v", err)
+	}
+	for _, imp := range f.Imports {
+		p := imp.Path.Value
+		if len(p) >= 2 {
+			p = p[1 : len(p)-1] // strip surrounding double-quotes from AST literal
+		}
+		if forbidden[p] {
+			t.Errorf("LAUNCH-04 / STORE-03 violation: internal/corpus/store.go imports "+
+				"forbidden network package %q — the corpus store must never transmit "+
+				"data off-machine (no remote sink wired in v1)", p)
+		}
 	}
 }
