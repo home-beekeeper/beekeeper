@@ -141,7 +141,9 @@ func NewMultiSinkWithCorpus(auditPath string, auditCfg config.AuditConfig, corpu
 		// two-sink MultiSink (base + corpus).
 		return NewMultiSinkFromSinks([]Sink{base, corpusSink}), nil
 	}
-	allSinks := append(ms.sinks, corpusSink)
+	// IN-05: copy explicitly so we never mutate ms.sinks's backing array in place
+	// (nondeterministic aliasing if it has spare capacity).
+	allSinks := append(append([]Sink{}, ms.sinks...), corpusSink)
 	return NewMultiSinkFromSinks(allSinks), nil
 }
 
