@@ -458,9 +458,11 @@ These three gaps are already partially described in §8 (SENTRY-008, DNS-tunnel)
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **LAUNCH-01: extend existing gate vs new test file**
+> All four resolved at planning (2026-06-14); the Phase 25 plans implement each recommendation: Q1 → extend `TestRunCatalogsSyncFirstResponder` in place (25-01 Task 1); Q2 → `internal/corpus/launch_e2e_test.go` (25-01 Task 2); Q3 → 100ms gate / 200ms on Windows via `runtime.GOOS` (25-02 Task 1); Q4 → `## 13. Adjudicated Corpus (Local Loop) — v1.4.0` (25-03 Task 1).
+
+1. **LAUNCH-01: extend existing gate vs new test file** — RESOLVED (extend in place)
    - What we know: `TestRunCatalogsSyncFirstResponder` is already 250+ lines; adding 4 assertions extends it further
    - What's unclear: whether the planner wants a single large gate or two separate focused tests
    - Recommendation: extend in place (Option A); the coherence of "one evaluator gate per phase" is preserved
