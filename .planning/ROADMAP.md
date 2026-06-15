@@ -16,8 +16,8 @@
 - ✅ **v1.3.0 — "Web Presence & Documentation"** — Phases 10–21 (shipped 2026-06-11)
   Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). Summary: [`MILESTONES.md`](MILESTONES.md).
 
-- 🚧 **v1.4.0 — "Adjudicated Corpus (Local Loop)"** — Phases 22–25 (IN PROGRESS, started 2026-06-13)
-  Scope: `beekeeper-corpus-milestone-prd.md` §3 (local loop only); PRD §6 (v1.1–1.9 org self-host push) + §7 (v2.0 community feed) are future milestones. Requirements: [`REQUIREMENTS.md`](REQUIREMENTS.md). Research: [`research/SUMMARY.md`](research/SUMMARY.md).
+- ✅ **v1.4.0 — "Adjudicated Corpus (Local Loop)"** — Phases 22–25 (shipped 2026-06-15)
+  Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). Requirements: [`milestones/v1.4.0-REQUIREMENTS.md`](milestones/v1.4.0-REQUIREMENTS.md). Audit: RESOLVED — found the FRB-05 enforcement BLOCKER, fixed same-day at close ([`milestones/v1.4.0-MILESTONE-AUDIT.md`](milestones/v1.4.0-MILESTONE-AUDIT.md)).
 
 - 📋 **Next milestone (after v1.4.0)** — TBD (carried candidates below; v1.1.0 Pollen resume is independent)
 
@@ -81,55 +81,17 @@ Full detail: [`milestones/v1.3.0-ROADMAP.md`](milestones/v1.3.0-ROADMAP.md). One
 
 </details>
 
-### 🚧 v1.4.0 "Adjudicated Corpus (Local Loop)" — Phases 22–25 (IN PROGRESS)
+<details>
+<summary>✅ v1.4.0 Adjudicated Corpus (Local Loop) (Phases 22–25) — SHIPPED 2026-06-15</summary>
 
-> Scope = `beekeeper-corpus-milestone-prd.md` §3 only. The moat is the OUTCOME layer (confirmed `true_label` + how it was established): it cannot be retrofitted onto incidents already discarded, so the schema captures it from the first offline run. Enforcement stays local/offline/fail-closed in every version; the corpus loop and (future) push are off the hot path. PRD §6 (org push) + §7 (community feed) are future milestones. Three open decisions (OQ-1 `downstream_clean` window / OQ-2 scan `cluster_id` unit / OQ-3 adjudicator lifecycle) carry proposed defaults in `REQUIREMENTS.md`, finalized at the owning phase's discuss step.
+- [x] Phase 22: Schema & Envelope Lock (3/3) — SCHEMA-01..06, SCOPE-01..02 (schema FROZEN at CorpusSchemaVersion 1.0)
+- [x] Phase 23: Corpus Store & Adjudication Engine (3/3) — ADJ-01..07, STORE-01..05, ENV-01..03
+- [x] Phase 24: First Responder Corpus Binding (3/3) — FRB-01..05
+- [x] Phase 25: Launch Readiness (3/3) — LAUNCH-01..04
 
-- [x] **Phase 22: Schema & Envelope Lock** (SCHEMA-01..06, SCOPE-01..02) — ✅ COMPLETE 2026-06-13 (3/3 plans; verifier 8/8; maintainer freeze sign-off; schema FROZEN at CorpusSchemaVersion 1.0; 1 deferred item tracked: IPv6 normalize quirk)
-  Goal: Freeze the four-layer event schema (behavior/decision/outcome/context) and the push-envelope wire format — including `scope`, corroboration fields, and the `signing` stub — before any corpus record is written. Sign-off freezes the format.
-  Success criteria:
-  1. Every field in the Nx Console worked trace maps to a schema field with no gaps (SCHEMA-06).
-  2. The envelope can represent a `watch_and_block` push carrying `confidence_tier` + `source_count`; `auto_purge` is unrepresentable in a pushable envelope (compile-time guard) (SCHEMA-03/04).
-  3. The four-layer record's outcome fields serialize as `unresolved` placeholders from the first write; conditional fields validate for all six `source_surface` branches (SCHEMA-01).
-  4. `scope` zero-value resolves to `org_only`; the only scope-changing path errors in v1 (SCOPE-01/02).
-  5. `behavior_signature_hash` input + `ruleset_version` are frozen and documented (SCHEMA-05).
+Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). The milestone audit found the FRB-05 enforcement BLOCKER (the local overlay was written but never read by the live `beekeeper check` path); fixed same-day via quick task `260615-ky4` (overlay now consulted; allow→warn escalation, unsigned per CTLG-07). Carried forward: overlay wiring for gateway/scan/watch; the warn-vs-block design question; STORE-02 fan-out seam unused. See [`milestones/v1.4.0-MILESTONE-AUDIT.md`](milestones/v1.4.0-MILESTONE-AUDIT.md).
 
-- [x] **Phase 23: Corpus Store & Adjudication Engine** (ADJ-01..07, STORE-01..05, ENV-01..03) — ✅ COMPLETE 2026-06-14 (3/3 plans; verifier 5/5; full suite green + ENV-03 fuzz 316k/0 + BenchmarkRunCheck ~25ms; orchestrator-caught ADJ-01 benchmark defect fixed before verify)
-  Goal: Stand up the append-only local corpus store (as an `audit.Sink`) and the off-hot-path adjudication engine assigning the outcome layer with corroboration-gated confidence, emitting records in envelope shape.
-  Plans:
-  - [x] 23-01-PLAN.md — Corpus store (StoreSink as audit.Sink, redaction-first, append-only, 0600) + HMAC-SHA256 fingerprints + per-install salt (Wave 1) — STORE-01/02/03/04/05, ENV-01
-  - [x] 23-02-PLAN.md — Emitter adapter (MapToCorpusRecord) + BuildPushEnvelope purge gate + Ed25519 signer stub + ENV-03 FuzzBuildPushEnvelope release gate (Wave 1) — ENV-01/02/03, ADJ-04/05
-  - [x] 23-03-PLAN.md — Adjudicator (pure Adjudicate + bounded RunAdjudicationBatch) + runCatalogsSync batch-pass wiring + hot-path corpus write + MultiSink integration + BenchmarkRunCheck (Wave 2) — ADJ-01/02/03/04/05/06/07, ENV-01
-  Success criteria:
-  1. A synthetic incident records all four layers; a two-source adjudication is marked `enforce` weight, a one-source adjudication `watch` weight, with `source_count` from DISTINCT sources (ADJ-04/05).
-  2. Records emit in push-envelope shape and persist append-only + owner-only; an injected secret-shaped field is redacted in the persisted file (STORE-01/02/04, ENV-01).
-  3. Adjudication runs off the hot path — `beekeeper check` is never blocked and `internal/policy` stays I/O-free (ADJ-01).
-  4. `repo_fingerprint`/`fleet_node_id` are non-reversible HMAC values; two installs of the same repo differ (STORE-05).
-  5. A fuzz/property test confirms no envelope escapes with a non-allowlisted `action_hint` (ENV-02/03).
-
-- [x] **Phase 24: First Responder Corpus Binding** (FRB-01..05) — ✅ COMPLETE & verified 2026-06-14 (3/3 plans; gsd-verifier 10/10 must-haves → passed; FRB-03 red/coral TUI gate maintainer-APPROVED; full suite green across 27 pkgs + synthetic Nx Console evaluator gate + zero new deps; internal/watch does not import internal/tui)
-  Goal: A confirmed-malicious adjudication arms the TUI quarantine card and elevates detection (Sentry watch + local catalog overlay) without ever auto-purging.
-  Plans: 3 plans
-  - [x] 24-01-PLAN.md — Corpus reader (ReadMaliciousRecords) + local catalog overlay (AddLocalOverlayEntry/MultiIndex overlay) (Wave 1) — FRB-01, FRB-05
-  - [x] 24-02-PLAN.md — First Responder corpus wiring: arm quarantine card + detection-only Sentry watch gate + no-purge guard (Wave 2) — FRB-01, FRB-02, FRB-04
-  - [x] 24-03-PLAN.md — runCatalogsSync FRB wiring + restore reversibility + synthetic Nx Console evaluator gate (Wave 3) — FRB-01..05
-  Success criteria:
-  1. A confirmed local Nx-Console-style match arms the quarantine card and does NOT auto-purge (FRB-01/02).
-  2. Restore reverses a purge cleanly; the red=attacker / coral=Beekeeper TUI semantic is preserved (FRB-03).
-  3. The Sentry watch elevates only at corroboration ≥ threshold (a single source does not tighten), detection-only (FRB-04).
-  4. A local-only catalog overlay entry is added (owner-only) and survives `catalogs sync` (FRB-05).
-
-- [x] **Phase 25: Launch Readiness** (LAUNCH-01..04) — ✅ COMPLETE & verified 2026-06-14 (3/3 plans, all Wave 1 sequential on main hand-managed; gsd-verifier 4/4 must-haves → passed; 25-03 THREAT-MODEL §13 honesty checkpoint maintainer-APPROVED live; full suite green 27 pkgs + zero new deps + internal/policy purity preserved). Tests + docs only over Phases 22-24 code.
-  Goal: Prove the end-to-end moat loop on the Nx Console incident + all eight Sentry patterns, confirm offline-protective + sub-100ms hot path, and ship honest docs naming the residual gaps.
-  Success criteria:
-  1. The Nx Console incident runs trace → record → adjudication → signature → local feedback (catalog overlay + Sentry watch), all four layers populated (LAUNCH-01).
-  2. Each of the eight Sentry patterns (SENTRY-001..008) produces a moat-grade record with all four layers (LAUNCH-02).
-  3. A disconnected machine remains fully protective on the last synced catalog; `beekeeper check` p99 stays sub-100ms with the corpus enabled (benchmark gate) (LAUNCH-03).
-  4. No corpus data leaves the machine (verified); `docs/THREAT-MODEL.md` states local-first and NAMES the residual gaps (SENTRY-008 CI-runner OIDC theft, GitHub API dead-drop, DNS-tunnel ingested-but-undetected) (LAUNCH-04).
-  Plans: 3 plans (1 wave; 25-03 has a blocking human checkpoint)
-  - [x] 25-01-PLAN.md — Nx Console 11-point E2E gate (LAUNCH-01) + 8-pattern Sentry moat-record table (LAUNCH-02)
-  - [x] 25-02-PLAN.md — p99 sub-100ms gate + offline-protective proof (LAUNCH-03) + corpus no-network-import static gate (LAUNCH-04)
-  - [x] 25-03-PLAN.md — THREAT-MODEL.md §13 residual-gaps doc + grep tripwire + maintainer honesty checkpoint (LAUNCH-04)
+</details>
 
 ## Carried Candidates for the Next Milestone
 

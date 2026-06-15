@@ -108,6 +108,42 @@ Beekeeper's public-facing presence + pre-ship validation gate. A greenfield Next
 
 ---
 
+## Milestone: v1.4.0 — Adjudicated Corpus (Local Loop)
+
+**Shipped:** 2026-06-15
+**Phases:** 4 (22–25) | **Plans:** 12 (+1 quick task) | **Span:** ~2 days (2026-06-13 → 2026-06-15)
+
+### What Was Built
+The moat: a frozen four-layer event schema (behavior/decision/outcome/context) + push-envelope wire format with `auto_purge` made compile-time-unrepresentable (Phase 22); an append-only owner-only corpus store as an `audit.Sink` + an off-hot-path adjudication engine with corroboration-gated confidence and HMAC fingerprints (Phase 23); First Responder corpus binding — confirmed-malicious arms the TUI quarantine card + a detection-only Sentry watch + a local catalog overlay, never auto-purging (Phase 24); and a launch-readiness gate proving the end-to-end moat loop + offline-protective + sub-100ms hot path + an honest threat model (Phase 25). Zero new dependencies; **no network transport stood up** (wire format emitted-in-shape so push is later wiring).
+
+### What Worked
+- **Schema-freeze-first captured the non-retrofittable asset.** Locking the outcome layer (confirmed `true_label` + how established) as Go types with a maintainer sign-off *before* the first corpus write meant the moat is present from record #1 — exactly the thing a competitor can't backfill.
+- **Off-hot-path discipline held.** The adjudicator lives in an impure package consuming the pure `internal/policy`; `beekeeper check` never imports it (grep-verified), so the corpus loop never touched the fail-closed latency budget (`BenchmarkRunCheck` ~25ms).
+- **The synthetic E2E gate earned its keep mid-milestone** — it caught a prod-blocking config-merge bug (`cfg.Corpus.Enabled` always false because `layered.go merge()` didn't merge the new sub-structs) that every per-requirement unit test missed.
+- **The milestone audit earned its keep again (the headline catch).** It found that the local overlay — the mechanism that lets a machine enforce ahead of the upstream feed — was written but never read by any production enforcement path. Four green phase verifications, a passing secure-phase, and a green 27-package suite all missed it.
+
+### What Was Inefficient
+- **A "written but never read" seam shipped through every per-phase gate.** FRB-05's overlay was created, the query machinery (`NewMultiIndexWithOverlay`) was implemented, and the daemon wrote entries — but no enforcement path constructed the MultiIndex *with* the overlay. The tests asserted the component (`NewMultiIndexWithOverlay` directly) instead of the path (a live `RunCheck`), so the gap was invisible until the cross-phase integration check.
+- **False-confidence gates, three times in one milestone.** Phase 25 code review caught two launch gates that would stay green even if LAUNCH-01/03 regressed; the audit caught the FRB-05 enforcement gap. All three were tests that proved a component in isolation rather than the runtime path.
+- **The malformed-ROADMAP resolver forced full hand-management.** The summary-list ROADMAP format returns `malformed_roadmap` for phases 22–25, so every plan/execute/secure/close step ran with explicit paths and no SDK state verbs (which would corrupt the frontmatter) — and this close was hand-driven like v1.3.0.
+- **SUMMARY `requirements-completed` frontmatter drifted** (only populated for 22-03 + the 25-* plans); the VERIFICATION.md tables were the load-bearing coverage record.
+
+### Patterns Established
+- **On a "prove-the-property" phase (validation / launch-readiness / enforcement-wiring), code-review the assertions, not just pass/fail.** A green verifier + a passing secure-phase do not prove a test asserts the right thing.
+- **Test the runtime path, not the component.** For any "written → read → enforced" seam, the regression test must drive the real entry point (`RunCheck`), or the wiring gap hides behind a direct-constructor test.
+- **Audit → small quick-task fix → merge → close** is a clean loop when the audit pins a single concrete blocker (vs. inserting a full closure phase).
+- **Measure milestone coverage per-FUNCTION, not per-package** — mature-repo package %s are diluted by out-of-scope code.
+
+### Key Lessons
+- The milestone audit's cross-phase integration check is the only gate that catches "compiles + per-phase-verified + tests green, but the seam isn't wired into the runtime path." Run it before tagging, every time.
+- An unsigned local signal is warn-only by design (CTLG-07 anti-poisoning) — wiring it in delivers allow→warn, not block; name that outcome explicitly rather than letting "confirmed-malicious" imply a hard block.
+
+### Cost Observations
+- Model mix: planning/orchestration on Opus; researcher/executor/checker/verifier/integration agents on Sonnet.
+- Notable: the highest-leverage spend was the integration-checker pass at audit time — one Sonnet agent surfaced the headline FRB-05 gap that four phase verifications had missed; the fix was a ~20-line handler change + one RunCheck-level test.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Recurring wins

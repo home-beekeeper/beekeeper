@@ -1,5 +1,29 @@
 # Milestones
 
+## v1.4.0 — Adjudicated Corpus (Local Loop) (Shipped: 2026-06-15)
+
+**Phases:** 4 (22–25, numbering continues from v1.3.0) · **Plans:** 12 (3 per phase) + 1 quick task (FRB-05 fix) · **Timeline:** 2026-06-13 → 2026-06-15
+**Audit:** `gaps_found` → **RESOLVED** at close. The audit found one cross-phase BLOCKER (FRB-05 — the local catalog overlay was written but never read by the live `beekeeper check` path); fixed same-day via quick task `260615-ky4` (merged to `main`). Archive: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md) / [`milestones/v1.4.0-REQUIREMENTS.md`](milestones/v1.4.0-REQUIREMENTS.md) / [`milestones/v1.4.0-MILESTONE-AUDIT.md`](milestones/v1.4.0-MILESTONE-AUDIT.md).
+
+**Delivered:** The moat — incidents with a confirmed ground-truth outcome attached — captured from the first run on a single, offline machine, with confirmed adjudications wired into First Responder and the push-envelope wire format frozen **without any transport stood up**. The outcome layer (confirmed `true_label` + how it was established) is non-retrofittable, so the four-layer schema captures it from the first offline write; enforcement stays local/offline/fail-closed and the corpus loop runs off the `beekeeper check` hot path. Zero new dependencies (Go stdlib only); the pure libraries (`policy`/`nudge`/`pkgparse`) stayed I/O-free.
+
+**Key accomplishments:**
+
+1. **Frozen four-layer moat schema + push-envelope (Phase 22)** — `CorpusRecord` (behavior/decision/outcome/context, embedding the existing `AuditRecord`), `source_surface` + `cluster_id`, the `PushEnvelope` wire format with `confidence_tier`/`source_count`/`scope`/`signing`-stub, and a compile-time guard making `auto_purge` unrepresentable in a pushable envelope. Schema FROZEN at `CorpusSchemaVersion 1.0` with a maintainer freeze sign-off.
+2. **Append-only corpus store + off-hot-path adjudication (Phase 23)** — `StoreSink` as an `audit.Sink` (redaction-first, append-only, owner-only 0600), HMAC-SHA256 `repo_fingerprint`/`fleet_node_id` with a per-install `O_CREATE|O_EXCL` salt, a pure-corroboration-gated `Adjudicate` + bounded `RunAdjudicationBatch` in `runCatalogsSync`, and `BuildPushEnvelope` with a purge-class rejection + `FuzzBuildPushEnvelope` release gate. `BenchmarkRunCheck` ~25ms (<100ms gate); `internal/policy` stays pure.
+3. **First Responder corpus binding (Phase 24)** — a confirmed-malicious adjudication arms the TUI quarantine card, elevates a detection-only Sentry watch (gated SourceCount≥2), and adds a local-only catalog overlay (owner-only; survives `catalogs sync`) — never auto-purging; restore stays available; red=attacker / coral=Beekeeper preserved. A synthetic Nx Console E2E gate surfaced (and fixed) a prod-blocking config-merge bug that left `cfg.Corpus.Enabled` always false.
+4. **Launch readiness (Phase 25)** — the end-to-end moat loop proven on the Nx Console incident (11-point gate) + all eight Sentry patterns, an offline-protective fail-closed proof, a corpus no-network-import AST gate, and `docs/THREAT-MODEL.md` §13 honestly naming the three residual gaps (SENTRY-008 CI-runner OIDC theft, GitHub API dead-drop, DNS-tunnel ingested-but-undetected). Code review caught two false-confidence launch gates; coverage-hardened to 100% of v1.4.0 logic + a system-wide real-binary moat-loop e2e.
+5. **Milestone audit caught + closed the headline gap** — the audit found that the local overlay (the mechanism that lets a machine enforce ahead of the upstream feed) was written but never read at check time; the same-day fix wired it into `handler.go` via `NewMultiIndexWithOverlay` with a RunCheck-level regression test. Outcome: an overlay match escalates allow→**warn** (unsigned per CTLG-07 anti-poisoning; a block still needs ≥2 signed sources).
+
+**Known deferred / accepted at close:**
+- **FRB-05 follow-ups** — overlay wiring for the MCP gateway / scan / watch surfaces (the `beekeeper check` hot path is wired); the warn-vs-block design question for confirmed-malicious overlay entries; STORE-02 `audit.NewMultiSinkWithCorpus` fan-out seam unused in production (records still written via the direct path).
+- **PRD §6 (org self-host aggregation + push, v1.1–1.9) + §7 (community shared feed, v2.0)** — future milestones; the wire format is frozen and emitted-in-shape so transport is wiring, not migration.
+- IPv6 bare-address `behavior_signature_hash` normalize quirk — accepted at the Phase 22 freeze; fix needs a `CorpusSchemaVersion` bump (`todos/pending/corpus-behavior-sig-ipv6-normalization.md`).
+- **Known deferred items at close: 4** (audit-open) — quick tasks `260612-f80`/`260615-ky4` (done; "unknown" only by SUMMARY-frontmatter heuristic) + the IPv6 todo + the already-promoted-and-shipped `docs-styling-polish` todo. See STATE.md "Deferred Items".
+- **v1.1.0 "Pollen" remains PARKED** at its maintainer release checkpoint — independent of this close; resume via `docs/release-runbook.md`.
+
+---
+
 ## v1.3.0 — Web Presence & Documentation (Shipped: 2026-06-11)
 
 **Phases:** 13 (10–21, numbering continues from v1.2.0; Phase 18.1 inserted) · **Plans:** 43 (+1 quick task) · **Timeline:** 2026-06-05 → 2026-06-11
