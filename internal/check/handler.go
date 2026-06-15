@@ -232,8 +232,25 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 		}
 	}
 
-	// Aggregate all three sources into a MultiIndex. Nil adapters are skipped.
-	multiIdx := catalog.NewMultiIndex(bbIdx, osvAdapter, socketAdapter)
+	// Aggregate all four sources into a MultiIndex (FRB-05). Nil adapters are skipped.
+	// The overlay is a fourth optional source (local-overlay; nil when absent →
+	// fail-closed-safe, no overlay match = no escalation). NewMultiIndexWithOverlay
+	// silently leaves Overlay=nil when overlayPath is empty or the file cannot be
+	// opened, so a first-run machine with no local-overlay.idx proceeds exactly as
+	// before — no error, no fail-open, no behavior change (FRB-05 fail-closed guard).
+	var overlayPath string
+	if cacheDir != "" {
+		overlayPath = filepath.Join(cacheDir, "local-overlay.idx")
+	}
+	multiIdx := catalog.NewMultiIndexWithOverlay(bbIdx, osvAdapter, socketAdapter, overlayPath)
+	// Close ONLY the overlay index in a dedicated defer. The Bumblebee index is
+	// already closed by the existing `defer bbIdx.Close()` above (line 205).
+	// Calling multiIdx.Close() would double-close bbIdx — DO NOT do that.
+	defer func() {
+		if multiIdx.Overlay != nil {
+			_ = multiIdx.Overlay.Close()
+		}
+	}()
 
 	// Re-check the deadline before the pure evaluation.
 	if ctx.Err() != nil {
