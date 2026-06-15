@@ -259,3 +259,216 @@ func TestLocalOverlayIdempotentAdd(t *testing.T) {
 		t.Fatalf("want exactly 1 entry after idempotent add, got %d: %+v", len(entries), entries)
 	}
 }
+
+// ---- Coverage additions for LoadLocalOverlay + AddLocalOverlayEntry ----
+
+// TestLoadLocalOverlay_MissingFile verifies that LoadLocalOverlay returns
+// (nil, nil) when the overlay JSON file does not exist. This is the "first run"
+// case: a missing file is not an error.
+func TestLoadLocalOverlay_MissingFile(t *testing.T) {
+	dir := t.TempDir() // empty directory — local-overlay.json absent
+
+	entries, err := LoadLocalOverlay(dir)
+	if err != nil {
+		t.Fatalf("LoadLocalOverlay on missing file returned error: %v", err)
+	}
+	if entries != nil {
+		t.Errorf("LoadLocalOverlay on missing file returned non-nil entries: %+v", entries)
+	}
+}
+
+// TestLoadLocalOverlay_MalformedJSON verifies that LoadLocalOverlay returns a
+// parse error when the overlay file exists but contains invalid JSON.
+func TestLoadLocalOverlay_MalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	overlayPath := filepath.Join(dir, "local-overlay.json")
+	if err := os.WriteFile(overlayPath, []byte(`not valid json`), 0o600); err != nil {
+		t.Fatalf("write malformed overlay: %v", err)
+	}
+
+	_, err := LoadLocalOverlay(dir)
+	if err == nil {
+		t.Fatal("LoadLocalOverlay with malformed JSON returned nil error; want parse error")
+	}
+}
+
+// TestLoadLocalOverlay_UnreadableFile covers the os.ReadFile error path that is
+// NOT "not-exist" — specifically, a directory is placed at the overlay JSON path.
+// On all supported OSes, os.ReadFile on a directory returns an error that is NOT
+// os.ErrNotExist, exercising the "read failed, not absent" branch in
+// LoadLocalOverlay.
+func TestLoadLocalOverlay_UnreadableFile(t *testing.T) {
+	dir := t.TempDir()
+	overlayPath := filepath.Join(dir, "local-overlay.json")
+	// Create a directory at the path where the JSON file is expected.
+	// On Linux/macOS: returns EISDIR. On Windows: returns a non-ErrNotExist error.
+	// Both are distinct from os.ErrNotExist and exercise the read-error branch.
+	if err := os.Mkdir(overlayPath, 0o700); err != nil {
+		t.Fatalf("mkdir at overlay path: %v", err)
+	}
+
+	_, err := LoadLocalOverlay(dir)
+	if err == nil {
+		t.Fatal("LoadLocalOverlay on unreadable path returned nil error; want read error")
+	}
+}
+
+// TestLoadLocalOverlay_ValidLoad verifies that LoadLocalOverlay round-trips a
+// file written by AddLocalOverlayEntry and returns all entries intact.
+func TestLoadLocalOverlay_ValidLoad(t *testing.T) {
+	dir := t.TempDir()
+
+	entries := []Entry{
+		makeOverlayEntry("npm", "evil-pkg-a"),
+		makeOverlayEntry("pip", "evil-pkg-b"),
+	}
+	for _, e := range entries {
+		if err := AddLocalOverlayEntry(dir, e); err != nil {
+			t.Fatalf("AddLocalOverlayEntry(%s/%s): %v", e.Ecosystem, e.Package, err)
+		}
+	}
+
+	got, err := LoadLocalOverlay(dir)
+	if err != nil {
+		t.Fatalf("LoadLocalOverlay: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("LoadLocalOverlay returned %d entries, want 2", len(got))
+	}
+	// Verify the ecosystems and packages were persisted correctly.
+	ecosystems := map[string]bool{}
+	for _, e := range got {
+		ecosystems[e.Ecosystem] = true
+	}
+	if !ecosystems["npm"] || !ecosystems["pip"] {
+		t.Errorf("missing expected ecosystems in loaded entries: %+v", got)
+	}
+}
+
+// TestAddLocalOverlayEntry_LoadError verifies that AddLocalOverlayEntry returns
+// the error from LoadLocalOverlay when the existing overlay file is malformed.
+// This covers the "return err" branch at the top of AddLocalOverlayEntry.
+func TestAddLocalOverlayEntry_LoadError(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a corrupt overlay file so LoadLocalOverlay inside AddLocalOverlayEntry fails.
+	overlayPath := filepath.Join(dir, "local-overlay.json")
+	if err := os.WriteFile(overlayPath, []byte(`{not valid`), 0o600); err != nil {
+		t.Fatalf("write corrupt overlay: %v", err)
+	}
+
+	e := makeOverlayEntry("npm", "new-pkg")
+	err := AddLocalOverlayEntry(dir, e)
+	if err == nil {
+		t.Fatal("AddLocalOverlayEntry with corrupt overlay returned nil error; want load error")
+	}
+}
+
+// TestAddLocalOverlayEntry_UpdateExistingEntry verifies that calling
+// AddLocalOverlayEntry with a different package in the same ecosystem is
+// additive (the second entry is stored alongside the first, not replacing it).
+// This also exercises the idempotency path where an entry with the same
+// ecosystem+package is skipped on a case-insensitive comparison.
+func TestAddLocalOverlayEntry_UpdateExistingEntry(t *testing.T) {
+	dir := t.TempDir()
+
+	// Add an entry.
+	e1 := makeOverlayEntry("npm", "evil-pkg-one")
+	if err := AddLocalOverlayEntry(dir, e1); err != nil {
+		t.Fatalf("first add: %v", err)
+	}
+
+	// Add a second entry with the same ecosystem but a different package.
+	e2 := makeOverlayEntry("npm", "evil-pkg-two")
+	if err := AddLocalOverlayEntry(dir, e2); err != nil {
+		t.Fatalf("second add: %v", err)
+	}
+
+	// Both entries must be present.
+	entries, err := LoadLocalOverlay(dir)
+	if err != nil {
+		t.Fatalf("LoadLocalOverlay: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("want 2 entries, got %d: %+v", len(entries), entries)
+	}
+
+	// Case-insensitive idempotency: adding the same package with different case
+	// must NOT create a duplicate.
+	e3 := makeOverlayEntry("NPM", "EVIL-PKG-ONE")
+	if err := AddLocalOverlayEntry(dir, e3); err != nil {
+		t.Fatalf("case-insensitive add: %v", err)
+	}
+	entries2, err := LoadLocalOverlay(dir)
+	if err != nil {
+		t.Fatalf("LoadLocalOverlay after case-insensitive add: %v", err)
+	}
+	if len(entries2) != 2 {
+		t.Fatalf("case-insensitive idempotency failed: want 2 entries, got %d", len(entries2))
+	}
+}
+
+// TestAddLocalOverlayEntry_CapEviction verifies the 1000-entry cap guard:
+// adding an entry when the overlay already holds maxOverlayEntries is silently
+// skipped (returns nil, logs a warning). The overlay remains at the cap and does
+// not grow beyond it.
+func TestAddLocalOverlayEntry_CapEviction(t *testing.T) {
+	dir := t.TempDir()
+
+	// Fill the overlay to the cap using unique packages.
+	for i := 0; i < maxOverlayEntries; i++ {
+		e := makeOverlayEntry("npm", filepath.Join("evil-pkg", string(rune('a'+(i%26)))+"-"+itoa(i)))
+		if err := AddLocalOverlayEntry(dir, e); err != nil {
+			t.Fatalf("fill entry %d: %v", i, err)
+		}
+	}
+
+	// Verify we are exactly at the cap.
+	entries, err := LoadLocalOverlay(dir)
+	if err != nil {
+		t.Fatalf("LoadLocalOverlay at cap: %v", err)
+	}
+	if len(entries) != maxOverlayEntries {
+		t.Fatalf("want %d entries at cap, got %d", maxOverlayEntries, len(entries))
+	}
+
+	// Adding one more entry must be silently skipped (cap guard).
+	overflow := makeOverlayEntry("npm", "overflow-entry")
+	if err := AddLocalOverlayEntry(dir, overflow); err != nil {
+		t.Fatalf("AddLocalOverlayEntry at cap returned unexpected error: %v", err)
+	}
+
+	// The overlay must remain at cap (overflow was discarded).
+	afterCap, err := LoadLocalOverlay(dir)
+	if err != nil {
+		t.Fatalf("LoadLocalOverlay after cap overflow: %v", err)
+	}
+	if len(afterCap) != maxOverlayEntries {
+		t.Fatalf("cap violated: want %d entries, got %d", maxOverlayEntries, len(afterCap))
+	}
+}
+
+// itoa is a minimal int-to-string helper for TestAddLocalOverlayEntry_CapEviction,
+// avoiding an import of strconv for a single-call site.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	buf := make([]byte, 0, 10)
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	for n > 0 {
+		buf = append(buf, byte('0'+n%10))
+		n /= 10
+	}
+	// reverse
+	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
+		buf[i], buf[j] = buf[j], buf[i]
+	}
+	if neg {
+		buf = append([]byte{'-'}, buf...)
+	}
+	return string(buf)
+}

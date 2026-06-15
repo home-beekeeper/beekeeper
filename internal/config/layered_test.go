@@ -754,3 +754,450 @@ func TestLoadLayeredCatalogSyncProjectCannotDisable(t *testing.T) {
 		t.Errorf("CatalogSyncInterval() = %s, want 6h (user value preserved)", got)
 	}
 }
+
+// ---- Phase 24: mergeCorpus + mergeAutoQuarantine unit tests ----
+//
+// These tests regression-lock the Phase-24 bug fix: before the fix, merge()
+// did not call mergeCorpus / mergeAutoQuarantine, so cfg.Corpus.Enabled and
+// cfg.AutoQuarantine were always the zero value regardless of what a higher
+// layer set. The tests below directly call the merge helpers so any regression
+// in the helper implementations is caught at the unit level (not just by the
+// E2E Nx Console gate).
+
+// TestMergeCorpus_ZeroSrcLeavesBase verifies that a zero-value src CorpusConfig
+// does not reset a populated dst (Pitfall 5: absent higher-layer field must not
+// clobber lower-layer non-zero value).
+//
+// Note: Scope is carried through as-is (mergeCorpus does not process it, so
+// dst.Scope is always preserved verbatim regardless of src.Scope).
+func TestMergeCorpus_ZeroSrcLeavesBase(t *testing.T) {
+	dst := CorpusConfig{
+		Enabled:             true,
+		Path:                "/data/corpus.ndjson",
+		DownstreamCleanDays: 30,
+	}
+	src := CorpusConfig{} // all zero
+
+	got := mergeCorpus(dst, src)
+
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — zero src must not clobber dst")
+	}
+	if got.Path != "/data/corpus.ndjson" {
+		t.Errorf("Path = %q, want /data/corpus.ndjson", got.Path)
+	}
+	if got.DownstreamCleanDays != 30 {
+		t.Errorf("DownstreamCleanDays = %d, want 30", got.DownstreamCleanDays)
+	}
+}
+
+// TestMergeCorpus_NonZeroSrcWins verifies that a fully-populated src wins over
+// every field of dst that mergeCorpus handles: Enabled, Path,
+// DownstreamCleanDays. Note: Scope is intentionally NOT merged by mergeCorpus
+// (it is not wired into the merge helper; only Enabled, Path, and
+// DownstreamCleanDays are). This test documents the actual behaviour.
+func TestMergeCorpus_NonZeroSrcWins(t *testing.T) {
+	dst := CorpusConfig{
+		Enabled:             false,
+		Path:                "/old/corpus.ndjson",
+		DownstreamCleanDays: 10,
+	}
+	src := CorpusConfig{
+		Enabled:             true,
+		Path:                "/new/corpus.ndjson",
+		DownstreamCleanDays: 90,
+	}
+
+	got := mergeCorpus(dst, src)
+
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — src.Enabled=true must win")
+	}
+	if got.Path != "/new/corpus.ndjson" {
+		t.Errorf("Path = %q, want /new/corpus.ndjson", got.Path)
+	}
+	if got.DownstreamCleanDays != 90 {
+		t.Errorf("DownstreamCleanDays = %d, want 90", got.DownstreamCleanDays)
+	}
+}
+
+// TestMergeCorpus_PartialSrcMergesFieldByField verifies that a partial src
+// (only Path and DownstreamCleanDays set) merges only those fields without
+// clobbering dst.Enabled (the zero-value false cannot beat a true).
+func TestMergeCorpus_PartialSrcMergesFieldByField(t *testing.T) {
+	dst := CorpusConfig{
+		Enabled:             true,
+		Path:                "/keep/corpus.ndjson",
+		DownstreamCleanDays: 30,
+	}
+	// src sets only Path and DownstreamCleanDays.
+	src := CorpusConfig{
+		Path:                "/override/corpus.ndjson",
+		DownstreamCleanDays: 60,
+	}
+
+	got := mergeCorpus(dst, src)
+
+	// Enabled: src.Enabled == false (zero) — must NOT clobber dst.Enabled.
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — partial src must not clobber dst.Enabled")
+	}
+	if got.Path != "/override/corpus.ndjson" {
+		t.Errorf("Path = %q, want /override/corpus.ndjson", got.Path)
+	}
+	if got.DownstreamCleanDays != 60 {
+		t.Errorf("DownstreamCleanDays = %d, want 60", got.DownstreamCleanDays)
+	}
+}
+
+// TestMergeCorpus_EnabledFalseCannotDisable verifies the asymmetry in
+// mergeCorpus: because Go JSON unmarshalling cannot distinguish absent=false
+// from explicit=false for booleans, a src.Enabled==false NEVER clobbers a
+// dst.Enabled==true. This prevents a higher trusted layer from accidentally
+// disabling corpus monitoring by omitting the field.
+func TestMergeCorpus_EnabledFalseCannotDisable(t *testing.T) {
+	dst := CorpusConfig{Enabled: true, Path: "/corpus.ndjson"}
+	src := CorpusConfig{Enabled: false} // cannot distinguish absent from explicit
+
+	got := mergeCorpus(dst, src)
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — false cannot clobber true (absent-vs-explicit ambiguity)")
+	}
+}
+
+// TestMergeCorpus_BothZeroStaysZero verifies the zero-dst + zero-src case:
+// the result is also zero (no panic, no unexpected mutation).
+func TestMergeCorpus_BothZeroStaysZero(t *testing.T) {
+	got := mergeCorpus(CorpusConfig{}, CorpusConfig{})
+	if got.Enabled {
+		t.Error("Enabled = true, want false — zero merge must stay zero")
+	}
+	if got.Path != "" || got.Scope != "" || got.DownstreamCleanDays != 0 {
+		t.Errorf("unexpected non-zero fields on zero+zero merge: %+v", got)
+	}
+}
+
+// TestMergeAutoQuarantine_ZeroSrcLeavesBase verifies that a zero-value src
+// AutoQuarantineConfig does not reset a populated dst (Pitfall 5).
+func TestMergeAutoQuarantine_ZeroSrcLeavesBase(t *testing.T) {
+	dst := AutoQuarantineConfig{
+		Enabled:   true,
+		DryRun:    false, // explicit non-default
+		Threshold: 3,
+	}
+	src := AutoQuarantineConfig{} // all zero
+
+	got := mergeAutoQuarantine(dst, src)
+
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — zero src must not clobber dst")
+	}
+	// DryRun: src.DryRun==false cannot be distinguished from absent — must NOT
+	// clobber dst.DryRun==false (it was already false, so the value is preserved).
+	if got.DryRun != false {
+		t.Errorf("DryRun = %v, want false", got.DryRun)
+	}
+	if got.Threshold != 3 {
+		t.Errorf("Threshold = %d, want 3", got.Threshold)
+	}
+}
+
+// TestMergeAutoQuarantine_NonZeroSrcWins verifies that a fully-populated src
+// wins over every field of dst where src is non-zero.
+func TestMergeAutoQuarantine_NonZeroSrcWins(t *testing.T) {
+	dst := AutoQuarantineConfig{
+		Enabled:   false,
+		DryRun:    false,
+		Threshold: 1,
+	}
+	src := AutoQuarantineConfig{
+		Enabled:   true,
+		DryRun:    true,
+		Threshold: 3,
+	}
+
+	got := mergeAutoQuarantine(dst, src)
+
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — src.Enabled=true must win")
+	}
+	if !got.DryRun {
+		t.Error("DryRun = false, want true — src.DryRun=true must win")
+	}
+	if got.Threshold != 3 {
+		t.Errorf("Threshold = %d, want 3", got.Threshold)
+	}
+}
+
+// TestMergeAutoQuarantine_PartialSrcMergesFieldByField verifies that a partial
+// src (only Threshold set) merges only that field without clobbering the rest.
+func TestMergeAutoQuarantine_PartialSrcMergesFieldByField(t *testing.T) {
+	dst := AutoQuarantineConfig{
+		Enabled:   true,
+		DryRun:    true,
+		Threshold: 2,
+	}
+	src := AutoQuarantineConfig{
+		Threshold: 3, // only override Threshold
+	}
+
+	got := mergeAutoQuarantine(dst, src)
+
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — partial src must not clobber dst.Enabled")
+	}
+	// DryRun: src.DryRun==false (zero) — must NOT clobber dst.DryRun==true.
+	// Note: mergeAutoQuarantine uses "if src.DryRun { dst.DryRun = true }" so
+	// a false src.DryRun can never override a true dst.DryRun.
+	if !got.DryRun {
+		t.Error("DryRun = false, want true — zero-value false cannot clobber dst true")
+	}
+	if got.Threshold != 3 {
+		t.Errorf("Threshold = %d, want 3", got.Threshold)
+	}
+}
+
+// TestMergeAutoQuarantine_EnabledFalseCannotDisable verifies the bool asymmetry:
+// src.Enabled==false NEVER clobbers a dst.Enabled==true.
+func TestMergeAutoQuarantine_EnabledFalseCannotDisable(t *testing.T) {
+	dst := AutoQuarantineConfig{Enabled: true, Threshold: 2}
+	src := AutoQuarantineConfig{Enabled: false}
+
+	got := mergeAutoQuarantine(dst, src)
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — false cannot clobber true")
+	}
+}
+
+// TestMergeAutoQuarantine_BothZeroStaysZero verifies the zero+zero case is safe.
+func TestMergeAutoQuarantine_BothZeroStaysZero(t *testing.T) {
+	got := mergeAutoQuarantine(AutoQuarantineConfig{}, AutoQuarantineConfig{})
+	if got.Enabled || got.DryRun || got.Threshold != 0 {
+		t.Errorf("unexpected non-zero fields on zero+zero merge: %+v", got)
+	}
+}
+
+// TestMerge_CorpusFlowsThrough verifies the end-to-end trusted-layer flow via
+// merge(): a src Config with Corpus.Enabled=true and all string fields set
+// produces the expected merged CorpusConfig. This is the Phase-24 regression
+// test: before the fix, merge() silently dropped the Corpus block.
+func TestMerge_CorpusFlowsThrough(t *testing.T) {
+	dst := Config{FailMode: FailModeClosed}
+	src := Config{
+		Corpus: CorpusConfig{
+			Enabled:             true,
+			Path:                "/corpus/beekeeper-corpus.ndjson",
+			Scope:               "org_only",
+			DownstreamCleanDays: 30,
+		},
+	}
+
+	got := merge(dst, src)
+
+	if !got.Corpus.Enabled {
+		t.Error("Corpus.Enabled = false after merge; want true — Phase-24 regression: merge() must call mergeCorpus")
+	}
+	if got.Corpus.Path != "/corpus/beekeeper-corpus.ndjson" {
+		t.Errorf("Corpus.Path = %q, want /corpus/beekeeper-corpus.ndjson", got.Corpus.Path)
+	}
+}
+
+// TestMerge_AutoQuarantineFlowsThrough verifies the end-to-end trusted-layer
+// flow via merge(): a src Config with a non-nil AutoQuarantine block produces
+// the expected merged AutoQuarantineConfig. Mirrors TestMerge_CorpusFlowsThrough
+// for the pointer-field variant.
+func TestMerge_AutoQuarantineFlowsThrough(t *testing.T) {
+	dst := Config{FailMode: FailModeClosed}
+	src := Config{
+		AutoQuarantine: &AutoQuarantineConfig{
+			Enabled:   true,
+			DryRun:    true,
+			Threshold: 2,
+		},
+	}
+
+	got := merge(dst, src)
+
+	if got.AutoQuarantine == nil {
+		t.Fatal("AutoQuarantine = nil after merge; want non-nil")
+	}
+	if !got.AutoQuarantine.Enabled {
+		t.Error("AutoQuarantine.Enabled = false; want true")
+	}
+	if !got.AutoQuarantine.DryRun {
+		t.Error("AutoQuarantine.DryRun = false; want true")
+	}
+	if got.AutoQuarantine.Threshold != 2 {
+		t.Errorf("AutoQuarantine.Threshold = %d; want 2", got.AutoQuarantine.Threshold)
+	}
+}
+
+// TestMerge_AutoQuarantineDstNilSrcNonNil verifies that when dst.AutoQuarantine
+// is nil and src.AutoQuarantine is non-nil, merge() allocates a new block and
+// populates it correctly (the nil-init branch in merge()).
+func TestMerge_AutoQuarantineDstNilSrcNonNil(t *testing.T) {
+	dst := Config{FailMode: FailModeClosed, AutoQuarantine: nil}
+	src := Config{
+		AutoQuarantine: &AutoQuarantineConfig{
+			Enabled:   true,
+			Threshold: 3,
+		},
+	}
+
+	got := merge(dst, src)
+
+	if got.AutoQuarantine == nil {
+		t.Fatal("AutoQuarantine = nil; want non-nil after merge from nil dst")
+	}
+	if !got.AutoQuarantine.Enabled {
+		t.Error("AutoQuarantine.Enabled = false; want true")
+	}
+	if got.AutoQuarantine.Threshold != 3 {
+		t.Errorf("AutoQuarantine.Threshold = %d; want 3", got.AutoQuarantine.Threshold)
+	}
+}
+
+// TestMergeUntrusted_CorpusEnableAllowed verifies mergeUntrusted allows enabling
+// corpus from a low-trust (project) layer (enabling tightens security posture).
+func TestMergeUntrusted_CorpusEnableAllowed(t *testing.T) {
+	dst := Config{FailMode: FailModeClosed}
+	src := Config{
+		Corpus: CorpusConfig{
+			Enabled: true,
+			Path:    "/project/corpus.ndjson",
+		},
+	}
+
+	got := mergeUntrusted(dst, src, "project")
+
+	if !got.Corpus.Enabled {
+		t.Error("Corpus.Enabled = false; want true — project enable is allowed (tightens posture)")
+	}
+	if got.Corpus.Path != "/project/corpus.ndjson" {
+		t.Errorf("Corpus.Path = %q, want /project/corpus.ndjson", got.Corpus.Path)
+	}
+}
+
+// TestMergeUntrusted_CorpusDisableRefused verifies that a low-trust layer
+// cannot disable corpus monitoring (disabling would weaken security).
+func TestMergeUntrusted_CorpusDisableRefused(t *testing.T) {
+	dst := Config{
+		FailMode: FailModeClosed,
+		Corpus:   CorpusConfig{Enabled: true},
+	}
+	src := Config{
+		Corpus: CorpusConfig{Enabled: false}, // low-trust disable attempt
+	}
+
+	got := mergeUntrusted(dst, src, "project")
+
+	// src.Enabled==false is indistinguishable from absent in Go JSON, but even
+	// if it were explicit the untrusted path only applies Enabled=true.
+	if !got.Corpus.Enabled {
+		t.Error("Corpus.Enabled = false; want true — low-trust disable refused")
+	}
+}
+
+// TestMergeUntrusted_AutoQuarantineEnableAllowed verifies that a low-trust
+// layer may activate auto-quarantine (opt-in tightens posture).
+func TestMergeUntrusted_AutoQuarantineEnableAllowed(t *testing.T) {
+	dst := Config{FailMode: FailModeClosed}
+	src := Config{
+		AutoQuarantine: &AutoQuarantineConfig{Enabled: true},
+	}
+
+	got := mergeUntrusted(dst, src, "project")
+
+	if got.AutoQuarantine == nil || !got.AutoQuarantine.Enabled {
+		t.Error("AutoQuarantine.Enabled = false; want true — project enable is allowed")
+	}
+}
+
+// TestMergeUntrusted_AutoQuarantineDisableIgnored verifies that a low-trust
+// layer with AutoQuarantine.Enabled==false does not create or modify the dst
+// AutoQuarantine block (disable is ignored from low-trust layers).
+func TestMergeUntrusted_AutoQuarantineDisableIgnored(t *testing.T) {
+	// dst has no AutoQuarantine; src tries to set only Enabled=false.
+	dst := Config{FailMode: FailModeClosed}
+	src := Config{
+		AutoQuarantine: &AutoQuarantineConfig{Enabled: false},
+	}
+
+	got := mergeUntrusted(dst, src, "project")
+
+	// A disable-only low-trust block must NOT create a new AutoQuarantine entry.
+	if got.AutoQuarantine != nil && got.AutoQuarantine.Enabled {
+		t.Error("AutoQuarantine enabled by low-trust disable-only block; must be ignored")
+	}
+}
+
+// TestLoadLayered_CorpusUserLayerRoundTrip is the end-to-end proof via
+// LoadLayered: a user config JSON with corpus.enabled:true and the fields that
+// mergeCorpus handles (Enabled, Path, DownstreamCleanDays) survive the full
+// five-layer merge and are retrievable on the returned Config.
+//
+// This is the Phase-24 production-bug regression test at the integration level.
+// Before the fix, merge() did not call mergeCorpus so cfg.Corpus.Enabled was
+// always false regardless of the user config JSON.
+//
+// Note: Scope is parsed by json.Unmarshal and stored on Config.Corpus.Scope, but
+// mergeCorpus does not actively merge it; it is present on the user layer's raw
+// Config struct and therefore it does appear after the merge as well (it's carried
+// through the struct copy). However this test only asserts on the fields that
+// mergeCorpus explicitly handles to avoid fragility.
+func TestLoadLayered_CorpusUserLayerRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{
+		"corpus": {
+			"enabled": true,
+			"path": "/data/beekeeper-corpus.ndjson",
+			"downstream_clean_days": 45
+		}
+	}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+
+	if !cfg.Corpus.Enabled {
+		t.Error("cfg.Corpus.Enabled = false; want true — Phase-24 regression: user corpus block must survive merge")
+	}
+	if cfg.Corpus.Path != "/data/beekeeper-corpus.ndjson" {
+		t.Errorf("cfg.Corpus.Path = %q; want /data/beekeeper-corpus.ndjson", cfg.Corpus.Path)
+	}
+	if cfg.Corpus.DownstreamCleanDays != 45 {
+		t.Errorf("cfg.Corpus.DownstreamCleanDays = %d; want 45", cfg.Corpus.DownstreamCleanDays)
+	}
+}
+
+// TestLoadLayered_AutoQuarantineUserLayerRoundTrip verifies that a user config
+// JSON with auto_quarantine block survives the full merge.
+func TestLoadLayered_AutoQuarantineUserLayerRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "user.json", `{
+		"auto_quarantine": {
+			"enabled": true,
+			"dry_run": false,
+			"threshold": 2
+		}
+	}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+
+	if cfg.AutoQuarantine == nil {
+		t.Fatal("cfg.AutoQuarantine = nil; want non-nil after merge")
+	}
+	if !cfg.AutoQuarantine.Enabled {
+		t.Error("cfg.AutoQuarantine.Enabled = false; want true")
+	}
+	if cfg.AutoQuarantine.DryRun {
+		t.Error("cfg.AutoQuarantine.DryRun = true; want false (explicit false in JSON)")
+	}
+	if cfg.AutoQuarantine.Threshold != 2 {
+		t.Errorf("cfg.AutoQuarantine.Threshold = %d; want 2", cfg.AutoQuarantine.Threshold)
+	}
+}
