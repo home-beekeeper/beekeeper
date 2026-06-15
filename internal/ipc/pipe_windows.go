@@ -76,6 +76,24 @@ func NewServer(sockPath string, ownerUID uint32) (*Server, error) {
 	// Build the SDDL DACL: allow GENERIC_READ|GENERIC_WRITE for the current user only.
 	sddl := fmt.Sprintf("D:(A;;GRGW;;;%s)", sid)
 
+	// Pipe-squatting defense (T-IPC-02): a hostile local process could pre-create
+	// (squat) the well-known pipe name before the daemon starts, then either
+	// impersonate the Sentry server or weaken its DACL. winio.ListenPipe creates
+	// the FIRST instance of the pipe with the NT FILE_CREATE disposition — the
+	// equivalent of Win32 FILE_FLAG_FIRST_PIPE_INSTANCE — which FAILS with a
+	// name-collision error if any instance of the pipe already exists. winio's
+	// own doc states "The pipe must not already exist." So a squatted pipe makes
+	// this call return an error and NewServer fails closed (hard startup failure),
+	// rather than silently attaching to / trusting an attacker-owned pipe. We
+	// surface that error verbatim below; callers must treat a NewServer failure as
+	// fatal and must not retry against the existing pipe.
+	//
+	// Residual: winio v0.6.2 does not expose a FirstPipeInstance config knob, but
+	// because the first-instance/FILE_CREATE behavior is unconditional in
+	// ListenPipe, the protection is already in force with no extra flag. If a
+	// future winio release changes ListenPipe to FILE_OPEN_IF semantics, this
+	// guarantee would regress — TestNewServerRejectsSquattedPipe guards against
+	// that.
 	l, err := winio.ListenPipe(PipePath, &winio.PipeConfig{
 		SecurityDescriptor: sddl,
 		MessageMode:        false, // byte mode — same as Unix sockets
@@ -83,7 +101,7 @@ func NewServer(sockPath string, ownerUID uint32) (*Server, error) {
 		OutputBufferSize:   65536,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("listen pipe: %w", err)
+		return nil, fmt.Errorf("listen pipe (a name collision here means the pipe was squatted; fail closed): %w", err)
 	}
 	return &Server{listener: l, sockPath: sockPath}, nil
 }

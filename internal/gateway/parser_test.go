@@ -8,11 +8,11 @@ import (
 func TestParseMessage(t *testing.T) {
 	t.Run("valid cases", func(t *testing.T) {
 		tests := []struct {
-			name        string
-			input       []byte
-			wantMethod  string
-			wantID      any
-			wantIDType  string // "string", "float64", "nil"
+			name       string
+			input      []byte
+			wantMethod string
+			wantID     any
+			wantIDType string // "string", "float64", "nil"
 		}{
 			{
 				name:       "valid tools/call",
@@ -96,9 +96,9 @@ func TestParseMessage(t *testing.T) {
 
 	t.Run("error cases", func(t *testing.T) {
 		tests := []struct {
-			name      string
-			input     []byte
-			wantCode  int
+			name     string
+			input    []byte
+			wantCode int
 		}{
 			{
 				name:     "empty input",
@@ -160,6 +160,34 @@ func TestParseMessage(t *testing.T) {
 				input:    []byte(`[not json]`),
 				wantCode: -32700,
 			},
+			{
+				// Request-smuggling guard: duplicate key in params object.
+				// Go json.Unmarshal is last-wins; an upstream that disagrees would
+				// execute a different tool than policy evaluated. Reject -32600.
+				name:     "duplicate key in params (tool name)",
+				input:    []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"safe","name":"shell_exec"}}`),
+				wantCode: -32600,
+			},
+			{
+				name:     "duplicate key at top level",
+				input:    []byte(`{"jsonrpc":"2.0","jsonrpc":"2.0","id":1,"method":"tools/call"}`),
+				wantCode: -32600,
+			},
+			{
+				name:     "duplicate key nested deeper in arguments",
+				input:    []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x","arguments":{"command":"a","command":"b"}}}`),
+				wantCode: -32600,
+			},
+			{
+				name:     "duplicate key inside array element",
+				input:    []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x","arguments":{"items":[{"k":1,"k":2}]}}}`),
+				wantCode: -32600,
+			},
+			{
+				name:     "duplicate key in single-item batch",
+				input:    []byte(`[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"a","name":"b"}}]`),
+				wantCode: -32600,
+			},
 		}
 
 		for _, tc := range tests {
@@ -220,6 +248,48 @@ func TestParseMessage(t *testing.T) {
 				t.Errorf("ID = %v (%T), want nil", msg.ID, msg.ID)
 			}
 		})
+	})
+}
+
+// TestRejectDuplicateKeys exercises the duplicate-key walker directly, covering
+// the smuggling vector (duplicate keys at every level) and confirming that
+// legitimate, distinct-key bodies — including repeated keys in *sibling* objects,
+// which are NOT duplicates — pass through.
+func TestRejectDuplicateKeys(t *testing.T) {
+	t.Run("rejects duplicates", func(t *testing.T) {
+		cases := []string{
+			`{"name":"safe","name":"shell_exec"}`,
+			`{"a":1,"b":2,"a":3}`,
+			`{"outer":{"k":1,"k":2}}`,
+			`{"arr":[{"k":1,"k":2}]}`,
+			`[{"k":1,"k":2}]`,
+		}
+		for _, c := range cases {
+			if err := rejectDuplicateKeys([]byte(c)); err == nil {
+				t.Errorf("rejectDuplicateKeys(%s) = nil, want duplicate-key error", c)
+			}
+		}
+	})
+
+	t.Run("accepts distinct keys", func(t *testing.T) {
+		cases := []string{
+			`{"name":"safe","arguments":{"command":"ls"}}`,
+			`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x","arguments":{}}}`,
+			// Same key name in two SIBLING objects is fine — not a duplicate within
+			// one object.
+			`{"a":{"k":1},"b":{"k":2}}`,
+			// Same key name in two array elements is fine.
+			`[{"k":1},{"k":2}]`,
+			`"scalar"`,
+			`42`,
+			`null`,
+			`[1,2,3]`,
+		}
+		for _, c := range cases {
+			if err := rejectDuplicateKeys([]byte(c)); err != nil {
+				t.Errorf("rejectDuplicateKeys(%s) = %v, want nil", c, err)
+			}
+		}
 	})
 }
 

@@ -59,6 +59,32 @@ func TestNewServerCreatesPipe(t *testing.T) {
 	}
 }
 
+// TestNewServerRejectsSquattedPipe is the pipe-squatting regression guard
+// (T-IPC-02). winio.ListenPipe creates the FIRST pipe instance with FILE_CREATE
+// semantics (the NT equivalent of FILE_FLAG_FIRST_PIPE_INSTANCE), so a second
+// NewServer on the same pipe name — i.e. a name already "squatted" by the first
+// server — must fail with a name-collision error rather than silently attaching
+// to an existing pipe. This proves the fail-closed startup behavior the comment
+// in pipe_windows.go documents, and catches any future winio change to
+// FILE_OPEN_IF semantics that would reintroduce the squatting risk.
+func TestNewServerRejectsSquattedPipe(t *testing.T) {
+	withTestPipe(t, pipeNameForTest(t))
+
+	// First server creates (owns) the pipe name.
+	srv1, err := NewServer("", 0)
+	if err != nil {
+		t.Fatalf("first NewServer: %v", err)
+	}
+	defer srv1.Close()
+
+	// Second server on the same (now-existing/squatted) name must fail closed.
+	srv2, err := NewServer("", 0)
+	if err == nil {
+		srv2.Close()
+		t.Fatal("second NewServer on an existing pipe name succeeded; want a name-collision failure (squatting must fail closed)")
+	}
+}
+
 func TestPipeRoundTrip(t *testing.T) {
 	withTestPipe(t, pipeNameForTest(t))
 

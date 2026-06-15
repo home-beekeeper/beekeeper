@@ -8,7 +8,17 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
+	"syscall"
 )
+
+// umaskMu serializes the umask save/restore window in NewServer. syscall.Umask
+// is a process-global side effect; without this lock two concurrent NewServer
+// calls could interleave and leave the process umask at the restrictive value
+// (or, worse, race the socket creation of a caller that did not intend the
+// tight umask). NewServer is not on a hot path, so the serialization cost is
+// negligible.
+var umaskMu sync.Mutex
 
 // Server listens on a Unix domain socket and verifies peer credentials before
 // dispatching to the provided Handler.
@@ -29,7 +39,18 @@ func NewServer(sockPath string, ownerUID uint32) (*Server, error) {
 		return nil, fmt.Errorf("removing old socket: %w", err)
 	}
 
-	l, err := net.Listen("unix", sockPath)
+	// TOCTOU close (T-IPC-01): net.Listen("unix") creates the socket inode under
+	// the process umask, which on a default 0022 umask yields 0755 — world- and
+	// group-readable/writable. The os.Chmod(0600) below narrows it, but between
+	// the Listen and the Chmod there is a window where another local user could
+	// connect() to the socket. Set a restrictive umask (0o177 → strips all but
+	// owner rwx, so the socket is born at most 0600) around the Listen and
+	// restore it immediately after. The Chmod and the SO_PEERCRED check in
+	// Serve remain as defense-in-depth.
+	//
+	// syscall.Umask is process-global; umaskMu serializes the save/restore so a
+	// concurrent NewServer cannot observe or clobber the temporary umask.
+	l, err := listenUnixOwnerOnly(sockPath)
 	if err != nil {
 		return nil, fmt.Errorf("listening on %s: %w", sockPath, err)
 	}
@@ -88,3 +109,21 @@ func (s *Server) Close() error {
 }
 
 // verifyPeerUID is implemented per-platform in peer_linux.go and peer_darwin.go.
+
+// listenUnixOwnerOnly creates a Unix-domain listener at sockPath with a
+// restrictive umask in force so the socket inode is never momentarily exposed
+// to other local users before the explicit Chmod(0600) narrows it. It restores
+// the previous umask before returning regardless of success or failure.
+//
+// 0o177 clears group/other rwx and the owner's x bit, so a socket created while
+// it is in force is born at 0600 (rw owner only). This closes the create→chmod
+// TOCTOU window where a default 0022 umask would otherwise produce a 0755 socket
+// reachable by any local user during the gap.
+func listenUnixOwnerOnly(sockPath string) (net.Listener, error) {
+	umaskMu.Lock()
+	old := syscall.Umask(0o177)
+	l, err := net.Listen("unix", sockPath)
+	syscall.Umask(old)
+	umaskMu.Unlock()
+	return l, err
+}
