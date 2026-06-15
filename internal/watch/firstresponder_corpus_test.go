@@ -378,3 +378,78 @@ func TestFirstResponderCorpusPendingQuarantine(t *testing.T) {
 		t.Errorf("quarantine dir must be empty when no local install found; got %d entries", len(entries))
 	}
 }
+
+// TestFirstResponderCorpusDryRunPathResolvedNoMove verifies finding #3: the
+// corpus-adjudication move branch honors cfg.DryRun. This is the PATH-RESOLVED
+// case — a matching ScanHit gives the corpus record a real install path, so the
+// only thing that prevents the move is the DryRun gate inside the function.
+//
+// Distinct from TestFirstResponderCorpusSentryGate, which uses a path-UNRESOLVED
+// record (the move is skipped because there is nothing to move, not because of
+// DryRun). Here the artifact dir exists and is resolvable: a "would-quarantine"
+// record must be written AND the artifact must remain in place (not moved).
+func TestFirstResponderCorpusDryRunPathResolvedNoMove(t *testing.T) {
+	quarantineDir := t.TempDir()
+	auditPath := filepath.Join(t.TempDir(), "beekeeper.ndjson")
+	sentryPath := filepath.Join(t.TempDir(), "sentry-targets.json")
+
+	// A real install directory the package resolves to. With DryRun it must stay.
+	pkgDir := filepath.Join(t.TempDir(), "nx-console-dryrun")
+	if err := os.MkdirAll(pkgDir, 0o700); err != nil {
+		t.Fatalf("mkdir pkgDir: %v", err)
+	}
+	sentinel := filepath.Join(pkgDir, "package.json")
+	if err := os.WriteFile(sentinel, []byte(`{"name":"@nrwl/nx-console"}`), 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	corpusPath := seedCorpusFile(t, nxConsoleRecord(2))
+
+	cfg := watch.FirstResponderConfig{
+		Enabled:               false, // scan-hit path disabled; isolate the corpus path
+		DryRun:                true,  // finding #3: corpus move branch must honor this
+		Threshold:             2,
+		QuarantineDir:         quarantineDir,
+		AuditPath:             auditPath,
+		SentryTargetsPath:     sentryPath,
+		CorpusPath:            corpusPath,
+		CorpusEnabled:         true,
+		CorpusSentryThreshold: 2,
+		// PATH-RESOLVED: the scan hit supplies a real install path.
+		CrossRefFn: func(_ context.Context, _ watch.CrossRefConfig) ([]watch.ScanHit, error) {
+			return nxConsoleScanHits(pkgDir), nil
+		},
+	}
+
+	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+		t.Fatalf("RunFirstResponder: %v", err)
+	}
+
+	// Assert: the artifact was NOT moved — the install dir and its sentinel remain.
+	if _, statErr := os.Stat(sentinel); statErr != nil {
+		t.Errorf("finding #3 violation: artifact was moved under DryRun — sentinel missing: %v", statErr)
+	}
+	entries, err := quarantine.List(quarantineDir)
+	if err != nil {
+		t.Fatalf("quarantine.List: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("finding #3 violation: quarantine dir has %d entries under DryRun; want 0 (no move)", len(entries))
+	}
+
+	// Assert: a "would-quarantine" record was written (the dry-run audit path).
+	recs := readAuditRecords(t, auditPath)
+	found := false
+	for _, r := range recs {
+		if r.RecordType == "would-quarantine" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("audit log must contain a would-quarantine record under DryRun; got %d records", len(recs))
+		for _, r := range recs {
+			t.Logf("  record_type=%q tool_name=%q", r.RecordType, r.ToolName)
+		}
+	}
+}

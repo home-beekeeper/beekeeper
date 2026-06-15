@@ -1,6 +1,8 @@
 package corpus
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,10 +29,10 @@ func FuzzBuildPushEnvelope(f *testing.F) {
 	// Seed corpus: representative AdjudicationResult field permutations.
 	// Include adversarial action-hint-like strings in intent/tierStr/trueLabel.
 	seeds := []struct {
-		trueLabel  string
-		adjSource  string
-		tierStr    string
-		intent     string
+		trueLabel   string
+		adjSource   string
+		tierStr     string
+		intent      string
 		sourceCount int
 	}{
 		// Normal cases.
@@ -114,5 +116,70 @@ func FuzzBuildPushEnvelope(f *testing.F) {
 		if string(env.ActionHint) == deny {
 			t.Errorf("FuzzBuildPushEnvelope: env.ActionHint is %q (must never be emitted, ENV-03)", deny)
 		}
+	})
+}
+
+// FuzzReadMaliciousRecords fuzzes the corpus reader over raw on-disk NDJSON
+// bytes. The corpus file is attacker-influenced (a malicious package or a
+// poisoned repo could craft adjudication lines), and ReadMaliciousRecords is the
+// signal source for First Responder quarantine moves — so a panic in the reader
+// is a denial-of-service / fail-open hazard.
+//
+// Property under test: NO input bytes — including truncated JSON, oversized
+// lines, control characters, deeply nested objects, NUL bytes, and non-UTF-8
+// garbage — may cause ReadMaliciousRecords to panic. Malformed lines must be
+// silently skipped (the documented contract), never abort or crash. The function
+// either returns a slice of records or a non-nil error; both are acceptable, a
+// panic is not.
+//
+// Run: go test -fuzz=FuzzReadMaliciousRecords -fuzztime=30s ./internal/corpus/...
+func FuzzReadMaliciousRecords(f *testing.F) {
+	// Seed corpus: well-formed, malformed, adversarial, and pathological inputs.
+	seeds := [][]byte{
+		// Empty file.
+		[]byte(``),
+		// Single blank line.
+		[]byte("\n"),
+		// A well-formed minimal record.
+		[]byte(`{"record_type":"policy_decision","record_id":"r1","cluster_id":"c1","true_label":"malicious"}` + "\n"),
+		// A well-formed benign record (filtered out, must not panic).
+		[]byte(`{"record_id":"r2","cluster_id":"c2","true_label":"benign"}` + "\n"),
+		// Multiple records, last-write-wins per cluster.
+		[]byte(`{"record_id":"a","cluster_id":"c","true_label":"benign"}` + "\n" +
+			`{"record_id":"b","cluster_id":"c","true_label":"malicious"}` + "\n"),
+		// Malformed JSON (must be skipped, not abort).
+		[]byte("{not json at all\n"),
+		// Truncated JSON object.
+		[]byte(`{"record_id":"x","true_label":`),
+		// Record with a nested push_envelope.
+		[]byte(`{"record_id":"e","cluster_id":"ce","true_label":"malicious","push_envelope":{"source_count":2,"signature":{"package_or_extension_id":"npm:evil","version":"1.0.0"}}}` + "\n"),
+		// Record with an empty cluster id (skipped by clusterKeyOf, must not panic).
+		[]byte(`{"record_id":"nocluster","true_label":"malicious"}` + "\n"),
+		// NUL bytes and control chars embedded in a line.
+		[]byte("{\"x\":\"\x00\x01\x02\"}\n"),
+		// JSON array (not an object) — type mismatch, skipped.
+		[]byte("[1,2,3]\n"),
+		// JSON literal null.
+		[]byte("null\n"),
+		// Whitespace-only lines interleaved with a valid record.
+		[]byte("   \n\t\n" + `{"record_id":"w","cluster_id":"cw","true_label":"malicious"}` + "\n"),
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		// Write the fuzz bytes to a real temp file: ReadMaliciousRecords takes a
+		// path and opens it, so the fuzzed bytes must hit the on-disk read path.
+		dir := t.TempDir()
+		path := filepath.Join(dir, "beekeeper-corpus.ndjson")
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Skipf("write fuzz corpus file: %v", err)
+		}
+
+		// Property: must not panic. The result (records or error) is unchecked —
+		// any non-panicking return is acceptable per the documented skip-malformed
+		// contract.
+		_, _ = ReadMaliciousRecords(path)
 	})
 }

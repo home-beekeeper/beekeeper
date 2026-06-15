@@ -324,8 +324,12 @@ func mergeUntrusted(dst, src Config, layerName string) Config {
 		dst.RedactPatterns = src.RedactPatterns
 	}
 
-	// AuditConfig — not a security-relaxing lever; apply unconditionally.
-	dst.Audit = mergeAudit(dst.Audit, src.Audit)
+	// AuditConfig — the LOCAL fields (file sink, rotation size, retention) are not
+	// security-relaxing, but the REMOTE-sink fields are: a poisoned project config
+	// could point the audit stream at an attacker endpoint (exfil / SSRF) or add a
+	// remote sink. Use the low-trust variant which refuses those levers (finding
+	// #12) while still honoring local/safe audit fields.
+	dst.Audit = mergeAuditUntrusted(dst.Audit, src.Audit, layerName)
 
 	// LlamaFirewallConfig — use the low-trust merge variant (TM-D-02).
 	dst.LlamaFirewall = mergeLlamaFirewallUntrusted(dst.LlamaFirewall, src.LlamaFirewall, layerName)
@@ -349,14 +353,26 @@ func mergeUntrusted(dst, src Config, layerName string) Config {
 	// interval-loosening from a project/env layer is refused.
 	dst.CatalogSync = mergeCatalogSyncUntrusted(dst.CatalogSync, src.CatalogSync, layerName)
 
-	// CorpusConfig — security-enhancing (enables monitoring). Allow enabling from
-	// low-trust layers (project/env) since it tightens security posture. Disable
-	// is refused: a project file must not be able to turn off corpus monitoring.
+	// CorpusConfig — enabling monitoring is security-enhancing, so an ENABLE from a
+	// low-trust layer (project/env) is allowed (it tightens posture). A DISABLE is
+	// refused: a project file must not turn off corpus monitoring.
+	//
+	// Corpus.Path is a TRUSTED-ONLY lever (finding #12): a poisoned repo config
+	// could redirect the corpus NDJSON to an attacker-chosen file (e.g. overwriting
+	// an unrelated file via the append-only store, or hiding adjudications by
+	// pointing reads at an empty file). Refuse it from the untrusted layer, same
+	// class as self_catalog.url and the remote audit sinks above.
 	if src.Corpus.Enabled {
 		dst.Corpus.Enabled = true
 	}
 	if src.Corpus.Path != "" {
-		dst.Corpus.Path = src.Corpus.Path
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring corpus.path override from %s config layer (security)\n",
+			layerName)
+	}
+	// DownstreamCleanDays is a benign tuning knob (adjudication window); apply it.
+	if src.Corpus.DownstreamCleanDays > 0 {
+		dst.Corpus.DownstreamCleanDays = src.Corpus.DownstreamCleanDays
 	}
 
 	// AutoQuarantineConfig — Enabled=true is always allowed from low-trust layers
@@ -493,6 +509,78 @@ func mergeAudit(dst, src AuditConfig) AuditConfig {
 	return dst
 }
 
+// remoteAuditSinks is the set of audit sink names that ship records OFF the local
+// machine. These are trusted-only: an untrusted (project/env) layer must not be
+// able to add a remote sink, because the matching endpoint field is itself
+// trusted-only (an attacker endpoint = exfil/SSRF). "file" (and any non-remote
+// sink) is local and safe.
+var remoteAuditSinks = map[string]bool{
+	"syslog": true,
+	"otlp":   true,
+	"http":   true,
+	"https":  true,
+}
+
+// mergeAuditUntrusted is the low-trust variant of mergeAudit (finding #12). The
+// remote-egress levers are refused from a project/env layer; local/safe fields
+// (the file sink, rotation size, retention) are still honored:
+//
+//   - OTLPEndpoint / HTTPSEndpoint / SyslogAddress: always refused — a poisoned
+//     repo config must not be able to point the audit stream at an attacker host.
+//     These are the same class as self_catalog.url.
+//   - Sinks: a remote sink name (otlp/http/https/syslog) added by the untrusted
+//     layer is stripped; local sinks (e.g. "file") pass through. Without an
+//     accompanying endpoint a remote sink is inert, but stripping it keeps the
+//     refusal explicit and defends against any future endpoint default.
+//   - RetentionDays / MaxSizeBytes: local rotation knobs; applied unconditionally.
+func mergeAuditUntrusted(dst, src AuditConfig, layerName string) AuditConfig {
+	if len(src.Sinks) > 0 {
+		kept := make([]string, 0, len(src.Sinks))
+		var refused []string
+		for _, s := range src.Sinks {
+			if remoteAuditSinks[strings.ToLower(strings.TrimSpace(s))] {
+				refused = append(refused, s)
+				continue
+			}
+			kept = append(kept, s)
+		}
+		if len(refused) > 0 {
+			fmt.Fprintf(os.Stderr,
+				"beekeeper: ignoring remote audit sink(s) %v from %s config layer (security)\n",
+				refused, layerName)
+		}
+		if len(kept) > 0 {
+			dst.Sinks = kept
+		}
+	}
+
+	// Remote endpoint fields are trusted-only — refuse them from this layer.
+	if src.SyslogAddress != "" {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring audit.syslog_address override from %s config layer (security)\n",
+			layerName)
+	}
+	if src.OTLPEndpoint != "" {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring audit.otlp_endpoint override from %s config layer (security)\n",
+			layerName)
+	}
+	if src.HTTPSEndpoint != "" {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring audit.https_endpoint override from %s config layer (security)\n",
+			layerName)
+	}
+
+	// Local rotation/retention knobs are safe to honor.
+	if src.RetentionDays > 0 {
+		dst.RetentionDays = src.RetentionDays
+	}
+	if src.MaxSizeBytes > 0 {
+		dst.MaxSizeBytes = src.MaxSizeBytes
+	}
+	return dst
+}
+
 func mergeLlamaFirewall(dst, src LlamaFirewallConfig) LlamaFirewallConfig {
 	// Apply src LlamaFirewall.Enabled if true OR if src has any other non-zero
 	// sidecar field (indicating the user configured the sidecar section).
@@ -522,9 +610,23 @@ func mergeLlamaFirewall(dst, src LlamaFirewallConfig) LlamaFirewallConfig {
 }
 
 // mergeLlamaFirewallUntrusted is the low-trust variant of mergeLlamaFirewall
-// (TM-D-02). A disable (src.Enabled == false) from a low-trust layer is refused
-// when the lower layer has LlamaFirewall enabled; an explicit enable is always
-// allowed. All other non-security fields are merged unconditionally.
+// (TM-D-02). It refuses the THREE security-relaxing sidecar levers from a
+// project/env layer; all other fields are merged unconditionally:
+//
+//   - Enabled: a disable (src.Enabled == false) is refused when the lower layer
+//     has the sidecar enabled; an explicit enable is always allowed.
+//   - FailMode: a RELAXATION (closed/warn → open, i.e. a lower strictness) is
+//     refused. An equal-or-stricter value is honored. Uses the same
+//     failModeStrictness ordering as the top-level fail_mode gate (TM-D-01) so a
+//     project config cannot flip the sidecar to fail-open while it stays
+//     "enabled" (finding #4).
+//   - SampleRate: a REDUCTION (a lower fraction of tool calls forwarded to the
+//     sidecar) is refused. A lower sample rate means fewer tool calls are
+//     scanned, which is a relaxation; only an equal-or-higher rate is honored.
+//     The effective lower-layer rate is resolved via LlamaFirewallSampleRate so
+//     an unset (zero) dst is compared against its real default of 1.0 — a project
+//     setting sample_rate:0.0001 against an unset user layer is therefore
+//     correctly refused (finding #4).
 func mergeLlamaFirewallUntrusted(dst, src LlamaFirewallConfig, layerName string) LlamaFirewallConfig {
 	srcHasOtherFields := src.SampleRate > 0 || src.FailMode != "" ||
 		src.CodeShield ||
@@ -541,12 +643,34 @@ func mergeLlamaFirewallUntrusted(dst, src LlamaFirewallConfig, layerName string)
 			layerName)
 	}
 
+	// SampleRate: refuse a reduction (relaxation). Compare against the EFFECTIVE
+	// lower-layer rate (LlamaFirewallSampleRate resolves an unset 0 to the 1.0
+	// default) so a project sample_rate:0.0001 cannot neuter an enabled sidecar
+	// that left sample_rate at its default.
 	if src.SampleRate > 0 {
-		dst.SampleRate = src.SampleRate
+		dstEffective := Config{LlamaFirewall: dst}.LlamaFirewallSampleRate()
+		if src.SampleRate >= dstEffective {
+			dst.SampleRate = src.SampleRate
+		} else {
+			fmt.Fprintf(os.Stderr,
+				"beekeeper: ignoring llamafirewall.sample_rate reduction %g→%g from %s config layer (security)\n",
+				dstEffective, src.SampleRate, layerName)
+		}
 	}
+
+	// FailMode: allow only an equal-or-stricter value (TM-D-01 ordering). A
+	// relaxation (e.g. closed/warn → open) is refused so an untrusted layer cannot
+	// turn the sidecar fail-open while it remains enabled.
 	if src.FailMode != "" {
-		dst.FailMode = src.FailMode
+		if failModeStrictness(src.FailMode) >= failModeStrictness(dst.FailMode) {
+			dst.FailMode = src.FailMode
+		} else {
+			fmt.Fprintf(os.Stderr,
+				"beekeeper: ignoring llamafirewall.fail_mode relaxation %q→%q from %s config layer (security)\n",
+				dst.FailMode, src.FailMode, layerName)
+		}
 	}
+
 	if src.CodeShield {
 		dst.CodeShield = src.CodeShield
 	}
@@ -770,14 +894,29 @@ func applyEnvVarsUntrusted(cfg Config, environ []string) Config {
 		}
 	}
 
-	// AuditSinks — not a security-relaxing lever; apply unconditionally.
+	// AuditSinks — local sinks (e.g. "file") apply; REMOTE sinks (otlp/http/https/
+	// syslog) are refused from the env layer (finding #12), mirroring the project-
+	// layer mergeAuditUntrusted refusal. A remote sink's endpoint field is itself
+	// trusted-only, so an env-set remote sink must not be honored.
 	if v, ok := env["BEEKEEPER_AUDIT_SINKS"]; ok && v != "" {
 		parts := strings.Split(v, ",")
 		sinks := make([]string, 0, len(parts))
+		var refused []string
 		for _, p := range parts {
-			if s := strings.TrimSpace(p); s != "" {
-				sinks = append(sinks, s)
+			s := strings.TrimSpace(p)
+			if s == "" {
+				continue
 			}
+			if remoteAuditSinks[strings.ToLower(s)] {
+				refused = append(refused, s)
+				continue
+			}
+			sinks = append(sinks, s)
+		}
+		if len(refused) > 0 {
+			fmt.Fprintf(os.Stderr,
+				"beekeeper: ignoring remote audit sink(s) %v from env config layer (security)\n",
+				refused)
 		}
 		if len(sinks) > 0 {
 			cfg.Audit.Sinks = sinks

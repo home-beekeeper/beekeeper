@@ -446,19 +446,24 @@ func TestLoadLayered_UnknownEnvIgnored(t *testing.T) {
 }
 
 // TestLoadLayered_EnvAuditSinks verifies BEEKEEPER_AUDIT_SINKS (comma-split).
+//
+// Uses two LOCAL sink names: as of finding #12 the env layer strips REMOTE sinks
+// (otlp/http/https/syslog), so this test exercises the comma-split mechanics with
+// non-remote names. The remote-strip behavior is covered by
+// TestLoadLayered_EnvAuditSinksRemoteRefused.
 func TestLoadLayered_EnvAuditSinks(t *testing.T) {
 	dir := t.TempDir()
 	userPath := writeLayerConfig(t, dir, "user.json", `{}`)
 
 	cfg, err := LoadLayered(LayerOpts{
 		UserPath: userPath,
-		Environ:  []string{"BEEKEEPER_AUDIT_SINKS=file,syslog"},
+		Environ:  []string{"BEEKEEPER_AUDIT_SINKS=file,stderr"},
 	})
 	if err != nil {
 		t.Fatalf("LoadLayered returned error: %v", err)
 	}
-	if len(cfg.Audit.Sinks) != 2 || cfg.Audit.Sinks[0] != "file" || cfg.Audit.Sinks[1] != "syslog" {
-		t.Errorf("Audit.Sinks = %v, want [file syslog]", cfg.Audit.Sinks)
+	if len(cfg.Audit.Sinks) != 2 || cfg.Audit.Sinks[0] != "file" || cfg.Audit.Sinks[1] != "stderr" {
+		t.Errorf("Audit.Sinks = %v, want [file stderr]", cfg.Audit.Sinks)
 	}
 }
 
@@ -1058,7 +1063,10 @@ func TestMerge_AutoQuarantineDstNilSrcNonNil(t *testing.T) {
 }
 
 // TestMergeUntrusted_CorpusEnableAllowed verifies mergeUntrusted allows enabling
-// corpus from a low-trust (project) layer (enabling tightens security posture).
+// corpus from a low-trust (project) layer (enabling tightens security posture)
+// while REFUSING the corpus.path lever (finding #12: a project must not redirect
+// the corpus NDJSON file). The dedicated path-refusal proof is
+// TestMergeUntrusted_CorpusPathRefused.
 func TestMergeUntrusted_CorpusEnableAllowed(t *testing.T) {
 	dst := Config{FailMode: FailModeClosed}
 	src := Config{
@@ -1073,8 +1081,8 @@ func TestMergeUntrusted_CorpusEnableAllowed(t *testing.T) {
 	if !got.Corpus.Enabled {
 		t.Error("Corpus.Enabled = false; want true — project enable is allowed (tightens posture)")
 	}
-	if got.Corpus.Path != "/project/corpus.ndjson" {
-		t.Errorf("Corpus.Path = %q, want /project/corpus.ndjson", got.Corpus.Path)
+	if got.Corpus.Path != "" {
+		t.Errorf("Corpus.Path = %q, want empty — untrusted corpus.path override must be refused (finding #12)", got.Corpus.Path)
 	}
 }
 
@@ -1199,5 +1207,268 @@ func TestLoadLayered_AutoQuarantineUserLayerRoundTrip(t *testing.T) {
 	}
 	if cfg.AutoQuarantine.Threshold != 2 {
 		t.Errorf("cfg.AutoQuarantine.Threshold = %d; want 2", cfg.AutoQuarantine.Threshold)
+	}
+}
+
+// ---- Finding #4: LlamaFirewall fail_mode / sample_rate self-defense ----
+
+// TestMergeLlamaFirewallUntrusted_FailModeRelaxationRefused verifies that a
+// project/env layer cannot relax the sidecar fail_mode from closed/hard to open
+// (finding #4). closed → open is a relaxation and must be ignored; the lower
+// (user) value survives.
+func TestMergeLlamaFirewallUntrusted_FailModeRelaxationRefused(t *testing.T) {
+	dst := LlamaFirewallConfig{Enabled: true, FailMode: FailModeClosed}
+	src := LlamaFirewallConfig{FailMode: FailModeOpen} // untrusted relaxation attempt
+
+	got := mergeLlamaFirewallUntrusted(dst, src, "project")
+
+	if got.FailMode != FailModeClosed {
+		t.Errorf("FailMode = %q, want %q — untrusted closed→open relaxation must be refused (finding #4)", got.FailMode, FailModeClosed)
+	}
+	if !got.Enabled {
+		t.Error("Enabled = false, want true — the sidecar must stay enabled")
+	}
+}
+
+// TestMergeLlamaFirewallUntrusted_FailModeTighteningAllowed verifies that an
+// equal-or-stricter fail_mode from an untrusted layer is honored (open → closed
+// is a tightening).
+func TestMergeLlamaFirewallUntrusted_FailModeTighteningAllowed(t *testing.T) {
+	dst := LlamaFirewallConfig{Enabled: true, FailMode: FailModeOpen}
+	src := LlamaFirewallConfig{FailMode: FailModeClosed} // tightening
+
+	got := mergeLlamaFirewallUntrusted(dst, src, "project")
+
+	if got.FailMode != FailModeClosed {
+		t.Errorf("FailMode = %q, want %q — a tightening (open→closed) must be allowed", got.FailMode, FailModeClosed)
+	}
+}
+
+// TestMergeLlamaFirewallUntrusted_SampleRateReductionRefused verifies that an
+// untrusted layer cannot reduce the sample rate (a lower rate scans fewer tool
+// calls = relaxation, finding #4). Crucially this holds even when the lower
+// layer left sample_rate unset (effective default 1.0): a project
+// sample_rate:0.0001 must NOT win.
+func TestMergeLlamaFirewallUntrusted_SampleRateReductionRefused(t *testing.T) {
+	// dst left SampleRate unset → effective 1.0; src tries to drop it to 0.0001.
+	dst := LlamaFirewallConfig{Enabled: true}
+	src := LlamaFirewallConfig{SampleRate: 0.0001}
+
+	got := mergeLlamaFirewallUntrusted(dst, src, "project")
+
+	if got.SampleRate == 0.0001 {
+		t.Errorf("SampleRate = %g, want it to stay unset/default — untrusted reduction must be refused (finding #4)", got.SampleRate)
+	}
+
+	// Also with an explicit lower-layer rate.
+	dst2 := LlamaFirewallConfig{Enabled: true, SampleRate: 1.0}
+	got2 := mergeLlamaFirewallUntrusted(dst2, LlamaFirewallConfig{SampleRate: 0.01}, "project")
+	if got2.SampleRate != 1.0 {
+		t.Errorf("SampleRate = %g, want 1.0 — untrusted reduction 1.0→0.01 must be refused", got2.SampleRate)
+	}
+}
+
+// TestMergeLlamaFirewallUntrusted_SampleRateIncreaseAllowed verifies that a
+// sample-rate INCREASE (more coverage = tightening) from an untrusted layer is
+// honored.
+func TestMergeLlamaFirewallUntrusted_SampleRateIncreaseAllowed(t *testing.T) {
+	dst := LlamaFirewallConfig{Enabled: true, SampleRate: 0.5}
+	src := LlamaFirewallConfig{SampleRate: 0.9}
+
+	got := mergeLlamaFirewallUntrusted(dst, src, "project")
+
+	if got.SampleRate != 0.9 {
+		t.Errorf("SampleRate = %g, want 0.9 — an increase (more coverage) must be allowed", got.SampleRate)
+	}
+}
+
+// TestLoadLayered_LlamaFirewallProjectCannotNeuter is the end-to-end proof: a
+// project config that tries to flip the enabled sidecar to fail-open with a
+// near-zero sample rate is fully ignored (finding #4 attack scenario).
+func TestLoadLayered_LlamaFirewallProjectCannotNeuter(t *testing.T) {
+	userDir := t.TempDir()
+	projDir := t.TempDir()
+	userPath := writeLayerConfig(t, userDir, "config.json",
+		`{"llamafirewall":{"enabled":true,"fail_mode":"closed","sample_rate":1.0}}`)
+	projPath := writeLayerConfig(t, projDir, "config.json",
+		`{"llamafirewall":{"fail_mode":"open","sample_rate":0.0001}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+
+	if !cfg.LlamaFirewall.Enabled {
+		t.Error("LlamaFirewall.Enabled = false, want true — sidecar must stay enabled")
+	}
+	if cfg.LlamaFirewall.FailMode != FailModeClosed {
+		t.Errorf("LlamaFirewall.FailMode = %q, want %q — project relaxation to open must be refused", cfg.LlamaFirewall.FailMode, FailModeClosed)
+	}
+	if cfg.LlamaFirewall.SampleRate != 1.0 {
+		t.Errorf("LlamaFirewall.SampleRate = %g, want 1.0 — project reduction must be refused", cfg.LlamaFirewall.SampleRate)
+	}
+}
+
+// ---- Finding #12: remote audit sinks + corpus.path self-defense ----
+
+// TestMergeAuditUntrusted_RemoteEndpointsRefused verifies that the remote-egress
+// audit fields (otlp/https/syslog endpoints) from an untrusted layer are ignored
+// while local rotation knobs still apply (finding #12).
+func TestMergeAuditUntrusted_RemoteEndpointsRefused(t *testing.T) {
+	dst := AuditConfig{}
+	src := AuditConfig{
+		OTLPEndpoint:  "https://attacker.example/v1/logs",
+		HTTPSEndpoint: "https://attacker.example/post",
+		SyslogAddress: "udp:attacker.example:514",
+		MaxSizeBytes:  4096, // local — should apply
+		RetentionDays: 7,    // local — should apply
+	}
+
+	got := mergeAuditUntrusted(dst, src, "project")
+
+	if got.OTLPEndpoint != "" {
+		t.Errorf("OTLPEndpoint = %q, want empty — untrusted remote endpoint must be refused (finding #12)", got.OTLPEndpoint)
+	}
+	if got.HTTPSEndpoint != "" {
+		t.Errorf("HTTPSEndpoint = %q, want empty — untrusted remote endpoint must be refused", got.HTTPSEndpoint)
+	}
+	if got.SyslogAddress != "" {
+		t.Errorf("SyslogAddress = %q, want empty — untrusted remote endpoint must be refused", got.SyslogAddress)
+	}
+	if got.MaxSizeBytes != 4096 {
+		t.Errorf("MaxSizeBytes = %d, want 4096 — local rotation knob must still apply", got.MaxSizeBytes)
+	}
+	if got.RetentionDays != 7 {
+		t.Errorf("RetentionDays = %d, want 7 — local retention knob must still apply", got.RetentionDays)
+	}
+}
+
+// TestMergeAuditUntrusted_RemoteSinkStripped verifies that an untrusted layer's
+// remote sink names (otlp/http/https/syslog) are stripped while local sinks
+// (file) pass through.
+func TestMergeAuditUntrusted_RemoteSinkStripped(t *testing.T) {
+	dst := AuditConfig{}
+	src := AuditConfig{Sinks: []string{"file", "otlp", "syslog", "https"}}
+
+	got := mergeAuditUntrusted(dst, src, "project")
+
+	for _, s := range got.Sinks {
+		if remoteAuditSinks[s] {
+			t.Errorf("Sinks contains refused remote sink %q — must be stripped (finding #12); got %v", s, got.Sinks)
+		}
+	}
+	hasFile := false
+	for _, s := range got.Sinks {
+		if s == "file" {
+			hasFile = true
+		}
+	}
+	if !hasFile {
+		t.Errorf("Sinks = %v, want it to retain the local \"file\" sink", got.Sinks)
+	}
+}
+
+// TestLoadLayered_AuditOTLPProjectIgnoredUserHonored is the end-to-end proof for
+// finding #12: a project-layer otlp_endpoint is ignored, but a user-layer one is
+// honored (trusted-only lever).
+func TestLoadLayered_AuditOTLPProjectIgnoredUserHonored(t *testing.T) {
+	// Project layer tries to set a remote endpoint → ignored.
+	userDir := t.TempDir()
+	projDir := t.TempDir()
+	userPath := writeLayerConfig(t, userDir, "config.json", `{"fail_mode":"closed"}`)
+	projPath := writeLayerConfig(t, projDir, "config.json",
+		`{"audit":{"otlp_endpoint":"https://attacker.example/v1/logs"}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projPath})
+	if err != nil {
+		t.Fatalf("LoadLayered (project) returned error: %v", err)
+	}
+	if cfg.Audit.OTLPEndpoint != "" {
+		t.Errorf("project OTLPEndpoint = %q, want empty — project layer must not set a remote audit endpoint (finding #12)", cfg.Audit.OTLPEndpoint)
+	}
+
+	// User layer (trusted) sets the same endpoint → honored.
+	userDir2 := t.TempDir()
+	userPath2 := writeLayerConfig(t, userDir2, "config.json",
+		`{"audit":{"otlp_endpoint":"https://collector.internal:4318/v1/logs"}}`)
+	cfg2, err := LoadLayered(LayerOpts{UserPath: userPath2})
+	if err != nil {
+		t.Fatalf("LoadLayered (user) returned error: %v", err)
+	}
+	if cfg2.Audit.OTLPEndpoint != "https://collector.internal:4318/v1/logs" {
+		t.Errorf("user OTLPEndpoint = %q, want the configured endpoint — user (trusted) layer must be honored", cfg2.Audit.OTLPEndpoint)
+	}
+}
+
+// TestMergeUntrusted_CorpusPathRefused verifies that the corpus.path lever is
+// refused from a project/env layer (finding #12): a poisoned repo config must
+// not redirect the corpus NDJSON file. Enabling corpus is still allowed.
+func TestMergeUntrusted_CorpusPathRefused(t *testing.T) {
+	dst := Config{FailMode: FailModeClosed, Corpus: CorpusConfig{Path: "/user/corpus.ndjson"}}
+	src := Config{Corpus: CorpusConfig{Enabled: true, Path: "/attacker/corpus.ndjson"}}
+
+	got := mergeUntrusted(dst, src, "project")
+
+	if got.Corpus.Path != "/user/corpus.ndjson" {
+		t.Errorf("Corpus.Path = %q, want /user/corpus.ndjson — untrusted corpus.path override must be refused (finding #12)", got.Corpus.Path)
+	}
+	if !got.Corpus.Enabled {
+		t.Error("Corpus.Enabled = false, want true — enabling corpus is still allowed from an untrusted layer")
+	}
+}
+
+// TestLoadLayered_CorpusPathProjectIgnoredUserHonored is the end-to-end proof:
+// a project-layer corpus.path is ignored while a user-layer one is honored.
+func TestLoadLayered_CorpusPathProjectIgnoredUserHonored(t *testing.T) {
+	// Project layer tries to redirect corpus.path → ignored, user value (none) wins.
+	userDir := t.TempDir()
+	projDir := t.TempDir()
+	userPath := writeLayerConfig(t, userDir, "config.json",
+		`{"corpus":{"enabled":true,"path":"/user/beekeeper-corpus.ndjson"}}`)
+	projPath := writeLayerConfig(t, projDir, "config.json",
+		`{"corpus":{"path":"/attacker/beekeeper-corpus.ndjson"}}`)
+
+	cfg, err := LoadLayered(LayerOpts{UserPath: userPath, ProjectPath: projPath})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	if cfg.Corpus.Path != "/user/beekeeper-corpus.ndjson" {
+		t.Errorf("Corpus.Path = %q, want /user/beekeeper-corpus.ndjson — project corpus.path must be ignored (finding #12)", cfg.Corpus.Path)
+	}
+
+	// User-layer corpus.path (trusted) is honored.
+	userDir2 := t.TempDir()
+	userPath2 := writeLayerConfig(t, userDir2, "config.json",
+		`{"corpus":{"enabled":true,"path":"/data/beekeeper-corpus.ndjson"}}`)
+	cfg2, err := LoadLayered(LayerOpts{UserPath: userPath2})
+	if err != nil {
+		t.Fatalf("LoadLayered (user) returned error: %v", err)
+	}
+	if cfg2.Corpus.Path != "/data/beekeeper-corpus.ndjson" {
+		t.Errorf("user Corpus.Path = %q, want /data/beekeeper-corpus.ndjson — user (trusted) layer must be honored", cfg2.Corpus.Path)
+	}
+}
+
+// TestLoadLayered_EnvAuditSinksRemoteRefused verifies the env-layer mirror of
+// finding #12: a remote sink set via BEEKEEPER_AUDIT_SINKS is stripped while the
+// local "file" sink is honored.
+func TestLoadLayered_EnvAuditSinksRemoteRefused(t *testing.T) {
+	dir := t.TempDir()
+	userPath := writeLayerConfig(t, dir, "config.json", `{"fail_mode":"closed"}`)
+
+	cfg, err := LoadLayered(LayerOpts{
+		UserPath: userPath,
+		Environ:  []string{"BEEKEEPER_AUDIT_SINKS=file,otlp,syslog"},
+	})
+	if err != nil {
+		t.Fatalf("LoadLayered returned error: %v", err)
+	}
+	for _, s := range cfg.Audit.Sinks {
+		if remoteAuditSinks[s] {
+			t.Errorf("Audit.Sinks contains refused remote sink %q from env — must be stripped (finding #12); got %v", s, cfg.Audit.Sinks)
+		}
+	}
+	if len(cfg.Audit.Sinks) != 1 || cfg.Audit.Sinks[0] != "file" {
+		t.Errorf("Audit.Sinks = %v, want [file] — only the local sink survives the env layer", cfg.Audit.Sinks)
 	}
 }
