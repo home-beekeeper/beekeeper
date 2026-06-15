@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bantuson/beekeeper/internal/audit"
 	"github.com/bantuson/beekeeper/internal/catalog"
 	"github.com/bantuson/beekeeper/internal/config"
 	"github.com/bantuson/beekeeper/internal/llamafirewall"
@@ -1724,4 +1725,128 @@ func TestOfflineProtective(t *testing.T) {
 
 	// Secondary: the malformed-JSON fail-closed path is already covered by the
 	// existing TestMalformedJSONFailsClosed test, so it is not duplicated here.
+}
+
+// ─── v1.4.0 corpus coverage: writeAudit / writeAuditWithAC / writeCorpusRecord ──
+
+// TestWriteAuditDeprecatedWrapper exercises the deprecated writeAudit shim
+// (handler.go:497, currently 0% covered). writeAudit is a thin wrapper around
+// writeAuditWithAC that passes a zero AgentContext, empty config, and empty
+// stateDir. The call must not panic; its only observable effect is writing an
+// NDJSON line to the audit file.
+func TestWriteAuditDeprecatedWrapper(t *testing.T) {
+	auditPath := filepath.Join(t.TempDir(), "audit", "beekeeper.ndjson")
+
+	tc := policy.ToolCall{ToolName: "Bash"}
+	d := policy.Decision{Allow: true, Level: "allow", Reason: "test"}
+
+	// writeAudit has no return value; must not panic.
+	writeAudit(tc, d, auditPath)
+
+	// Audit record must have been written.
+	data, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("audit file not created after writeAudit: %v", err)
+	}
+	if !strings.Contains(string(data), "Bash") {
+		t.Errorf("audit record missing expected ToolName; got %q", string(data))
+	}
+}
+
+// TestWriteAuditWithACNewWriterError exercises the writeAuditWithAC branch where
+// audit.NewWriter returns an error (handler.go:521-526). The error is injected by
+// passing an audit path whose parent cannot be created because a file already
+// occupies that path. The branch logs to stderr and returns early; no panic, no
+// corpus write attempted (corpus disabled in this test so only the audit-writer
+// error branch is exercised).
+func TestWriteAuditWithACNewWriterError(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Place a regular file where the audit parent directory should be.
+	// os.MkdirAll(file_path, ...) fails with "not a directory" on Linux and
+	// "The system cannot find the path specified." on Windows.
+	blocker := filepath.Join(tmp, "audit-parent-is-a-file")
+	if err := os.WriteFile(blocker, []byte("block"), 0o600); err != nil {
+		t.Fatalf("write blocker file: %v", err)
+	}
+	// auditPath lives inside blocker (a regular file), so MkdirAll will fail.
+	badAuditPath := filepath.Join(blocker, "beekeeper.ndjson")
+
+	tc := policy.ToolCall{ToolName: "Bash"}
+	d := policy.Decision{Allow: true, Level: "allow", Reason: "test"}
+	cfg := config.Config{FailMode: config.FailModeClosed} // Corpus.Enabled = false
+
+	// Must not panic. The audit-writer error is logged to stderr; the function
+	// returns early (the caller never sees an error — it is writeAuditWithAC's
+	// own responsibility to absorb write errors without changing the exit code).
+	writeAuditWithAC(tc, d, badAuditPath, policy.AgentContext{}, cfg, "")
+}
+
+// TestWriteCorpusRecordStateDirEmpty exercises the stateDir=="" fallback branch
+// in writeCorpusRecord (handler.go:572-578). When stateDir is empty the function
+// calls platform.StateDir() to resolve the platform default. In tests the
+// BEEKEEPER_HOME env var redirects platform.StateDir() to a temp directory so we
+// never write to the real state tree. After the fallback the happy path continues
+// through LoadOrCreateSalt, RepoFingerprint, FleetNodeID, and the corpus append.
+func TestWriteCorpusRecordStateDirEmpty(t *testing.T) {
+	// Redirect platform.StateDir() to a temp directory via BEEKEEPER_HOME so
+	// LoadOrCreateSalt and the corpus append land in tmp, not %APPDATA%\beekeeper.
+	home := t.TempDir()
+	t.Setenv("BEEKEEPER_HOME", home)
+
+	// Minimal AuditRecord — all fields are zero except the ones writeCorpusRecord
+	// reads for fingerprinting (none strictly required; MapToCorpusRecord handles
+	// zero values gracefully).
+	rec := audit.AuditRecord{
+		RecordID:   "cov-test-001",
+		RecordType: "policy_decision",
+		ToolName:   "ReadFile",
+		Decision:   "allow",
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Corpus config with Path="" so ResolveCorpusPath uses the default under stateDir.
+	cfg := config.Config{
+		Corpus: config.CorpusConfig{Enabled: true, Path: ""},
+	}
+
+	// Call with stateDir="" to exercise the platform.StateDir() fallback branch.
+	// Must not panic; may log to stderr if the corpus write fails (acceptable).
+	writeCorpusRecord(rec, cfg, "")
+}
+
+// TestWriteCorpusRecordLoadSaltError exercises the LoadOrCreateSalt error branch
+// in writeCorpusRecord (handler.go:591-594). The error is injected by placing a
+// regular file at stateDir/corpus, which causes os.MkdirAll to fail when
+// LoadOrCreateSalt tries to create the corpus salt directory. The function must
+// log to stderr and return without panicking; the audit exit code is unaffected.
+func TestWriteCorpusRecordLoadSaltError(t *testing.T) {
+	stateDir := t.TempDir()
+
+	// Block corpus directory creation by placing a file at the corpus path.
+	// LoadOrCreateSalt calls os.MkdirAll(stateDir/corpus, 0o700); if a regular file
+	// already occupies that path, MkdirAll returns an error.
+	corpusBlocker := filepath.Join(stateDir, "corpus")
+	if err := os.WriteFile(corpusBlocker, []byte("not-a-dir"), 0o600); err != nil {
+		t.Fatalf("write corpus blocker: %v", err)
+	}
+
+	rec := audit.AuditRecord{
+		RecordID:   "cov-salt-err-001",
+		RecordType: "policy_decision",
+		ToolName:   "Bash",
+		Decision:   "block",
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+	}
+	cfg := config.Config{
+		Corpus: config.CorpusConfig{
+			Enabled: true,
+			// Path is empty → ResolveCorpusPath defaults to stateDir/corpus/beekeeper-corpus.ndjson.
+			// ResolveCorpusPath itself succeeds (the path is under stateDir).
+			// LoadOrCreateSalt then fails because stateDir/corpus is a file.
+		},
+	}
+
+	// Must not panic. Error is logged to stderr; no exit-code change.
+	writeCorpusRecord(rec, cfg, stateDir)
 }

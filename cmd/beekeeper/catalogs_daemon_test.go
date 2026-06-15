@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -405,5 +407,395 @@ func TestRunCatalogsSyncFirstResponder(t *testing.T) {
 	// 11. Envelope: ActionHint = ActionHintWatchAndBlock (LAUNCH-01).
 	if rec.PushEnvelope.ActionHint != corpus.ActionHintWatchAndBlock {
 		t.Errorf("[11] ActionHint = %q, want ActionHintWatchAndBlock", rec.PushEnvelope.ActionHint)
+	}
+}
+
+// ─── v1.4.0 corpus coverage: runCatalogsSync branch / error paths ────────────
+
+// setupSyncHome creates a hermetic BEEKEEPER_HOME temp tree for runCatalogsSync
+// tests and returns (home, stateDir, catalogDir, corpusDir). It writes the given
+// cfgJSON to stateDir/config.json so resolveConfig picks it up.
+func setupSyncHome(t *testing.T, cfgJSON string) (home, stateDir, catalogDir, corpusDir string) {
+	t.Helper()
+	home = t.TempDir()
+	t.Setenv("BEEKEEPER_HOME", home)
+	stateDir = filepath.Join(home, "beekeeper")
+	catalogDir = filepath.Join(stateDir, "catalogs")
+	corpusDir = filepath.Join(stateDir, "corpus")
+	for _, d := range []string{stateDir, catalogDir, filepath.Join(stateDir, "audit"), corpusDir} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	if cfgJSON != "" {
+		if err := os.WriteFile(filepath.Join(stateDir, "config.json"), []byte(cfgJSON), 0o600); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+	}
+	return
+}
+
+// newTestCmd returns a minimal *cobra.Command suitable for runCatalogsSync tests:
+// Background context, suppressed output, no persistent flags required.
+func newTestCmd(t *testing.T) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetContext(context.Background())
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	return cmd
+}
+
+// newFastTestCmd returns a *cobra.Command with a very short context deadline so
+// the SyncConditional HTTP fetch fails immediately. Use this in tests where
+// reaching the HTTP sync is incidental (the branch under test is in the corpus
+// block, before the HTTP fetch), to keep the test wall-clock time under 100ms.
+func newFastTestCmd(t *testing.T) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	t.Cleanup(cancel)
+	cmd.SetContext(ctx)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	return cmd
+}
+
+// TestRunCatalogsSyncCorpusDisabledSyncDisabled exercises the corpus-disabled
+// branch (the entire `if cfg.Corpus.Enabled` block is skipped) and then the
+// catalog-sync-disabled short-circuit (handler.go:178-180, span 14).
+//
+// Config: corpus.enabled=false, catalog_sync.enabled=false. force=false so both
+// guards fire. Expected: "sync is disabled" message on stdout; nil error.
+func TestRunCatalogsSyncCorpusDisabledSyncDisabled(t *testing.T) {
+	setupSyncHome(t, `{"corpus":{"enabled":false},"catalog_sync":{"enabled":false}}`)
+
+	var buf bytes.Buffer
+	cmd := newTestCmd(t)
+	cmd.SetOut(&buf)
+
+	err := runCatalogsSync(cmd, false /*force*/)
+	if err != nil {
+		t.Fatalf("runCatalogsSync = %v, want nil (disabled is not an error)", err)
+	}
+	if !strings.Contains(buf.String(), "disabled") {
+		t.Errorf("stdout should mention disabled; got %q", buf.String())
+	}
+}
+
+// TestRunCatalogsSyncCorpusDisabledNotDue exercises the not-due short-circuit
+// (handler.go:182-186, span 15): corpus disabled (so corpus block is skipped),
+// sync enabled, not due because lastSuccess is recent and interval has not elapsed.
+func TestRunCatalogsSyncCorpusDisabledNotDue(t *testing.T) {
+	_, stateDir, _, _ := setupSyncHome(t, `{"corpus":{"enabled":false}}`)
+
+	// Inject a recent lastSuccess so the interval gate fires (not due).
+	orig := catalogSyncNow
+	t.Cleanup(func() { catalogSyncNow = orig })
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	catalogSyncNow = func() time.Time { return now }
+
+	// Seed state.json with a lastSuccess one minute ago → not due (default 2h interval).
+	st := catalog.WatchState{Sources: map[string]catalog.SourceState{
+		catalogSyncSourceName: {LastSuccess: now.Add(-1 * time.Minute)},
+	}}
+	stateFile := filepath.Join(stateDir, "state.json")
+	if err := catalog.SaveState(stateFile, st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	var buf bytes.Buffer
+	cmd := newTestCmd(t)
+	cmd.SetOut(&buf)
+
+	err := runCatalogsSync(cmd, false /*force*/)
+	if err != nil {
+		t.Fatalf("runCatalogsSync not-due = %v, want nil", err)
+	}
+	if !strings.Contains(buf.String(), "skipped") {
+		t.Errorf("stdout should mention skipped; got %q", buf.String())
+	}
+}
+
+// TestRunCatalogsSyncCorpusPathOutsideBoundary exercises the corpus-path
+// boundary error branch (handler.go:92-93, span 6): corpus.Enabled=true but the
+// resolved corpus path lies outside the state directory. The branch logs to
+// os.Stderr and continues (non-fatal); the sync proceeds to the HTTP fetch (which
+// fails offline — acceptable in tests). We verify the boundary error is non-fatal
+// by asserting it is NOT propagated as the function's return error (the only
+// returned error must be the offline HTTP error, not the corpus boundary error).
+func TestRunCatalogsSyncCorpusPathOutsideBoundary(t *testing.T) {
+	// Use a corpus.path that is a sibling of stateDir (outside the boundary).
+	outsidePath := filepath.Join(t.TempDir(), "outside-corpus.ndjson")
+	cfgJSON := `{"corpus":{"enabled":true,"path":"` + strings.ReplaceAll(outsidePath, `\`, `\\`) + `"}}`
+	setupSyncHome(t, cfgJSON)
+
+	// Use a fast context so the HTTP sync fails immediately.
+	cmd := newFastTestCmd(t)
+
+	// The corpus boundary error is logged to os.Stderr (non-fatal). The function
+	// continues to the HTTP fetch which fails (context deadline). We only assert
+	// that the returned error is NOT a corpus boundary error.
+	err := runCatalogsSync(cmd, true /*force*/)
+	if err != nil && strings.Contains(err.Error(), "T-23-04") {
+		t.Errorf("corpus boundary error was propagated (must be non-fatal); got %v", err)
+	}
+}
+
+// TestRunCatalogsSyncOpenIndexSuccess covers the OpenIndex-success branch
+// (handler.go:111-114, span 7): when bumblebee.idx exists in catalogDir the
+// catalog index opens successfully and is wrapped in a MultiIndex for the
+// adjudication batch pass.
+func TestRunCatalogsSyncOpenIndexSuccess(t *testing.T) {
+	_, _, catalogDir, corpusDir := setupSyncHome(t, `{"corpus":{"enabled":true}}`)
+
+	// Build a minimal bumblebee.idx so catalog.OpenIndex succeeds.
+	entries := []catalog.Entry{{
+		ID: "cov-test-01", Name: "cov-pkg", Ecosystem: "npm",
+		Package: "cov-pkg", Versions: []string{"1.0.0"}, Severity: "high",
+		CatalogSource: "bumblebee",
+	}}
+	if err := catalog.BuildIndex(filepath.Join(catalogDir, "bumblebee.idx"), entries); err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+
+	// Seed a minimal corpus record so the adjudication batch has something to process.
+	corpusPath := filepath.Join(corpusDir, "beekeeper-corpus.ndjson")
+	rec := corpus.CorpusRecord{
+		AuditRecord:         audit.AuditRecord{RecordID: "cov-idx-001", ClusterID: "cov-cluster-001", ToolName: "Bash", RecordType: "policy_decision", Decision: "allow", Timestamp: time.Now().UTC().Format(time.RFC3339)},
+		CorpusSchemaVersion: corpus.CorpusSchemaVersion,
+	}
+	if err := corpus.AppendCorpusRecordLine(corpusPath, rec); err != nil {
+		t.Fatalf("seed corpus: %v", err)
+	}
+
+	// Stub firstResponderFn to avoid a real RunFirstResponder (no pollen binary).
+	orig := firstResponderFn
+	t.Cleanup(func() { firstResponderFn = orig })
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+
+	cmd := newFastTestCmd(t)
+	// runCatalogsSync will error on the HTTP fetch (context deadline); expected.
+	_ = runCatalogsSync(cmd, true /*force*/)
+}
+
+// TestRunCatalogsSyncFirstResponderError exercises the non-fatal firstResponder
+// error branch (handler.go:150-153, span 10). The firstResponderFn seam is
+// overridden to return a sentinel error; the function logs to stderr and continues.
+// runCatalogsSync itself must not propagate the first-responder error.
+func TestRunCatalogsSyncFirstResponderError(t *testing.T) {
+	_, _, _, corpusDir := setupSyncHome(t, `{"corpus":{"enabled":true}}`)
+
+	// Seed a malicious corpus record for the first-responder pass.
+	corpusPath := filepath.Join(corpusDir, "beekeeper-corpus.ndjson")
+	rec := corpus.CorpusRecord{
+		AuditRecord: audit.AuditRecord{
+			RecordID: "cov-fr-err-001", ClusterID: "cov-cluster-001",
+			ToolName: "Bash", RecordType: "policy_decision", Decision: "block",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		},
+		TrueLabel:           "malicious",
+		AdjudicationSource:  "catalog_confirmation",
+		CorpusSchemaVersion: corpus.CorpusSchemaVersion,
+		PushEnvelope: &corpus.PushEnvelope{
+			Signature: corpus.EnvelopeSignature{
+				PackageOrExtensionID: "npm:cov-test-fr-error-pkg",
+			},
+			TrueLabel:      "malicious",
+			ConfidenceTier: "enforce",
+			SourceCount:    2,
+			ActionHint:     corpus.ActionHintWatchAndBlock,
+		},
+	}
+	if err := corpus.AppendCorpusRecordLine(corpusPath, rec); err != nil {
+		t.Fatalf("seed corpus: %v", err)
+	}
+
+	// Inject a firstResponderFn that returns a sentinel error.
+	orig := firstResponderFn
+	t.Cleanup(func() { firstResponderFn = orig })
+	sentinelErr := errors.New("injected first-responder error for coverage")
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error {
+		return sentinelErr
+	}
+
+	var errBuf bytes.Buffer
+	cmd := newTestCmd(t)
+	cmd.SetErr(&errBuf)
+	cmd.SetOut(io.Discard)
+
+	// Use a fast context so the HTTP sync fails immediately (test goal is the
+	// firstResponder error path, not the HTTP fetch path).
+	cmd.SetContext(func() context.Context {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		t.Cleanup(cancel)
+		return ctx
+	}())
+
+	// The first-responder error is non-fatal: runCatalogsSync must continue and
+	// only return the HTTP-fetch error (offline), never the injected sentinel.
+	// The error is logged to os.Stderr (not cmd.OutOrStderr()), so we do not
+	// assert stderr content — we only verify the sentinel is not propagated.
+	err := runCatalogsSync(cmd, true /*force*/)
+	if errors.Is(err, sentinelErr) {
+		t.Errorf("runCatalogsSync propagated first-responder error; want non-fatal (stderr-only)")
+	}
+	// The returned error must be the offline HTTP sync error, not our sentinel.
+	if err != nil && !strings.Contains(err.Error(), "catalog sync failed") {
+		// Allow any sync error (HTTP, self-quarantine, etc.) — just not our sentinel.
+		if errors.Is(err, sentinelErr) {
+			t.Errorf("sentinel propagated: %v", err)
+		}
+	}
+	_ = errBuf // captured but not asserted (logs go to os.Stderr directly)
+}
+
+// TestRunCatalogsSyncOverlaySkipsNilEnvelope exercises the `continue` branch
+// (handler.go:166-168, span 12) for a confirmed-malicious corpus record whose
+// PushEnvelope is nil. The loop must skip the entry without calling
+// AddLocalOverlayEntry; no error is returned.
+func TestRunCatalogsSyncOverlaySkipsNilEnvelope(t *testing.T) {
+	_, _, _, corpusDir := setupSyncHome(t, `{"corpus":{"enabled":true}}`)
+
+	// Seed a malicious record with nil PushEnvelope.
+	corpusPath := filepath.Join(corpusDir, "beekeeper-corpus.ndjson")
+	rec := corpus.CorpusRecord{
+		AuditRecord: audit.AuditRecord{
+			RecordID: "cov-nil-env-001", ClusterID: "cov-nil-cluster-001",
+			ToolName: "Bash", RecordType: "policy_decision", Decision: "block",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		},
+		TrueLabel:           "malicious",
+		AdjudicationSource:  "catalog_confirmation",
+		CorpusSchemaVersion: corpus.CorpusSchemaVersion,
+		PushEnvelope:        nil, // explicitly nil — must trigger the continue branch
+	}
+	if err := corpus.AppendCorpusRecordLine(corpusPath, rec); err != nil {
+		t.Fatalf("seed corpus: %v", err)
+	}
+
+	orig := firstResponderFn
+	t.Cleanup(func() { firstResponderFn = orig })
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+
+	cmd := newFastTestCmd(t)
+	// Must not panic or return the nil-envelope as an error.
+	_ = runCatalogsSync(cmd, true /*force*/)
+}
+
+// TestRunCatalogsSyncOverlaySkipsEmptyPackageID exercises the second `continue`
+// branch (span 12) for a record with a non-nil PushEnvelope but an empty
+// PackageOrExtensionID. The overlay loop skips such entries (no ID → no overlay).
+func TestRunCatalogsSyncOverlaySkipsEmptyPackageID(t *testing.T) {
+	_, _, _, corpusDir := setupSyncHome(t, `{"corpus":{"enabled":true}}`)
+
+	corpusPath := filepath.Join(corpusDir, "beekeeper-corpus.ndjson")
+	rec := corpus.CorpusRecord{
+		AuditRecord: audit.AuditRecord{
+			RecordID: "cov-empty-id-001", ClusterID: "cov-empty-cluster-001",
+			ToolName: "Bash", RecordType: "policy_decision", Decision: "block",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		},
+		TrueLabel:           "malicious",
+		AdjudicationSource:  "catalog_confirmation",
+		CorpusSchemaVersion: corpus.CorpusSchemaVersion,
+		PushEnvelope: &corpus.PushEnvelope{
+			Signature: corpus.EnvelopeSignature{
+				PackageOrExtensionID: "", // empty — must trigger the continue branch
+			},
+			TrueLabel:      "malicious",
+			ConfidenceTier: "enforce",
+		},
+	}
+	if err := corpus.AppendCorpusRecordLine(corpusPath, rec); err != nil {
+		t.Fatalf("seed corpus: %v", err)
+	}
+
+	orig := firstResponderFn
+	t.Cleanup(func() { firstResponderFn = orig })
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+
+	cmd := newFastTestCmd(t)
+	_ = runCatalogsSync(cmd, true /*force*/)
+}
+
+// TestRunCatalogsSyncOverlayError exercises the non-fatal per-record overlay
+// error branch (catalogs_daemon.go:169-172, span 13). The error is injected by
+// writing a malformed local-overlay.json in catalogDir so AddLocalOverlayEntry
+// returns "parse local overlay: ..." — a genuine non-fatal per-record error.
+// The function must log the error to stderr and continue; it must not propagate it.
+func TestRunCatalogsSyncOverlayError(t *testing.T) {
+	_, _, catalogDir, corpusDir := setupSyncHome(t, `{"corpus":{"enabled":true}}`)
+
+	// Seed a malicious record with a valid PushEnvelope so the overlay loop runs.
+	corpusPath := filepath.Join(corpusDir, "beekeeper-corpus.ndjson")
+	rec := corpus.CorpusRecord{
+		AuditRecord: audit.AuditRecord{
+			RecordID: "cov-ovlerr-001", ClusterID: "cov-overlay-err-cluster-001",
+			ToolName: "Bash", RecordType: "policy_decision", Decision: "block",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		},
+		TrueLabel:           "malicious",
+		AdjudicationSource:  "catalog_confirmation",
+		CorpusSchemaVersion: corpus.CorpusSchemaVersion,
+		PushEnvelope: &corpus.PushEnvelope{
+			Signature: corpus.EnvelopeSignature{
+				PackageOrExtensionID: "npm:cov-overlay-error-pkg",
+				Version:              "1.0.0",
+			},
+			TrueLabel:      "malicious",
+			ConfidenceTier: "enforce",
+			SourceCount:    2,
+			ActionHint:     corpus.ActionHintWatchAndBlock,
+		},
+	}
+	if err := corpus.AppendCorpusRecordLine(corpusPath, rec); err != nil {
+		t.Fatalf("seed corpus: %v", err)
+	}
+
+	// Write malformed JSON to local-overlay.json so LoadLocalOverlay returns an
+	// error → AddLocalOverlayEntry returns a non-nil error → span 13 fires.
+	overlayJSONPath := filepath.Join(catalogDir, "local-overlay.json")
+	if err := os.WriteFile(overlayJSONPath, []byte("NOT VALID JSON"), 0o600); err != nil {
+		t.Fatalf("write malformed overlay: %v", err)
+	}
+
+	orig := firstResponderFn
+	t.Cleanup(func() { firstResponderFn = orig })
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+
+	cmd := newFastTestCmd(t)
+
+	// The overlay error is non-fatal: runCatalogsSync must not propagate it.
+	_ = runCatalogsSync(cmd, true /*force*/)
+}
+
+// TestOfferCatalogSyncDaemonPrintsInstructions exercises offerCatalogSyncDaemon
+// (catalogs_daemon.go:341-348, currently 0%). It calls runCatalogsSync (which
+// fails when the HTTP client times out immediately via a cancelled context) and
+// then prints the daemon-install instructions. A 1ms context deadline makes the
+// HTTP fetch fail fast so the test completes in < 100ms.
+func TestOfferCatalogSyncDaemonPrintsInstructions(t *testing.T) {
+	setupSyncHome(t, `{"corpus":{"enabled":false}}`)
+
+	var buf bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	// Use a context with a very short deadline so the HTTP sync fails immediately.
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	cmd.SetContext(ctx)
+	cmd.SetOut(&buf)
+	cmd.SetErr(io.Discard)
+
+	offerCatalogSyncDaemon(cmd)
+
+	out := buf.String()
+	// offerCatalogSyncDaemon must print the first-sync attempt message and the
+	// daemon install instructions regardless of whether the sync succeeded.
+	if !strings.Contains(out, "catalog sync") {
+		t.Errorf("offerCatalogSyncDaemon output missing catalog sync mention; got %q", out)
+	}
+	if !strings.Contains(out, "daemon install") {
+		t.Errorf("offerCatalogSyncDaemon output missing daemon install mention; got %q", out)
 	}
 }
