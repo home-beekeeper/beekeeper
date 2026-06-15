@@ -91,11 +91,24 @@ func NewMultiSink(auditPath string, cfg config.AuditConfig) (Sink, error) {
 	}
 
 	if containsString(cfg.Sinks, "otlp") && cfg.OTLPEndpoint != "" {
+		// Finding #12 (MEDIUM): fail closed on a non-https or SSRF endpoint so a
+		// misconfigured collector cannot exfiltrate audit records (which carry
+		// the full record JSON) over cleartext or to instance-metadata services.
+		if verr := ValidateRemoteSinkEndpoint(cfg.OTLPEndpoint, true); verr != nil {
+			_ = w.Close()
+			return nil, fmt.Errorf("otlp sink: %w", verr)
+		}
 		sinks = append(sinks, NewOTLPSink(cfg.OTLPEndpoint))
 		remoteNames = append(remoteNames, "otlp")
 	}
 
 	if containsString(cfg.Sinks, "https") && cfg.HTTPSEndpoint != "" {
+		// Finding #12 (MEDIUM): the "https" sink must actually require https and
+		// reject SSRF targets — see ValidateRemoteSinkEndpoint.
+		if verr := ValidateRemoteSinkEndpoint(cfg.HTTPSEndpoint, true); verr != nil {
+			_ = w.Close()
+			return nil, fmt.Errorf("https sink: %w", verr)
+		}
 		sinks = append(sinks, NewHTTPSink(cfg.HTTPSEndpoint))
 		remoteNames = append(remoteNames, "https")
 	}

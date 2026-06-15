@@ -17,6 +17,7 @@
 package audit
 
 import (
+	"fmt"
 	"regexp"
 	"sync"
 )
@@ -76,6 +77,50 @@ func DefaultRedactPatterns() []redactPattern {
 		}
 	})
 	return defaultPatternsVal
+}
+
+// RedactPatternsWith compiles the caller-supplied custom regex pattern strings
+// and APPENDS them to DefaultRedactPatterns(), returning the combined set.
+//
+// This is the chokepoint that makes config.GetRedactPatterns() (the
+// `redact_patterns` config key) actually take effect. Without it, custom
+// patterns were plumbed through config but silently inert — every redaction
+// site used the hardcoded defaults (the LOW-severity "silently inert" finding).
+// Callers that have config-supplied patterns should compile them through this
+// helper and pass the result to RedactRecord:
+//
+//	patterns, err := audit.RedactPatternsWith(cfg.GetRedactPatterns())
+//	if err != nil { /* surface the config error; fall back to defaults */ }
+//	rec = audit.RedactRecord(rec, patterns)
+//
+// Security invariant: custom patterns are ALWAYS appended to — never replace —
+// the defaults. A defender (or an attacker who can influence config) therefore
+// cannot weaken the built-in Bearer/JWT/API-key redaction by supplying a
+// narrower or empty pattern list; they can only add additional redaction.
+//
+// Each custom pattern is anchored with a custom replacement of "[REDACTED]".
+// A pattern that fails to compile aborts with a wrapped error (the first bad
+// pattern is reported); the caller decides whether to fall back to the
+// defaults. The returned defaults slice is the shared sync.Once-compiled value;
+// the combined slice is freshly allocated and safe for the caller to retain.
+//
+// When custom is empty, RedactPatternsWith returns DefaultRedactPatterns()
+// verbatim (no allocation) with a nil error.
+func RedactPatternsWith(custom []string) ([]redactPattern, error) {
+	defaults := DefaultRedactPatterns()
+	if len(custom) == 0 {
+		return defaults, nil
+	}
+	combined := make([]redactPattern, len(defaults), len(defaults)+len(custom))
+	copy(combined, defaults)
+	for _, expr := range custom {
+		re, err := regexp.Compile(expr)
+		if err != nil {
+			return nil, fmt.Errorf("audit: invalid redact_patterns entry %q: %w", expr, err)
+		}
+		combined = append(combined, redactPattern{regex: re, replacement: "[REDACTED]"})
+	}
+	return combined, nil
 }
 
 // applyRedaction applies each pattern to s in order and returns the result.
@@ -206,4 +251,3 @@ func RedactStringSlice(ss []string, patterns []redactPattern) []string {
 	}
 	return out
 }
-

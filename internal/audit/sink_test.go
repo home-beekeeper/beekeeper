@@ -353,6 +353,99 @@ func TestNewMultiSinkWithCorpusErrorDoesNotBlockFileSink(t *testing.T) {
 	}
 }
 
+// --- SSRF endpoint validation tests (Finding #12) ---
+
+// TestValidateRemoteSinkEndpoint covers the literal-host SSRF rejections and the
+// https-required scheme rule, plus the accepted-normal-endpoint case.
+func TestValidateRemoteSinkEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		wantErr  bool
+	}{
+		// Rejected: non-https scheme.
+		{"http rejected", "http://collector.example/v1/logs", true},
+		{"ftp rejected", "ftp://collector.example/logs", true},
+		// Rejected: SSRF literals (over https too — host is what matters).
+		{"localhost name", "https://localhost/v1/logs", true},
+		{"localhost subdomain", "https://foo.localhost/v1/logs", true},
+		{"127.0.0.1 loopback", "https://127.0.0.1/v1/logs", true},
+		{"127.x loopback range", "https://127.5.6.7:4318/v1/logs", true},
+		{"ipv6 loopback", "https://[::1]/v1/logs", true},
+		{"link-local metadata", "https://169.254.169.254/latest/meta-data/", true},
+		{"link-local range", "https://169.254.10.10/x", true},
+		{"private 10.x", "https://10.0.0.5/v1/logs", true},
+		{"private 172.16.x", "https://172.16.4.4/v1/logs", true},
+		{"private 192.168.x", "https://192.168.1.1/v1/logs", true},
+		// Rejected: empty / whitespace.
+		{"empty", "", true},
+		{"whitespace only", "   ", true},
+		// http://169.254.169.254 — the canonical SSRF target — must be rejected.
+		{"http metadata target", "http://169.254.169.254/latest/meta-data/", true},
+		// Accepted: a normal external https collector.
+		{"normal https collector", "https://collector.example/v1/logs", false},
+		{"normal https with port", "https://collector.example:4318/v1/logs", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateRemoteSinkEndpoint(tt.endpoint, true)
+			if tt.wantErr && err == nil {
+				t.Errorf("ValidateRemoteSinkEndpoint(%q) = nil, want error", tt.endpoint)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("ValidateRemoteSinkEndpoint(%q) = %v, want nil", tt.endpoint, err)
+			}
+		})
+	}
+}
+
+// TestNewMultiSinkRejectsHTTPEndpoint verifies NewMultiSink fails closed when the
+// https sink is configured with a plain http:// endpoint.
+func TestNewMultiSinkRejectsHTTPEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "beekeeper.ndjson")
+
+	cfg := config.AuditConfig{
+		Sinks:         []string{"https"},
+		HTTPSEndpoint: "http://collector.example/v1/logs",
+	}
+	if _, err := NewMultiSink(path, cfg); err == nil {
+		t.Fatal("NewMultiSink with an http:// https-sink endpoint = nil error, want rejection")
+	}
+}
+
+// TestNewMultiSinkRejectsSSRFEndpoint verifies NewMultiSink fails closed when the
+// OTLP sink targets the cloud instance-metadata link-local address.
+func TestNewMultiSinkRejectsSSRFEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "beekeeper.ndjson")
+
+	cfg := config.AuditConfig{
+		Sinks:        []string{"otlp"},
+		OTLPEndpoint: "http://169.254.169.254/latest/meta-data/",
+	}
+	if _, err := NewMultiSink(path, cfg); err == nil {
+		t.Fatal("NewMultiSink with http://169.254.169.254 OTLP endpoint = nil error, want SSRF rejection")
+	}
+}
+
+// TestNewMultiSinkAcceptsHTTPSCollector verifies a normal external https
+// collector endpoint is accepted (the sink graph is built without error).
+func TestNewMultiSinkAcceptsHTTPSCollector(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "beekeeper.ndjson")
+
+	cfg := config.AuditConfig{
+		Sinks:        []string{"otlp"},
+		OTLPEndpoint: "https://collector.example/v1/logs",
+	}
+	sink, err := NewMultiSink(path, cfg)
+	if err != nil {
+		t.Fatalf("NewMultiSink with a normal https collector = %v, want nil", err)
+	}
+	defer sink.Close()
+}
+
 // --- Syslog stub test ---
 
 func TestSyslogNotSupportedStubOnWindows(t *testing.T) {
