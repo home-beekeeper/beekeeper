@@ -19,7 +19,7 @@ func TestRedactBearerToken(t *testing.T) {
 			want:  "Authorization: Bearer [REDACTED]",
 		},
 		{
-			name:  "bearer token in longer string",
+			name: "bearer token in longer string",
 			// \S+ matches any non-whitespace including comma, so the comma is absorbed into [REDACTED]
 			// Real-world HTTP headers are separated by \r\n, not commas; this is expected behavior.
 			input: "request headers: Authorization: Bearer abc123xyz Content-Type: application/json",
@@ -199,13 +199,13 @@ func TestRedactRecordReason(t *testing.T) {
 	patterns := DefaultRedactPatterns()
 
 	original := AuditRecord{
-		RecordType: "policy_decision",
-		RecordID:   "test-id-1",
-		Timestamp:  "2026-05-26T00:00:00Z",
+		RecordType:  "policy_decision",
+		RecordID:    "test-id-1",
+		Timestamp:   "2026-05-26T00:00:00Z",
 		ScannerName: "beekeeper",
-		Decision:   "warn",
-		Reason:     "tool output contained Authorization: Bearer secret-abc123; flagged",
-		RuleIDs:    []string{"TEST-01"},
+		Decision:    "warn",
+		Reason:      "tool output contained Authorization: Bearer secret-abc123; flagged",
+		RuleIDs:     []string{"TEST-01"},
 	}
 
 	redacted := RedactRecord(original, patterns)
@@ -657,4 +657,73 @@ func TestRedactPathologicalInputs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRedactPatternsWith verifies the config-pattern chokepoint (LOW finding:
+// redact_patterns was silently inert). Custom patterns must be APPENDED to the
+// defaults (never replace them), a bad regex must return an error, and an empty
+// custom list must return the defaults unchanged.
+func TestRedactPatternsWith(t *testing.T) {
+	t.Run("custom pattern is applied", func(t *testing.T) {
+		patterns, err := RedactPatternsWith([]string{`MYTOKEN_[A-Za-z0-9]+`})
+		if err != nil {
+			t.Fatalf("RedactPatternsWith: unexpected error %v", err)
+		}
+		got := applyRedaction("secret is MYTOKEN_abc123 here", patterns)
+		if strings.Contains(got, "MYTOKEN_abc123") {
+			t.Errorf("custom pattern not applied: %q", got)
+		}
+		if !strings.Contains(got, "[REDACTED]") {
+			t.Errorf("custom redaction marker missing: %q", got)
+		}
+	})
+
+	t.Run("defaults are preserved alongside custom (never weakened)", func(t *testing.T) {
+		// Even with a narrow custom pattern supplied, the built-in JWT/Bearer/AKIA
+		// defaults must still fire — a defender cannot disable them by supplying a
+		// custom list.
+		patterns, err := RedactPatternsWith([]string{`CUSTOM_[0-9]+`})
+		if err != nil {
+			t.Fatalf("RedactPatternsWith: unexpected error %v", err)
+		}
+		got := applyRedaction("Authorization: Bearer eyJabc.def.ghi and CUSTOM_42", patterns)
+		if strings.Contains(got, "eyJabc") {
+			t.Errorf("default JWT/Bearer pattern was lost when custom patterns supplied: %q", got)
+		}
+		if strings.Contains(got, "CUSTOM_42") {
+			t.Errorf("custom pattern not applied: %q", got)
+		}
+	})
+
+	t.Run("empty custom returns defaults", func(t *testing.T) {
+		got, err := RedactPatternsWith(nil)
+		if err != nil {
+			t.Fatalf("RedactPatternsWith(nil): unexpected error %v", err)
+		}
+		want := DefaultRedactPatterns()
+		if len(got) != len(want) {
+			t.Errorf("RedactPatternsWith(nil) len = %d, want defaults len %d", len(got), len(want))
+		}
+	})
+
+	t.Run("bad regex returns error", func(t *testing.T) {
+		patterns, err := RedactPatternsWith([]string{`([unclosed`})
+		if err == nil {
+			t.Fatalf("RedactPatternsWith with a bad regex = nil error, want compile error")
+		}
+		if patterns != nil {
+			t.Errorf("RedactPatternsWith returned non-nil patterns on error: %v", patterns)
+		}
+	})
+
+	t.Run("combined count = defaults + valid custom", func(t *testing.T) {
+		base := len(DefaultRedactPatterns())
+		patterns, err := RedactPatternsWith([]string{`AAA[0-9]+`, `BBB[0-9]+`})
+		if err != nil {
+			t.Fatalf("RedactPatternsWith: unexpected error %v", err)
+		}
+		if len(patterns) != base+2 {
+			t.Errorf("combined pattern count = %d, want %d (defaults %d + 2 custom)", len(patterns), base+2, base)
+		}
+	})
 }

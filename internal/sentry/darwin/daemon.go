@@ -263,6 +263,15 @@ func correlationEngineLoop(
 			)
 			for _, alert := range alerts {
 				rec := alertToAuditRecord(alert)
+				// Finding #5 (HIGH): Sentry daemons are the ONLY writers that
+				// populate SentryFilesAccessed / SentryNetworkDests /
+				// SentryProcessExe / SentryCorrelatedExt — exactly the fields
+				// audit.RedactRecord targets (TM-D-03). A credential in a watched
+				// file path or a Bearer/JWT/AKIA token in a network-destination
+				// URL must be redacted before it is persisted verbatim. Route the
+				// record through the same chokepoint every other audit producer
+				// uses (check/handler.go, watch/handler.go, gateway/proxy.go).
+				rec = audit.RedactRecord(rec, audit.DefaultRedactPatterns())
 				_ = auditWriter.Write(rec)
 			}
 		}
