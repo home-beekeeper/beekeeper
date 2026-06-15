@@ -186,6 +186,17 @@ func computeDelta(ctx context.Context, cfg WatchConfig, prev WatchState) (Catalo
 		newSS.DegradedReason = prevSS.DegradedReason
 	}
 
+	// SEC (remediation 260615, #14): while degraded, do NOT advance the sanity
+	// baseline to the new (post-shock) count. Re-baselining to an attacker-
+	// inflated count self-poisons the delta bound: each subsequent tick would
+	// compare against the inflated value, and `catalogs verify --clear-degraded`
+	// would clear TO the poisoned baseline. Freezing Count keeps every later tick
+	// measured against the trusted pre-degradation floor until an operator
+	// explicitly clears the degradation (re-snapshotting the real count then).
+	if newSS.Degraded {
+		newSS.Count = prevSS.Count
+	}
+
 	newState := WatchState{
 		Sources: make(map[string]SourceState, len(prev.Sources)+1),
 	}

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bantuson/beekeeper/internal/platform"
 	mmap "github.com/edsrzf/mmap-go"
 )
 
@@ -135,7 +136,18 @@ func writeFileAtomic(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	// SEC (remediation 260615, #2/#3): catalog index/JSON files live under the
+	// self-protected StateDir and drive block decisions — the on-disk `Signed`
+	// byte is trusted by corroboration. Enforce owner-only so a non-owner local
+	// process cannot tamper the index to flip a block into an allow (or forge a
+	// block). The local overlay already hardened its own files; doing it here in
+	// the shared writer makes it structural for every catalog file — notably
+	// bumblebee.idx, the primary decision input, which previously inherited only
+	// the process umask.
+	return platform.SetOwnerOnly(path)
 }
 
 // Index is a read-only, memory-mapped view of a binary index file. It performs
@@ -186,6 +198,17 @@ func OpenIndex(path string) (*Index, error) {
 		return nil, fmt.Errorf("unsupported index version: %d (want %d)", version, indexVersion)
 	}
 	count := int(binary.LittleEndian.Uint32(mm[8:12]))
+
+	// SEC (remediation 260615): guard against a crafted count that would overflow
+	// the records-region size computation on a 32-bit build and slip past the
+	// truncation check below with a too-small mmap. recordSize > 0, so a valid
+	// index always satisfies count <= (len-headerSize)/recordSize; anything larger
+	// is malformed and must fail closed (no match → handler blocks for bumblebee).
+	if count < 0 || count > (len(mm)-headerSize)/recordSize {
+		mm.Unmap()
+		f.Close()
+		return nil, fmt.Errorf("index count %d implausible for %d-byte file", count, len(mm))
+	}
 
 	recOff := headerSize
 	dataOff := headerSize + count*recordSize

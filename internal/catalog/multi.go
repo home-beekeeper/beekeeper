@@ -104,6 +104,12 @@ func (m *MultiIndex) LookupAll(ecosystem, pkg string) []policy.CatalogMatch {
 		if len(got) > 0 {
 			for i := range got {
 				got[i].CatalogSource = "local-overlay"
+				// SEC (remediation 260615, #2): the local overlay is unsigned,
+				// owner-authored, warn-only intel (CTLG-07). Force Signed=false
+				// regardless of any catalog_signature byte in the on-disk overlay
+				// index, so a tampered overlay can never be counted as a signed
+				// corroborating source and escalate a warn into a block.
+				got[i].Signed = false
 			}
 			matches = append(matches, got...)
 		}

@@ -71,6 +71,9 @@ func TestCorpusMoatLoopE2E(t *testing.T) {
 
 	buildOut, buildErr := exec.CommandContext(buildCtx,
 		"go", "build",
+		// Honor BEEKEEPER_HOME in the built binary for hermetic E2E isolation;
+		// production builds omit this tag (remediation 260615, finding #1).
+		"-tags", "beekeeperhomeoverride",
 		"-o", binPath,
 		"github.com/bantuson/beekeeper/cmd/beekeeper",
 	).CombinedOutput()

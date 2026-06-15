@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"testing"
 )
 
 // StateDir returns the Beekeeper state directory:
@@ -29,7 +30,19 @@ import (
 func StateDir() (string, error) {
 	// Wave 0 (BTEST-03): BEEKEEPER_HOME overrides the OS default so hermetic
 	// E2E runs can redirect the entire state tree to a temp directory.
-	if h := os.Getenv("BEEKEEPER_HOME"); h != "" {
+	//
+	// SECURITY (remediation 260615, finding #1): BEEKEEPER_HOME relocates the
+	// ENTIRE trust root — catalogs (the block-decision index), policies/,
+	// state.json, and the audit log. If a production binary honored it, anything
+	// that can influence the hook process's environment (a poisoned shell profile
+	// sourced by the harness, etc.) could silently repoint enforcement at an
+	// attacker-controlled tree: an empty index makes every package "allow", and a
+	// planted policies/ dir can flip fail_mode to open. The override is therefore
+	// honored ONLY in test binaries (testing.Testing()) or when the
+	// `beekeeperhomeoverride` build tag is compiled in — which the live-binary E2E
+	// harness does. A normal production build ignores BEEKEEPER_HOME and uses the
+	// OS default below, so the relocation primitive is not available at runtime.
+	if h := os.Getenv("BEEKEEPER_HOME"); h != "" && homeOverrideAllowed() {
 		return filepath.Join(h, "beekeeper"), nil
 	}
 
@@ -46,6 +59,15 @@ func StateDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".beekeeper"), nil
+}
+
+// homeOverrideAllowed reports whether the BEEKEEPER_HOME trust-root override may
+// be honored in the current binary. It is true under `go test` (in-process unit
+// tests that set BEEKEEPER_HOME via t.Setenv) and when the binary is built with
+// the `beekeeperhomeoverride` build tag (the live-binary E2E harness). Production
+// builds return false so BEEKEEPER_HOME cannot repoint enforcement. See StateDir.
+func homeOverrideAllowed() bool {
+	return testing.Testing() || buildTagHomeOverride
 }
 
 // CatalogDir returns the cached-catalog directory under the state directory.

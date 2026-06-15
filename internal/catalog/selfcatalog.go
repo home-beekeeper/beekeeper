@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bantuson/beekeeper/internal/policy"
@@ -212,7 +213,7 @@ func CheckSelfCatalog(opts SelfCatalogOpts) SelfCatalogResult {
 	// honor it immediately without a network call.
 	if opts.StatePath != "" {
 		st, err := LoadState(opts.StatePath)
-		if err == nil && st.SelfQuarantine != nil && st.SelfQuarantine.Version == runningVersion {
+		if err == nil && st.SelfQuarantine != nil && normalizeSelfVersion(st.SelfQuarantine.Version) == normalizeSelfVersion(runningVersion) {
 			// Previous quarantine decision stands offline.
 			entry := &selfCatalogEntry{
 				ID:       st.SelfQuarantine.EntryID,
@@ -309,6 +310,16 @@ func parseAndVerifySelfFeed(data []byte, pubKey ed25519.PublicKey) (selfFeed, er
 
 	// Verify over the canonical JSON of the entries array — same representation
 	// used when signing (see signFeedEntries in test helper).
+	//
+	// KNOWN LIMITATION (remediation 260615, documented in THREAT-MODEL §6): this
+	// re-marshals the parsed structs rather than verifying the exact transmitted
+	// bytes, so verification relies on the signer using Go's encoding/json with
+	// this struct shape. This is NOT an exploitable forgery primitive — an
+	// attacker has no signing key, and re-marshalling can only drop ignored
+	// fields or reorder keys, never change the semantic entry set (id/versions/
+	// severity) needed to suppress or forge a quarantine. A formatting mismatch
+	// fails closed (verification fails). Verifying the exact signed bytes (e.g. a
+	// json.RawMessage entries region or RFC 8785 JCS) is tracked as future work.
 	entriesJSON, err := json.Marshal(feed.Entries)
 	if err != nil {
 		return selfFeed{}, fmt.Errorf("re-marshal entries for verification: %w", err)
@@ -321,14 +332,34 @@ func parseAndVerifySelfFeed(data []byte, pubKey ed25519.PublicKey) (selfFeed, er
 	return feed, nil
 }
 
+// normalizeSelfVersion canonicalizes a version string for self-quarantine
+// comparison so a compromised-version match is not missed on a cosmetic
+// formatting difference (remediation 260615, #13). It trims surrounding space,
+// strips SemVer build metadata (everything after "+"), drops a single leading
+// "v"/"V", and lowercases. It deliberately does NOT strip pre-release suffixes,
+// which denote genuinely distinct builds. Matching is intentionally permissive
+// — for a self-quarantine check we fail toward catching a compromised binary.
+func normalizeSelfVersion(v string) string {
+	v = strings.TrimSpace(v)
+	if plus := strings.IndexByte(v, '+'); plus >= 0 {
+		v = v[:plus]
+	}
+	v = strings.TrimSpace(v)
+	if len(v) > 0 && (v[0] == 'v' || v[0] == 'V') {
+		v = v[1:]
+	}
+	return strings.ToLower(v)
+}
+
 // evaluateSelfFeed checks whether runningVersion appears in any entry's
 // versions list, writes a SelfQuarantineState to statePath on a match, and
 // returns the appropriate SelfCatalogResult.
 func evaluateSelfFeed(feed selfFeed, runningVersion, statePath string) SelfCatalogResult {
+	wantVersion := normalizeSelfVersion(runningVersion)
 	for i := range feed.Entries {
 		entry := &feed.Entries[i]
 		for _, v := range entry.Versions {
-			if v == runningVersion {
+			if normalizeSelfVersion(v) == wantVersion {
 				// Version match — self-quarantine.
 				if statePath != "" {
 					persistSelfQuarantine(statePath, runningVersion, entry)

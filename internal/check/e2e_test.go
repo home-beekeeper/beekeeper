@@ -55,6 +55,10 @@ func TestE2ELiveBinary(t *testing.T) {
 
 	buildOut, buildErr := exec.CommandContext(buildCtx,
 		"go", "build",
+		// beekeeperhomeoverride lets the shipped binary honor BEEKEEPER_HOME for
+		// hermetic E2E isolation; production builds omit it so the override cannot
+		// repoint the trust root at runtime (remediation 260615, finding #1).
+		"-tags", "beekeeperhomeoverride",
 		"-o", binPath,
 		"github.com/bantuson/beekeeper/cmd/beekeeper",
 	).CombinedOutput()
