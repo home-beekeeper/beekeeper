@@ -29,6 +29,12 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
+# Local agent tooling state — machine-local config + generated caches, never commit.
+# .claude/ holds settings.local.json, worktrees, and a scheduled-tasks lock;
+# .understand-anything/ is the understand-anything knowledge-graph cache (multi-MB).
+.claude/
+.understand-anything/
+
 # === Node / Web toolchain (v1.3.0 web/ workspace) ===
 # Repo-root pnpm virtual store (symlinks only), created by `pnpm install`.
 # This is expected pnpm-workspace behavior — do NOT delete node_modules/.
