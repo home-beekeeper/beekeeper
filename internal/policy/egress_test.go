@@ -136,6 +136,147 @@ func TestEgressSubdomainOfDenyHostBlocked(t *testing.T) {
 	}
 }
 
+// TestEgressLookalikeAllowHostNotMatched proves the suffix-boundary fix: an
+// attacker-registrable lookalike of an allow host must NOT inherit its allow.
+// "evilpypi.org" must not match allow entry "pypi.org" — it should fall through
+// to the unknown-host warn.
+func TestEgressLookalikeAllowHostNotMatched(t *testing.T) {
+	cfg := DefaultEgressConfig()
+	input := EgressInput{
+		ToolName:    "WebFetch",
+		TargetURL:   "https://evilpypi.org/upload",
+		PayloadSize: 100,
+	}
+	d := EvaluateEgress(input, cfg)
+	if d.Level == "allow" {
+		t.Errorf("Level = %q, want warn — evilpypi.org must NOT match allow pypi.org (label boundary)", d.Level)
+	}
+	if d.Level != "warn" {
+		t.Errorf("Level = %q, want %q (unknown lookalike host warns)", d.Level, "warn")
+	}
+}
+
+// TestEgressRealSubdomainOfAllowHostMatched proves a genuine subdomain of an
+// allow host still matches under the label-boundary rule.
+func TestEgressRealSubdomainOfAllowHostMatched(t *testing.T) {
+	cfg := DefaultEgressConfig()
+	input := EgressInput{
+		ToolName:    "WebFetch",
+		TargetURL:   "https://sub.pypi.org/simple/requests/",
+		PayloadSize: 100,
+	}
+	d := EvaluateEgress(input, cfg)
+	if d.Level != "allow" {
+		t.Errorf("Level = %q, want %q (sub.pypi.org is a real subdomain of allow pypi.org)", d.Level, "allow")
+	}
+	if !d.Allow {
+		t.Errorf("Allow = false, want true")
+	}
+}
+
+// TestEgressLookalikeDenyHostNotMatched proves a lookalike of a deny host does
+// NOT get blocked by the deny entry (avoids both over-block on unrelated hosts
+// and, more importantly, confirms the boundary logic is symmetric). "notpastebin.com"
+// must not match deny "pastebin.com" — it should warn as an unknown host.
+func TestEgressLookalikeDenyHostNotMatched(t *testing.T) {
+	cfg := DefaultEgressConfig()
+	input := EgressInput{
+		ToolName:    "WebFetch",
+		TargetURL:   "https://notpastebin.com/raw/abc",
+		PayloadSize: 100,
+	}
+	d := EvaluateEgress(input, cfg)
+	if d.Level == "block" {
+		t.Errorf("Level = %q, want warn — notpastebin.com must NOT match deny pastebin.com (label boundary)", d.Level)
+	}
+	if d.Level != "warn" {
+		t.Errorf("Level = %q, want %q (unrelated host warns)", d.Level, "warn")
+	}
+}
+
+// TestEgressRealSubdomainOfDenyHostBlocked confirms a real subdomain of a deny
+// host is still blocked (complements the existing sub.hastebin.com test for the
+// new boundary helper).
+func TestEgressRealSubdomainOfDenyHostBlocked(t *testing.T) {
+	cfg := DefaultEgressConfig()
+	input := EgressInput{
+		ToolName:    "WebFetch",
+		TargetURL:   "https://raw.pastebin.com/abc",
+		PayloadSize: 100,
+	}
+	d := EvaluateEgress(input, cfg)
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q (raw.pastebin.com is a real subdomain of deny pastebin.com)", d.Level, "block")
+	}
+}
+
+// TestEgressExactDenyHostBlocked confirms the exact deny host still blocks under
+// the boundary helper (no regression).
+func TestEgressExactDenyHostBlocked(t *testing.T) {
+	cfg := DefaultEgressConfig()
+	input := EgressInput{
+		ToolName:    "WebFetch",
+		TargetURL:   "https://pastebin.com",
+		PayloadSize: 100,
+	}
+	d := EvaluateEgress(input, cfg)
+	if d.Level != "block" {
+		t.Errorf("Level = %q, want %q (exact deny host)", d.Level, "block")
+	}
+}
+
+// TestEgressHostFallbackDoesNotCollapseDenyToWarn covers Fix 2: a deny target
+// wrapped to defeat url.Parse (so host extraction is ambiguous/fails) must still
+// BLOCK via the raw-URL deny check, not collapse to a non-blocking warn.
+func TestEgressHostFallbackDoesNotCollapseDenyToWarn(t *testing.T) {
+	cfg := DefaultEgressConfig()
+	tests := []struct {
+		name string
+		url  string
+	}{
+		// Backslash before userinfo "@" — many URL parsers diverge here, and
+		// url.Parse may not surface "pastebin.com" as the Host.
+		{"backslash userinfo wrap", `https://pastebin.com\@evil.example.com/raw/x`},
+		// Scheme-relative URL: url.Parse("//pastebin.com/raw/x") yields Host set,
+		// but the bare "pastebin.com\@x" form below exercises the fallback path.
+		{"scheme-relative deny host", "//pastebin.com/raw/x"},
+		{"bare deny host with backslash userinfo", `pastebin.com\@x`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			input := EgressInput{
+				ToolName:    "WebFetch",
+				TargetURL:   tc.url,
+				PayloadSize: 100,
+			}
+			d := EvaluateEgress(input, cfg)
+			if d.Level != "block" {
+				t.Errorf("Level = %q, want %q — wrapped deny target must still block (no block→warn collapse)", d.Level, "block")
+			}
+			if d.Allow {
+				t.Errorf("Allow = true, want false for wrapped deny target %q", tc.url)
+			}
+		})
+	}
+}
+
+// TestEgressRawFallbackDoesNotOverBlockLookalike confirms the raw-URL fallback
+// itself respects label boundaries: a lookalike that defeats url.Parse must not
+// be blocked just because the deny entry appears as a substring.
+func TestEgressRawFallbackRespectsBoundary(t *testing.T) {
+	cfg := DefaultEgressConfig()
+	// "notpastebin.com" as a raw, hard-to-parse string must not block.
+	input := EgressInput{
+		ToolName:    "WebFetch",
+		TargetURL:   `notpastebin.com\@x`,
+		PayloadSize: 100,
+	}
+	d := EvaluateEgress(input, cfg)
+	if d.Level == "block" {
+		t.Errorf("Level = %q, want non-block — notpastebin.com must not match deny pastebin.com even on the raw fallback", d.Level)
+	}
+}
+
 func TestEgressImportsArePure(t *testing.T) {
 	const filePath = "egress.go"
 	src, err := os.ReadFile(filePath)

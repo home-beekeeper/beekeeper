@@ -388,6 +388,125 @@ func TestParse(t *testing.T) {
 	}
 }
 
+// TestParseExecPackageFlag covers Fix 5: for exec verbs (npx, pnpm dlx, bun x)
+// the package can ride on a `-p`/`--package[=]` flag value rather than be the
+// first positional token. Those forms must bind the real package so it is NOT
+// silently dropped (which would ALLOW a malicious package). It must also remain
+// conservative: unrelated flags never produce a spurious package, and the
+// positional fallback is unchanged when no package flag is present.
+func TestParseExecPackageFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantPkg  string
+		wantExec bool
+		wantOK   bool
+	}{
+		{
+			name:     "npx --package= equals form",
+			input:    "npx --package=evil-pkg run-bin",
+			wantPkg:  "evil-pkg",
+			wantExec: true,
+			wantOK:   true,
+		},
+		{
+			name:     "npx -p space form",
+			input:    "npx -p evil-pkg run-bin",
+			wantPkg:  "evil-pkg",
+			wantExec: true,
+			wantOK:   true,
+		},
+		{
+			name:     "npx --package space form",
+			input:    "npx --package evil-pkg run-bin",
+			wantPkg:  "evil-pkg",
+			wantExec: true,
+			wantOK:   true,
+		},
+		{
+			name:     "npx -p= equals form",
+			input:    "npx -p=evil-pkg run-bin",
+			wantPkg:  "evil-pkg",
+			wantExec: true,
+			wantOK:   true,
+		},
+		{
+			name:     "pnpm dlx with --package",
+			input:    "pnpm dlx --package=evil-pkg bin",
+			wantPkg:  "evil-pkg",
+			wantExec: true,
+			wantOK:   true,
+		},
+		{
+			name:     "package flag value carries a version",
+			input:    "npx --package=evil-pkg@1.2.3 run-bin",
+			wantPkg:  "evil-pkg",
+			wantExec: true,
+			wantOK:   true,
+		},
+		{
+			// Conservative: an unrelated flag value must NOT be treated as a
+			// package; the positional token wins.
+			name:     "unrelated flag does not bind package",
+			input:    "npx --yes create-app",
+			wantPkg:  "create-app",
+			wantExec: true,
+			wantOK:   true,
+		},
+		{
+			// No package flag → positional fallback unchanged (regression guard).
+			name:     "positional package still works",
+			input:    "npx create-app",
+			wantPkg:  "create-app",
+			wantExec: true,
+			wantOK:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := Parse(tc.input)
+			if ok != tc.wantOK {
+				t.Fatalf("Parse(%q) ok=%v, want %v", tc.input, ok, tc.wantOK)
+			}
+			if !tc.wantOK {
+				return
+			}
+			if got.Package != tc.wantPkg {
+				t.Errorf("Package = %q, want %q", got.Package, tc.wantPkg)
+			}
+			if got.IsExec != tc.wantExec {
+				t.Errorf("IsExec = %v, want %v", got.IsExec, tc.wantExec)
+			}
+			if !got.IsInstall {
+				t.Errorf("IsInstall = false, want true (exec verbs are install-class)")
+			}
+		})
+	}
+}
+
+// TestPackageFlagValueOnly directly unit-tests the helper so its boundary
+// behavior is pinned independent of Parse.
+func TestPackageFlagValueOnly(t *testing.T) {
+	cases := map[string]string{
+		"--package=evil-pkg run-bin": "evil-pkg",
+		"-p=evil-pkg run-bin":        "evil-pkg",
+		"--package evil-pkg run-bin": "evil-pkg",
+		"-p evil-pkg run-bin":        "evil-pkg",
+		"run-bin --package=late":     "late",
+		"--yes create-app":           "", // no package flag
+		"create-app":                 "", // positional only
+		"-p":                         "", // flag with no value
+		"-p --foo":                   "", // value is itself a flag → none
+		"":                           "",
+	}
+	for in, want := range cases {
+		if got := packageFlagValue(in); got != want {
+			t.Errorf("packageFlagValue(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // TestPkgparseImportsArePure enforces the pure-library contract on pkgparse.go.
 // It AST-parses the source file and fails if any forbidden import is found.
 // pkgparse MUST import only "strings" so that internal/policy can import it

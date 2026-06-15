@@ -438,3 +438,101 @@ func TestLoadPolicyDir_ValidDir(t *testing.T) {
 		t.Errorf("LoadPolicyDir(testdata): expected at least 2 valid files, got %d", len(files))
 	}
 }
+
+// sensitivePathBasenameBlockFile returns a PolicyFile with one sensitive_path
+// block rule matching the BASENAME "secrets.json" (no path separator → basename
+// match). This exercises the overlay basename-normalization fix.
+func sensitivePathBasenameBlockFile() PolicyFile {
+	return PolicyFile{
+		SchemaVersion: "1",
+		Name:          "block-secrets-json",
+		Rules: []PolicyRule{
+			{
+				ID:           "block-secrets-json-rule",
+				RuleType:     "sensitive_path",
+				PathPatterns: []string{"secrets.json"},
+				Action:       "block",
+			},
+		},
+	}
+}
+
+// readToolCall builds a Read-style ToolCall targeting file_path.
+func readToolCall(path string) policy.ToolCall {
+	return policy.ToolCall{
+		ToolName:  "Read",
+		ToolInput: map[string]any{"file_path": path},
+	}
+}
+
+// TestOverlaySensitivePathBasenameNormalization proves the overlay's basename
+// sensitive_path matching reuses the SAME normalization as the engine
+// (internal/policy/path.go normalizeBasename): NTFS ADS suffixes and Windows
+// trailing dots/spaces must NOT bypass a user "secrets.json" basename rule.
+func TestOverlaySensitivePathBasenameNormalization(t *testing.T) {
+	files := []PolicyFile{sensitivePathBasenameBlockFile()}
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"plain basename", `C:\Users\u\project\secrets.json`},
+		{"NTFS ADS stream evasion", `C:\Users\u\project\secrets.json:stream`},
+		{"NTFS ADS stream with type", `C:\Users\u\project\secrets.json:$DATA`},
+		{"trailing dot evasion", `C:\Users\u\project\secrets.json.`},
+		{"trailing space evasion", `C:\Users\u\project\secrets.json `},
+		{"trailing dot and space", `C:\Users\u\project\secrets.json. `},
+		{"posix plain", "/home/u/project/secrets.json"},
+		{"posix ADS-style", "/home/u/project/secrets.json:stream"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ApplyPolicyOverlay(files, readToolCall(tc.path), baseAllow)
+			if got.Level != "block" {
+				t.Errorf("Level = %q, want %q — %q must be blocked by basename rule (normalization parity)", got.Level, "block", tc.path)
+			}
+			if got.Allow {
+				t.Errorf("Allow = true, want false for %q", tc.path)
+			}
+		})
+	}
+}
+
+// TestOverlaySensitivePathBasenameNonMatch confirms the normalization does not
+// over-block: an unrelated basename (and a longer name that merely contains the
+// rule as a substring) must NOT be blocked.
+func TestOverlaySensitivePathBasenameNonMatch(t *testing.T) {
+	files := []PolicyFile{sensitivePathBasenameBlockFile()}
+
+	for _, path := range []string{
+		"/home/u/project/config.json",
+		"/home/u/project/secrets.json.bak", // different basename, not the secret
+		"/home/u/project/my-secrets.json",  // different basename
+	} {
+		got := ApplyPolicyOverlay(files, readToolCall(path), baseAllow)
+		if got.Level == "block" {
+			t.Errorf("path %q: Level = block, want non-block (basename rule must not over-match)", path)
+		}
+	}
+}
+
+// TestOverlayNormalizeBasenameMatchesEngine asserts the replicated
+// normalizeBasename in enforce.go produces identical output to the documented
+// engine behavior for the evasion forms, guarding against future divergence.
+func TestOverlayNormalizeBasenameMatchesEngine(t *testing.T) {
+	cases := map[string]string{
+		"secrets.json":        "secrets.json",
+		"secrets.json:stream": "secrets.json",
+		"secrets.json:$DATA":  "secrets.json",
+		"secrets.json.":       "secrets.json",
+		"secrets.json ":       "secrets.json",
+		"secrets.json. ":      "secrets.json",
+		"id_rsa":              "id_rsa",
+		"id_rsa:hidden":       "id_rsa",
+	}
+	for in, want := range cases {
+		if got := normalizeBasename(in); got != want {
+			t.Errorf("normalizeBasename(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

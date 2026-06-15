@@ -150,9 +150,19 @@ func parseSegment(raw, seg string) (ParsedCommand, bool) {
 		// Rest of command after the matched prefix.
 		rest := strings.TrimSpace(trimmed[len(entry.prefix):])
 
-		// For exec-only verbs (npx, pnpm dlx, bun x) the "package" may be a
-		// script or binary name; treat it the same as an install token.
-		token := firstPackageToken(rest)
+		// For exec-only verbs (npx, pnpm dlx, bun x) the package can ride on a
+		// `-p`/`--package[=]` flag value rather than be the first positional
+		// token (e.g. "npx -p evil-pkg run-bin", "npx --package=evil-pkg bin").
+		// Bind that flag value FIRST for exec verbs so the real package is not
+		// silently dropped (which would ALLOW it). Fall back to the first
+		// positional non-flag token otherwise.
+		token := ""
+		if entry.isExec {
+			token = packageFlagValue(rest)
+		}
+		if token == "" {
+			token = firstPackageToken(rest)
+		}
 		pkg := ""
 		ver := ""
 		unpinned := false
@@ -295,6 +305,41 @@ func firstPackageToken(rest string) string {
 			continue
 		}
 		return tok
+	}
+	return ""
+}
+
+// packageFlagValue extracts the value of a `-p`/`--package` flag from an exec
+// invocation, supporting both the space form ("-p evil-pkg", "--package evil-pkg")
+// and the equals form ("--package=evil-pkg", "-p=evil-pkg"). It returns "" when
+// no such flag is present so callers fall back to positional extraction.
+//
+// This is a best-effort, conservative parse: it recognizes only the exact flag
+// tokens "-p" and "--package" (and their "=value" variants). It does NOT treat
+// every "-x value" pair as a package, so unrelated flags ("--yes", "-y") never
+// produce a spurious package. Pure: only string scanning.
+func packageFlagValue(rest string) string {
+	fields := strings.Fields(rest)
+	for i := 0; i < len(fields); i++ {
+		tok := fields[i]
+		// Equals form: "--package=value" or "-p=value".
+		if v, ok := strings.CutPrefix(tok, "--package="); ok {
+			return v
+		}
+		if v, ok := strings.CutPrefix(tok, "-p="); ok {
+			return v
+		}
+		// Space form: the flag token followed by its value in the next field.
+		if tok == "--package" || tok == "-p" {
+			if i+1 < len(fields) {
+				next := fields[i+1]
+				// The value must not itself be a flag.
+				if !strings.HasPrefix(next, "-") {
+					return next
+				}
+			}
+			return ""
+		}
 	}
 	return ""
 }

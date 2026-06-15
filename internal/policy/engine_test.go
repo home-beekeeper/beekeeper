@@ -436,12 +436,12 @@ func TestPackageNameNormalizedBeforeLookup(t *testing.T) {
 // and version.
 func TestExtensionInstallExtract(t *testing.T) {
 	cases := []struct {
-		name      string
-		cmd       string
-		wantEco   string
-		wantPkg   string
-		wantVer   string
-		wantOK    bool
+		name    string
+		cmd     string
+		wantEco string
+		wantPkg string
+		wantVer string
+		wantOK  bool
 	}{
 		{
 			name:    "code with version",
@@ -577,8 +577,8 @@ func TestExtensionInstallBulk(t *testing.T) {
 // code-insiders, cursor, windsurf) are recognized as editor-extension installs.
 func TestExtensionInstallVariants(t *testing.T) {
 	cases := []struct {
-		name   string
-		cmd    string
+		name string
+		cmd  string
 	}{
 		{"code", "code --install-extension ms-python.python@2026.4.0"},
 		{"code-insiders", "code-insiders --install-extension ms-python.python@2026.4.0"},
@@ -793,6 +793,36 @@ func TestEngineImportsArePure(t *testing.T) {
 		}
 		if forbidden[path] {
 			t.Errorf("engine.go imports forbidden package %q — violates pure-library contract", path)
+		}
+	}
+}
+
+// TestEvaluateNpxPackageFlagExtracted is the engine-level proof for Fix 5: an
+// exec invocation that carries the package on a `--package=` flag value
+// ("npx --package=evil-pkg run-bin") must extract "evil-pkg" and hit the catalog
+// match instead of dropping the package and silently allowing. Without the
+// pkgparse flag-binding, the package would be "" and this would no-match → allow.
+func TestEvaluateNpxPackageFlagExtracted(t *testing.T) {
+	idx := newFakeMulti(map[string][]CatalogMatch{
+		"npm::evil-pkg": {
+			{CatalogSource: "bumblebee", Ecosystem: "npm", Package: "evil-pkg", Signed: true, Severity: "critical"},
+		},
+	})
+	for _, cmd := range []string{
+		"npx --package=evil-pkg run-bin",
+		"npx -p evil-pkg run-bin",
+		"npx --package evil-pkg run-bin",
+	} {
+		tc := ToolCall{
+			ToolName:  "Bash",
+			ToolInput: map[string]any{"command": cmd},
+		}
+		d := Evaluate(tc, idx, DefaultCorroborationThresholds(), AgentContext{})
+		if d.Level != "block" {
+			t.Errorf("cmd %q: Level = %q, want %q — flag-borne package must be extracted and matched", cmd, d.Level, "block")
+		}
+		if d.Allow {
+			t.Errorf("cmd %q: Allow = true, want false (catalog-corroborated critical match)", cmd)
 		}
 	}
 }
