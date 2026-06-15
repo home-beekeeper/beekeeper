@@ -110,6 +110,13 @@ func TestRunCatalogsSyncFirstResponder(t *testing.T) {
 
 	// ---- Seed the synthetic Nx Console corpus record ----
 	// This is the fixture from 24-RESEARCH.md §Synthetic Nx Console Incident Fixture.
+	// Compute the BehaviorSignatureHash that a real pipeline record would carry.
+	// The seed uses ToolName as the actionType proxy; no SentryFilesAccessed or
+	// SentryNetworkDests are set, so both resource inputs are empty strings.
+	// This value is deterministic: BehaviorSigHash always returns 64 lowercase hex
+	// chars for any input, and the same inputs always produce the same hash.
+	seedBehaviorHash := corpus.BehaviorSigHash("@nrwl/nx-console", "", "")
+
 	corpusRec := corpus.CorpusRecord{
 		AuditRecord: audit.AuditRecord{
 			RecordID:   "test-nx-console-001",
@@ -124,8 +131,9 @@ func TestRunCatalogsSyncFirstResponder(t *testing.T) {
 		CorpusSchemaVersion: "1.0",
 		PushEnvelope: &corpus.PushEnvelope{
 			Signature: corpus.EnvelopeSignature{
-				PackageOrExtensionID: "npm:@nrwl/nx-console",
-				Version:              "17.3.0",
+				PackageOrExtensionID:  "npm:@nrwl/nx-console",
+				Version:               "17.3.0",
+				BehaviorSignatureHash: seedBehaviorHash, // populated at seed time (WR-01)
 			},
 			TrueLabel:      "malicious",
 			ConfidenceTier: "enforce",
@@ -332,10 +340,14 @@ func TestRunCatalogsSyncFirstResponder(t *testing.T) {
 			break
 		}
 	}
-	// Behavior layer: at least one of SourceSurface or ToolName must be non-empty.
-	// The seed sets ToolName="@nrwl/nx-console"; SourceSurface is not set in the seed.
-	if rec.AuditRecord.SourceSurface == "" && rec.AuditRecord.ToolName == "" {
-		t.Error("[8] behavior layer: both SourceSurface and ToolName are empty")
+	// Behavior layer: ToolName must equal the seeded value "@nrwl/nx-console".
+	// The previous OR-check (SourceSurface == "" && ToolName == "") was a
+	// near-tautology — the OR was always satisfied by the fixture constant
+	// (WR-04). Assert the specific expected value so the gate fails if the
+	// behavior layer is missing or carries the wrong identifier.
+	const wantToolName = "@nrwl/nx-console"
+	if rec.AuditRecord.ToolName != wantToolName {
+		t.Errorf("[8] behavior layer: ToolName = %q, want %q (LAUNCH-01)", rec.AuditRecord.ToolName, wantToolName)
 	}
 	// Decision layer: Decision must be non-empty and CorroborationCount >= 1.
 	if rec.AuditRecord.Decision == "" {
@@ -359,30 +371,27 @@ func TestRunCatalogsSyncFirstResponder(t *testing.T) {
 		t.Errorf("[8] context layer: Scope = %q, want \"org_only\" or \"\" (zero-value marshals to org_only)", string(rec.Scope))
 	}
 
-	// 9. Envelope signature: BehaviorSignatureHash is a 64-char hex string (LAUNCH-01).
+	// 9. Envelope signature: stored BehaviorSignatureHash is a 64-char hex string (LAUNCH-01).
 	//
-	// SEED NUANCE: the existing seed does NOT set BehaviorSignatureHash in the
-	// PushEnvelope.Signature block — only PackageOrExtensionID and Version are set.
-	// To prove a real 64-char-hex signature is representable, we call the production
-	// emitter path: corpus.BehaviorSigHash(actionType, targetResource, networkDest)
-	// with inputs drawn from the seeded record. The seed uses ToolName as actionType
-	// proxy and has no SentryFilesAccessed/SentryNetworkDests, so both resource
-	// inputs are empty strings. The hash is deterministic and 64 hex chars.
+	// The seed now populates BehaviorSignatureHash via corpus.BehaviorSigHash at
+	// construction time (see seedBehaviorHash above). We assert on the STORED field
+	// rec.PushEnvelope.Signature.BehaviorSignatureHash — NOT on a freshly recomputed
+	// value. This gate genuinely fails if the stored signature is empty, short, or
+	// non-hex (WR-01: the previous approach called BehaviorSigHash on a fresh input
+	// and measured the return value's length, which always succeeds for any input and
+	// never reads the stored field). Pattern mirrors launch_e2e_test.go:230-244.
 	if rec.PushEnvelope == nil {
-		t.Fatal("[9] PushEnvelope is nil — cannot assert signature")
+		t.Fatal("[9] PushEnvelope is nil — cannot assert stored signature")
 	}
-	actionType9 := rec.AuditRecord.ToolName
-	targetResource9 := ""
-	if len(rec.AuditRecord.SentryFilesAccessed) > 0 {
-		targetResource9 = rec.AuditRecord.SentryFilesAccessed[0]
+	storedHash := rec.PushEnvelope.Signature.BehaviorSignatureHash
+	if len(storedHash) != 64 {
+		t.Errorf("[9] stored BehaviorSignatureHash = %q (%d chars); want 64-char hex (LAUNCH-01)", storedHash, len(storedHash))
 	}
-	networkDest9 := ""
-	if len(rec.AuditRecord.SentryNetworkDests) > 0 {
-		networkDest9 = rec.AuditRecord.SentryNetworkDests[0]
-	}
-	computedHash := corpus.BehaviorSigHash(actionType9, targetResource9, networkDest9)
-	if len(computedHash) != 64 {
-		t.Errorf("[9] BehaviorSigHash for the Nx Console seed record returned %d chars, want 64", len(computedHash))
+	for _, ch := range storedHash {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')) {
+			t.Errorf("[9] stored BehaviorSignatureHash contains non-hex char %q (full value: %q)", ch, storedHash)
+			break
+		}
 	}
 
 	// 10. Envelope: ConfidenceTier = "enforce", SourceCount = 2 (LAUNCH-01).
