@@ -24,6 +24,13 @@ external runtime dependencies.
 - **Audit log:** NDJSON audit trail of every decision (allow/warn/block).
 - **Package-manager nudge:** Detects `npm install`, `pip install`, etc. and
   checks packages against the threat catalog before they run.
+- **Local adjudicated corpus (v1.4.0):** Confirmed incidents are recorded to a
+  local, append-only, owner-only corpus. Off the hot path (only during
+  `catalogs sync`), an adjudication engine assigns the outcome; a
+  confirmed-malicious package is written to a local catalog overlay so that
+  machine enforces it immediately, ahead of the upstream feed. Local-only:
+  nothing leaves the machine (see
+  [docs/THREAT-MODEL.md §13](docs/THREAT-MODEL.md)).
 
 ---
 
@@ -114,6 +121,9 @@ beekeeper gateway token
   All business logic lives in `internal/`.
 - **`internal/policy`** — pure function library (no I/O, no goroutines). Called
   synchronously from hook handler, gateway middleware, and Sentry correlation.
+- **`internal/corpus`** — local adjudicated-corpus loop. Append-only,
+  owner-only, redaction-first, with no network imports (enforced by
+  `TestCorpusStoreHasNoNetworkImports`). Adjudication runs off the hot path.
 - **Fail-closed by default** — any crash, timeout, or unavailability in
   `beekeeper check` or the gateway results in block, not allow.
 - **Hook handler (`beekeeper check`)** loads catalog via mmap. No cold-load
