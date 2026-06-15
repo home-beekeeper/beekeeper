@@ -1815,6 +1815,140 @@ func TestWriteCorpusRecordStateDirEmpty(t *testing.T) {
 	writeCorpusRecord(rec, cfg, "")
 }
 
+// ─── FRB-05 local catalog overlay regression tests ───────────────────────────
+//
+// buildOverlayTestIndex builds a local-overlay.idx binary index in cacheDir
+// containing one UNSIGNED (CatalogSignature=="") entry for the given ecosystem
+// and pkg. This mirrors a real confirmed-malicious overlay entry produced by
+// AddLocalOverlayEntry (which enforces CatalogSignature="" per CTLG-07).
+// CatalogSource is set to "local-overlay" as required by the overlay convention.
+func buildOverlayTestIndex(t *testing.T, cacheDir, ecosystem, pkg string) {
+	t.Helper()
+	entries := []catalog.Entry{
+		{
+			ID:               "local-overlay-test-" + pkg,
+			Name:             pkg + " (confirmed malicious overlay)",
+			Ecosystem:        ecosystem,
+			Package:          pkg,
+			Versions:         []string{"1.0.0"},
+			Severity:         "critical",
+			CatalogSource:    "local-overlay",
+			CatalogSignature: "", // unsigned — CTLG-07 warn-only invariant
+		},
+	}
+	idxPath := filepath.Join(cacheDir, "local-overlay.idx")
+	if err := catalog.BuildIndex(idxPath, entries); err != nil {
+		t.Fatalf("buildOverlayTestIndex: BuildIndex: %v", err)
+	}
+}
+
+// TestRunCheckLocalOverlayEscalates is the FRB-05 path test. It proves that the
+// live handler (via RunCheck) queries the local-overlay.idx when one exists and
+// that a confirmed-malicious overlay entry escalates the decision from "allow"
+// (no source match anywhere) to "warn" (one unsigned local-overlay source).
+//
+// WHY allow→warn and NOT allow→block:
+//   Overlay entries are UNSIGNED (CatalogSignature=="" — see local_overlay.go and
+//   CTLG-07). internal/policy/corroboration.go escalates to "block" only on
+//   signedCount >= effectiveBlockAt && hasSignedSource. With signedCount=0 and
+//   hasUnsigned=true, corroborate() returns "warn". This is the honest, load-
+//   bearing proof: the allow→warn flip can happen ONLY because handler.go now
+//   wires the overlay via NewMultiIndexWithOverlay. Reverting handler.go:236 to
+//   plain NewMultiIndex makes the overlay invisible to policy.Evaluate, keeping
+//   the decision at "allow" — which makes this test fail.
+//
+// Ecosystem choice: "editor-extension" so osvEcosystem returns ("", false) and no
+// HTTP call is made. No Socket token is configured in tests. The bumblebee index
+// does NOT contain the overlay target package, so the ONLY possible match is the
+// overlay — making the escalation proof deterministic and offline.
+func TestRunCheckLocalOverlayEscalates(t *testing.T) {
+	dir := t.TempDir()
+	// Build the bumblebee index with the Nx Console entry (NOT our overlay target).
+	idxPath := buildTestIndex(t, dir)
+
+	// cacheDir is the catalog dir where the overlay index lives.
+	// RunCheck derives overlayPath = filepath.Join(cacheDir, "local-overlay.idx"),
+	// so the overlay must be built into cacheDir.
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+
+	// Seed the overlay index with an UNSIGNED entry for a package that is NOT in
+	// the bumblebee index. The "evil.confirmed-malicious-overlay-pkg" name is
+	// deliberately distinct from any real or test entry so the ONLY possible match
+	// comes from the overlay — no bumblebee dissent counts as a match.
+	const overlayEcosystem = "editor-extension"
+	const overlayPkg = "evil.confirmed-malicious-overlay-pkg"
+	buildOverlayTestIndex(t, cacheDir, overlayEcosystem, overlayPkg)
+
+	// Install tool call targeting the overlay package. Direct-shape input (ecosystem
+	// + package) triggers catalog lookup immediately — no Bash parsing, no nudge
+	// subprocess, no OSV HTTP call for editor-extension.
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Install","tool_input":{"ecosystem":"editor-extension","package":"evil.confirmed-malicious-overlay-pkg","version":"1.0.0"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	// The ONLY match is the unsigned overlay entry → corroborate() returns "warn"
+	// (signedCount=0, hasUnsigned=true). Without the overlay wiring (plain
+	// NewMultiIndex) the package has no catalog match anywhere → "allow".
+	// This assert is the load-bearing FRB-05 guard: it fails if handler.go:236
+	// is reverted to catalog.NewMultiIndex.
+	if res.Decision.Level != "warn" {
+		t.Errorf("FRB-05: Decision.Level = %q, want \"warn\" "+
+			"(overlay unsigned entry must escalate allow→warn; "+
+			"if this is \"allow\", the overlay wiring at handler.go is absent)", res.Decision.Level)
+	}
+	// warn → Allow:true → ExitCode 0 (warn does not block, per PLCY-01).
+	if !res.Decision.Allow {
+		t.Errorf("FRB-05: Allow = false, want true (warn does not block in beekeeper)")
+	}
+	if res.ExitCode != exitAllow {
+		t.Errorf("FRB-05: ExitCode = %d, want %d (warn must exit 0)", res.ExitCode, exitAllow)
+	}
+}
+
+// TestRunCheckNoOverlayUnchanged is the fail-closed regression guard for FRB-05.
+// It proves that when no local-overlay.idx exists (the common first-run case),
+// RunCheck proceeds exactly as before: no error, no fail-open, no panic, decision
+// unchanged. A package with no catalog match anywhere must remain "allow".
+//
+// This guards the CLAUDE.md fail-closed-by-default concern: a missing overlay file
+// must not cause an error, must not fail-open to a block, and must not change the
+// behavior of any existing decision path.
+func TestRunCheckNoOverlayUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+
+	// cacheDir with NO local-overlay.idx — first-run scenario.
+	cacheDir := filepath.Join(dir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		t.Fatalf("MkdirAll cacheDir: %v", err)
+	}
+	// Confirm the overlay file does not exist (defense: test is testing absence).
+	overlayPath := filepath.Join(cacheDir, "local-overlay.idx")
+	if _, err := os.Stat(overlayPath); err == nil {
+		t.Fatalf("test precondition violated: local-overlay.idx already exists at %s", overlayPath)
+	}
+
+	// Same package and ecosystem as in TestRunCheckLocalOverlayEscalates — no
+	// bumblebee entry, no OSV coverage (editor-extension), no Socket token.
+	// Without an overlay it must remain "allow".
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Install","tool_input":{"ecosystem":"editor-extension","package":"evil.confirmed-malicious-overlay-pkg","version":"1.0.0"}}`)
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
+
+	// No overlay, no catalog match → "allow". No error or panic.
+	if res.Decision.Level != "allow" {
+		t.Errorf("FRB-05 no-overlay guard: Decision.Level = %q, want \"allow\" "+
+			"(missing overlay must not change decision; got unexpected level)", res.Decision.Level)
+	}
+	if !res.Decision.Allow {
+		t.Errorf("FRB-05 no-overlay guard: Allow = false, want true (no overlay = no change)")
+	}
+	if res.ExitCode != exitAllow {
+		t.Errorf("FRB-05 no-overlay guard: ExitCode = %d, want %d", res.ExitCode, exitAllow)
+	}
+}
+
 // TestWriteCorpusRecordLoadSaltError exercises the LoadOrCreateSalt error branch
 // in writeCorpusRecord (handler.go:591-594). The error is injected by placing a
 // regular file at stateDir/corpus, which causes os.MkdirAll to fail when
