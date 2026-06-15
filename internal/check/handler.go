@@ -712,6 +712,9 @@ func RunAuditRecord(stdin io.Reader, auditPath string) int {
 
 	rec := audit.FromDecision(tc, d, newRecordID(), time.Now().UTC().Format(time.RFC3339), policy.AgentContext{})
 	rec.RecordType = "tool_result"
+	// Route through the same redaction as the other audit sinks so secrets in a
+	// tool_result never land in the audit log unredacted (consistency fix).
+	rec = audit.RedactRecord(rec, audit.DefaultRedactPatterns())
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper audit-record: audit write failed: %v\n", err)
 	}
@@ -861,6 +864,8 @@ func writeLLMFAlertRecord(auditPath, toolName, scanResult string, confidence flo
 		LLMFConfidence: confidence,
 		LLMFLatencyMS:  latencyMS,
 	}
+	// Redact before writing, matching the other audit sinks (consistency fix).
+	rec = audit.RedactRecord(rec, audit.DefaultRedactPatterns())
 	if err := w.Write(rec); err != nil {
 		fmt.Fprintf(os.Stderr, "beekeeper: llmf alert audit write error: %v\n", err)
 	}
