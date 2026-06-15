@@ -18,14 +18,19 @@
 //     See docs/THREAT-MODEL.md §8 for the documented overlay limitation.
 //
 // T-09-30: Overlay reads only validated declarative fields (no eval, no URL
-//          fetch). ValidateSchema already rejects unknown/exec fields at load.
+//
+//	fetch). ValidateSchema already rejects unknown/exec fields at load.
+//
 // T-09-31: A package_allowlist allow rule CAN override a catalog-corroborated
-//          block for that exact package. This is intentional and documented in
-//          docs/THREAT-MODEL.md §1 (Policy file injection surface). The
-//          override is recorded in the decision reason so it is forensically
-//          visible in the audit log.
+//
+//	block for that exact package. This is intentional and documented in
+//	docs/THREAT-MODEL.md §1 (Policy file injection surface). The
+//	override is recorded in the decision reason so it is forensically
+//	visible in the audit log.
+//
 // T-09-33: A malformed individual policy file must not crash beekeeper check.
-//          LoadPolicyDir skips invalid files with a logged warning.
+//
+//	LoadPolicyDir skips invalid files with a logged warning.
 package policyloader
 
 import (
@@ -159,9 +164,9 @@ func ApplyPolicyOverlay(files []PolicyFile, tc policy.ToolCall, base policy.Deci
 			fileHint = fmt.Sprintf(" (policy: %s)", allowFile)
 		}
 		return policy.Decision{
-			Allow:  true,
-			Level:  "allow",
-			Reason: fmt.Sprintf("policy overlay: rule %q%s allowlists this package (user-trust override — recorded for audit)", allowRuleID, fileHint),
+			Allow:   true,
+			Level:   "allow",
+			Reason:  fmt.Sprintf("policy overlay: rule %q%s allowlists this package (user-trust override — recorded for audit)", allowRuleID, fileHint),
 			RuleIDs: []string{allowRuleID},
 		}
 	}
@@ -314,6 +319,13 @@ func matchesSensitivePath(patterns []string, targetPath string) bool {
 
 // matchesSensitivePathPattern mirrors the matching logic in
 // internal/policy/path.go matchesBlockPattern to keep semantics consistent.
+//
+// The basename branch normalizes the candidate segment with normalizeBasename —
+// the SAME normalization the engine applies in internal/policy/path.go — so a
+// user sensitive_path basename rule (e.g. "secrets.json") cannot be bypassed with
+// an NTFS Alternate Data Stream ("secrets.json:stream") or a Windows
+// trailing-dot/space form ("secrets.json."). Without this, the overlay diverged
+// from the engine and those evasions slipped through (HARDEN-02 / IN-02).
 func matchesSensitivePathPattern(resolvedPath, pattern string) bool {
 	// filepath.Match for glob-style patterns (fallback to Contains for path fragments).
 	if strings.Contains(pattern, "/") || strings.Contains(pattern, "\\") {
@@ -322,8 +334,10 @@ func matchesSensitivePathPattern(resolvedPath, pattern string) bool {
 			strings.Contains(normalizePathSlashes(resolvedPath), pattern)
 	}
 
-	// Basename pattern — extract last segment.
-	seg := lastPathSegment(resolvedPath)
+	// Basename pattern — extract last segment and normalize it the same way the
+	// engine does (strip NTFS ADS suffix + trailing dots/spaces). Patterns never
+	// carry ADS/trailing-dot forms, so only the candidate side is normalized.
+	seg := normalizeBasename(lastPathSegment(resolvedPath))
 
 	// Glob: ".env.*" matches any segment with prefix ".env."
 	if strings.HasSuffix(pattern, ".*") {
@@ -350,9 +364,33 @@ func lastPathSegment(p string) string {
 	return p[i+1:]
 }
 
+// normalizeBasename canonicalizes a path's LAST segment for match purposes only.
+// It is a byte-for-byte replica of internal/policy/path.go normalizeBasename so
+// the overlay's sensitive_path basename matching cannot diverge from the engine
+// and let a Windows evasion (HARDEN-02 / IN-02) through:
+//
+//  1. NTFS Alternate Data Streams: reading "secrets.json:hidden" opens a named
+//     stream on the file "secrets.json". The seg has no path separators (it is
+//     already a last segment), so ANY ':' is an ADS separator — cut from the
+//     first ':'.
+//  2. Trailing dots/spaces: Windows silently strips trailing '.' and ' ' from
+//     filenames, so "secrets.json." and "secrets.json " resolve to
+//     "secrets.json" on disk. strings.TrimRight(seg, ". ") removes them for
+//     matching.
+//
+// Pure: imports only "strings", no I/O. Kept identical to the engine copy — if
+// the engine's normalizer changes, update this replica in lockstep.
+func normalizeBasename(seg string) string {
+	// Strip a trailing :streamname ADS suffix (cut from the first colon).
+	if i := strings.IndexByte(seg, ':'); i >= 0 {
+		seg = seg[:i]
+	}
+	// Trim trailing dots and spaces (Windows treats these as absent).
+	return strings.TrimRight(seg, ". ")
+}
+
 // normalizePathSlashes converts backslashes to forward slashes for cross-platform
 // pattern comparison (mirrors internal/policy/path.go normalizeSlashes).
 func normalizePathSlashes(p string) string {
 	return strings.ReplaceAll(p, "\\", "/")
 }
-
