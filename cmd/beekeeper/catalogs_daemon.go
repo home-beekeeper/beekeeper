@@ -59,7 +59,10 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 	if err != nil {
 		return fmt.Errorf("resolve catalog directory: %w", err)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// SEC (remediation 260615, #2/#3): the catalog directory holds the mmap index
+	// that drives block decisions; create it owner-only so a non-owner local
+	// process cannot list or replace its contents.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create catalog directory %q: %w", dir, err)
 	}
 	stateDir, err := platform.StateDir()
@@ -147,7 +150,13 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 					IndexPath:             filepath.Join(dir, "bumblebee.idx"),
 					CacheDir:              dir,
 					Enabled:               cfg.AutoQuarantineEnabled(),
-					Threshold:             2,
+					// SEC (remediation 260615, #3): thread the real dry-run and
+					// threshold config. Previously DryRun was the zero value (false)
+					// and Threshold was hardcoded 2, so the scheduled sync daemon
+					// performed LIVE quarantine moves even when the operator set the
+					// safe-default dry_run:true, and ignored a tightened threshold.
+					DryRun:    cfg.AutoQuarantineDryRun(),
+					Threshold: cfg.AutoQuarantineThreshold(),
 				}); frErr != nil {
 					// Non-fatal: log to stderr and continue. The sync must proceed.
 					fmt.Fprintf(os.Stderr, "beekeeper: corpus first-responder: %v\n", frErr)

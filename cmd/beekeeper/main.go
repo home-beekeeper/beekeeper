@@ -34,6 +34,7 @@ import (
 	"github.com/bantuson/beekeeper/internal/notify"
 	"github.com/bantuson/beekeeper/internal/nudge"
 	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/bantuson/beekeeper/internal/policy"
 	"github.com/bantuson/beekeeper/internal/quarantine"
 	"github.com/bantuson/beekeeper/internal/scan"
 	"github.com/bantuson/beekeeper/internal/shim"
@@ -46,6 +47,35 @@ func main() {
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// hookFailClosedExit renders a fail-closed deny for the given harness and exits
+// the process — it never returns. SEC (remediation 260615): in --hook mode a
+// pre-decision failure (self-quarantine, unresolvable state dir, unreadable
+// config) MUST reach the harness as a BLOCK via exit 2 + the harness-specific
+// deny form, NOT as the bare exit 1 that several harnesses treat as a hook error
+// and IGNORE (silently allowing the tool — the exact class the exit-1→exit-2
+// work fixed for the decision path). In default (non-hook) mode it exits 1, the
+// established block signal for the shim/gateway/test callers.
+func hookFailClosedExit(hook, reason string) {
+	if hook == "" {
+		fmt.Fprintln(os.Stderr, "beekeeper: "+reason)
+		os.Exit(1)
+	}
+	d := policy.Decision{
+		Allow:   false,
+		Level:   "block",
+		Reason:  reason,
+		RuleIDs: []string{"self-protect"},
+	}
+	out := check.RenderDeny(check.HarnessID(hook), d)
+	if len(out.Stdout) > 0 {
+		fmt.Fprint(os.Stdout, string(out.Stdout))
+	}
+	if len(out.Stderr) > 0 {
+		fmt.Fprint(os.Stderr, string(out.Stderr))
+	}
+	os.Exit(out.ExitCode)
 }
 
 // scanOnDeltaFn is the function called by the catalogs watch onDelta callback
@@ -275,20 +305,35 @@ func newCheckCmd() *cobra.Command {
 		// which feeds json.Marshal (injection-safe).
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// SEC (remediation 260615): in --hook mode, any pre-decision failure
+			// must reach the harness as a fail-closed BLOCK (exit 2 + the deny
+			// form), not the bare exit-1 that several harnesses treat as a hook
+			// error and IGNORE (silently allowing the tool). failClosed routes such
+			// errors through hookFailClosedExit when --hook is set; in default mode
+			// it returns the error for the normal exit-1 path.
+			failClosed := func(err error) error {
+				if hookTarget != "" {
+					hookFailClosedExit(hookTarget, err.Error())
+				}
+				return err
+			}
+
 			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard — runs before any
 			// enforcement logic. Refuses to continue if the running binary version
-			// appears in the beekeeper-self compromised-version list.
+			// appears in the beekeeper-self compromised-version list. A
+			// self-quarantine (or integrity) failure under --hook must BLOCK the
+			// tool call (exit 2), never exit 1 — this is the highest-severity case.
 			if err := enforceSelfQuarantine(cmd); err != nil {
-				return err
+				return failClosed(err)
 			}
 
 			catalogDir, err := platform.CatalogDir()
 			if err != nil {
-				return fmt.Errorf("resolve catalog directory: %w", err)
+				return failClosed(fmt.Errorf("resolve catalog directory: %w", err))
 			}
 			auditDir, err := platform.AuditDir()
 			if err != nil {
-				return fmt.Errorf("resolve audit directory: %w", err)
+				return failClosed(fmt.Errorf("resolve audit directory: %w", err))
 			}
 
 			indexPath := filepath.Join(catalogDir, "bumblebee.idx")
@@ -299,7 +344,7 @@ func newCheckCmd() *cobra.Command {
 			// config_resolve.go (shared by check/gateway/watch/scan).
 			cfg, err := resolveConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("load config: %w", err)
+				return failClosed(fmt.Errorf("load config: %w", err))
 			}
 
 			// Shim invocation: build ToolCall JSON from flags using json.Marshal.
@@ -335,8 +380,7 @@ func newCheckCmd() *cobra.Command {
 				}
 				data, merr := json.Marshal(tc)
 				if merr != nil {
-					os.Exit(1)
-					return nil
+					return failClosed(fmt.Errorf("marshal shim tool call: %w", merr))
 				}
 				stdin = strings.NewReader(string(data))
 			}

@@ -103,8 +103,12 @@ func TestRunCatalogsSyncFirstResponder(t *testing.T) {
 	}
 
 	// Write a config.json at $BEEKEEPER_HOME/beekeeper/config.json with
-	// corpus.enabled=true so resolveConfig picks it up.
-	cfgJSON := `{"corpus":{"enabled":true}}`
+	// corpus.enabled=true so resolveConfig picks it up. This gate verifies the
+	// LIVE first-responder arm, so it explicitly opts into live quarantine moves
+	// via auto_quarantine.dry_run:false from the trusted user-config layer — the
+	// daemon now honors dry_run (default true = observe-only) per remediation
+	// 260615 #3, so the live-move expectation below requires the explicit opt-in.
+	cfgJSON := `{"corpus":{"enabled":true},"auto_quarantine":{"enabled":true,"dry_run":false}}`
 	cfgPath := filepath.Join(stateDir, "config.json")
 	if err := os.WriteFile(cfgPath, []byte(cfgJSON), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
