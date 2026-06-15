@@ -15,7 +15,8 @@ findings:
   warning: 4
   info: 3
   total: 7
-status: issues_found
+status: resolved
+resolved: 2026-06-15
 ---
 
 # Phase 25: Code Review Report
@@ -23,7 +24,16 @@ status: issues_found
 **Reviewed:** 2026-06-15T00:00:00Z
 **Depth:** standard
 **Files Reviewed:** 6
-**Status:** issues_found
+**Status:** resolved (all 4 warnings fixed 2026-06-15)
+
+## Resolution (2026-06-15)
+
+All 4 warnings fixed (commits `b87416e` WR-01/WR-04, `7b53edf` WR-02/WR-03); full suite green (27 pkgs), `go vet` clean, zero new deps. The 3 Info findings were reviewed and left as-is (out of fix scope).
+
+- **WR-01** (LAUNCH-01 false-confidence gate): seed now populates `PushEnvelope.Signature.BehaviorSignatureHash` via `corpus.BehaviorSigHash(...)`; assertion #9 reads the STORED field (`catalogs_daemon_test.go:386`) and fails if empty/short/non-hex.
+- **WR-02** (LAUNCH-03 false-confidence gate): `TestOfflineProtective` now drives a well-formed `Install` input against `buildBlockingTestIndex` (signed-critical → BlockAt 1) and asserts `Allow==false` + `Level=="block"` + `Reason` contains "catalog" — a genuine catalog-backed offline block (editor-extension ecosystem skips OSV → no HTTP, truly offline). Decode-error fail-closed path coverage remains in `TestMalformedJSONFailsClosed`.
+- **WR-03**: p99 gate now measures in microseconds with a warmup iteration; budget unchanged (100ms / 200ms Windows).
+- **WR-04**: behavior-layer assertion #8 now requires exact `ToolName == "@nrwl/nx-console"` instead of the always-true OR.
 
 ## Summary
 
