@@ -611,6 +611,93 @@ func TestExtractBashCredentialPaths(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestExtractBashWriteTargetsGaps (finding #4)
+// ---------------------------------------------------------------------------
+
+// TestExtractBashWriteTargetsGaps locks in the previously-missed write-target
+// forms: dd `of=FILE`, sed `-i FILE`, here-string `<<<` operands, and
+// pipe-prefixed `| tee FILE`. Each must surface a bare, matchable path token so
+// the credential blocklist and hook-guard Bash branch can act on it.
+func TestExtractBashWriteTargetsGaps(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  string
+		want string // a bare path that must appear among extracted targets
+	}{
+		{
+			name: "dd of= operand strips key prefix",
+			cmd:  "dd if=/dev/zero of=~/.ssh/authorized_keys",
+			want: "~/.ssh/authorized_keys",
+		},
+		{
+			name: "dd of= operand under state dir",
+			cmd:  "dd if=evil of=~/.beekeeper/config.json bs=1",
+			want: "~/.beekeeper/config.json",
+		},
+		{
+			name: "sed -i in-place target captured",
+			cmd:  "sed -i 's/x/y/' ~/.ssh/config",
+			want: "~/.ssh/config",
+		},
+		{
+			name: "sed --in-place long flag",
+			cmd:  "sed --in-place ~/.ssh/config",
+			want: "~/.ssh/config",
+		},
+		{
+			name: "here-string operand captured",
+			cmd:  "cat <<< ~/.ssh/id_rsa",
+			want: "~/.ssh/id_rsa",
+		},
+		{
+			name: "pipe-prefixed tee target (spaced)",
+			cmd:  "echo k | tee ~/.ssh/authorized_keys",
+			want: "~/.ssh/authorized_keys",
+		},
+		{
+			name: "pipe-prefixed tee target (glued pipe)",
+			cmd:  "echo k |tee ~/.ssh/authorized_keys",
+			want: "~/.ssh/authorized_keys",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := extractBashWriteTargets(c.cmd)
+			assertContains(t, got, c.want)
+		})
+	}
+}
+
+// TestExtractBashWriteTargetsLinkVerbs proves `ln`/`mklink` are audited write
+// verbs so a symlink/junction planted toward the StateDir or binary is visible
+// to the self-protection and credential paths (finding #3 secondary).
+func TestExtractBashWriteTargetsLinkVerbs(t *testing.T) {
+	cases := []struct {
+		cmd  string
+		want string
+	}{
+		{"ln -s /tmp/evil ~/.beekeeper/config.json", "~/.beekeeper/config.json"},
+		{"ln ~/.beekeeper/state.json /tmp/copy", "~/.beekeeper/state.json"},
+		{`mklink C:\link ~/.beekeeper/policies`, "~/.beekeeper/policies"},
+	}
+	for _, c := range cases {
+		got := extractBashWriteTargets(c.cmd)
+		assertContains(t, got, c.want)
+	}
+}
+
+// TestOfOperandLeftBoundary ensures the dd `of=` operand parser does not
+// false-match `conf=` / `prof=` style tokens lacking a left shell boundary.
+func TestOfOperandLeftBoundary(t *testing.T) {
+	got := extractBashWriteTargets("echo conf=~/.ssh/id_rsa")
+	for _, g := range got {
+		if g == "~/.ssh/id_rsa" {
+			t.Errorf("conf= must NOT be parsed as an of= operand; got %v", got)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestFirstShellToken
 // ---------------------------------------------------------------------------
 

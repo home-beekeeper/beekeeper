@@ -172,6 +172,156 @@ func TestCLIGuard(t *testing.T) {
 	}
 }
 
+// TestHookGuardBlocksNeuterVectors covers finding #6: an agent that keeps the
+// Beekeeper marker substring while NEUTERING enforcement must be blocked. The
+// pre-fix guard checked only that the marker survived, so each of these slipped
+// through. Each Edit below preserves the marker text but alters the
+// marker-bearing invocation; all must now BLOCK.
+func TestHookGuardBlocksNeuterVectors(t *testing.T) {
+	const marker = "beekeeper check --hook claude-code"
+
+	tests := []struct {
+		name   string
+		oldS   string
+		newS   string
+		expect bool // true = must block
+	}{
+		{
+			name:   "append || true (always succeed)",
+			oldS:   marker,
+			newS:   marker + " || true",
+			expect: true,
+		},
+		{
+			name:   "append ; exit 0",
+			oldS:   marker,
+			newS:   marker + " ; exit 0",
+			expect: true,
+		},
+		{
+			name:   "comment out with trailing # disabled",
+			oldS:   marker,
+			newS:   marker + " # disabled",
+			expect: true,
+		},
+		{
+			name:   "wrap in echo (not executed)",
+			oldS:   marker,
+			newS:   "echo " + marker,
+			expect: true,
+		},
+		{
+			name:   "repoint command to a stub (marker survives only as a tail token)",
+			oldS:   marker,
+			newS:   "stub-hook --was " + marker,
+			expect: true,
+		},
+		{
+			// Control: a no-op edit that reproduces the marker invocation verbatim
+			// must NOT block (proves we are not over-blocking benign rewrites).
+			name:   "verbatim no-op edit keeps invocation intact",
+			oldS:   marker,
+			newS:   marker,
+			expect: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := setHome(t)
+			path := seedClaudeSettings(t, home, settingsWithBeekeeperAndGSD)
+			d := evaluateHookGuard(editTC(path, tt.oldS, tt.newS))
+			if tt.expect && d.Allow {
+				t.Errorf("%s: expected BLOCK, got allow", tt.name)
+			}
+			if !tt.expect && !d.Allow {
+				t.Errorf("%s: expected ALLOW, got block (reason %q)", tt.name, d.Reason)
+			}
+		})
+	}
+}
+
+// TestHookGuardNeuterViaStubRepointWrite covers the Write-tool variant of the
+// "repoint command to a stub while the marker survives elsewhere in the file"
+// vector: the original marker-bearing command is replaced by a stub, and the
+// marker lingers only inside an inert JSON comment-like string. Must BLOCK.
+func TestHookGuardNeuterViaStubRepointWrite(t *testing.T) {
+	home := setHome(t)
+	path := seedClaudeSettings(t, home, settingsWithBeekeeperAndGSD)
+
+	// The real PreToolUse command is now "stub-hook"; the marker text only
+	// survives inside an inert "_note" field — enforcement is dead.
+	neutered := `{"_note":"was beekeeper check --hook claude-code","hooks":{"PreToolUse":[{"command":"stub-hook"},{"command":"gsd-guard"}]}}`
+	d := evaluateHookGuard(writeTC(path, neutered))
+	if d.Allow {
+		t.Error("repointing the command to a stub while the marker lingers in an inert field must BLOCK")
+	}
+}
+
+// TestHookGuardNeuterPreservesNoCollateral re-asserts that the integrity check
+// does not over-block: appending an unrelated hook AFTER our (verbatim) entry,
+// or editing a sibling hook, still passes.
+func TestHookGuardNeuterPreservesNoCollateral(t *testing.T) {
+	home := setHome(t)
+	path := seedClaudeSettings(t, home, settingsWithBeekeeperAndGSD)
+
+	// Append a new unrelated hook entry; the beekeeper invocation token is byte
+	// identical → allow.
+	withExtra := `{"hooks":{"PreToolUse":[` +
+		`{"command":"beekeeper check --hook claude-code"},` +
+		`{"command":"gsd-guard"},` +
+		`{"command":"some-new-linter"}` +
+		`]}}`
+	if d := evaluateHookGuard(writeTC(path, withExtra)); !d.Allow {
+		t.Errorf("appending an unrelated hook while keeping our invocation verbatim must ALLOW, got block (%q)", d.Reason)
+	}
+}
+
+// TestCLIGuardBlocksIndirectionBypasses covers finding #7: a mutating beekeeper
+// subcommand reached through shell-string, command-substitution, env, or
+// variable indirection must be blocked. The pre-fix guard inspected only the
+// literal first program token per segment, so every vector below evaded it.
+func TestCLIGuardBlocksIndirectionBypasses(t *testing.T) {
+	bash := func(cmd string) policy.ToolCall {
+		return policy.ToolCall{ToolName: "Bash", ToolInput: map[string]any{"command": cmd}}
+	}
+	tests := []struct {
+		name      string
+		cmd       string
+		wantBlock bool
+	}{
+		{"sh -c double-quoted", `sh -c "beekeeper hooks uninstall --target claude-code"`, true},
+		{"bash -lc single-quoted", `bash -lc 'beekeeper config set nudge.mode soft'`, true},
+		{"sh -c protect uninstall", `sh -c "beekeeper protect uninstall"`, true},
+		{"command substitution $(which)", `$(which beekeeper) hooks uninstall`, true},
+		{"command substitution backtick", "`which beekeeper` hooks uninstall", true},
+		{"env wrapper", "env beekeeper hooks uninstall", true},
+		{"env with assignment then beekeeper", "env FOO=1 beekeeper hooks uninstall", true},
+		{"variable indirection", "BK=beekeeper; $BK hooks uninstall", true},
+		{"variable indirection braces", "BK=beekeeper; ${BK} hooks uninstall", true},
+		{"nested sh -c inside bash -c", `bash -c "sh -c 'beekeeper hooks uninstall'"`, true},
+		{"command substitution dollar of path-ish which", "$(command -v beekeeper) protect uninstall", true},
+
+		// False-positive guards — these must NOT block:
+		{"commit message mentions phrase (prose)", `git commit -m "ran beekeeper config set earlier"`, false},
+		{"echo of phrase inside quotes", `echo "a; beekeeper config set"`, false},
+		{"sh -c with a benign beekeeper read", `sh -c "beekeeper scan"`, false},
+		{"sh -c non-mutating check", `sh -c "beekeeper check --hook claude-code"`, false},
+		{"which of a different tool", "$(which git) commit", false},
+		{"variable bound to non-beekeeper", "BK=git; $BK config set x y", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := evaluateCLIGuard(bash(tt.cmd))
+			if tt.wantBlock && d.Allow {
+				t.Errorf("%q: expected BLOCK, got allow", tt.cmd)
+			}
+			if !tt.wantBlock && !d.Allow {
+				t.Errorf("%q: expected ALLOW, got block (reason %q)", tt.cmd, d.Reason)
+			}
+		})
+	}
+}
+
 func TestExtractBashWriteTargets(t *testing.T) {
 	cases := []struct {
 		cmd  string

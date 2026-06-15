@@ -276,6 +276,7 @@ func canonicalizePathForms(raw string) []string {
 	// Lexically-cleaned form: same prefix as canonicalizePath but WITHOUT
 	// EvalSymlinks, so an ancestor symlink cannot strip the sensitive fragment.
 	p := expandWinEnvVars(raw)
+	p = expandShellEnvVars(p)
 	p = expandHome(p)
 	abs, err := filepath.Abs(p)
 	if err != nil {
@@ -286,10 +287,20 @@ func canonicalizePathForms(raw string) []string {
 	// Symlink-resolved form: the current canonicalizePath output (unchanged).
 	resolved := canonicalizePath(raw)
 
+	// Parent-resolved form (finding #3): when the LEAF does not yet exist (a
+	// Write/Edit creating a new file) but its PARENT directory is a symlink INTO
+	// a protected location (e.g. the StateDir), filepath.EvalSymlinks on the full
+	// path errors on the missing leaf and `resolved` falls back to the LEXICAL
+	// path — which hides the real StateDir prefix and dodges the self-protection
+	// match. Resolve the parent directory with EvalSymlinks and re-append the
+	// leaf so the real (de-symlinked) destination is matched. EvalSymlinks
+	// succeeds here because the PARENT exists even when the leaf does not.
+	parentResolved := resolveParentSymlink(abs)
+
 	// De-duplicate: drop empties and exact duplicates while preserving order
-	// (lexical first, then resolved).
+	// (lexical, resolved, parent-resolved).
 	var forms []string
-	for _, f := range []string{lexical, resolved} {
+	for _, f := range []string{lexical, resolved, parentResolved} {
 		if f == "" {
 			continue
 		}
@@ -305,6 +316,28 @@ func canonicalizePathForms(raw string) []string {
 		}
 	}
 	return forms
+}
+
+// resolveParentSymlink resolves the PARENT directory of abs with
+// filepath.EvalSymlinks and re-appends the leaf, returning a forward-slash path.
+// This recovers the real destination for a not-yet-existing leaf under a
+// symlinked directory (finding #3) — EvalSymlinks of the full path would error
+// on the missing leaf, but the parent dir exists and resolves cleanly.
+//
+// Returns "" when abs has no separable parent or the parent cannot be resolved;
+// callers treat "" as "no additional form" (the lexical/resolved forms remain
+// fail-closed). abs is expected to already be an absolute, expanded path.
+func resolveParentSymlink(abs string) string {
+	parent := filepath.Dir(abs)
+	base := filepath.Base(abs)
+	if parent == abs || base == "." || base == string(filepath.Separator) {
+		return "" // no separable leaf (root or degenerate)
+	}
+	resolvedParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return "" // parent unresolvable — nothing to add
+	}
+	return filepath.ToSlash(filepath.Join(resolvedParent, base))
 }
 
 // bashReadVerbs is the conservative allowlist of read-command prefixes that
@@ -541,17 +574,75 @@ func mergeDecisions(base, overlay policy.Decision) policy.Decision {
 // scope and are out of scope here.
 var bashWriteVerbs = []string{
 	"rm ", "cp ", "mv ", "tee ", "install ", "dd ", "sed ", "truncate ",
+	"ln ", "mklink ", // link creation toward the StateDir/binary is auditable (finding #3)
 	"Set-Content ", "Out-File ", "Add-Content ", "Remove-Item ", "ri ",
 	"del ", "erase ", "move ", "copy ",
 }
 
 // extractBashWriteTargets scans a Bash command for write/delete targets: shell
-// redirects (>, >>, 2>, &>) and the arguments of bashWriteVerbs. Returns raw
-// tokens verbatim (env-var/tilde expansion happens downstream in canonicalizePath).
+// redirects (>, >>, 2>, &>), the arguments of bashWriteVerbs, `of=` operands
+// (dd), and here-string (`<<<`) operands. Returns raw tokens verbatim
+// (env-var/tilde expansion happens downstream in canonicalizePath).
 func extractBashWriteTargets(cmd string) []string {
 	var paths []string
 	paths = append(paths, extractRedirectTargets(cmd)...)
 	paths = append(paths, extractWriteVerbTargets(cmd)...)
+	paths = append(paths, extractOperandTargets(cmd)...)
+	paths = append(paths, extractHereStringTargets(cmd)...)
+	return paths
+}
+
+// extractOperandTargets returns the file operands of `key=FILE` argument forms
+// that name a write destination — currently `of=FILE` (dd's output file). The
+// `of=` prefix is stripped so the bare path canonicalizes/matches correctly
+// (without this, `dd of=~/.ssh/x` extracted the literal token `of=~/.ssh/x`,
+// which never resolves under the /.ssh/ prefix — finding gap #4). The operand is
+// boundary-anchored on the left like the verb forms.
+func extractOperandTargets(cmd string) []string {
+	const key = "of="
+	var paths []string
+	from := 0
+	for {
+		rel := strings.Index(cmd[from:], key)
+		if rel == -1 {
+			break
+		}
+		idx := from + rel
+		// Require a left shell boundary so "prof=" / "conf=" do not match.
+		if idx != 0 && !isShellBoundary(cmd[idx-1]) {
+			from = idx + 1
+			continue
+		}
+		tok := firstShellToken(cmd[idx+len(key):])
+		if tok != "" {
+			paths = append(paths, tok)
+		}
+		from = idx + len(key)
+	}
+	return paths
+}
+
+// extractHereStringTargets returns the operand following each here-string
+// operator `<<<`. A here-string feeds its operand as stdin; capturing it keeps a
+// path-shaped operand (e.g. `tee FILE <<< ~/.ssh/x` or a here-string naming a
+// sensitive path) visible to the credential blocklist. Over-extraction is safe:
+// the token only blocks when it resolves under a protected/sensitive prefix.
+func extractHereStringTargets(cmd string) []string {
+	const op = "<<<"
+	var paths []string
+	from := 0
+	for {
+		rel := strings.Index(cmd[from:], op)
+		if rel == -1 {
+			break
+		}
+		idx := from + rel
+		tok := firstShellToken(cmd[idx+len(op):])
+		if tok != "" {
+			paths = append(paths, tok)
+		}
+		from = idx + len(op)
+	}
 	return paths
 }
 

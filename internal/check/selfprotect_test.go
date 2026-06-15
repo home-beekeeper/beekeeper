@@ -11,6 +11,86 @@ import (
 	"github.com/bantuson/beekeeper/internal/policy"
 )
 
+// TestSelfProtectSymlinkedParentNonExistentLeaf covers finding #3: a Write to a
+// not-yet-existing file under a directory that is a SYMLINK into the StateDir.
+// filepath.EvalSymlinks on the full path errors on the missing leaf and the
+// resolver falls back to the lexical (symlink) path, hiding the real StateDir —
+// so the self-protection prefix match misses. With the parent-resolved form the
+// new leaf still resolves under the StateDir and is blocked.
+func TestSelfProtectSymlinkedParentNonExistentLeaf(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("BEEKEEPER_HOME", tmp)
+	stateDir := filepath.Join(tmp, "beekeeper")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Plant a symlink that points INTO the StateDir, living OUTSIDE it so its
+	// lexical path carries no StateDir prefix.
+	linkDir := filepath.Join(tmp, "outside", "link-to-state")
+	if err := os.MkdirAll(filepath.Dir(linkDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(stateDir, linkDir); err != nil {
+		// Windows without the SeCreateSymbolicLink privilege (Developer Mode off)
+		// cannot create symlinks — skip cleanly; CI Linux/macOS exercise this.
+		if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "privilege") {
+			t.Skipf("os.Symlink requires privilege on this host, skipping: %v", err)
+		}
+		t.Fatal(err)
+	}
+
+	// The leaf does NOT exist yet — this is a Write creating a NEW file under the
+	// symlinked-in directory. Its lexical path is outside/link-to-state/evil.json,
+	// which carries no StateDir prefix; only parent-symlink resolution exposes the
+	// real StateDir destination.
+	target := filepath.Join(linkDir, "evil.json")
+	if _, err := os.Stat(target); err == nil {
+		t.Fatal("test precondition: leaf must not exist yet")
+	}
+
+	run := func(tool string, kv map[string]string) Result {
+		return runCheckWithIndex(context.Background(), strings.NewReader(toolCallJSON(tool, kv)), closedConfig(), emptySelfIdx(), auditPathIn(t))
+	}
+
+	res := run("Write", map[string]string{"file_path": target})
+	if res.Decision.Allow {
+		t.Errorf("write to a new file under a StateDir-symlinked directory must BLOCK (finding #3); reason=%q", res.Decision.Reason)
+	}
+}
+
+// TestCanonicalizePathFormsParentSymlinkResolves is the unit-level proof that
+// canonicalizePathForms surfaces a form whose PARENT symlink is resolved, even
+// when the leaf does not exist (finding #3).
+func TestCanonicalizePathFormsParentSymlinkResolves(t *testing.T) {
+	realDir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "lnk")
+	if err := os.Symlink(realDir, link); err != nil {
+		if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "privilege") {
+			t.Skipf("os.Symlink requires privilege on this host, skipping: %v", err)
+		}
+		t.Fatal(err)
+	}
+
+	// realDir resolves to its EvalSymlinks form (macOS /var -> /private/var etc.).
+	resolvedReal, err := filepath.EvalSymlinks(realDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(realDir): %v", err)
+	}
+	wantPrefix := filepath.ToSlash(resolvedReal)
+
+	forms := canonicalizePathForms(filepath.Join(link, "newleaf.json"))
+	found := false
+	for _, f := range forms {
+		if strings.HasPrefix(f, wantPrefix) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a form rooted at the resolved real dir %q for a non-existent leaf under a symlink; forms=%v", wantPrefix, forms)
+	}
+}
+
 func emptySelfIdx() catalogIndex {
 	return &mapMultiIndex{matchesByKey: map[string][]policy.CatalogMatch{}}
 }
