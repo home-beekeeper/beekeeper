@@ -21,6 +21,11 @@ import (
 
 // buildTestIndex writes a small real mmap index in dir containing the
 // compromised Nx Console entry and returns the index path.
+//
+// The entry is UNSIGNED (CatalogSignature == "") so it yields a single-source
+// warn decision (DefaultCorroborationThresholds: unsigned → warn-only, never
+// block). Use buildBlockingTestIndex when a genuine catalog-backed block is
+// required (WR-02).
 func buildTestIndex(t *testing.T, dir string) string {
 	t.Helper()
 	entries := []catalog.Entry{
@@ -32,11 +37,43 @@ func buildTestIndex(t *testing.T, dir string) string {
 			Versions:      []string{"18.95.0"},
 			Severity:      "critical",
 			CatalogSource: "bumblebee",
+			// CatalogSignature intentionally empty → Signed:false → warn-only.
 		},
 	}
 	idxPath := filepath.Join(dir, "bumblebee.idx")
 	if err := catalog.BuildIndex(idxPath, entries); err != nil {
 		t.Fatalf("BuildIndex: %v", err)
+	}
+	return idxPath
+}
+
+// buildBlockingTestIndex writes an index with a SIGNED critical entry for the
+// nrwl.angular-console editor-extension (WR-02 / LAUNCH-03 offline proof).
+//
+// With CatalogSignature non-empty → Signed:true → signedCount:1.
+// DefaultCorroborationThresholds has SeverityOverrides["critical"]{BlockAt:1},
+// so a single signed critical source satisfies effectiveBlockAt:1 → "block".
+// The editor-extension ecosystem is not covered by OSV (osvEcosystem returns
+// ("", false)), so no HTTP call is made and no Socket adapter is configured in
+// tests — the block decision comes from bumblebee alone, exactly proving the
+// "offline machine blocks on last-synced mmap catalog" property (LAUNCH-03).
+func buildBlockingTestIndex(t *testing.T, dir string) string {
+	t.Helper()
+	entries := []catalog.Entry{
+		{
+			ID:               "stepsecurity-2026-05-18-vscode-nrwl-angular-console-compromised-signed",
+			Name:             "nrwl.angular-console compromise (signed)",
+			Ecosystem:        "editor-extension",
+			Package:          "nrwl.angular-console",
+			Versions:         []string{"18.95.0"},
+			Severity:         "critical",
+			CatalogSource:    "bumblebee",
+			CatalogSignature: "test-sig-present", // non-empty → Signed:true → signedCount:1 → block at critical.BlockAt:1
+		},
+	}
+	idxPath := filepath.Join(dir, "bumblebee-blocking.idx")
+	if err := catalog.BuildIndex(idxPath, entries); err != nil {
+		t.Fatalf("BuildIndex (blocking): %v", err)
 	}
 	return idxPath
 }
@@ -1579,13 +1616,22 @@ func TestBenchmarkRunCheckGate(t *testing.T) {
 	// ReadFile tool input — never a Bash npm-install (see function comment above).
 	const stdinJSON = `{"agent_name":"a","tool_name":"ReadFile","tool_input":{"path":"/bench/fixture/beekeeper-test-file.txt"}}`
 
+	// Warmup: one un-timed call to prime caches, page in the mmap, and avoid
+	// first-call initialization costs (open+mmap index, salt load, audit dir
+	// creation) dominating the p99 slot (WR-03).
+	runCheck(context.Background(), strings.NewReader(stdinJSON), cfg, idxPath, filepath.Join(dir, "audit-warmup.ndjson"), dir, defaultOpener, io.Discard)
+
+	// Measure in MICROSECONDS for real sub-millisecond resolution (WR-03).
+	// time.Since(start).Milliseconds() truncates sub-ms to 0–1, giving almost
+	// no resolution for a ~25ms baseline operation and masking 2–3× regressions
+	// that still land under the 100ms budget.
 	samples := make([]int64, 0, N)
 	for i := 0; i < N; i++ {
 		stdin := strings.NewReader(stdinJSON)
 		start := time.Now()
 		runCheck(context.Background(), stdin, cfg, idxPath, filepath.Join(dir, "audit.ndjson"), dir, defaultOpener, io.Discard)
-		elapsedMS := time.Since(start).Milliseconds()
-		samples = append(samples, elapsedMS)
+		elapsedUS := time.Since(start).Microseconds()
+		samples = append(samples, elapsedUS)
 	}
 
 	// Compute p99 via nearest-rank: ceil(0.99 * N) - 1.
@@ -1599,71 +1645,83 @@ func TestBenchmarkRunCheckGate(t *testing.T) {
 	if p99Idx >= len(sorted) {
 		p99Idx = len(sorted) - 1
 	}
-	p99 := sorted[p99Idx]
+	p99US := sorted[p99Idx]
 
 	// Budget: 100ms on Linux/macOS (dev hardware gate); 200ms on Windows CI runners.
 	// Phase-23 23-VALIDATION.md §Manual-Only measured ~25ms on dev hardware, giving
-	// 4x headroom on Linux/macOS and 8x on Windows.
-	budgetMS := int64(100)
+	// 4x headroom on Linux/macOS and 8x on Windows. Budget is unchanged (WR-03);
+	// only the measurement unit changed to microseconds for real resolution.
+	budgetUS := int64(100 * 1000) // 100ms expressed in µs
 	if runtime.GOOS == "windows" {
-		budgetMS = 200
+		budgetUS = 200 * 1000 // 200ms expressed in µs
 	}
 
-	if p99 > budgetMS {
-		t.Errorf("LAUNCH-03: runCheck p99 = %dms with corpus enabled; want < %dms "+
+	if p99US > budgetUS {
+		t.Errorf("LAUNCH-03: runCheck p99 = %dµs (%dms) with corpus enabled; want < %dµs (%dms) "+
 			"(corpus loop must stay off the hot path — measured ~25ms on dev hardware)",
-			p99, budgetMS)
+			p99US, p99US/1000, budgetUS, budgetUS/1000)
 	}
 }
 
-// TestOfflineProtective proves fail-closed block on a disconnected machine:
-// a known-malicious entry in the last-synced mmap catalog is still blocked
-// when no live network catalog sources are configured (offline = default test
-// state — tests never configure live network sources).
+// TestOfflineProtective proves that a known-malicious entry in the last-synced
+// mmap catalog is still blocked when no live network catalog sources are
+// configured (offline = default test state — tests never configure live network
+// sources or a Socket API token).
 //
 // This satisfies LAUNCH-03 offline: a disconnected machine does not silently
 // fail-open on the last-synced catalog. The mmap index IS the disconnected
 // machine's sole defense boundary.
 //
-// offline = default test state (no network sources configured); the mmap index
-// is the last-synced catalog; a blocked decision proves the disconnected machine
-// stays protective (fail-closed per CLAUDE.md fail-closed-by-default invariant).
+// The test drives a well-formed, valid Install input for the flagged package so
+// the catalog lookup IS exercised and the block comes from the catalog decision
+// path — not from the decode-error fail-closed guard. The previous implementation
+// sent malformed JSON which short-circuited at JSON decode before any catalog
+// lookup, meaning the built index was never consulted and a regression in
+// catalog-backed offline blocking would not turn the gate red (WR-02).
+//
+// Why editor-extension blocks from a single signed source: the ecosystem is not
+// covered by OSV (osvEcosystem returns ("", false) → no HTTP call), no Socket
+// token is configured in tests, so the only source is the bumblebee mmap index.
+// buildBlockingTestIndex seeds a SIGNED critical entry. DefaultCorroborationThresholds
+// has SeverityOverrides["critical"]{BlockAt:1}, so signedCount:1 >= effectiveBlockAt:1
+// → "block". The block comes from the catalog, not from any network source or
+// failure path. Removing the buildBlockingTestIndex call (or passing an empty index
+// path) would change the result to fail-closed (missing index), so the built index
+// IS the primary defense boundary being tested.
 func TestOfflineProtective(t *testing.T) {
 	dir := t.TempDir()
-	// buildTestIndex seeds a catalog entry for nrwl.angular-console (ecosystem
-	// editor-extension) flagged as critical by one source. Single-source = warn;
-	// the test asserts the warn path also fails to Allow on a dangerous input
-	// as a corroboration baseline, OR we can look for a fail-closed path.
-	//
-	// The simplest offline-protective assertion: a malformed JSON input (which
-	// triggers the fail-closed fail-decode path, Allow=false) — confirming the
-	// disconnected machine still blocks without ANY live network source. The
-	// catalog miss on a malformed input exercises the top-level fail-closed guard.
-	//
-	// For a catalog-backed offline block, we drive RunCheck with the Nx Console
-	// compromised editor-extension package that IS in our test index. Because the
-	// test catalog has only ONE source (warn threshold, not block), the offline
-	// block is proven via the fail-closed fail-decode sentinel path — reflecting
-	// that even without corroboration the hook fails closed on invalid input.
-	//
-	// Alternative block proof: inject a fail-closed stimulus (malformed JSON)
-	// with no network sources configured. This is the definitive offline proof:
-	// Allow=false even with no catalog, no network, no sources.
-	idxPath := buildTestIndex(t, dir)
+	// buildBlockingTestIndex seeds a SIGNED critical entry so the policy engine
+	// reaches the catalog block path. See its doc comment for the escalation logic.
+	idxPath := buildBlockingTestIndex(t, dir)
 
-	// Offline stimulus: malformed JSON (the canonical fail-closed path that blocks
-	// with no catalog lookup needed — proving offline machines fail closed).
-	stdin := strings.NewReader("{bad json — offline fail-closed proof}")
+	// Well-formed Install input for the flagged package. The direct-shape input
+	// (ecosystem + package + version) triggers catalog lookup immediately — no
+	// Bash command parsing, no nudge subprocess, no OSV HTTP call for
+	// editor-extension. This is the cleanest path to prove a catalog-backed block.
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Install","tool_input":{"ecosystem":"editor-extension","package":"nrwl.angular-console","version":"18.95.0"}}`)
 
 	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), t.TempDir())
 
-	// Must be blocked (Allow == false) even with no live network sources.
+	// LAUNCH-03: must be blocked by the catalog decision, not by a decode error.
 	if res.Decision.Allow {
-		t.Errorf("LAUNCH-03 offline: Allow = true with no network sources configured; "+
-			"want false — offline machine must fail-closed (not allow) on error path")
+		t.Errorf("LAUNCH-03 offline: Allow = true for a signed critical catalog entry "+
+			"with no live network sources; want false — offline mmap catalog must block")
 	}
 	if res.ExitCode == exitAllow {
 		t.Errorf("LAUNCH-03 offline: ExitCode = %d (allow), want non-zero; "+
-			"offline fail-closed must return a block exit code", res.ExitCode)
+			"catalog-backed offline block must return a block exit code", res.ExitCode)
 	}
+	// Confirm the block came from the catalog path, not from a decode/timeout failure.
+	// A catalog-backed block sets Level="block" and Reason contains "catalog match"
+	// (from policy.Evaluate → corroborate → "corroborated catalog match: bumblebee").
+	if res.Decision.Level != "block" {
+		t.Errorf("LAUNCH-03 offline: Decision.Level = %q, want %q (catalog block)", res.Decision.Level, "block")
+	}
+	if !strings.Contains(strings.ToLower(res.Decision.Reason), "catalog") {
+		t.Errorf("LAUNCH-03 offline: Decision.Reason = %q; want it to contain 'catalog' "+
+			"(proving block came from catalog lookup, not decode-error path)", res.Decision.Reason)
+	}
+
+	// Secondary: the malformed-JSON fail-closed path is already covered by the
+	// existing TestMalformedJSONFailsClosed test, so it is not duplicated here.
 }
