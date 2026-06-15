@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
 	"github.com/bantuson/beekeeper/internal/llamafirewall"
 	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/bantuson/beekeeper/internal/policyloader"
 )
 
 // upstreamCallCount is an atomic counter used by tests that need to verify
@@ -295,6 +299,172 @@ func TestGatewayProxyForwards(t *testing.T) {
 		t.Errorf("upstream call count = %d, want 1", cc.count())
 	}
 	_ = rr
+}
+
+// TestGatewayBlocksDuplicateKeyBody verifies the request-smuggling guard
+// (T-04-03-11): a tools/call whose params contain a duplicate key
+// ({"name":"safe","name":"shell_exec"}) is rejected at parse time with a
+// JSON-RPC -32600 error and the upstream is NEVER called. Without the guard,
+// policy would evaluate the Go last-wins value while the raw bytes forwarded
+// upstream could be parsed first-wins → policy/exec divergence.
+func TestGatewayBlocksDuplicateKeyBody(t *testing.T) {
+	// allowIdx would otherwise let any tool through — we must see the parse-time
+	// block, not an allow.
+	upstream, cc := mockUpstream(t, `{"jsonrpc":"2.0","id":1,"result":{}}`)
+	h := newTestHandler("tok", allowIdx(), upstream.URL)
+
+	// Duplicate "name" key in the params object: "safe" vs "shell_exec".
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"safe","name":"shell_exec","arguments":{}}}`)
+	rr := postJSON(t, h, "tok", body)
+
+	code := parseJSONRPCError(t, rr.Body.Bytes())
+	if code != -32600 {
+		t.Errorf("error code = %d, want -32600 (duplicate-key request rejected at parse)", code)
+	}
+	if cc.count() != 0 {
+		t.Errorf("upstream was called %d times, want 0 (duplicate-key body must not be forwarded)", cc.count())
+	}
+}
+
+// TestGatewaySanitizesUpstreamHeaders verifies fix #2: on the manual-forward
+// (warn) path, internal X-Beekeeper-* headers and hop-by-hop headers from the
+// client are NOT propagated to the upstream MCP server, while ordinary headers
+// (e.g. Content-Type) are. The gateway Authorization token is also stripped.
+func TestGatewaySanitizesUpstreamHeaders(t *testing.T) {
+	var gotHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeaders = r.Header.Clone()
+		_, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":"ok"}}`))
+	}))
+	defer upstream.Close()
+
+	// warnIdx → warn decision → forwardWithWarningInjection (the manual path).
+	h := newTestHandler("tok", warnIdx(), upstream.URL)
+
+	body := toolsCallBody(1, "Bash", "warn-pkg")
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer tok")
+	// Internal agent-context headers — must NOT reach upstream.
+	req.Header.Set("X-Beekeeper-Agent-Id", "agent-123")
+	req.Header.Set("X-Beekeeper-Parent-Agent-Id", "parent-456")
+	req.Header.Set("X-Beekeeper-Agent-Depth", "2")
+	// Hop-by-hop headers — must NOT reach upstream.
+	req.Header.Set("Connection", "X-Custom-Smuggled")
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Transfer-Encoding", "chunked")
+	// A Connection-listed token must also be dropped.
+	req.Header.Set("X-Custom-Smuggled", "should-be-dropped")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if gotHeaders == nil {
+		t.Fatal("upstream was not called; cannot inspect forwarded headers")
+	}
+
+	// X-Beekeeper-* must be absent.
+	for _, k := range []string{"X-Beekeeper-Agent-Id", "X-Beekeeper-Parent-Agent-Id", "X-Beekeeper-Agent-Depth"} {
+		if v := gotHeaders.Get(k); v != "" {
+			t.Errorf("internal header %s leaked to upstream: %q", k, v)
+		}
+	}
+	// Hop-by-hop headers must be absent.
+	for _, k := range []string{"Connection", "Upgrade", "Transfer-Encoding"} {
+		if v := gotHeaders.Get(k); v != "" {
+			t.Errorf("hop-by-hop header %s forwarded to upstream: %q", k, v)
+		}
+	}
+	// The Connection-listed token must be dropped.
+	if v := gotHeaders.Get("X-Custom-Smuggled"); v != "" {
+		t.Errorf("Connection-listed header X-Custom-Smuggled forwarded to upstream: %q", v)
+	}
+	// The gateway Authorization token must be stripped.
+	if v := gotHeaders.Get("Authorization"); v != "" {
+		t.Errorf("gateway Authorization token leaked to upstream: %q", v)
+	}
+	// An ordinary header must still be forwarded.
+	if v := gotHeaders.Get("Content-Type"); v == "" {
+		t.Error("ordinary Content-Type header was not forwarded to upstream")
+	}
+}
+
+// TestSanitizeUpstreamHeaders is a focused unit test of the shared sanitizer
+// used by both manual-forward paths so they cannot drift.
+func TestSanitizeUpstreamHeaders(t *testing.T) {
+	in := http.Header{}
+	in.Set("Authorization", "Bearer secret")
+	in.Set("Content-Type", "application/json")
+	in.Set("X-Beekeeper-Agent-Id", "a1")
+	in.Set("Connection", "Keep-Alive, X-Listed")
+	in.Set("Keep-Alive", "timeout=5")
+	in.Set("Te", "trailers")
+	in.Set("Trailer", "Expires")
+	in.Set("Proxy-Authorization", "Basic abc")
+	in.Set("Transfer-Encoding", "chunked")
+	in.Set("Upgrade", "h2c")
+	in.Set("X-Listed", "drop-me")
+	in.Set("X-Safe", "keep-me")
+
+	out := sanitizeUpstreamHeaders(in)
+
+	mustAbsent := []string{
+		"Authorization", "X-Beekeeper-Agent-Id", "Connection", "Keep-Alive",
+		"Te", "Trailer", "Proxy-Authorization", "Transfer-Encoding", "Upgrade",
+		"X-Listed",
+	}
+	for _, k := range mustAbsent {
+		if v := out.Get(k); v != "" {
+			t.Errorf("sanitizeUpstreamHeaders kept %s=%q, want it stripped", k, v)
+		}
+	}
+	if out.Get("Content-Type") != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json (ordinary header dropped)", out.Get("Content-Type"))
+	}
+	if out.Get("X-Safe") != "keep-me" {
+		t.Errorf("X-Safe = %q, want keep-me (non-internal custom header dropped)", out.Get("X-Safe"))
+	}
+}
+
+// TestGatewayUnreadablePoliciesDirFailsClosed verifies fix #3: when the policies
+// directory cannot be read (LoadPolicyDir returns an error), applyPolicy BLOCKS
+// regardless of FailOpen. The unreadable-dir error is injected via the
+// loadPolicyDirFn seam so the test is deterministic on every platform (a real
+// unreadable directory is not portably fabricatable, especially on Windows where
+// os.ReadDir on a non-dir maps to ErrNotExist → the missing-dir no-op path).
+func TestGatewayUnreadablePoliciesDirFailsClosed(t *testing.T) {
+	orig := loadPolicyDirFn
+	loadPolicyDirFn = func(string) ([]policyloader.PolicyFile, error) {
+		return nil, errors.New("permission denied reading policies dir")
+	}
+	defer func() { loadPolicyDirFn = orig }()
+
+	for _, failOpen := range []bool{false, true} {
+		name := "FailOpen=false"
+		if failOpen {
+			name = "FailOpen=true"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			cacheDir := filepath.Join(dir, "catalogs")
+			if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+				t.Fatalf("MkdirAll cacheDir: %v", err)
+			}
+
+			msg := JSONRPCMessage{
+				JSONRPC: "2.0",
+				Method:  "tools/call",
+				Params:  []byte(`{"name":"Bash","arguments":{"command":"ls"}}`),
+			}
+			cfg := Config{CacheDir: cacheDir, FailOpen: failOpen}
+
+			d := applyPolicy(msg, allowIdx(), cfg, policy.AgentContext{})
+			if d.Level != "block" {
+				t.Errorf("decision.Level = %q, want block (unreadable policies dir must fail closed even with FailOpen=%v)", d.Level, failOpen)
+			}
+		})
+	}
 }
 
 // newTestHandlerWithScanner creates a gatewayHandler with a scanner configured.

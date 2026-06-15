@@ -87,6 +87,13 @@ type toolCallParams struct {
 	Arguments map[string]any `json:"arguments"`
 }
 
+// loadPolicyDirFn is the seam through which applyPolicy loads policy files. It
+// defaults to policyloader.LoadPolicyDir and is overridable in tests (same
+// test-seam pattern as metadataFetchFn / nudge.DetectStateFn) so the fail-closed
+// behavior on an unreadable policies directory can be exercised deterministically
+// across platforms (a real unreadable dir is hard to fabricate portably).
+var loadPolicyDirFn = policyloader.LoadPolicyDir
+
 // applyPolicy extracts the ToolCall from a tools/call JSONRPCMessage, evaluates
 // it against the policy engine with policy-file-derived thresholds, applies the
 // policy overlay, and returns the Decision. It is the single bridge between the
@@ -106,9 +113,9 @@ func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, cfg Config, 
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		// Malformed tools/call params → fail closed (block).
 		return policy.Decision{
-			Allow:  false,
-			Level:  "block",
-			Reason: fmt.Sprintf("malformed tools/call params (fail-closed): %v", err),
+			Allow:   false,
+			Level:   "block",
+			Reason:  fmt.Sprintf("malformed tools/call params (fail-closed): %v", err),
 			RuleIDs: []string{"INTG-04"},
 		}
 	}
@@ -124,18 +131,23 @@ func applyPolicy(msg JSONRPCMessage, idx policy.MultiCatalogLookup, cfg Config, 
 	if cfg.CacheDir != "" {
 		policiesDir := filepath.Join(filepath.Dir(cfg.CacheDir), "policies")
 		var loadErr error
-		policyFiles, loadErr = policyloader.LoadPolicyDir(policiesDir)
+		policyFiles, loadErr = loadPolicyDirFn(policiesDir)
 		if loadErr != nil {
-			// Directory read error: fail closed per gateway FailOpen flag.
-			if !cfg.FailOpen {
-				return policy.Decision{
-					Allow:  false,
-					Level:  "block",
-					Reason: fmt.Sprintf("policies directory unreadable (fail-closed): %v", loadErr),
-				}
+			// An unreadable or missing policies directory is a security-relevant
+			// degradation, not a transient runtime error: with no policy set we
+			// cannot derive corroboration thresholds or apply allow/block overlays,
+			// so continuing would silently weaken enforcement. Block REGARDLESS of
+			// cfg.FailOpen — FailOpen covers transient policy-engine faults (panic,
+			// timeout), NOT a missing policy set. (Note: LoadPolicyDir treats a
+			// genuinely absent directory as a no-op empty set, so reaching this
+			// branch means the directory exists but could not be read, or a file in
+			// it was unreadable — either way, fail closed.)
+			return policy.Decision{
+				Allow:   false,
+				Level:   "block",
+				Reason:  fmt.Sprintf("policies directory unreadable (fail-closed, FailOpen does not apply): %v", loadErr),
+				RuleIDs: []string{"INT-BLOCK-3"},
 			}
-			// fail-open: log and continue with defaults.
-			policyFiles = nil
 		}
 	}
 	thresholds := policyloader.ThresholdsFromPolicyFiles(policyFiles)
@@ -170,9 +182,9 @@ func nudgeDecisionFor(parsed pkgparse.ParsedCommand, state nudge.PMState, nc nud
 	d := nudge.Evaluate(parsed, state, nc)
 	allow := d.Level != "block"
 	policyDec := policy.Decision{
-		Allow:  allow,
-		Level:  d.Level,
-		Reason: fmt.Sprintf("nudge(%s): %s", nudge.ActionString(d.Action), d.Reason),
+		Allow:   allow,
+		Level:   d.Level,
+		Reason:  fmt.Sprintf("nudge(%s): %s", nudge.ActionString(d.Action), d.Reason),
 		RuleIDs: []string{"NUDGE-03"},
 	}
 	var raw [16]byte

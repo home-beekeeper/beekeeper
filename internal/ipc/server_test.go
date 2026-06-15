@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -39,6 +40,38 @@ func TestNewServerSocketPermsAndOwner(t *testing.T) {
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("socket perm = %o, want 0600 (owner-only)", perm)
+	}
+}
+
+// TestNewServerSocketOwnerOnlyUnderLooseUmask is the TOCTOU regression guard
+// (T-IPC-01). With a deliberately loose ambient umask (0o000, which would yield
+// a world-readable/writable 0755+ socket from a bare net.Listen), NewServer must
+// still produce an owner-only (0600) socket. The fix sets a restrictive umask
+// around the Listen so the inode is never momentarily group/other-accessible;
+// the Chmod is defense-in-depth. We restore the ambient umask afterward.
+func TestNewServerSocketOwnerOnlyUnderLooseUmask(t *testing.T) {
+	// Loosen the umask for the duration of this test so a regression (removing
+	// the umask guard AND the chmod) would surface as a >0600 socket.
+	prev := syscall.Umask(0o000)
+	defer syscall.Umask(prev)
+
+	sock := tempSock(t)
+	s, err := NewServer(sock, uint32(os.Getuid()))
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	defer s.Close()
+
+	info, err := os.Stat(sock)
+	if err != nil {
+		t.Fatalf("stat socket: %v", err)
+	}
+	perm := info.Mode().Perm()
+	if perm&0o077 != 0 {
+		t.Errorf("socket perm = %o, want no group/other access (0600) under loose umask", perm)
+	}
+	if perm != 0o600 {
+		t.Errorf("socket perm = %o, want exactly 0600", perm)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 )
 
 // Parser bounds (INTG-03 spec).
@@ -27,12 +28,12 @@ const (
 // allows crypto/subtle comparison and echo-back without type-asserting the id
 // (Pitfall 4: never use int or string for this field).
 type JSONRPCMessage struct {
-	JSONRPC string          `json:"jsonrpc"`           // always "2.0"
-	ID      any             `json:"id"`                // string | number | null (any)
-	Method  string          `json:"method,omitempty"`  // request method
-	Params  json.RawMessage `json:"params,omitempty"`  // request params (deferred decode)
-	Result  json.RawMessage `json:"result,omitempty"`  // response result
-	Error   *JSONRPCError   `json:"error,omitempty"`   // response error
+	JSONRPC string          `json:"jsonrpc"`          // always "2.0"
+	ID      any             `json:"id"`               // string | number | null (any)
+	Method  string          `json:"method,omitempty"` // request method
+	Params  json.RawMessage `json:"params,omitempty"` // request params (deferred decode)
+	Result  json.RawMessage `json:"result,omitempty"` // response result
+	Error   *JSONRPCError   `json:"error,omitempty"`  // response error
 }
 
 // JSONRPCError is the standard JSON-RPC 2.0 error object.
@@ -92,6 +93,21 @@ func parseSingle(b []byte) (JSONRPCMessage, error) {
 	if err := json.Unmarshal(b, &msg); err != nil {
 		return JSONRPCMessage{}, &ParseError{Code: -32700, Msg: "invalid JSON: " + err.Error()}
 	}
+
+	// Request-smuggling defense (T-04-03-11): reject any object in the request
+	// tree that contains duplicate keys. Go's encoding/json silently takes the
+	// LAST value for a duplicate key, but the gateway forwards the RAW bodyBytes
+	// upstream — an upstream parser that chooses a different duplicate (e.g.
+	// first-wins) would execute a DIFFERENT tool than the one Beekeeper evaluated
+	// (parser/forwarder differential). A well-formed MCP tools/call never contains
+	// duplicate keys, so this is a hard fail-closed reject, not a best-effort
+	// heuristic. This runs AFTER json.Unmarshal so genuinely malformed JSON is
+	// still reported as -32700 (parse error), while valid-but-duplicate JSON is
+	// reported as -32600 (invalid request).
+	if err := rejectDuplicateKeys(b); err != nil {
+		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: "duplicate JSON key (request-smuggling guard): " + err.Error()}
+	}
+
 	if msg.JSONRPC != "2.0" {
 		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: `jsonrpc must be "2.0"`}
 	}
@@ -102,6 +118,83 @@ func parseSingle(b []byte) (JSONRPCMessage, error) {
 		return JSONRPCMessage{}, &ParseError{Code: -32600, Msg: "params depth exceeds limit: " + err.Error()}
 	}
 	return msg, nil
+}
+
+// rejectDuplicateKeys walks the JSON value encoded in b using a streaming
+// json.Decoder token scanner and returns an error if any JSON object anywhere
+// in the value tree declares the same key twice. This closes the parser /
+// forwarder differential that lets a duplicate-key payload smuggle a different
+// tool name past policy evaluation (e.g. {"name":"safe","name":"shell_exec"}):
+// Go's json.Unmarshal is last-wins, but the gateway forwards the raw bytes, so
+// an upstream that disagrees on which duplicate wins would diverge.
+//
+// The scan covers the top-level request object AND the nested params object
+// (and every other nested object/array) in a single pass. It never panics:
+// any malformed JSON is reported as an error here and would be rejected by
+// json.Unmarshal in parseSingle regardless.
+func rejectDuplicateKeys(b []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	return scanDuplicateKeys(dec)
+}
+
+// scanDuplicateKeys consumes exactly one JSON value from dec. For objects it
+// tracks the set of keys seen at that object's level and returns an error on
+// the first repeat; for arrays it recurses into each element; scalars are
+// consumed as-is. Nested objects/arrays are validated recursively so a
+// duplicate key buried inside params (or any deeper object) is caught.
+func scanDuplicateKeys(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		// Scalar (string, number, bool, null) — nothing to recurse into.
+		return nil
+	}
+
+	switch delim {
+	case '{':
+		seen := make(map[string]struct{})
+		for dec.More() {
+			keyTok, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyTok.(string)
+			if !ok {
+				// JSON object keys are always strings; anything else is malformed.
+				return fmt.Errorf("non-string object key")
+			}
+			if _, dup := seen[key]; dup {
+				return fmt.Errorf("key %q appears more than once in the same object", key)
+			}
+			seen[key] = struct{}{}
+			// Recurse into the value for this key.
+			if err := scanDuplicateKeys(dec); err != nil {
+				return err
+			}
+		}
+		// Consume the closing '}'.
+		if _, err := dec.Token(); err != nil {
+			return err
+		}
+	case '[':
+		for dec.More() {
+			if err := scanDuplicateKeys(dec); err != nil {
+				return err
+			}
+		}
+		// Consume the closing ']'.
+		if _, err := dec.Token(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // parseAsBatch decodes a JSON-RPC batch array and validates the item count.

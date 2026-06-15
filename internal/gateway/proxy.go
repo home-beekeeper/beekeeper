@@ -30,6 +30,78 @@ const (
 	advisoryGlobalKey = "__global__"
 )
 
+// hopByHopHeaders are the HTTP/1.1 hop-by-hop headers (RFC 7230 §6.1) that are
+// meaningful only for a single transport hop and must NOT be forwarded to the
+// upstream by an intermediary. httputil.ReverseProxy strips these automatically;
+// the manual-forward paths (forwardWithWarningInjection, forwardAllowWithScan)
+// build their own *http.Request and so must strip them explicitly via
+// sanitizeUpstreamHeaders. Keys are canonical (textproto.CanonicalMIMEHeaderKey)
+// form so a case-insensitive map lookup matches r.Header's canonicalized keys.
+var hopByHopHeaders = map[string]struct{}{
+	"Connection":          {},
+	"Proxy-Connection":    {}, // non-standard but seen in the wild
+	"Keep-Alive":          {},
+	"Proxy-Authenticate":  {},
+	"Proxy-Authorization": {},
+	"Te":                  {},
+	"Trailer":             {},
+	"Transfer-Encoding":   {},
+	"Upgrade":             {},
+}
+
+// sanitizeUpstreamHeaders copies client request headers from src into a fresh
+// http.Header suitable for the upstream MCP request on the manual-forward paths.
+// It drops, in addition to the per-call Authorization strip the callers already
+// perform:
+//
+//   - the Beekeeper gateway Authorization token (CR-02 — never leak it upstream);
+//   - all hop-by-hop headers (RFC 7230 §6.1) so a client cannot smuggle a
+//     Connection/Transfer-Encoding/Upgrade directive through the gateway;
+//   - any header named in a Connection header's token list (RFC 7230 §6.1 —
+//     these are connection-scoped and must not be forwarded);
+//   - all internal X-Beekeeper-* headers — these are gateway-internal agent
+//     context (X-Beekeeper-Agent-Id, -Parent-Agent-Id, -Agent-Depth) consumed by
+//     extractAgentContext and must never reach the upstream MCP server, nor may a
+//     client forge them onto the upstream.
+//
+// This is the single shared sanitizer so the warn-path and allow-path manual
+// forwards cannot drift apart (only one place to audit). The transparent
+// ReverseProxy path is unaffected — it strips hop-by-hop headers itself and
+// strips Authorization in the Rewrite hook.
+func sanitizeUpstreamHeaders(src http.Header) http.Header {
+	// Collect Connection-listed tokens so we drop them too (RFC 7230 §6.1).
+	connectionTokens := map[string]struct{}{}
+	for _, val := range src.Values("Connection") {
+		for _, tok := range strings.Split(val, ",") {
+			tok = strings.TrimSpace(tok)
+			if tok != "" {
+				connectionTokens[http.CanonicalHeaderKey(tok)] = struct{}{}
+			}
+		}
+	}
+
+	out := make(http.Header, len(src))
+	for k, vv := range src {
+		canon := http.CanonicalHeaderKey(k)
+		if strings.EqualFold(canon, "Authorization") {
+			continue // strip Beekeeper's own gateway token from upstream requests
+		}
+		if _, hop := hopByHopHeaders[canon]; hop {
+			continue
+		}
+		if _, listed := connectionTokens[canon]; listed {
+			continue
+		}
+		if strings.HasPrefix(canon, "X-Beekeeper-") {
+			continue // internal agent-context headers — never forward upstream
+		}
+		for _, v := range vv {
+			out.Add(canon, v)
+		}
+	}
+	return out
+}
+
 // gatewayHandler is the per-request HTTP handler for the MCP gateway. It
 // enforces token authentication on every request and routes tools/call methods
 // through the policy engine before forwarding.
@@ -194,7 +266,7 @@ func (h *gatewayHandler) handleToolCall(w http.ResponseWriter, r *http.Request, 
 
 	// policyResult carries either a decision or a recovered panic value.
 	type policyResultFull struct {
-		d       policy.Decision
+		d        policy.Decision
 		panicked bool
 		panicVal any
 	}
@@ -345,18 +417,11 @@ func (h *gatewayHandler) forwardWithWarningInjection(w http.ResponseWriter, r *h
 		return
 	}
 
-	// Copy original request headers (excluding hop-by-hop headers).
-	// CR-02: never forward the Beekeeper gateway Authorization header to the
-	// upstream MCP server — the gateway token is an internal secret and must
-	// not appear in upstream logs or be accepted by the upstream server.
-	for k, vv := range r.Header {
-		if strings.EqualFold(k, "Authorization") {
-			continue // strip Beekeeper's own gateway token from upstream requests
-		}
-		for _, v := range vv {
-			req.Header.Add(k, v)
-		}
-	}
+	// Copy original request headers through the shared sanitizer: strips the
+	// Beekeeper gateway Authorization token (CR-02 — internal secret), all
+	// hop-by-hop headers (RFC 7230 §6.1), and internal X-Beekeeper-* headers.
+	// One shared helper so the warn/allow manual paths cannot drift.
+	req.Header = sanitizeUpstreamHeaders(r.Header)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -410,14 +475,9 @@ func (h *gatewayHandler) forwardAllowWithScan(w http.ResponseWriter, r *http.Req
 		writeJSONRPCError(w, msg.ID, -32002, "upstream request creation failed (fail-closed)", nil)
 		return
 	}
-	for k, vv := range r.Header {
-		if strings.EqualFold(k, "Authorization") {
-			continue
-		}
-		for _, v := range vv {
-			req.Header.Add(k, v)
-		}
-	}
+	// Shared sanitizer: strip gateway Authorization, hop-by-hop, and X-Beekeeper-*
+	// headers (same path as the warn forward — single helper, no drift).
+	req.Header = sanitizeUpstreamHeaders(r.Header)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
