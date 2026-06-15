@@ -194,6 +194,10 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 	// FRB-02 invariant: this block MUST NOT call quarantine.Purge. Only
 	// quarantine.MoveTyped (reversible) is permitted. Enforced behaviorally by
 	// TestFirstResponderCorpusNoPurge and statically by TestCorpusPathHasNoPurgeCall.
+	//
+	// DryRun contract: like the scan-hit loop, a path-RESOLVED record under
+	// cfg.DryRun audits "would-quarantine" and performs NO move (finding #3). The
+	// gate lives inside this function so a caller cannot forget to honor DryRun.
 	if cfg.CorpusEnabled && cfg.CorpusPath != "" {
 		malicious, rdErr := corpus.ReadMaliciousRecords(cfg.CorpusPath)
 		if rdErr != nil {
@@ -241,6 +245,17 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 
 				// FRB-01: arm the TUI quarantine card.
 				if pathResolved {
+					// Dry-run: audit "would-quarantine" without moving, mirroring the
+					// scan-hit branch. This enforces the dry-run contract INSIDE the
+					// function so a caller that forgets to thread DryRun into the
+					// corpus path cannot cause a live move (finding #3). Before this
+					// gate the corpus branch moved artifacts unconditionally even with
+					// DryRun:true.
+					if cfg.DryRun {
+						writeCorpusFirstResponderAudit(cfg.AuditPath, "would-quarantine", ecosystem, pkg, version)
+						continue
+					}
+
 					// Real quarantine: move the artifact (reversible, not purge).
 					artifactType := quarantine.ArtifactTypeLanguagePackage
 					if ecosystem == "editor-extension" {

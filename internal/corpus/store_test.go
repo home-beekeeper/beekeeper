@@ -245,3 +245,48 @@ func TestCorpusStoreHasNoNetworkImports(t *testing.T) {
 		}
 	}
 }
+
+// TestCorpusWritePathHasNoNetworkImports extends the store.go AST gate to the
+// REST of the corpus WRITE path (emitter, adjudicator, signer). These files
+// turn audit records into on-disk corpus records, adjudicate them, and sign the
+// push envelope — none of which may transmit data off-machine in v1. A direct
+// import of net/net/http/os/exec in any of them would be a no-exfil regression.
+//
+// Mirrors TestCorpusStoreHasNoNetworkImports (go/parser ImportsOnly scan); only
+// DIRECT imports are proven per file (the transitive graph is validated by
+// go vet ./... and the CI cross-build).
+func TestCorpusWritePathHasNoNetworkImports(t *testing.T) {
+	forbidden := map[string]bool{
+		"net":      true,
+		"net/http": true,
+		"os/exec":  true,
+	}
+	writePathFiles := []string{
+		"emitter.go",
+		"adjudicator.go",
+		"signer.go",
+	}
+
+	for _, file := range writePathFiles {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("reading %s: %v", file, err)
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, file, src, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", file, err)
+		}
+		for _, imp := range f.Imports {
+			p := imp.Path.Value
+			if len(p) >= 2 {
+				p = p[1 : len(p)-1] // strip surrounding double-quotes
+			}
+			if forbidden[p] {
+				t.Errorf("no-exfil violation: internal/corpus/%s imports forbidden "+
+					"network package %q — the corpus write path must never transmit "+
+					"data off-machine (no remote sink wired in v1)", file, p)
+			}
+		}
+	}
+}

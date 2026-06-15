@@ -125,6 +125,11 @@ func MoveTyped(quarantineDir, artifactPath string, m Manifest) (id string, err e
 		return "", err
 	}
 
+	// cleanSource is the normalized, validated move source. Reused by the parent
+	// reparse-point re-assertion, the pre-rename re-stat, and os.Rename below so the
+	// path that is checked is byte-for-byte the path that is moved (TOCTOU).
+	cleanSource := filepath.Clean(artifactPath)
+
 	// Sanitize attacker-controlled fields before composing the entry id.
 	pub := filepath.Base(m.Publisher)
 	name := filepath.Base(m.Name)
@@ -162,8 +167,55 @@ func MoveTyped(quarantineDir, artifactPath string, m Manifest) (id string, err e
 		return "", fmt.Errorf("quarantine: refusing to move %q: source is a symlink or reparse point (junction)", artifactPath)
 	}
 
+	// F-2 (TOCTOU hardening): isReparsePoint above only inspects the FINAL
+	// component. A reparse point on the SOURCE'S PARENT — the attacker-controlled
+	// directory the package install sits in — would still redirect the rename to a
+	// tree the install never owned. The move SOURCE is the project tree
+	// (attacker-influenceable), NOT the self-protected StateDir, so this is
+	// reachable. Re-assert the immediate parent is not itself a symlink/reparse
+	// point. We check the IMMEDIATE parent (not the whole resolved chain) so a
+	// benign OS-level symlink higher up the prefix — e.g. macOS /var → /private/var
+	// under t.TempDir() — does NOT false-positive; the attack class is the
+	// package's own containing directory being swapped for a junction.
+	srcParent := filepath.Dir(cleanSource)
+	if isLink, lerr := isReparsePoint(srcParent); lerr != nil {
+		return "", fmt.Errorf("quarantine: stat source parent %q: %w", srcParent, lerr)
+	} else if isLink {
+		return "", fmt.Errorf("quarantine: refusing to move %q: source parent %q is a symlink or reparse point (junction)", artifactPath, srcParent)
+	}
+
+	// Defense-in-depth: EvalSymlinks the parent and re-assert the fully-resolved
+	// parent and the immediate-parent's resolved form agree on their final
+	// component. This catches a reparse point on the parent that ModeSymlink did
+	// not flag (e.g. some Windows reparse tags) without rejecting benign ancestor
+	// symlinks: we compare only the basename the rename will land beside.
+	resolvedParent, evalErr := filepath.EvalSymlinks(srcParent)
+	if evalErr != nil {
+		return "", fmt.Errorf("quarantine: resolve source parent %q: %w", srcParent, evalErr)
+	}
+	if !pathEqual(filepath.Base(filepath.Clean(resolvedParent)), filepath.Base(filepath.Clean(srcParent))) {
+		return "", fmt.Errorf("quarantine: refusing to move %q: source parent resolves through a reparse point (%q -> %q)", artifactPath, srcParent, resolvedParent)
+	}
+
+	// F-8 / TOCTOU: re-stat the source IMMEDIATELY before the rename (no
+	// intervening I/O) using a no-follow Lstat, and require it to be a directory.
+	// This shrinks the check-to-rename window to its minimum and rejects a source
+	// that was swapped for a symlink/reparse point after the checks above. Every
+	// real quarantine source (a package or extension install dir) is a directory;
+	// a non-directory source is refused fail-closed.
+	fi, statErr := os.Lstat(cleanSource)
+	if statErr != nil {
+		return "", fmt.Errorf("quarantine: stat source %q before move: %w", artifactPath, statErr)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("quarantine: refusing to move %q: source became a symlink before move", artifactPath)
+	}
+	if !fi.IsDir() {
+		return "", fmt.Errorf("quarantine: refusing to move %q: source is not a directory", artifactPath)
+	}
+
 	// Move the artifact directory into quarantine.
-	if err := os.Rename(artifactPath, destDir); err != nil {
+	if err := os.Rename(cleanSource, destDir); err != nil {
 		return "", fmt.Errorf("quarantine: move %q -> %q: %w", artifactPath, destDir, err)
 	}
 

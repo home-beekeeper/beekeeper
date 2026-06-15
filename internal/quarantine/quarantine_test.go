@@ -545,6 +545,72 @@ func TestRestoreRefusesSymlinkEntry(t *testing.T) {
 	}
 }
 
+// TestMoveTypedRefusesParentSymlinkRedirect verifies the TOCTOU hardening for
+// finding #4 (quarantine side): isReparsePoint only inspects the FINAL
+// component, so a reparse point on an INTERMEDIATE component (a PARENT dir that
+// is a symlink/junction) would otherwise still redirect the rename. MoveTyped
+// must EvalSymlinks the source's parent and refuse when a component resolves
+// through a symlink, leaving the real target untouched.
+//
+// Layout:
+//
+//	realParent/pkg/...        (the genuine sibling tree — must NOT be moved)
+//	parentLink -> realParent  (a symlink the attacker placed)
+//	move source = parentLink/pkg  (final component "pkg" is a real dir; its
+//	                                PARENT "parentLink" is the symlink)
+func TestMoveTypedRefusesParentSymlinkRedirect(t *testing.T) {
+	quarantineDir := t.TempDir()
+
+	// The genuine parent + package dir the symlink will resolve to.
+	realParent := filepath.Join(t.TempDir(), "real-parent")
+	pkgDir := filepath.Join(realParent, "pkg")
+	if err := os.MkdirAll(pkgDir, 0o700); err != nil {
+		t.Fatalf("mkdir pkgDir: %v", err)
+	}
+	sentinel := filepath.Join(pkgDir, "do-not-touch.txt")
+	if err := os.WriteFile(sentinel, []byte("sentinel"), 0o600); err != nil {
+		t.Fatalf("write sentinel: %v", err)
+	}
+
+	// parentLink is a symlink to realParent. On unprivileged Windows os.Symlink
+	// fails; skip there (the final-component junction case is covered separately).
+	parentLink := filepath.Join(t.TempDir(), "parent-link")
+	if err := os.Symlink(realParent, parentLink); err != nil {
+		t.Skipf("os.Symlink unavailable (likely unprivileged Windows): %v", err)
+	}
+
+	// Move source routes through the symlinked parent: parentLink/pkg. The FINAL
+	// component "pkg" is itself a real directory (isReparsePoint passes), but the
+	// parent is a symlink — the parent-resolution guard must catch it.
+	moveSource := filepath.Join(parentLink, "pkg")
+
+	m := quarantine.Manifest{
+		Publisher:    "npm",
+		Name:         "evil",
+		Version:      "1.0.0",
+		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
+		Reason:       "test",
+	}
+
+	_, err := quarantine.MoveTyped(quarantineDir, moveSource, m)
+	if err == nil {
+		t.Fatal("MoveTyped must refuse a source whose parent component is a symlink, got nil error")
+	}
+
+	// The real target and its sentinel must be untouched.
+	if _, statErr := os.Stat(sentinel); statErr != nil {
+		t.Errorf("parent-symlink target sentinel was disturbed: %v", statErr)
+	}
+	// Nothing should have landed in quarantine.
+	entries, listErr := quarantine.List(quarantineDir)
+	if listErr != nil {
+		t.Fatalf("quarantine.List: %v", listErr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("quarantine dir must be empty after a refused parent-symlink move; got %d entries", len(entries))
+	}
+}
+
 // --- NEW TESTS FOR TYPE-AWARE QUARANTINE (Task 1 / C1) ---
 
 // TestMoveTypedEditorExtensionBackCompat verifies that a MoveTyped call with
@@ -785,13 +851,13 @@ func TestRestoreCorpusQuarantineEntry(t *testing.T) {
 	//   Publisher = ecosystem ("npm"), Name = pkg ("@nrwl/nx-console"),
 	//   Reason = "corpus adjudication: confirmed malicious", RuleIDs = ["FRSP-02"].
 	m := quarantine.Manifest{
-		Publisher:    "npm",
-		Name:         "@nrwl/nx-console",
-		Version:      "17.3.0",
-		OriginalPath: pkgPath,
-		ArtifactType: quarantine.ArtifactTypeLanguagePackage,
-		Reason:       "corpus adjudication: confirmed malicious",
-		RuleIDs:      []string{"FRSP-02"},
+		Publisher:     "npm",
+		Name:          "@nrwl/nx-console",
+		Version:       "17.3.0",
+		OriginalPath:  pkgPath,
+		ArtifactType:  quarantine.ArtifactTypeLanguagePackage,
+		Reason:        "corpus adjudication: confirmed malicious",
+		RuleIDs:       []string{"FRSP-02"},
 		QuarantinedAt: time.Now().UTC(),
 	}
 
