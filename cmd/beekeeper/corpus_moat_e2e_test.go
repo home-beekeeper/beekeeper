@@ -607,18 +607,22 @@ func TestCorpusMoatLoopE2E(t *testing.T) {
 	// payload so the hook parser receives the package name directly without
 	// needing to detect a real CLI package-manager invocation.
 	//
-	// Design note: the vscode ecosystem is not a package-manager ecosystem that
-	// the hook parser's install-command parser recognizes (nudge/check parses
-	// npm/yarn/pnpm/bun install strings). We therefore simulate the closed-loop
-	// check by querying the MultiIndex directly via the overlay — this is the
-	// same lookup the hook handler performs (it opens MultiIndexWithOverlay and
-	// calls LookupAll). The binary second-check is exercised via a catalog-verify
-	// command that reads the overlay index and confirms the entry, proving the
-	// local feedback works without needing the exact package-manager string parser.
-	//
-	// For npm-ecosystem packages, we DO drive the real `beekeeper check` as a
-	// second-check via the live binary, using the ai-figure npm entry (staged in
-	// stage 2b). This proves the second check is caught at the hook level.
+	// Three sub-tests, escalating in fidelity:
+	//   E1 — index-level: the overlay mmap index returns a local-overlay match for
+	//        the vscode moat fixture. The vscode ecosystem is NOT parsed by the
+	//        hook's package-manager install-command parser, so it cannot be driven
+	//        through a real `beekeeper check`; E1 only proves the index file is
+	//        correct, NOT that the binary loads it.
+	//   E2 — live binary, but the block fires from the SIGNED bumblebee entry for
+	//        ai-figure (the overlay is also present but its contribution is not
+	//        isolated). Proves the hook blocks; does NOT isolate the overlay.
+	//   E3 — live binary, OVERLAY-ONLY npm package (absent from bumblebee): the
+	//        only way it can be flagged is if the production handler opened
+	//        MultiIndexWithOverlay and the overlay match reached policy.Evaluate.
+	//        This is the genuine end-to-end proof of the FRB-05 production wiring
+	//        (handler.go loading <cacheDir>/local-overlay.idx), which the milestone
+	//        audit found was MISSING and quick task 260615-ky4 added — E1/E2 alone
+	//        would stay green even if the binary ignored the overlay entirely.
 	// ------------------------------------------------------------------
 	t.Run("E_second_check_caught_by_overlay", func(t *testing.T) {
 		// Sub-test E1: verify the overlay mmap index catches the moat fixture
@@ -632,8 +636,12 @@ func TestCorpusMoatLoopE2E(t *testing.T) {
 			}
 			defer overlayIdx.Close()
 
-			// Build a MultiIndex with the overlay — the exact aggregator the hook
-			// handler uses in internal/check/handler.go (wired by Plan 24 FRB-05).
+			// Build a MultiIndex with the overlay — the same aggregator the hook
+			// handler builds in internal/check/handler.go. NOTE: that production
+			// wiring landed in quick task 260615-ky4 (FRB-05 enforcement), NOT in
+			// Plan 24 — the milestone audit caught that handler.go was still calling
+			// the no-overlay NewMultiIndex. E1 only proves the index file is correct;
+			// sub-test E3 proves the LIVE binary actually loads + applies it.
 			midx := catalog.NewMultiIndexWithOverlay(nil, nil, nil, overlayIdxPath)
 			defer midx.Close()
 
@@ -706,6 +714,102 @@ func TestCorpusMoatLoopE2E(t *testing.T) {
 			}
 			if !found2ndBlock {
 				t.Errorf("[E2] audit log must contain a block policy_decision from the second check (moat loop closed-loop regression);\naudit:\n%s", string(auditData))
+			}
+		})
+
+		// Sub-test E3: the genuine end-to-end proof of the FRB-05 production wiring.
+		// Seed an OVERLAY-ONLY npm package (absent from bumblebee.idx) and drive a
+		// real `beekeeper check` against it via the live binary. The package can be
+		// flagged ONLY if the production handler opens <cacheDir>/local-overlay.idx
+		// (via NewMultiIndexWithOverlay) and the overlay match reaches policy.Evaluate.
+		// Unsigned overlay entries escalate allow->WARN (never block; CTLG-07), so we
+		// assert a non-blocking warn policy_decision carrying the local-overlay source.
+		// If the binary ignored the overlay (the pre-260615-ky4 bug), this package —
+		// matched by nothing else — would ALLOW with no warn record, and E3 would fail.
+		t.Run("E3_overlay_only_npm_warn_via_live_binary", func(t *testing.T) {
+			const overlayOnlyPkg = "overlay-only-evil"
+
+			// Seed the npm entry into the LOCAL OVERLAY ONLY. Unsigned
+			// (CatalogSignature="") -> warn-weight (CTLG-07 anti-poisoning).
+			if err := catalog.AddLocalOverlayEntry(catalogDir, catalog.Entry{
+				ID:            "e2e-overlay-only-evil",
+				Name:          "overlay-only confirmed-malicious npm package",
+				Ecosystem:     "npm",
+				Package:       overlayOnlyPkg,
+				Versions:      []string{"1.0.0"},
+				Severity:      "critical",
+				CatalogSource: "local-overlay",
+				// CatalogSignature intentionally empty: unsigned -> warn-only.
+			}); err != nil {
+				t.Fatalf("[E3] AddLocalOverlayEntry(npm overlay-only): %v", err)
+			}
+
+			// Fixture sanity: the package MUST be absent from bumblebee.idx so the
+			// only possible match source is the local overlay.
+			if bbIdx, err := catalog.OpenIndex(bumblebeeIdxPath); err == nil {
+				defer bbIdx.Close()
+				if _, found := bbIdx.Lookup("npm", overlayOnlyPkg); found {
+					t.Fatalf("[E3] fixture invalid: %q must be overlay-only but is present in bumblebee.idx", overlayOnlyPkg)
+				}
+			}
+
+			// Drive the LIVE binary: npm install of the overlay-only package.
+			stdin := fmt.Sprintf(
+				`{"agent_name":"e2e-moat-agent","tool_name":"Bash","tool_input":{"command":"npm install %s@1.0.0"}}`,
+				overlayOnlyPkg,
+			)
+			cmd := exec.Command(binPath, "check")
+			cmd.Stdin = strings.NewReader(stdin)
+			cmd.Env = append(os.Environ(), fmt.Sprintf("BEEKEEPER_HOME=%s", home))
+
+			exitCode := 0
+			if err := cmd.Run(); err != nil {
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					exitCode = exitErr.ProcessState.ExitCode()
+				} else {
+					t.Fatalf("[E3] check cmd.Run: %v", err)
+				}
+			}
+			// Unsigned single-source overlay -> warn, NOT block. Default-mode warn
+			// exits 0; a block (exit 1) would be wrong for an unsigned source.
+			if exitCode != 0 {
+				t.Errorf("[E3] overlay-only unsigned package: exit code = %d, want 0 (warn, not block — CTLG-07)", exitCode)
+			}
+
+			// Decisive assertion: the live binary wrote a warn policy_decision
+			// carrying a local-overlay catalog source for this package. This proves
+			// the production handler loaded + applied the overlay (FRB-05 wiring).
+			auditPath := filepath.Join(auditDir, "beekeeper.ndjson")
+			auditData, err := os.ReadFile(auditPath)
+			if err != nil {
+				t.Fatalf("[E3] read audit log: %v", err)
+			}
+			var foundOverlayWarn bool
+			sc := bufio.NewScanner(strings.NewReader(string(auditData)))
+			sc.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+			for sc.Scan() {
+				line := sc.Text()
+				if line == "" {
+					continue
+				}
+				var rec struct {
+					RecordType string `json:"record_type"`
+					Decision   string `json:"decision"`
+				}
+				if err := json.Unmarshal([]byte(line), &rec); err != nil {
+					continue
+				}
+				// A warn policy_decision whose SAME line references both the
+				// overlay-only package and the local-overlay source can only come
+				// from the binary loading + applying the overlay.
+				if rec.RecordType == "policy_decision" && rec.Decision == "warn" &&
+					strings.Contains(line, overlayOnlyPkg) &&
+					strings.Contains(line, "local-overlay") {
+					foundOverlayWarn = true
+				}
+			}
+			if !foundOverlayWarn {
+				t.Errorf("[E3] live `beekeeper check` produced no warn policy_decision with a local-overlay source for %q — the binary is not applying the local overlay (FRB-05 production-wiring regression);\naudit:\n%s", overlayOnlyPkg, string(auditData))
 			}
 		})
 	})
