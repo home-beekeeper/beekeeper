@@ -112,7 +112,7 @@ Documented so you do not build false confidence. None of these relax the fail-cl
 Coverage is auditable, not asserted. Validation splits three ways:
 
 - **Tier A (locally testable):** held at full coverage by a gate that accounts for every production Go file as tested or as a reason-coded, fail-closed allowlist entry. A 17-harness conformance suite golden-file-tests every installer config and deny contract.
-- **Tier B (platform-bound):** a CI matrix across two Linux kernels, macOS, and Windows, exercising eBPF, eslogger, ETW, and Unix peer-cred. Five fuzz targets, including the Sentry rule evaluator, run as a blocking release gate.
+- **Tier B (platform-bound):** a CI matrix across Linux, macOS, and Windows, exercising eslogger, ETW, `-race`/CGO, and Unix peer-cred. Five fuzz targets, including the Sentry rule evaluator, run as a blocking release gate. The eBPF generate + two-kernel (5.4/5.15) load is decoupled to a manual workflow (`ebpf-kernel.yml`) pending a toolchain rebuild, so it is not currently part of the blocking matrix.
 - **Tier C (irreducibly manual):** a signed register with a live-block procedure and a sign-off line for each of the 16 non-Claude-Code harnesses and the gated-model sidecar.
 
 Details: [docs/validation-posture.md](https://github.com/home-beekeeper/beekeeper/blob/main/docs/validation-posture.md).
