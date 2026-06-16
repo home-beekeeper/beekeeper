@@ -85,12 +85,20 @@ var persistenceWritePaths = []string{
 // isSensitivePath reports whether path contains any of the well-known sensitive
 // credential-store substrings.
 //
-// filepath.ToSlash normalises Windows backslash separators to forward slashes
-// before matching so that ETW-emitted paths such as C:\Users\x\.aws\credentials
-// match the forward-slash entries in defaultSensitivePaths. On Unix/macOS the
-// call is a no-op (paths already use forward slashes).
+// toForwardSlashAnyOS converts backslash separators to forward slashes on EVERY
+// OS. filepath.ToSlash only converts the host OS separator, so on Unix it leaves
+// Windows backslash paths unconverted. The sentry rules are a pure, OS-agnostic
+// evaluator, so an ETW-emitted path such as C:\Users\x\.aws\credentials must
+// match the forward-slash rule-table fragments even when evaluated on Linux or
+// macOS (CI, fuzzing, cross-host processing).
+func toForwardSlashAnyOS(path string) string {
+	return strings.ReplaceAll(path, `\`, "/")
+}
+
+// isSensitivePath reports whether path contains a sensitive credential-store
+// substring, separators normalised to forward slashes on every OS.
 func isSensitivePath(path string) bool {
-	normalised := filepath.ToSlash(path)
+	normalised := toForwardSlashAnyOS(path)
 	for _, s := range defaultSensitivePaths {
 		if strings.Contains(normalised, s) {
 			return true
@@ -102,7 +110,7 @@ func isSensitivePath(path string) bool {
 // isPersistencePath reports whether path contains any persistence-surface
 // substring (forward-slash normalised like isSensitivePath).
 func isPersistencePath(path string) bool {
-	normalised := filepath.ToSlash(path)
+	normalised := toForwardSlashAnyOS(path)
 	for _, s := range persistenceWritePaths {
 		if strings.Contains(normalised, s) {
 			return true
@@ -171,7 +179,7 @@ var agentSelfConfigPaths = []string{
 // isAgentSelfConfigPath reports whether path is one of the agents' own config
 // dirs (forward-slash normalised like isSensitivePath).
 func isAgentSelfConfigPath(path string) bool {
-	n := filepath.ToSlash(path)
+	n := toForwardSlashAnyOS(path)
 	for _, s := range agentSelfConfigPaths {
 		if strings.Contains(n, s) {
 			return true
