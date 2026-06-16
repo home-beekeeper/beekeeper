@@ -1,0 +1,13 @@
+# zizmor configuration (https://docs.zizmor.sh/configuration/)
+#
+# The blanket unpinned-uses policy requires a commit-hash pin for every action.
+# The single documented exception is the SLSA generator reusable workflow:
+# its trusted-builder verification requires a semantic-version tag reference,
+# not a commit SHA, so it is pinned to @v2.1.0 on purpose (see release.yml and
+# CLAUDE.md). ref-pin still forbids a bare branch reference there.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        slsa-framework/slsa-github-generator/*: ref-pin
+        "*": hash-pin
