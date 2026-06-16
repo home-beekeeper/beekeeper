@@ -14,6 +14,7 @@ const (
 	panelQuarantine panelKind = "quarantine"
 	panelCatalogs   panelKind = "catalogs"
 	panelPolicy     panelKind = "policy"
+	panelSettings   panelKind = "settings"
 	panelAudit      panelKind = "audit"
 	panelScan       panelKind = "scan"
 	panelHelp       panelKind = "help"
