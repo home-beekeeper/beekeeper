@@ -1,0 +1,42 @@
+name: zizmor
+
+# Static analysis of the workflows themselves: catches unpinned actions,
+# template injection, dangerous triggers, and over-broad token permissions on
+# every PR, so the CI hardening is self-enforcing. Configuration and the single
+# SLSA pin exception live in .github/zizmor.yml.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      # Install a pinned zizmor into an isolated venv. Uses the runner's
+      # preinstalled Python; no extra third-party action to pin.
+      - name: Install zizmor
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zizmor-venv"
+          "$RUNNER_TEMP/zizmor-venv/bin/pip" install --quiet zizmor==1.25.2
+
+      # Fail the build on any finding at or above low severity. GH_TOKEN is the
+      # read-only workflow token (top-level contents: read); it lets zizmor run
+      # its online audits without elevated scope.
+      - name: Run zizmor
+        run: "$RUNNER_TEMP/zizmor-venv/bin/zizmor --min-severity low .github/workflows/"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
