@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# Default the GITHUB_TOKEN to read-only. This CI workflow only reads the repo,
+# so no job needs write scopes; any future job that does must elevate explicitly
+# at the job level with the narrowest permission required.
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
