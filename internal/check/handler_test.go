@@ -1711,6 +1711,13 @@ func TestBenchmarkRunCheckGate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("latency gate skipped in -short")
 	}
+	if raceDetectorEnabled {
+		// The race detector instruments every memory access, inflating
+		// wall-clock time far past the p99 budget and flaking this gate on the
+		// -race CI leg. Run without -race (e.g. go test -run
+		// TestBenchmarkRunCheckGate ./internal/check) to exercise it.
+		t.Skip("latency gate is unreliable under -race (timing is inflated by the detector)")
+	}
 
 	const N = 100
 
