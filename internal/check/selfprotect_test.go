@@ -112,7 +112,13 @@ func toolCallJSON(tool string, kv map[string]string) string {
 }
 
 func TestBuildSelfProtectConfigResolvesStateDir(t *testing.T) {
-	tmp := t.TempDir()
+	// Resolve OS path aliases (macOS /var -> /private/var symlink, Windows 8.3
+	// short names) so the config-derived prefix and the canonicalized target
+	// agree; otherwise one carries the alias and the prefix match misses.
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("EvalSymlinks(TempDir): %v", err)
+	}
 	t.Setenv("BEEKEEPER_HOME", tmp)
 	stateDir := filepath.Join(tmp, "beekeeper")
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {

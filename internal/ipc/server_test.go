@@ -4,6 +4,7 @@ package ipc
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -122,6 +123,13 @@ func TestServeRejectsUnauthenticatedPeer(t *testing.T) {
 	// the same-process connection.
 	s, err := NewServer(sock, uint32(os.Getuid())+1)
 	if err != nil {
+		// NewServer chowns the socket to ownerUID. Chowning to a foreign UID
+		// (getuid()+1) requires privilege the unprivileged CI runner lacks
+		// (EPERM). Skip rather than fail there; the peer-rejection path is still
+		// exercised wherever the foreign-owned socket can be created.
+		if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EPERM) {
+			t.Skipf("requires privilege to chown the socket to a foreign UID: %v", err)
+		}
 		t.Fatal(err)
 	}
 	defer s.Close()

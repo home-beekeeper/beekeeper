@@ -135,6 +135,13 @@ func TestCanonicalizePath(t *testing.T) {
 	})
 
 	t.Run("USERPROFILE env-var expansion (D-01)", func(t *testing.T) {
+		if runtime.GOOS != "windows" {
+			// %USERPROFILE% + backslash separators are Windows-shaped; ToSlash
+			// only converts backslashes to forward slashes on Windows, so the
+			// /.ssh/ fragment assertion holds only there. Pure, OS-agnostic
+			// coverage lives in internal/policy.
+			t.Skip("Windows-shaped USERPROFILE env-var expansion plus backslash separators")
+		}
 		t.Setenv("USERPROFILE", "/home/testuser")
 		got := canonicalizePath(`%USERPROFILE%\.ssh\id_rsa`)
 		if got == "" {
@@ -239,8 +246,15 @@ func TestCanonicalizePathForms(t *testing.T) {
 
 	t.Run("de-duplicates identical forms", func(t *testing.T) { //nolint:thelper
 		// An absolute, non-symlink, existing path: lexical and resolved forms are
-		// identical and must be collapsed to a single entry.
-		dir := t.TempDir()
+		// identical and must be collapsed to a single entry. Resolve OS path
+		// aliases first (macOS /var -> /private/var symlink, Windows 8.3 short
+		// names like RUNNER~1 -> the long form) so the temp root is itself
+		// alias-free; otherwise the lexical and EvalSymlinks-resolved forms
+		// legitimately differ and the count is 2.
+		dir, evErr := filepath.EvalSymlinks(t.TempDir())
+		if evErr != nil {
+			t.Fatalf("EvalSymlinks(TempDir): %v", evErr)
+		}
 		f := filepath.Join(dir, "plain.txt")
 		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
 			t.Fatalf("write: %v", err)

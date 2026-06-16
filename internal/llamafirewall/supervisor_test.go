@@ -124,36 +124,35 @@ func TestSupervisorFailsOpenAfterMaxRetries(t *testing.T) {
 	}
 }
 
-// TestSampleRateGating verifies that SampleRate=0.0 results in no request being
-// sent to the mock sidecar.
+// TestSampleRateGating verifies the security-safe default: a SampleRate of 0
+// (or unset) is treated as "use the default" and resolves to 1.0 (scan every
+// request), NOT as "never scan". A 0 sample rate is treated as unset
+// consistently across the config resolver (Config.LlamaFirewallSampleRate),
+// the untrusted-layer merge (mergeLlamaFirewallUntrusted refuses a sample_rate
+// reduction — THREAT-MODEL.md finding #4 depends on 0 meaning unset, not
+// "off"), and the supervisor. Disabling LlamaFirewall is done via Enabled:false,
+// never via a 0.0 sample rate, so a 0.0 rate must still forward the request to
+// the sidecar rather than silently gate it out.
 func TestSampleRateGating(t *testing.T) {
-	// Track whether the mock sidecar ever accepted a connection.
-	accepted := make(chan struct{}, 1)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
+	mockResp := ScanResponse{
+		RequestID:  "req-3",
+		Result:     ResultClean,
+		Confidence: 0.99,
+		LatencyMS:  7,
 	}
-	defer ln.Close()
-
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		accepted <- struct{}{}
-		conn.Close()
-	}()
+	addr, cleanup := startMockSidecar(t, mockResp)
+	defer cleanup()
 
 	cfg := LlamaFirewallConfig{
 		Enabled:    true,
 		FailMode:   "closed",
-		SampleRate: 0.0, // never sample
+		SampleRate: 0.0, // treated as unset -> default 1.0 (scan everything)
 	}
 	sup := NewSupervisor(cfg, "/tmp/fake_sidecar.py")
-	// Wire a real client — the 0.0 sample rate should prevent it from being used.
-	c, err := Dial(ln.Addr().String(), testToken, time.Second)
+
+	c, err := Dial(addr, testToken, time.Second)
 	if err != nil {
-		t.Fatalf("dial mock: %v", err)
+		t.Fatalf("dial mock sidecar: %v", err)
 	}
 	defer c.Close()
 	sup.client = c
@@ -166,19 +165,16 @@ func TestSampleRateGating(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scan with 0.0 sample rate returned error: %v", err)
 	}
+	// 0.0 must NOT be interpreted as "not sampled" — the safe default scans.
+	if resp.Reason == "not sampled" {
+		t.Fatal("SampleRate 0.0 must default to scanning, but the request was gated out as 'not sampled'")
+	}
+	// The request must have reached the sidecar (its response carries LatencyMS=7).
 	if resp.Result != ResultClean {
-		t.Fatalf("expected ResultClean (not sampled), got %q", resp.Result)
+		t.Fatalf("expected ResultClean from the sidecar, got %q", resp.Result)
 	}
-	if resp.Reason != "not sampled" {
-		t.Fatalf("expected reason 'not sampled', got %q", resp.Reason)
-	}
-
-	// Verify the mock sidecar was never contacted.
-	select {
-	case <-accepted:
-		t.Fatal("mock sidecar was contacted despite 0.0 sample rate")
-	case <-time.After(100 * time.Millisecond):
-		// Correct: no connection was made.
+	if resp.LatencyMS != 7 {
+		t.Fatalf("expected the sidecar response (LatencyMS=7); got %d — request was not forwarded", resp.LatencyMS)
 	}
 }
 
