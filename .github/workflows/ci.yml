@@ -43,8 +43,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
+          # bpf2go compiles the .bpf.c sources with clang against the committed
+          # vmlinux.h (internal/sentry/linux/bpf/vmlinux.h), so bpftool is not
+          # needed at generate time. On Ubuntu 24.04 bpftool is a virtual package
+          # with no default candidate, which broke this step.
           sudo apt-get install -y --no-install-recommends \
-            clang llvm libelf-dev libbpf-dev linux-headers-$(uname -r) bpftool
+            clang llvm libelf-dev libbpf-dev linux-headers-$(uname -r)
 
       - name: Generate eBPF bytecode bindings (Linux only)
         if: runner.os == 'Linux'
