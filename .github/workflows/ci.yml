@@ -55,10 +55,18 @@ jobs:
         run: |
           # The committed vmlinux.h is a minimal stub (forward declarations only);
           # bpf2go needs the full BTF type definitions to compile the .bpf.c field
-          # reads. Regenerate it from the runner's kernel BTF, exactly as the file
-          # header documents. CI-generated, never committed (CLAUDE.md).
+          # reads. Regenerate it from the runner's kernel BTF, as the file header
+          # documents. CI-generated, never committed (CLAUDE.md).
+          #
+          # The /usr/sbin/bpftool wrapper version-matches to the running kernel and
+          # fails to locate the binary on the Azure runner ("bpftool not found for
+          # kernel ..."), so call the real binary installed by
+          # linux-tools-$(uname -r) directly.
           test -r /sys/kernel/btf/vmlinux
-          bpftool btf dump file /sys/kernel/btf/vmlinux format c > internal/sentry/linux/bpf/vmlinux.h
+          bpftool_bin=$(find /usr/lib -path '*linux-tools*/bpftool' -type f 2>/dev/null | head -1)
+          test -n "$bpftool_bin" || { echo "::error::bpftool binary not found under /usr/lib"; exit 1; }
+          echo "using bpftool: $bpftool_bin"
+          "$bpftool_bin" btf dump file /sys/kernel/btf/vmlinux format c > internal/sentry/linux/bpf/vmlinux.h
           echo "regenerated vmlinux.h: $(wc -l < internal/sentry/linux/bpf/vmlinux.h) lines"
 
       - name: Generate eBPF bytecode bindings (Linux only)
