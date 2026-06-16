@@ -39,16 +39,27 @@ jobs:
       - name: Install Pollen (BKINT-02 — pinned binary for inventory tests)
         run: go install github.com/bantuson/pollen/cmd/pollen@v0.2.0
 
-      - name: Install clang/llvm/libbpf for eBPF bytecode generation (Linux only)
+      - name: Install clang/llvm/libbpf/bpftool for eBPF bytecode generation (Linux only)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          # bpf2go compiles the .bpf.c sources with clang against the committed
-          # vmlinux.h (internal/sentry/linux/bpf/vmlinux.h), so bpftool is not
-          # needed at generate time. On Ubuntu 24.04 bpftool is a virtual package
-          # with no default candidate, which broke this step.
+          # bpftool is provided by linux-tools-$(uname -r) (the bare `bpftool`
+          # package is virtual on Ubuntu 24.04 with no default candidate).
+          # linux-headers-$(uname -r) installs cleanly on the Azure runner kernel,
+          # and linux-tools-$(uname -r) is published alongside it.
           sudo apt-get install -y --no-install-recommends \
-            clang llvm libelf-dev libbpf-dev linux-headers-$(uname -r)
+            clang llvm libelf-dev libbpf-dev linux-headers-$(uname -r) linux-tools-$(uname -r)
+
+      - name: Regenerate vmlinux.h from the runner kernel BTF (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          # The committed vmlinux.h is a minimal stub (forward declarations only);
+          # bpf2go needs the full BTF type definitions to compile the .bpf.c field
+          # reads. Regenerate it from the runner's kernel BTF, exactly as the file
+          # header documents. CI-generated, never committed (CLAUDE.md).
+          test -r /sys/kernel/btf/vmlinux
+          bpftool btf dump file /sys/kernel/btf/vmlinux format c > internal/sentry/linux/bpf/vmlinux.h
+          echo "regenerated vmlinux.h: $(wc -l < internal/sentry/linux/bpf/vmlinux.h) lines"
 
       - name: Generate eBPF bytecode bindings (Linux only)
         if: runner.os == 'Linux'
