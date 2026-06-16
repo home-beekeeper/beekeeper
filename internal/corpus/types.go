@@ -1,6 +1,6 @@
 package corpus
 
-import "github.com/bantuson/beekeeper/internal/audit"
+import "github.com/home-beekeeper/beekeeper/internal/audit"
 
 // CorpusRecord is one NDJSON line in the corpus store. It embeds the existing
 // audit.AuditRecord (behavior + decision layers) via UNNAMED embedding so that

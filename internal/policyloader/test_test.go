@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // fakeSignedCatalog is a test-only MultiCatalogLookup that returns a single

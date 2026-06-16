@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // maxOverlayEntries is the maximum number of entries the local overlay will

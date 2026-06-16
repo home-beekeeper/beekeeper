@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/config"
 )
 
 // FuzzBuildPushEnvelope is the ENV-03 property gate (release BLOCKER).

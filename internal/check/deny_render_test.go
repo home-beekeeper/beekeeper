@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // TestRenderDeny is the CI-runnable regression gate asserting the exact per-harness

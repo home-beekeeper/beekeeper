@@ -36,7 +36,7 @@ The five questions this research answers:
 
 All capabilities for v1.4.0 are achievable with:
 - Go 1.25 stdlib only (`crypto/ed25519`, `crypto/hmac`, `crypto/sha256`, `crypto/rand`, `encoding/json`, `sync`, `time`, `os`, `path/filepath`)
-- Already-present modules in go.mod (`github.com/bantuson/beekeeper/internal/audit`, `internal/quarantine`, `internal/policy`, `internal/platform`)
+- Already-present modules in go.mod (`github.com/home-beekeeper/beekeeper/internal/audit`, `internal/quarantine`, `internal/policy`, `internal/platform`)
 
 **No new entries to go.mod are required for any Phase 22–25 deliverable.**
 

@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 
 // TestE2ELiveBinary is the v1.2.0 release-gate test. It:
@@ -60,7 +60,7 @@ func TestE2ELiveBinary(t *testing.T) {
 		// repoint the trust root at runtime (remediation 260615, finding #1).
 		"-tags", "beekeeperhomeoverride",
 		"-o", binPath,
-		"github.com/bantuson/beekeeper/cmd/beekeeper",
+		"github.com/home-beekeeper/beekeeper/cmd/beekeeper",
 	).CombinedOutput()
 	if buildErr != nil {
 		t.Fatalf("go build failed: %v\n%s", buildErr, buildOut)

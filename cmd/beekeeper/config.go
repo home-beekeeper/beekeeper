@@ -32,9 +32,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // newConfigCmd groups the config management subcommands.

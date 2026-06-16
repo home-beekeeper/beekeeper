@@ -4,7 +4,7 @@ slug: pollen-windows-test-coverage
 description: Pollen Windows test coverage
 date: 2026-06-11
 status: complete
-target_repo: ../pollen (github.com/bantuson/pollen)
+target_repo: ../pollen (github.com/home-beekeeper/pollen)
 pollen_commits: [da58af7, eeaf529, f7e5bad, c8ff8de, 27e4748, d2c6f35, 032c92a, a29d71f, c896175]
 ---
 
@@ -103,7 +103,7 @@ the recommended macOS/Linux tool.
 
 1. (Optional) Raise `editorext` + `cmd/pollen` with fixtures if literal-high
    coverage is wanted there.
-2. Public push: `bantuson/pollen` GitHub repo + signed tags `pollen.2–.5`
+2. Public push: `home-beekeeper/pollen` GitHub repo + signed tags `pollen.2–.5`
    (`docs/release-runbook.md` in the pollen repo), cosign-verify.
 3. beekeeper web-docs positioning (Bumblebee = recommended macOS/Linux;
    Pollen = Windows-only stopgap; Beekeeper inspired by Bumblebee).

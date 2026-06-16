@@ -10,11 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
-	"github.com/bantuson/beekeeper/internal/corpus"
-	"github.com/bantuson/beekeeper/internal/platform"
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/watch"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/watch"
 )
 
 // catalogSyncSourceName is the SourceState key for the Bumblebee catalog in

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // TestSelfProtectSymlinkedParentNonExistentLeaf covers finding #3: a Write to a

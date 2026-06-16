@@ -60,7 +60,7 @@ the `test` job in `.github/workflows/ci.yml`, placed after `Verify dependencies`
 
 ```yaml
 - name: Install Pollen (BKINT-02 — pinned binary for inventory tests)
-  run: go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
+  run: go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4
 ```
 
 `actions/setup-go@v5` adds `GOPATH/bin` to PATH (Assumption A2 from 05-RESEARCH.md),
@@ -73,12 +73,12 @@ const PinnedPollenVersion = "v0.1.1-pollen.4"
 ```
 
 The doc comment explains: this is a subprocess-boundary pin (BKINT-02), NOT a Go-module
-dependency. No `import "github.com/bantuson/pollen/..."` was added (prohibited — BKINT-01).
+dependency. No `import "github.com/home-beekeeper/pollen/..."` was added (prohibited — BKINT-01).
 The file explicitly directs maintainers to update both this const AND the CI step together.
 
 **Subprocess boundary verification:**
-- `go.mod` has no `github.com/bantuson/pollen` require directive (verified)
-- `internal/scan/pollen_version.go` mentions `github.com/bantuson/pollen` only in doc comments,
+- `go.mod` has no `github.com/home-beekeeper/pollen` require directive (verified)
+- `internal/scan/pollen_version.go` mentions `github.com/home-beekeeper/pollen` only in doc comments,
   never in an import block — the Go compiler ignores it
 - `go build ./...` clean; `go vet ./internal/scan/` clean
 
@@ -100,13 +100,13 @@ plan-05 checkpoint when the maintainer pushes pollen + cuts the tags (Step 7 of 
 The D-5 maintainer hand-off procedure — 7 numbered steps with copy-paste command blocks:
 
 1. **Preconditions** — local commits verified in both repos; `gh auth status` green; cosign v3 available
-2. **Create beekeeper GitHub repo** — `gh repo create bantuson/beekeeper --public --source=. --push` (lowercase matches go.mod module path)
-3. **Push pollen main** — `git -C .../pollen push origin main`; wait for 3-OS CI green via `gh -R Bantuson/pollen run watch`
+2. **Create beekeeper GitHub repo** — `gh repo create home-beekeeper/beekeeper --public --source=. --push` (lowercase matches go.mod module path)
+3. **Push pollen main** — `git -C .../pollen push origin main`; wait for 3-OS CI green via `gh -R home-beekeeper/pollen run watch`
 4. **Cut pollen.2** at `c94b271` — `git tag -a v0.1.1-pollen.2 c94b271 -m "..."` + push + wait for release job
 5. **Cut pollen.3** at `19695e3` — same pattern
 6. **Cut pollen.4** — decision point documented: `b906404` recommended (includes WR-01 VSCodium fix) over `a9db7b3` (Phase 4 release-prep commit that predates the fix)
 7. **Cut pollen.5** at HEAD after Phase 5 Plan 01 commits (VERSION/CHANGES/UPSTREAM.md) — explicitly NOT `a9db7b3` (Pitfall 6)
-8. **Cosign verify** each release: `cosign verify-blob --bundle checksums.txt.sigstore.json --certificate-identity-regexp '^https://github\.com/Bantuson/pollen/' --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' checksums.txt`
+8. **Cosign verify** each release: `cosign verify-blob --bundle checksums.txt.sigstore.json --certificate-identity-regexp '^https://github\.com/home-beekeeper/pollen/' --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' checksums.txt`
 9. **Push beekeeper main** (Step 6 in runbook) — after all pollen tags live (Pitfall 3 sequencing)
 
 **Key safeguards in runbook:**
@@ -127,11 +127,11 @@ The D-5 maintainer hand-off procedure — 7 numbered steps with copy-paste comma
 | Build | `go build ./...` | PASS |
 | Vet | `go vet ./internal/scan/` | PASS |
 | CI step pattern | `Select-String -Path .github/workflows/ci.yml -Pattern "go install .../pollen@v0.1.1-pollen.4"` | True |
-| No go.mod pollen import | `Select-String -Path go.mod -Pattern "bantuson/pollen"` | empty (PASS) |
+| No go.mod pollen import | `Select-String -Path go.mod -Pattern "home-beekeeper/pollen"` | empty (PASS) |
 | Zero scan test skips | `go test ./internal/scan/ -v \| Select-String SKIP` | empty (PASS) |
 | cosign verify-blob in runbook | `Select-String -Path docs/release-runbook.md -Pattern "cosign verify-blob"` | True |
 | pollen.5 in runbook | `Select-String -Path docs/release-runbook.md -Pattern "v0.1.1-pollen.5"` | True |
-| capital-B Bantuson in runbook | `Select-String -Path docs/release-runbook.md -Pattern "Bantuson/pollen"` | True |
+| capital-B Bantuson in runbook | `Select-String -Path docs/release-runbook.md -Pattern "home-beekeeper/pollen"` | True |
 | All 4 commit hashes in runbook | c94b271, 19695e3, b906404, a9db7b3 | All present |
 
 ---
@@ -167,4 +167,4 @@ is the maintainer hand-off artifact; it is not wired to a data source.
 - `docs/release-runbook.md` exists with cosign verify-blob, Bantuson identity, four commit hashes
 - Commits `6539854` (task 1) and `985b755` (task 2) confirmed in git log
 - `go build ./...` and `go vet ./internal/scan/` clean
-- `go.mod` has no `bantuson/pollen` import
+- `go.mod` has no `home-beekeeper/pollen` import

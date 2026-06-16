@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 
 func TestPollenScanArgs(t *testing.T) {

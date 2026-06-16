@@ -13,7 +13,7 @@ Phase 1 establishes the **Pollen** repository — a bounded Apache-2.0 fork of u
 
 **In scope:**
 - Create the `pollen` repo (sibling dir + its own git), fork upstream at the pinned v0.1.1 commit
-- Rename module path → `github.com/bantuson/pollen`; rename `cmd/bumblebee/` → `cmd/pollen/`; `pollen` CLI builds on ubuntu/macos/windows
+- Rename module path → `github.com/home-beekeeper/pollen`; rename `cmd/bumblebee/` → `cmd/pollen/`; `pollen` CLI builds on ubuntu/macos/windows
 - Legal/attribution: verbatim Apache-2.0 LICENSE, NOTICE, CHANGES.md, UPSTREAM.md (pinned commit + sync workflow), trademark discipline
 - CI matrix (ubuntu/macos/windows, go 1.25.x): `go vet`, `go test -race ./...`, `pollen selftest`, versioned build; upstream's inherited tests pass on Linux/macOS
 - Differential test: `pollen` output byte-for-byte identical to upstream `bumblebee` on Linux + macOS for a fixed fixture; runs every PR
@@ -27,7 +27,7 @@ Phase 1 establishes the **Pollen** repository — a bounded Apache-2.0 fork of u
 
 ### Repository & Cross-Repo Model (LOCKED this session)
 - Pollen lives at **`C:\Users\Bantu\mzansi-agentive\pollen`** (sibling to beekeeper), as **its own git repository** — NOT vendored into beekeeper (PRD §5.1).
-- GitHub home: **`github.com/bantuson/pollen`** (the GitHub handle is `bantuson`; `mzansi-agentive` was only ever local naming).
+- GitHub home: **`github.com/home-beekeeper/pollen`** (the GitHub handle is `bantuson`; `mzansi-agentive` was only ever local naming).
 - **GSD tracks this milestone from beekeeper for now.** Phase planning artifacts (CONTEXT/PLAN/SUMMARY) live in `beekeeper/.planning/`. The **code** is created in and committed to `../pollen` via explicit `git -C ../pollen ...` operations in plan tasks. Beekeeper's own GSD commits cover only the planning artifacts. Whether Pollen later gets its own `.planning/` is revisited AFTER it exists (phases 2–4) — do not assume it here.
 - Because pollen is outside beekeeper's worktree, executor tasks that produce pollen files MUST perform their own `git -C ../pollen add/commit` and must NOT rely on beekeeper's auto-commit for pollen code.
 
@@ -40,13 +40,13 @@ Phase 1 establishes the **Pollen** repository — a bounded Apache-2.0 fork of u
 
 ### Legal & attribution (PRD §7)
 - `LICENSE`: verbatim upstream Apache-2.0, unmodified.
-- `NOTICE`: the exact text in PRD §7.2 (attributes Perplexity/Bumblebee, states non-affiliation, points general users to upstream, references `github.com/bantuson/beekeeper`).
+- `NOTICE`: the exact text in PRD §7.2 (attributes Perplexity/Bumblebee, states non-affiliation, points general users to upstream, references `github.com/home-beekeeper/beekeeper`).
 - `CHANGES.md`: the §7.3 format — Added / Renamed / Modified / Removed sections documenting every delta from the pinned commit.
 - **Trademark discipline (FORK-04):** "Bumblebee" appears ONLY in attribution contexts (NOTICE, README "derived from" paragraph, UPSTREAM.md). Never in command names, package names, README headlines, or `cmd/`. Apache-2.0 §6 grants no trademark rights.
 
 ### Self-defense (PRD §10.2)
 - Reproducible builds: `-trimpath -buildvcs=false -mod=readonly` (mirror beekeeper's `.goreleaser.yaml` + `Makefile`).
-- Sigstore/cosign **keyless** signing via GitHub Actions OIDC — the cert identity will be `github.com/bantuson/pollen/.github/workflows/...` (new repo; do NOT copy beekeeper's identity string).
+- Sigstore/cosign **keyless** signing via GitHub Actions OIDC — the cert identity will be `github.com/home-beekeeper/pollen/.github/workflows/...` (new repo; do NOT copy beekeeper's identity string).
 - CycloneDX **SBOM** per release (syft, as in beekeeper's `.goreleaser.yaml`), recording the source upstream commit.
 - Two-account release approval discipline noted for the tag step (same as beekeeper).
 

@@ -5,7 +5,7 @@ subsystem: "pollen-fork"
 tags: ["fork", "module-rename", "trademark", "windows-build", "go-embed"]
 dependency_graph:
   requires: []
-  provides: ["pollen-repo-at-../pollen", "module-github.com/bantuson/pollen", "cmd/pollen-binary"]
+  provides: ["pollen-repo-at-../pollen", "module-github.com/home-beekeeper/pollen", "cmd/pollen-binary"]
   affects: ["plans 01-02 through 01-05 (all depend on pollen repo existing)"]
 tech_stack:
   added: []
@@ -13,7 +13,7 @@ tech_stack:
 key_files:
   created:
     - "../pollen/ (entire repo)"
-    - "../pollen/go.mod (module github.com/bantuson/pollen)"
+    - "../pollen/go.mod (module github.com/home-beekeeper/pollen)"
     - "../pollen/cmd/pollen/main.go"
     - "../pollen/cmd/pollen/selftest.go"
     - "../pollen/cmd/pollen/version.go"
@@ -26,7 +26,7 @@ decisions:
   - "6 Unix-specific test functions in cmd/pollen/main_test.go got t.Skip with 'Phase 2 (v0.1.1-pollen.2)' structured reasons"
   - "scanner_test.go TestEndToEndScan: hardcoded /proj/ /dup/ path separators replaced with filepath.Separator to pass on Windows"
   - "BUMBLEBEE_USERS_DIR and BUMBLEBEE_TEST_DEVICE_ID env var names renamed to POLLEN_ prefix (FORK-04)"
-  - "upstream remote named 'upstream' at time of clone (origin removed); plan 05 will bind origin to github.com/bantuson/pollen"
+  - "upstream remote named 'upstream' at time of clone (origin removed); plan 05 will bind origin to github.com/home-beekeeper/pollen"
   - "pollen.exe build artifact committed accidentally, then removed in follow-up commit; .gitignore updated"
 metrics:
   duration: "~20 minutes"
@@ -37,11 +37,11 @@ metrics:
 
 # Phase 01 Plan 01: Fork Setup & Module Rename Summary
 
-Pollen repo created at `../pollen` as a bounded Apache-2.0 fork of `perplexityai/bumblebee` v0.1.1. Module path rewritten to `github.com/bantuson/pollen`, `cmd/bumblebee` renamed to `cmd/pollen`, trademark strings fixed, host build and Windows cross-compile green, selftest emits 3 findings, full test suite passes.
+Pollen repo created at `../pollen` as a bounded Apache-2.0 fork of `perplexityai/bumblebee` v0.1.1. Module path rewritten to `github.com/home-beekeeper/pollen`, `cmd/bumblebee` renamed to `cmd/pollen`, trademark strings fixed, host build and Windows cross-compile green, selftest emits 3 findings, full test suite passes.
 
 ## One-liner
 
-Apache-2.0 fork of bumblebee v0.1.1 with module path rewrite to github.com/bantuson/pollen, cmd/pollen rename, and Windows-clean test suite (6 root-resolver test skips with Phase 2 structured reasons).
+Apache-2.0 fork of bumblebee v0.1.1 with module path rewrite to github.com/home-beekeeper/pollen, cmd/pollen rename, and Windows-clean test suite (6 root-resolver test skips with Phase 2 structured reasons).
 
 ## Tasks Completed
 
@@ -87,7 +87,7 @@ No `go.sum` file exists — upstream bumblebee v0.1.1 has zero external dependen
 
 | Check | Result |
 |-------|--------|
-| `go.mod` first line | `module github.com/bantuson/pollen` |
+| `go.mod` first line | `module github.com/home-beekeeper/pollen` |
 | Stale `perplexityai/bumblebee` imports in .go files | None |
 | `git remote get-url upstream` | `https://github.com/perplexityai/bumblebee.git` |
 | `cmd/pollen/` exists | Yes |
@@ -107,7 +107,7 @@ No `go.sum` file exists — upstream bumblebee v0.1.1 has zero external dependen
 | Commit | Message |
 |--------|---------|
 | `c240898` | initial public release (v0.1.1) — upstream pinned commit |
-| `1fdd433` | fork: import upstream bumblebee @ c24089804ee... ; rewrite module path -> github.com/bantuson/pollen |
+| `1fdd433` | fork: import upstream bumblebee @ c24089804ee... ; rewrite module path -> github.com/home-beekeeper/pollen |
 | `18b0c70` | rename: cmd/bumblebee -> cmd/pollen; trademark fixes (selftest temp prefix, help text, version default) [FORK-04] |
 | `9de5d61` | chore: remove accidentally committed pollen.exe build artifact |
 | `c3d10a4` | fix: rename BUMBLEBEE_ env var test overrides to POLLEN_ [FORK-04] |

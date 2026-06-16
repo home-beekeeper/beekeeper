@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/llamafirewall"
-	"github.com/bantuson/beekeeper/internal/nudge"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/llamafirewall"
+	"github.com/home-beekeeper/beekeeper/internal/nudge"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // mockGatewayScanner implements GatewayScanner for testing.

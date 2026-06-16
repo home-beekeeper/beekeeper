@@ -12,7 +12,7 @@
 ### Locked Decisions
 
 - Pollen lives at `C:\Users\Bantu\mzansi-agentive\pollen` (sibling to beekeeper), as its own git repository — NOT vendored into beekeeper.
-- GitHub home: `github.com/bantuson/pollen` (handle is `bantuson`; `mzansi-agentive` is only local naming).
+- GitHub home: `github.com/home-beekeeper/pollen` (handle is `bantuson`; `mzansi-agentive` is only local naming).
 - GSD tracks this milestone from beekeeper. Phase planning artifacts live in `beekeeper/.planning/`. Code is committed to `../pollen` via explicit `git -C ../pollen ...` operations. Beekeeper's GSD commits cover only planning artifacts.
 - Executor tasks that produce pollen files MUST perform their own `git -C ../pollen add/commit` and must NOT rely on beekeeper's auto-commit for pollen code.
 - Pin to upstream **commit** (not branch): v0.1.1 tag SHA. Record in `UPSTREAM.md`.
@@ -25,7 +25,7 @@
 - `CHANGES.md`: §7.3 format — Added/Renamed/Modified/Removed sections.
 - **Trademark discipline (FORK-04):** "Bumblebee" appears ONLY in attribution contexts.
 - Reproducible builds: `-trimpath -buildvcs=false -mod=readonly`.
-- Sigstore/cosign **keyless** signing via GitHub Actions OIDC — cert identity `github.com/bantuson/pollen/.github/workflows/...`.
+- Sigstore/cosign **keyless** signing via GitHub Actions OIDC — cert identity `github.com/home-beekeeper/pollen/.github/workflows/...`.
 - CycloneDX SBOM per release (syft).
 - `pollen selftest` passes on all three OSes.
 - Differential test: byte-for-byte identical NDJSON on Linux + macOS — determinism normalization is required (see NDJSON Determinism section).
@@ -52,7 +52,7 @@
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| FORK-01 | Pollen as separate Go module `github.com/bantuson/pollen`, forked at pinned v0.1.1 commit, `cmd/bumblebee/` → `cmd/pollen/`, CLI builds on ubuntu/macos/windows | Upstream structure verified; rename mechanics documented; Windows build confirmed via CGO_ENABLED=0 |
+| FORK-01 | Pollen as separate Go module `github.com/home-beekeeper/pollen`, forked at pinned v0.1.1 commit, `cmd/bumblebee/` → `cmd/pollen/`, CLI builds on ubuntu/macos/windows | Upstream structure verified; rename mechanics documented; Windows build confirmed via CGO_ENABLED=0 |
 | FORK-02 | Apache-2.0 LICENSE verbatim; NOTICE; CHANGES.md; UPSTREAM.md with 40-char SHA | v0.1.1 SHA confirmed: `c24089804ee66ece4bec6f14638cb98985389cdb`; tag date 2026-05-22; upstream go.mod confirmed |
 | FORK-03 | Reproducible builds + Sigstore keyless signing + tag `v0.1.1-pollen.1` | Beekeeper's exact stanza to mirror documented; Pollen-specific cosign identity string documented |
 | FORK-04 | Trademark discipline — "Bumblebee" only in attribution contexts | Hardcoded "bumblebee" string locations identified in upstream (help text, binary name, selftest temp dir prefix) |
@@ -69,7 +69,7 @@ Upstream `perplexityai/bumblebee` at v0.1.1 is a **zero-dependency** Go 1.25 mod
 
 The hardest load-bearing unknown is **NDJSON determinism for the differential test (PTEST-02)**. Upstream emits four non-deterministic fields per scan: `run_id` (crypto/rand hex), `scan_time` (RFC3339Nano wall-clock), `end_time` (wall-clock), and `duration_ms` (elapsed). Additionally, concurrent workers emit package records in **non-deterministic order**. The differential test cannot be a raw byte comparison — it requires a normalization harness that strips these fields and sorts the record stream before comparing. This is the most architecturally significant finding in this research.
 
-The self-defense stack (cosign keyless, SLSA, syft SBOM) mirrors beekeeper's `.goreleaser.yaml` + `release.yml` pattern almost exactly, with one critical adaptation: the cosign OIDC cert identity must use `github.com/bantuson/pollen/...` (not `mzansi-agentive/beekeeper`). Upstream's own `.goreleaser.yaml` lacks `-buildvcs=false`, signing, and SBOM — Pollen's release pipeline must add all three from scratch.
+The self-defense stack (cosign keyless, SLSA, syft SBOM) mirrors beekeeper's `.goreleaser.yaml` + `release.yml` pattern almost exactly, with one critical adaptation: the cosign OIDC cert identity must use `github.com/home-beekeeper/pollen/...` (not `mzansi-agentive/beekeeper`). Upstream's own `.goreleaser.yaml` lacks `-buildvcs=false`, signing, and SBOM — Pollen's release pipeline must add all three from scratch.
 
 **Primary recommendation:** Create the pollen repo, wire the CI guard rails (differential + selftest + repro-build) using the normalization harness before implementing any Windows code. Everything else in this phase is mechanical rename + file addition.
 
@@ -165,7 +165,7 @@ pollen/
 ├── UPSTREAM.md                    # pinned SHA + sync workflow
 ├── README.md                      # Pollen purpose; points general users to upstream
 ├── VERSION                        # "0.1.1-pollen.1"
-├── go.mod                         # module github.com/bantuson/pollen; go 1.25
+├── go.mod                         # module github.com/home-beekeeper/pollen; go 1.25
 ├── Makefile                       # mirror beekeeper's repro-build targets
 ├── .goreleaser.yaml               # multi-OS + signing + SBOM
 ├── .github/
@@ -203,7 +203,7 @@ pollen/
 
 ### Pattern 1: Module Path Rewrite
 
-**What:** Replace every occurrence of `github.com/perplexityai/bumblebee` with `github.com/bantuson/pollen` across all `.go` files and `go.mod`.
+**What:** Replace every occurrence of `github.com/perplexityai/bumblebee` with `github.com/home-beekeeper/pollen` across all `.go` files and `go.mod`.
 
 **When to use:** First step after cloning upstream at the pinned commit.
 
@@ -215,10 +215,10 @@ pollen/
 **Example:**
 ```bash
 # On Linux/macOS (run from pollen repo root after cloning):
-find . -name '*.go' -o -name 'go.mod' | xargs sed -i 's|github.com/perplexityai/bumblebee|github.com/bantuson/pollen|g'
+find . -name '*.go' -o -name 'go.mod' | xargs sed -i 's|github.com/perplexityai/bumblebee|github.com/home-beekeeper/pollen|g'
 # On Windows PowerShell equivalent:
 Get-ChildItem -Recurse -Include '*.go','go.mod' | ForEach-Object {
-    (Get-Content $_.FullName) -replace 'github.com/perplexityai/bumblebee','github.com/bantuson/pollen' |
+    (Get-Content $_.FullName) -replace 'github.com/perplexityai/bumblebee','github.com/home-beekeeper/pollen' |
     Set-Content $_.FullName
 }
 ```
@@ -253,7 +253,7 @@ Get-ChildItem -Recurse -Include '*.go','go.mod' | ForEach-Object {
 ### Pattern 4: Reproducible Build (mirror beekeeper Makefile)
 
 ```makefile
-MODULE     := github.com/bantuson/pollen
+MODULE     := github.com/home-beekeeper/pollen
 VERSION    ?= dev
 COMMIT     := $(shell git rev-parse HEAD)
 DATE       := $(shell git show -s --format=%cI HEAD)
@@ -265,28 +265,28 @@ build:
     go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o dist/pollen ./cmd/pollen
 ```
 
-Note: Pollen uses `main.Version` (not a `version` package), so ldflags path is simpler than beekeeper's (`-X github.com/bantuson/beekeeper/internal/version.Version`).
+Note: Pollen uses `main.Version` (not a `version` package), so ldflags path is simpler than beekeeper's (`-X github.com/home-beekeeper/beekeeper/internal/version.Version`).
 
 ### Pattern 5: cosign Keyless Signing (pollen-specific identity)
 
 The cosign OIDC cert identity for pollen's release workflow will be:
 
 ```
-https://github.com/bantuson/pollen/.github/workflows/release.yml@refs/tags/v...
+https://github.com/home-beekeeper/pollen/.github/workflows/release.yml@refs/tags/v...
 ```
 
-This differs from beekeeper's identity (`github.com/bantuson/beekeeper/...`). The `.goreleaser.yaml` `signs` stanza does NOT specify the identity — identity is bound by the OIDC token from GitHub Actions. No change to YAML needed; the identity is automatic from the repo context.
+This differs from beekeeper's identity (`github.com/home-beekeeper/beekeeper/...`). The `.goreleaser.yaml` `signs` stanza does NOT specify the identity — identity is bound by the OIDC token from GitHub Actions. No change to YAML needed; the identity is automatic from the repo context.
 
 **THREAT-MODEL.md verify command** for pollen should use:
 ```bash
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp "^https://github.com/bantuson/pollen/" \
+  --certificate-identity-regexp "^https://github.com/home-beekeeper/pollen/" \
   checksums.txt
 ```
 
-[VERIFIED: beekeeper .goreleaser.yaml + release.yml] — pattern confirmed. [ASSUMED] identity string shape — `github.com/bantuson/pollen/...` is the expected format based on GitHub Actions OIDC, but the exact URL in the sigstore cert should be validated after the first actual release.
+[VERIFIED: beekeeper .goreleaser.yaml + release.yml] — pattern confirmed. [ASSUMED] identity string shape — `github.com/home-beekeeper/pollen/...` is the expected format based on GitHub Actions OIDC, but the exact URL in the sigstore cert should be validated after the first actual release.
 
 ### Anti-Patterns to Avoid
 
@@ -608,7 +608,7 @@ archives:
         formats: [zip]
 ```
 
-Key difference from beekeeper: ldflags uses `-X main.Version` not `-X github.com/bantuson/pollen/internal/version.Version` (pollen keeps version in `main` package).
+Key difference from beekeeper: ldflags uses `-X main.Version` not `-X github.com/home-beekeeper/pollen/internal/version.Version` (pollen keeps version in `main` package).
 
 ### `release.yml` for Pollen
 
@@ -764,7 +764,7 @@ verified by: bantuson
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | cosign OIDC cert identity shape is `https://github.com/bantuson/pollen/.github/workflows/release.yml@refs/tags/v...` | Architecture Patterns §5 | If identity string format differs, the THREAT-MODEL.md `--certificate-identity-regexp` will need correction after first release. Build still works; verification fails with wrong regexp. |
+| A1 | cosign OIDC cert identity shape is `https://github.com/home-beekeeper/pollen/.github/workflows/release.yml@refs/tags/v...` | Architecture Patterns §5 | If identity string format differs, the THREAT-MODEL.md `--certificate-identity-regexp` will need correction after first release. Build still works; verification fails with wrong regexp. |
 | A2 | `go test -race ./...` on windows-latest CI passes with `CGO_ENABLED: 1` (MSVC present) | Common Pitfalls §5 | If MSVC absent on windows-latest, `-race` fails; mitigation: add `if: runner.os != 'Windows'` guard or `CGO_ENABLED: 0` on Windows (accept no race detection on Windows for Phase 1) |
 | A3 | `windows-latest` GitHub Actions runner has MSVC available for CGO | Environment Availability | Same as A2 |
 | A4 | upstream `internal/normalize`, `internal/walk`, `internal/ecosystem` package layouts are preserved verbatim at v0.1.1 (not inspected directly; internal packages are not directly consumed by pollen's additions in Phase 1) | Architecture | If any package has hardcoded "bumblebee" strings in help/error text, those need additional renaming. Low risk: internal packages are unlikely to have binary-name strings. |

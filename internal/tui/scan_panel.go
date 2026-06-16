@@ -15,11 +15,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	audit "github.com/bantuson/beekeeper/internal/audit"
-	config "github.com/bantuson/beekeeper/internal/config"
-	editorinit "github.com/bantuson/beekeeper/internal/editorinit"
-	platform "github.com/bantuson/beekeeper/internal/platform"
-	scan "github.com/bantuson/beekeeper/internal/scan"
+	audit "github.com/home-beekeeper/beekeeper/internal/audit"
+	config "github.com/home-beekeeper/beekeeper/internal/config"
+	editorinit "github.com/home-beekeeper/beekeeper/internal/editorinit"
+	platform "github.com/home-beekeeper/beekeeper/internal/platform"
+	scan "github.com/home-beekeeper/beekeeper/internal/scan"
 )
 
 // stepTickMsg advances the scan progress animation by one step.

@@ -1,7 +1,7 @@
 # Beekeeper M2 "Pollen" Release Runbook
 
 **Document:** D-5 maintainer hand-off procedure (Phase 5, Plan 04)
-**Scope:** Push both repos (`Bantuson/pollen`, `bantuson/beekeeper`), cut four signed
+**Scope:** Push both repos (`home-beekeeper/pollen`, `home-beekeeper/beekeeper`), cut four signed
 Pollen tags in order, cosign-verify each release, push beekeeper main.
 **Executor:** Maintainer (auth-gated, outward-facing steps — NOT the autonomous executor)
 **Reference:** `05-04-SUMMARY.md`, `05-RESEARCH.md` RQ-6, `02-04-SUMMARY.md`, `03-03-SUMMARY.md`
@@ -18,7 +18,7 @@ Verify ALL of the following before starting:
   - pollen.4 work and release-prep commit `b906404` (or `a9db7b3` — see Step 4 note) present
   - pollen.5 VERSION / CHANGES.md / UPSTREAM.md commits present (Phase 5 Plan 01 done)
 - [ ] beekeeper BKINT-02 CI edit committed (`internal/scan/pollen_version.go` + `.github/workflows/ci.yml` — Phase 5 Plan 04 Task 1 done)
-- [ ] `gh auth status` shows authenticated as `Bantuson` (capital B)
+- [ ] `gh auth status` shows authenticated with push access to the `home-beekeeper` org
 - [ ] `cosign version` returns v3.x
 - [ ] No uncommitted changes in either repo (`git status` is clean)
 
@@ -28,7 +28,7 @@ Verify ALL of the following before starting:
 
 **Pollen must be pushed and tagged BEFORE beekeeper is pushed** (Pitfall 3 from
 `05-RESEARCH.md`). The beekeeper CI step
-`go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4` resolves from the
+`go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4` resolves from the
 Go module proxy, which requires the module to be publicly available with that tag on
 GitHub. If beekeeper CI runs before the pollen tag exists, the `go install` step fails
 with "no such module".
@@ -39,32 +39,32 @@ Correct order: Steps 1–5 (pollen push + tags + cosign verify) → Step 6 (beek
 
 ## Step 1 — Create the beekeeper GitHub repository (if it does not exist)
 
-**Auth gate:** requires `gh` authenticated as `bantuson`.
+**Auth gate:** requires `gh` authenticated with repo-create/push access to the `home-beekeeper` org.
 
 ```bash
 # Option A: one-liner (creates the repo, adds origin remote, and pushes main)
-gh repo create bantuson/beekeeper --public --source=. --push
+gh repo create home-beekeeper/beekeeper --public --source=. --push
 
 # Option B: if the GitHub repo was already created via the web UI
-git remote add origin https://github.com/bantuson/beekeeper.git
+git remote add origin https://github.com/home-beekeeper/beekeeper.git
 # (do NOT push yet — beekeeper push is Step 6, after pollen tags are live)
 ```
 
-Note: `bantuson/beekeeper` (lowercase) matches the `github.com/bantuson/beekeeper`
+Note: `home-beekeeper/beekeeper` (lowercase) matches the `github.com/home-beekeeper/beekeeper`
 module path in `go.mod`. GitHub normalises display casing; the URL is always lowercase.
 
 ---
 
 ## Step 2 — Push pollen main and wait for 3-OS CI green
 
-**Auth gate:** requires push access to `github.com/Bantuson/pollen` (capital B).
+**Auth gate:** requires push access to `github.com/home-beekeeper/pollen` (capital B).
 
 ```bash
 # Push all unpushed pollen commits (currently 14+ ahead of origin/main)
 git -C C:/Users/Bantu/mzansi-agentive/pollen push origin main
 
 # Wait for the 3-OS (ubuntu-latest, macos-latest, windows-latest) CI matrix to pass
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 ```
 
 **Expected outcome:** All CI jobs green, including `TestParityAllEcosystems` and
@@ -93,7 +93,7 @@ git -C C:/Users/Bantu/mzansi-agentive/pollen push origin v0.1.1-pollen.2
 **Wait for the release job to complete (cosign + SBOM + SLSA L3):**
 
 ```bash
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 ```
 
 **Cosign verify (Step 7 covers all four releases — you may batch the verify at the end,
@@ -126,7 +126,7 @@ git -C C:/Users/Bantu/mzansi-agentive/pollen push origin v0.1.1-pollen.3
 **Wait for release job:**
 
 ```bash
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 ```
 
 ---
@@ -171,7 +171,7 @@ git -C C:/Users/Bantu/mzansi-agentive/pollen push origin v0.1.1-pollen.4
 **Wait for release job:**
 
 ```bash
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 ```
 
 ---
@@ -197,7 +197,7 @@ git -C C:/Users/Bantu/mzansi-agentive/pollen push origin v0.1.1-pollen.5
 **Wait for release job:**
 
 ```bash
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 ```
 
 ---
@@ -210,7 +210,7 @@ For **each** of the four releases (pollen.2, pollen.3, pollen.4, pollen.5):
 
 ```bash
 # Replace v0.1.1-pollen.N with the tag being verified
-gh -R Bantuson/pollen release download v0.1.1-pollen.N \
+gh -R home-beekeeper/pollen release download v0.1.1-pollen.N \
   --pattern "checksums.txt" \
   --pattern "checksums.txt.sigstore.json" \
   --dir ./verify-pollen-N
@@ -221,23 +221,24 @@ gh -R Bantuson/pollen release download v0.1.1-pollen.N \
 ```bash
 cosign verify-blob \
   --bundle ./verify-pollen-N/checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/Bantuson/pollen/' \
+  --certificate-identity-regexp '^https://github\.com/home-beekeeper/pollen/' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   ./verify-pollen-N/checksums.txt
 ```
 
 **Expected output:** `Verified OK`
 
-**CRITICAL — capital B in `Bantuson/pollen` (Pitfall 4):**
-The `--certificate-identity-regexp` MUST use capital-B `Bantuson`.
-GitHub OIDC binds the certificate to the canonical account casing (`Bantuson`),
-NOT the go-module-proxy-normalised lowercase `bantuson`.
-Using lowercase will cause: `Error: none of the expected identities matched what was in the certificate`.
+**Identity note (org migration):**
+The `--certificate-identity-regexp` must match the release workflow's GitHub Actions
+OIDC identity under the `home-beekeeper` org. Org and repo slugs are lowercase, so use
+`home-beekeeper/pollen` exactly as shown. The prior capital-B `Bantuson` requirement
+(Pitfall 4) applied only while the repo lived under a personal account and no longer
+applies. A mismatch causes: `Error: none of the expected identities matched what was in the certificate`.
 
 **c) Confirm SLSA L3 provenance and CycloneDX SBOM are attached to the release:**
 
 ```bash
-gh -R Bantuson/pollen release view v0.1.1-pollen.N --json assets \
+gh -R home-beekeeper/pollen release view v0.1.1-pollen.N --json assets \
   | jq -r '.assets[].name' | grep -E '(slsa|cdx|sigstore)'
 # Expected: files matching *.intoto.jsonl (SLSA), *.cdx.json (SBOM), checksums.txt.sigstore.json
 ```
@@ -258,7 +259,7 @@ gh run watch
 
 **Expected CI behaviour:**
 - "Install Pollen (BKINT-02 — pinned binary for inventory tests)" step succeeds on all 3 OSes
-  (`go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4` resolves now that
+  (`go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4` resolves now that
   the pollen tag is live)
 - `go test -v -race ./...` passes with zero `t.Skip` in `internal/scan/`
 - All `TestScanWithBumblebee`, `TestScanWindowsShapedRecord`, `TestScanPollenUnavailable`,
@@ -270,12 +271,12 @@ gh run watch
 
 After all steps complete:
 
-- [ ] `gh -R Bantuson/pollen release list` shows four releases: `v0.1.1-pollen.2`, `.3`, `.4`, `.5`
+- [ ] `gh -R home-beekeeper/pollen release list` shows four releases: `v0.1.1-pollen.2`, `.3`, `.4`, `.5`
 - [ ] Each release has: cosign `.sigstore.json` bundle, CycloneDX `.cdx.json` SBOM(s), SLSA `.intoto.jsonl` provenance
 - [ ] `cosign verify-blob` returned `Verified OK` for all four releases (Step 6)
 - [ ] Beekeeper CI green on `ubuntu-latest`, `macos-latest`, `windows-latest`
 - [ ] Zero `t.Skip` in `internal/scan/` on `windows-latest` (BKINT-02 complete, D-7)
-- [ ] `gh -R bantuson/beekeeper run list` shows CI green for the beekeeper push
+- [ ] `gh -R home-beekeeper/beekeeper run list` shows CI green for the beekeeper push
 
 ---
 
@@ -293,10 +294,11 @@ After all steps complete:
 ## Troubleshooting
 
 **`cosign verify-blob` returns "none of the expected identities matched"**
-Check: did you use lowercase `bantuson` instead of capital-B `Bantuson` in
-`--certificate-identity-regexp`? See Step 6 CRITICAL note.
+Check: does `--certificate-identity-regexp` exactly match the release workflow
+identity under the `home-beekeeper` org (lowercase, `home-beekeeper/pollen`)?
+See the Step 6 identity note.
 
-**`go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4` fails in beekeeper CI**
+**`go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4` fails in beekeeper CI**
 The pollen tag is not yet live on GitHub. Ensure Steps 3–5 (tag push + release job) completed
 before running Step 7 (beekeeper push). The `go install` step resolves from the Go module proxy,
 which caches the module only after it is publicly tagged (Pitfall 3).

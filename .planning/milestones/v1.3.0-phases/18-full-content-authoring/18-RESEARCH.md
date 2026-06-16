@@ -95,7 +95,7 @@ The nudge feature has a distinction the stubs miss entirely: the shipped binary 
 **Requirement:** DOCS-03 | **ROADMAP SC:** SC-2
 
 **Content outline:**
-1. `go install github.com/bantuson/beekeeper/cmd/beekeeper@latest`
+1. `go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest`
 2. Pre-built binaries from GitHub Releases (download URL pattern)
 3. Cosign verification (exact commands from docs/THREAT-MODEL.md §2/7)
 4. SLSA Level 3 provenance verification
@@ -110,7 +110,7 @@ The nudge feature has a distinction the stubs miss entirely: the shipped binary 
 ```bash
 # Cosign verify
 cosign verify \
-  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
+  --certificate-identity=https://github.com/home-beekeeper/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```
@@ -119,7 +119,7 @@ cosign verify \
 # SLSA verify — note lowercase source-uri (bantuson not Bantuson)
 slsa-verifier verify-artifact beekeeper \
   --provenance-path beekeeper.intoto.jsonl \
-  --source-uri github.com/bantuson/beekeeper
+  --source-uri github.com/home-beekeeper/beekeeper
 ```
 
 - CRITICAL: `--certificate-identity-regexp` for cosign uses capital-B `Bantuson` when verifying pollen releases but the beekeeper binary itself uses the workflow URL pattern (all lowercase `bantuson` in the source-uri for SLSA). Use the exact commands from THREAT-MODEL.md §7, not from the release-runbook (which is pollen-scoped).

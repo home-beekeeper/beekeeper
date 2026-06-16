@@ -43,7 +43,7 @@
 
 **Defect site** (`npm.go` lines 80–122):
 ```go
-// Package: github.com/bantuson/pollen/internal/ecosystem/npm
+// Package: github.com/home-beekeeper/pollen/internal/ecosystem/npm
 
 // IsNodeModulesPackageJSON (line 80) — full function shown for context.
 // The defect is the return of projectPath at line 114.
@@ -164,7 +164,7 @@ import (
     "runtime"
     "strconv"
 
-    "github.com/bantuson/pollen/internal/model"
+    "github.com/home-beekeeper/pollen/internal/model"
 )
 
 func Current(deviceID string) model.Endpoint {
@@ -582,7 +582,7 @@ package main
 
 package main
 
-import "github.com/bantuson/pollen/internal/scanner"
+import "github.com/home-beekeeper/pollen/internal/scanner"
 
 // windowsBaselinePackageRoots is a no-op stub for non-Windows builds.
 // The real implementation lives in roots_windows.go (//go:build windows).
@@ -598,7 +598,7 @@ func windowsSystemRoots() []scanner.Root { return nil }
 
 package endpoint
 
-import "github.com/bantuson/pollen/internal/model"
+import "github.com/home-beekeeper/pollen/internal/model"
 
 // clearUID zeroes the UID field on Windows. On Windows, user.Current().Uid
 // returns a SID string (e.g. "S-1-5-21-...") rather than a Unix numeric UID.
@@ -614,7 +614,7 @@ func clearUID(ep *model.Endpoint) {
 
 package endpoint
 
-import "github.com/bantuson/pollen/internal/model"
+import "github.com/home-beekeeper/pollen/internal/model"
 
 // clearUID is a no-op on Unix — UID is already the correct numeric string.
 func clearUID(ep *model.Endpoint) {}

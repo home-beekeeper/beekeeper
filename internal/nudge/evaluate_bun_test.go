@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 )
 
 // TestEvaluateBunBranches drives evaluateBun directly (white-box) to cover every

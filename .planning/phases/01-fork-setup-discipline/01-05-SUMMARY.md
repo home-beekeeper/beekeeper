@@ -8,17 +8,17 @@ requirements: [FORK-03, SDEF-02]
 
 # Plan 01-05 Summary — First Pollen Release (capstone)
 
-**Objective:** Create the `github.com/Bantuson/pollen` GitHub repo, push the code, confirm the full CI matrix is green via a human checkpoint, then tag `v0.1.1-pollen.1` to trigger the cosign-signed, SLSA-attested, SBOM-bearing release pipeline — and verify the published artifacts.
+**Objective:** Create the `github.com/home-beekeeper/pollen` GitHub repo, push the code, confirm the full CI matrix is green via a human checkpoint, then tag `v0.1.1-pollen.1` to trigger the cosign-signed, SLSA-attested, SBOM-bearing release pipeline — and verify the published artifacts.
 
 ## Outcome: ✅ Complete
 
-- **Repo:** https://github.com/Bantuson/pollen (public)
-- **Release:** https://github.com/Bantuson/pollen/releases/tag/v0.1.1-pollen.1
+- **Repo:** https://github.com/home-beekeeper/pollen (public)
+- **Release:** https://github.com/home-beekeeper/pollen/releases/tag/v0.1.1-pollen.1
 - **Driven inline** by the orchestrator (cross-repo, outward-facing, CI-gated, multi-turn), not a subagent.
 
 ## Task 1 — repo + push + CI-GREEN human checkpoint
 
-- `gh repo create Bantuson/pollen --public`; pushed `main` (origin).
+- `gh repo create home-beekeeper/pollen --public`; pushed `main` (origin).
 - **Email-privacy fix:** the fork commits were authored with a private gmail (blocked by GH007). Rewrote the fork commits to the GitHub noreply (`152793144+Bantuson@users.noreply.github.com`), preserving upstream's `adel.karimishiraz@perplexity.ai` base-commit authorship. Set local repo identity to noreply.
 - Removed the inherited upstream `v0.1.1` tag locally (footgun: `release.yml` triggers on `v*`).
 - **First CI run RED** (expected — first-ever cross-platform run). Triaged 4 CI-only failures the Windows dev box structurally cannot catch (`TestDifferential` skips on Windows; release pipeline can't run locally):
@@ -37,8 +37,8 @@ requirements: [FORK-03, SDEF-02]
 
 ## Task 3 — verification (FORK-03 + SDEF-02 final proof)
 
-- **cosign verify-blob → `Verified OK`** against `^https://github.com/Bantuson/pollen/`.
-- **Assumption A1 RESOLVED:** the real Sigstore cert subject is `https://github.com/Bantuson/pollen/.github/workflows/release.yml@refs/tags/v0.1.1-pollen.1`. GitHub OIDC uses the **canonical account casing `Bantuson`** (capital B), NOT the lowercase Go module path. The lowercase regexp failed; the corrected one passes. Folded into `docs/THREAT-MODEL.md` + `CHANGES.md`.
+- **cosign verify-blob → `Verified OK`** against `^https://github.com/home-beekeeper/pollen/`.
+- **Assumption A1 RESOLVED:** the real Sigstore cert subject is `https://github.com/home-beekeeper/pollen/.github/workflows/release.yml@refs/tags/v0.1.1-pollen.1`. GitHub OIDC uses the **canonical account casing `Bantuson`** (capital B), NOT the lowercase Go module path. The lowercase regexp failed; the corrected one passes. Folded into `docs/THREAT-MODEL.md` + `CHANGES.md`.
 - **SLSA L3 provenance** (`multiple.intoto.jsonl`) attached.
 - **CycloneDX SBOM** published per archive (CycloneDX 1.6).
 
@@ -50,6 +50,6 @@ requirements: [FORK-03, SDEF-02]
 
 ## Pollen repo final state
 
-`github.com/Bantuson/pollen` @ `main` (`37c71e5`): forked at pinned SHA with upstream history + `upstream` remote preserved; module `github.com/bantuson/pollen`; `cmd/pollen`; Apache-2.0 attribution; differential + selftest guards; reproducible + cosign-keyless + syft-SBOM + SLSA-L3 release pipeline; signed `v0.1.1-pollen.1` published and verified. **No Windows scanner code yet** (Phase 2).
+`github.com/home-beekeeper/pollen` @ `main` (`37c71e5`): forked at pinned SHA with upstream history + `upstream` remote preserved; module `github.com/home-beekeeper/pollen`; `cmd/pollen`; Apache-2.0 attribution; differential + selftest guards; reproducible + cosign-keyless + syft-SBOM + SLSA-L3 release pipeline; signed `v0.1.1-pollen.1` published and verified. **No Windows scanner code yet** (Phase 2).
 
 **Next:** `/gsd-verify-work 1` (UAT), then Phase 2 (Windows Root Resolver).

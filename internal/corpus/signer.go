@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // LoadOrCreateSigningKey loads the Ed25519 private key from keyPath if it exists,

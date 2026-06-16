@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	audit "github.com/bantuson/beekeeper/internal/audit"
+	audit "github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 // TestScanPanelSteps: inject 4 stepTickMsgs → Body() contains all 4 step lines with ▸ prefix.

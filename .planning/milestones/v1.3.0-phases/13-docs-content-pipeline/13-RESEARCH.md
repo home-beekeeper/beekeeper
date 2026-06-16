@@ -687,7 +687,7 @@ Beekeeper requires Go 1.25+ and a supported operating system (Linux, macOS, Wind
 Install the latest release with a single command:
 
 ```bash
-go install github.com/bantuson/beekeeper/cmd/beekeeper@latest
+go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest
 ```
 
 ## Hook Registration
@@ -722,7 +722,7 @@ Beekeeper is distributed as a single static binary.
 ### go install
 
 ```bash
-go install github.com/bantuson/beekeeper/cmd/beekeeper@latest
+go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest
 ```
 
 ### Pre-built Binaries

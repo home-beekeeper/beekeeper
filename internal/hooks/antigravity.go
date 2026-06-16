@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bantuson/beekeeper/internal/editorinit"
+	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
 // Beekeeper's hook command string for Antigravity (Google).

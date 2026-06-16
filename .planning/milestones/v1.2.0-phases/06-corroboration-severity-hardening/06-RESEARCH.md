@@ -721,7 +721,7 @@ computation site; consumers in check/gateway/watch/scan are readers only.
 
 ### Pitfall 1: Import Cycle via `catalog.CheckSanity` in `corroborate()`
 
-**What goes wrong:** Adding `import "github.com/bantuson/beekeeper/internal/catalog"` to
+**What goes wrong:** Adding `import "github.com/home-beekeeper/beekeeper/internal/catalog"` to
 `corroboration.go` to call `CheckSanity` directly.
 
 **Why it happens:** `internal/catalog` imports `internal/policy` (via

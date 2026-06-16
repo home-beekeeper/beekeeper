@@ -99,7 +99,7 @@ import (
     "encoding/json"
     "fmt"
 
-    "github.com/bantuson/beekeeper/internal/policy"
+    "github.com/home-beekeeper/beekeeper/internal/policy"
 )
 ```
 
@@ -222,7 +222,7 @@ import (
     "strings"
     "testing"
 
-    "github.com/bantuson/beekeeper/internal/policy"
+    "github.com/home-beekeeper/beekeeper/internal/policy"
 )
 ```
 
@@ -407,7 +407,7 @@ import (
     "io"
     "os"
 
-    "github.com/bantuson/beekeeper/internal/editorinit"
+    "github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 ```
 

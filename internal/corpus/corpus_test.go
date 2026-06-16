@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 // TestCorpusRecordSchema verifies the four-layer CorpusRecord schema:

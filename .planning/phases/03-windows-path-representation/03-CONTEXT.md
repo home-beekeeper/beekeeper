@@ -7,7 +7,7 @@
 <domain>
 ## Phase Boundary
 
-Every NDJSON record emitted by **Pollen** (`github.com/bantuson/pollen`, working tree at
+Every NDJSON record emitted by **Pollen** (`github.com/home-beekeeper/pollen`, working tree at
 `../pollen`) on Windows must carry **native Windows path representation** and a correct
 **Windows endpoint record**, and **beekeeper** (this repo) must parse and round-trip those
 Windows-shaped records without error.
@@ -118,7 +118,7 @@ Everything in the PRD and roadmap success criteria is treated as a **locked deci
 - `.planning/STATE.md` — Deferred Items (Phase 2 release-deferral precedent → D-06); accumulated
   Phase 2 decisions (build-tag stubs, `roots_notwindows.go` pattern, Windows test isolation)
 
-### Pollen — emitter side (`../pollen`, repo `github.com/bantuson/pollen`, HEAD c94b271)
+### Pollen — emitter side (`../pollen`, repo `github.com/home-beekeeper/pollen`, HEAD c94b271)
 - `internal/output/output.go` — NDJSON emitter; **WPATH-01 target** (path field handling)
 - `internal/output/output_test.go` — existing output test patterns to extend
 - `internal/endpoint/endpoint.go` — `Current(deviceID)` builds the endpoint record;

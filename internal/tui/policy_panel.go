@@ -8,8 +8,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	platform "github.com/bantuson/beekeeper/internal/platform"
-	policyloader "github.com/bantuson/beekeeper/internal/policyloader"
+	platform "github.com/home-beekeeper/beekeeper/internal/platform"
+	policyloader "github.com/home-beekeeper/beekeeper/internal/policyloader"
 )
 
 // policyEditErrMsg is emitted by the policy panel when an edit is rejected by the

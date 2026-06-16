@@ -87,7 +87,7 @@ go test ./internal/scan/ -v:
   === RUN   TestScanWindowsShapedRecord --- PASS (0.00s)
   === RUN   TestScanPollenUnavailable  --- PASS (0.08s)
   === RUN   TestPollenCompatibility   --- PASS (0.00s)
-  PASS  ok  github.com/bantuson/beekeeper/internal/scan  5.541s
+  PASS  ok  github.com/home-beekeeper/beekeeper/internal/scan  5.541s
 go test ./internal/scan/ -v | grep SKIP  → (empty — zero skips)
 go test ./...     → all 22 packages green
 ```

@@ -25,13 +25,13 @@ Static **SVG** hero only — the interactive 3D hero is Phase 16.
 ### D-02 — Deploy target CHANGED: Cloudflare Pages → Vercel; deploy DEFERRED
 - SITE-03 host is **retargeted from Cloudflare Pages → Vercel** (maintainer decision 2026-06-08).
 - **KEEP Next.js static export (`output:'export'`)** — Vercel serves the static `out/` (via `vercel deploy` or git integration). NO architecture change; Phases 16 (3D), 17 (SEO), 19 (E2E-against-`out/`) are unaffected.
-- The **live deploy is DEFERRED** out of Phase 15: build + verify the page locally this phase. The actual Vercel deploy + public URL (SITE-03 / ROADMAP SC-6) is pending repo push (`bantuson/beekeeper` is parked in the v1.1.0 runbook) and Vercel account setup. Phase 15 verifies on the built page, NOT a live URL. The planner does NOT plan the live deploy; it MAY keep `out/` Vercel-deployable and note the deploy steps, but must not add speculative deploy config that isn't needed.
+- The **live deploy is DEFERRED** out of Phase 15: build + verify the page locally this phase. The actual Vercel deploy + public URL (SITE-03 / ROADMAP SC-6) is pending repo push (`home-beekeeper/beekeeper` is parked in the v1.1.0 runbook) and Vercel account setup. Phase 15 verifies on the built page, NOT a live URL. The planner does NOT plan the live deploy; it MAY keep `out/` Vercel-deployable and note the deploy steps, but must not add speculative deploy config that isn't needed.
 
 ### D-03 — Content accuracy is a trust obligation (no aspirational claims)
 - **HOME-03** feature cards cover ONLY the six SHIPPED capabilities: corroboration engine, fail-closed hooks, editor-extension defense, Sentry, LlamaFirewall, policy-as-code. No unshipped/aspirational claims.
 - **HOME-04** harness support matrix = all 15 harnesses with HONEST tier labels + live-verification caveats, sourced from `docs/harness-support-matrix.md` (Tier 1 testable = Claude Code live-verified; the rest Tier 1 documented / Tier 2 / Tier 3 unguarded). Links to the integration docs.
 - **HOME-05** honesty / known-gaps callout sourced from `docs/THREAT-MODEL.md` + known gaps (Hermes fail-open, Tier-3 unguarded MCP-only, `release_age`/lifecycle-allowlist unenforced in v1.3.0, gateway `--bind 0.0.0.0` caveat). Links to the security-posture docs. No overclaiming.
-- **HOME-01** hero: headline + subhead + a copyable `go install github.com/bantuson/beekeeper/cmd/beekeeper@latest` command chip + a "Read the docs" link, all above the fold @1280px. The install command is canonical but not yet resolvable (repo unpushed) — frame honestly, same as the changelog GitHub-release links.
+- **HOME-01** hero: headline + subhead + a copyable `go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest` command chip + a "Read the docs" link, all above the fold @1280px. The install command is canonical but not yet resolvable (repo unpushed) — frame honestly, same as the changelog GitHub-release links.
 - **HOME-02** origin/problem: the Nx Console compromise story + a 3-step how-it-works flow (the mockup's "Protected in 60 seconds" section).
 
 ### D-04 — Reconcile the mockup against required sections

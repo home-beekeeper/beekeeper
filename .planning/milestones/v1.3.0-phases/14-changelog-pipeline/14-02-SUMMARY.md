@@ -59,7 +59,7 @@ metrics:
 
 ### SC-2: Verification commands + release links on all three pages
 
-| Page | `Bantuson/beekeeper` matches | `slsa-verifier verify-artifact` matches | release link matches |
+| Page | `home-beekeeper/beekeeper` matches | `slsa-verifier verify-artifact` matches | release link matches |
 |------|-------|------|------|
 | v1.0.0 | 2 | 1 | 2 (`/releases/tag/v1.0.0`) |
 | v1.2.0 | 2 | 1 | 2 (`/releases/tag/v1.2.0`) |
@@ -118,7 +118,7 @@ T-14-06 mitigation confirmed: The breaking-change callout accurately states BEFO
 
 T-14-07 mitigation confirmed: Notes describe only shipped behavior; no secrets, no unreleased internals.
 
-T-14-08 mitigation confirmed: `VerifyCommands version="v1.3.0"` reuses the capital-B Bantuson component — no per-page command drift possible. Confirmed 2 matches of `Bantuson/beekeeper` in rendered HTML.
+T-14-08 mitigation confirmed: `VerifyCommands version="v1.3.0"` reuses the capital-B Bantuson component — no per-page command drift possible. Confirmed 2 matches of `home-beekeeper/beekeeper` in rendered HTML.
 
 T-14-09 mitigation confirmed: No new npm dependencies. `web/package.json` and `pnpm-lock.yaml` unchanged.
 

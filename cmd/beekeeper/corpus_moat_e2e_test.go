@@ -47,9 +47,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/catalog"
-	"github.com/bantuson/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/corpus"
 )
 
 // TestCorpusMoatLoopE2E is the v1.4.0 corpus moat-loop system-level release gate.
@@ -75,7 +75,7 @@ func TestCorpusMoatLoopE2E(t *testing.T) {
 		// production builds omit this tag (remediation 260615, finding #1).
 		"-tags", "beekeeperhomeoverride",
 		"-o", binPath,
-		"github.com/bantuson/beekeeper/cmd/beekeeper",
+		"github.com/home-beekeeper/beekeeper/cmd/beekeeper",
 	).CombinedOutput()
 	if buildErr != nil {
 		t.Fatalf("go build failed: %v\n%s", buildErr, buildOut)

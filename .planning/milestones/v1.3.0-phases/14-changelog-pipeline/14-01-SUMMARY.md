@@ -80,8 +80,8 @@ metrics:
 - `pnpm build` exits 0 — PASSED (Task 3)
 - `out/changelog/v1.0.0/index.html` — FOUND (non-empty)
 - `out/changelog/v1.2.0/index.html` — FOUND (non-empty)
-- Rendered HTML contains `Bantuson/beekeeper` (capital-B cosign identity) — PASSED (grep confirmed × 2 per version)
-- Rendered HTML contains `bantuson/beekeeper/releases/tag/vX.Y.Z` canonical release links — PASSED
+- Rendered HTML contains `home-beekeeper/beekeeper` (capital-B cosign identity) — PASSED (grep confirmed × 2 per version)
+- Rendered HTML contains `home-beekeeper/beekeeper/releases/tag/vX.Y.Z` canonical release links — PASSED
 - No `--color-bk-*` tokens in new changelog components — PASSED (grep confirms: raw theme tokens only)
 
 ## Deviations from Plan
@@ -127,11 +127,11 @@ No other stubs — all content is accurate human-written release notes sourced f
 
 ## Threat Flags
 
-T-14-01 mitigation confirmed: `VerifyCommands` source contains literal `Bantuson/beekeeper` (capital-B) in the `--certificate-identity-regexp` string. Rendered HTML confirmed to contain `Bantuson/beekeeper` × 2 in both `/changelog/v1.0.0/index.html` and `/changelog/v1.2.0/index.html`.
+T-14-01 mitigation confirmed: `VerifyCommands` source contains literal `home-beekeeper/beekeeper` (capital-B) in the `--certificate-identity-regexp` string. Rendered HTML confirmed to contain `home-beekeeper/beekeeper` × 2 in both `/changelog/v1.0.0/index.html` and `/changelog/v1.2.0/index.html`.
 
 T-14-02 mitigation confirmed: Release-note MDX content sourced from MILESTONES.md (public-class summaries). No secrets, env vars, private hostnames, or unreleased internals observed in authored content.
 
-T-14-03 mitigation confirmed: `ReleaseLinks` uses `github.com/bantuson/beekeeper/releases/tag/${version}` (lowercase canonical repo path) with `rel="noopener noreferrer"` and honest "resolves once published" microcopy.
+T-14-03 mitigation confirmed: `ReleaseLinks` uses `github.com/home-beekeeper/beekeeper/releases/tag/${version}` (lowercase canonical repo path) with `rel="noopener noreferrer"` and honest "resolves once published" microcopy.
 
 T-14-04 mitigation confirmed: `pnpm install --frozen-lockfile` not run (no new packages added). `web/package.json` and `pnpm-lock.yaml` unchanged.
 
@@ -142,8 +142,8 @@ Files verified:
 - web/lib/changelog-source.ts — FOUND (contains `baseUrl: "/changelog"` and `.toFumadocsSource()`)
 - web/app/changelog/layout.tsx — FOUND (contains `DocsLayout` and `tree={source.pageTree}`)
 - web/app/changelog/[[...slug]]/page.tsx — FOUND (contains `generateStaticParams` and `await props.params`)
-- web/components/changelog/verify-commands.tsx — FOUND (contains `Bantuson/beekeeper`, `cosign verify-blob`, `slsa-verifier verify-artifact`)
-- web/components/changelog/release-links.tsx — FOUND (contains `github.com/bantuson/beekeeper/releases/tag/`)
+- web/components/changelog/verify-commands.tsx — FOUND (contains `home-beekeeper/beekeeper`, `cosign verify-blob`, `slsa-verifier verify-artifact`)
+- web/components/changelog/release-links.tsx — FOUND (contains `github.com/home-beekeeper/beekeeper/releases/tag/`)
 - web/components/changelog/breaking-change-callout.tsx — FOUND (contains `var(--red)`, `TriangleAlert`)
 - web/mdx-components.tsx — FOUND (maps `VerifyCommands`, `ReleaseLinks`, `BreakingChangeCallout`)
 - web/content/changelog/meta.json — FOUND

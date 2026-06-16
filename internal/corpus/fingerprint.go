@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // errInvalidSalt is returned by the fingerprint helpers when the salt is empty

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 // writeCorpusLines writes CorpusRecord values as NDJSON lines to a temp file

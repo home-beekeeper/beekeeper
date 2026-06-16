@@ -35,11 +35,11 @@ import (
     "runtime"
     "strings"
 
-    "github.com/bantuson/pollen/internal/model"
-    "github.com/bantuson/pollen/internal/scanner"
+    "github.com/home-beekeeper/pollen/internal/model"
+    "github.com/home-beekeeper/pollen/internal/scanner"
 )
 ```
-`roots_windows.go` only needs `"os"`, `"path/filepath"`, `"github.com/bantuson/pollen/internal/model"`, and `"github.com/bantuson/pollen/internal/scanner"` — drop `fmt`, `runtime`, `strings` (those stay in roots.go).
+`roots_windows.go` only needs `"os"`, `"path/filepath"`, `"github.com/home-beekeeper/pollen/internal/model"`, and `"github.com/home-beekeeper/pollen/internal/scanner"` — drop `fmt`, `runtime`, `strings` (those stay in roots.go).
 
 **Build tag — must be first line of file, before package declaration:**
 ```go
@@ -181,7 +181,7 @@ import (
     "runtime"
     "testing"
 
-    "github.com/bantuson/pollen/internal/model"
+    "github.com/home-beekeeper/pollen/internal/model"
 )
 ```
 `roots_windows_test.go` uses the same imports; `runtime` is not needed if the file is already build-tagged `windows`, but is fine to include for `runtime.GOOS` guards inside tests.

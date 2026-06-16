@@ -11,7 +11,7 @@ import (
 
 	etw "github.com/tekert/golang-etw/etw"
 
-	"github.com/bantuson/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 var (

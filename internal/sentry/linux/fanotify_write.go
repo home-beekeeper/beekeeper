@@ -17,7 +17,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/bantuson/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 // Phase 20 (SENT-06): file-WRITE ingestion via a SEPARATE fanotify group.

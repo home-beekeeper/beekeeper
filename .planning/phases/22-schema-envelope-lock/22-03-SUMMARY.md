@@ -118,7 +118,7 @@ go build ./...                                                                 �
 go mod tidy && git diff --exit-code go.mod                                     → no change (zero new dependencies)
 grep -rc "auto_purge" internal/corpus/                                         → 0 in all 5 files
 go list -f "{{.Imports}}" ./internal/corpus/
-  → [crypto/sha256 encoding/hex encoding/json errors github.com/bantuson/beekeeper/internal/audit path strings]
+  → [crypto/sha256 encoding/hex encoding/json errors github.com/home-beekeeper/beekeeper/internal/audit path strings]
   (pure: no os, net, path/filepath)
 ```
 

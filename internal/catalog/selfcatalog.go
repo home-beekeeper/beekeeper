@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/version"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/version"
 )
 
 // errIntegrity is the sentinel error returned when the beekeeper-self feed

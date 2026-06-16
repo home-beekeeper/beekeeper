@@ -73,7 +73,7 @@ created: 2026-06-03
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Push both repos to GitHub; cut + cosign-sign tags pollen.2/.3/.4/.5; verify | release SC6 / D-4 | Auth-gated (GitHub `gh`/OIDC) + irreversible outward action — checkpointed per CONTEXT D-5; signing runs in GitHub Actions, not locally | Follow the executor-produced release runbook: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.N` → push tag → wait for release workflow → `cosign verify-blob` against `^https://github.com/Bantuson/pollen/` |
+| Push both repos to GitHub; cut + cosign-sign tags pollen.2/.3/.4/.5; verify | release SC6 / D-4 | Auth-gated (GitHub `gh`/OIDC) + irreversible outward action — checkpointed per CONTEXT D-5; signing runs in GitHub Actions, not locally | Follow the executor-produced release runbook: confirm 3-OS CI green → `git tag -a v0.1.1-pollen.N` → push tag → wait for release workflow → `cosign verify-blob` against `^https://github.com/home-beekeeper/pollen/` |
 | UPSTREAM.md is followable cold by a second maintainer (SC1) | SYNC-01 | Documentation quality is a human judgment | Read UPSTREAM.md top-to-bottom; confirm every step is a concrete command, not prose |
 | Full 3-OS CI matrix green incl. Windows honeypot E2E | BKINT-02 / PTEST-05 | Cross-OS CI is CI-only (Windows is the dev box; Linux/macOS in CI) | Push beekeeper; confirm GitHub Actions matrix green with zero Windows inventory `t.Skip` |
 

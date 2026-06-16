@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/nudge"
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/policyloader"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/nudge"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policyloader"
 )
 
 // mapMultiIndex implements catalogIndex for hermetic integration tests. It

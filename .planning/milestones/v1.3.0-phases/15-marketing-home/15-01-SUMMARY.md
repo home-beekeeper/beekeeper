@@ -48,7 +48,7 @@ metrics:
 - `cd web && pnpm exec tsc --noEmit` exits 0 after each task
 - `cd web && pnpm build` exits 0; emits `web/out/index.html`
 - `out/index.html` contains "autonomous coding agents" — PASS
-- `out/index.html` contains "go install github.com/bantuson/beekeeper/cmd/beekeeper@latest" — PASS
+- `out/index.html` contains "go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest" — PASS
 - `out/index.html` contains "/docs/getting-started" — PASS
 - `out/index.html` does NOT contain "90-second demo" — PASS
 - `out/index.html` does NOT contain "2.4k" — PASS
@@ -61,7 +61,7 @@ metrics:
 
 **1. [Rule 1 - Bug] InstallChip command string split in static HTML output**
 - **Found during:** Task 3 build verification
-- **Issue:** The command display in `InstallChip` split the string across multiple React elements (`go install{" "}<span>github.com/bantuson/beekeeper</span>/cmd/beekeeper@latest`) with React SSR `<!-- -->` comment boundaries, causing the acceptance criteria grep for the continuous string `go install github.com/bantuson/beekeeper/cmd/beekeeper@latest` to fail on `out/index.html`.
+- **Issue:** The command display in `InstallChip` split the string across multiple React elements (`go install{" "}<span>github.com/home-beekeeper/beekeeper</span>/cmd/beekeeper@latest`) with React SSR `<!-- -->` comment boundaries, causing the acceptance criteria grep for the continuous string `go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest` to fail on `out/index.html`.
 - **Fix:** Replaced the split display with a single `<code>` element containing `{INSTALL_COMMAND}` (the const) as its sole text child. This renders as a single uninterrupted string in the HTML, is better for accessibility (screen readers get the full command), and supports `select-all` behavior.
 - **Files modified:** web/components/home/install-chip.tsx
 - **Commit:** 6faf09b (included in Task 3 commit)
@@ -77,7 +77,7 @@ metrics:
 
 1. **ThemeToggle omitted from SiteHeader**: No `ThemeToggle` export exists in `web/components`. Per plan spec, this is acceptable — theme switching is provided by the root `ThemeProvider` in `Providers`. The toggle may be added in a later wave if a toggle component is built.
 
-2. **Module path emphasis removed**: The mockup's `.cmd .em { color: var(--fg-strong) }` emphasizing `github.com/bantuson/beekeeper` was removed in favor of a single uniform `<code>` text node. This avoids the static HTML string continuity issue while keeping the command readable. Minor visual delta from the mockup.
+2. **Module path emphasis removed**: The mockup's `.cmd .em { color: var(--fg-strong) }` emphasizing `github.com/home-beekeeper/beekeeper` was removed in favor of a single uniform `<code>` text node. This avoids the static HTML string continuity issue while keeping the command readable. Minor visual delta from the mockup.
 
 3. **"Beekeeper 1.3.0 shipped" pill copy**: Updated from the mockup's `v1.0` with an accurate description of the current shipped milestone ("self-protection + TUI policy editor") per D-03 content accuracy.
 

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/llamafirewall"
+	"github.com/home-beekeeper/beekeeper/internal/llamafirewall"
 )
 
 // TestAppendAndLoadHookLatency verifies the basic round-trip: appendHookLatency

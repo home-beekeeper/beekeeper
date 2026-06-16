@@ -363,7 +363,7 @@ Place one copy in each consumer package's existing utility/sanity file (or a new
 ```go
 import (
     "path/filepath"
-    "github.com/bantuson/beekeeper/internal/catalog"
+    "github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 ```
 
@@ -562,7 +562,7 @@ import (
     "path/filepath"
     "testing"
 
-    "github.com/bantuson/beekeeper/internal/policy"
+    "github.com/home-beekeeper/beekeeper/internal/policy"
 )
 ```
 

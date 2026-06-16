@@ -12,7 +12,7 @@ package nudge
 import (
 	"fmt"
 
-	"github.com/bantuson/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 )
 
 // Action is the nudge decision: what Beekeeper recommends doing with the command.

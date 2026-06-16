@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/config"
 )
 
 // --- Mock sink helpers ---

@@ -21,11 +21,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/catalog"
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/policyloader"
-	"github.com/bantuson/beekeeper/internal/watch"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policyloader"
+	"github.com/home-beekeeper/beekeeper/internal/watch"
 )
 
 // Config holds parameters for a Scan call.

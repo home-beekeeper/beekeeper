@@ -11,8 +11,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
-	audit "github.com/bantuson/beekeeper/internal/audit"
-	platform "github.com/bantuson/beekeeper/internal/platform"
+	audit "github.com/home-beekeeper/beekeeper/internal/audit"
+	platform "github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 type mode int

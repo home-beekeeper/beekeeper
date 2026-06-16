@@ -36,9 +36,9 @@ import (
     "testing"
     "time"
 
-    "github.com/bantuson/beekeeper/internal/audit"
-    "github.com/bantuson/beekeeper/internal/config"
-    "github.com/bantuson/beekeeper/internal/sentry"
+    "github.com/home-beekeeper/beekeeper/internal/audit"
+    "github.com/home-beekeeper/beekeeper/internal/config"
+    "github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 ```
 Note: `internal/sentry` does NOT import `internal/corpus`, so this import direction is safe (no cycle).

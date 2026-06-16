@@ -126,7 +126,7 @@ beekeeper hooks install --target claude-code
 ````mdx
 ```bash
 cosign verify \
-  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
+  --certificate-identity=https://github.com/home-beekeeper/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/nudge"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/nudge"
 )
 
 // TestNudgeCheckCmd_NpmInstall verifies that `nudge check "npm install chalk"`

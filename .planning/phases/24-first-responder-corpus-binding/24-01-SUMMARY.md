@@ -110,8 +110,8 @@ All 8 named test functions pass GREEN:
 
 ```
 go test ./internal/corpus/... ./internal/catalog/... -count=1
-ok  github.com/bantuson/beekeeper/internal/corpus   1.791s
-ok  github.com/bantuson/beekeeper/internal/catalog  3.672s
+ok  github.com/home-beekeeper/beekeeper/internal/corpus   1.791s
+ok  github.com/home-beekeeper/beekeeper/internal/catalog  3.672s
 
 go build ./...  exit 0
 go mod tidy && git diff --exit-code go.mod  → PASS: zero new deps

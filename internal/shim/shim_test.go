@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/nudge"
-	"github.com/bantuson/beekeeper/internal/shim"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/nudge"
+	"github.com/home-beekeeper/beekeeper/internal/shim"
 )
 
 // TestShimInstallUnix verifies that Install creates an executable shell script

@@ -3,7 +3,7 @@ package nudge
 import (
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 )
 
 // TestRewriteToPnpm verifies the pnpm rewrite verb mapping.

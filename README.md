@@ -149,5 +149,5 @@ Beekeeper's threat intelligence is inspired by Perplexity's
 [Bumblebee](https://github.com/perplexityai/bumblebee) (Apache-2.0). Bumblebee is
 consumed as a runtime catalog source and, for the optional `beekeeper scan`
 inventory, as an external scanner binary (preferred on macOS/Linux), with
-[Pollen](https://github.com/bantuson/pollen) as the Windows-support fallback.
+[Pollen](https://github.com/home-beekeeper/pollen) as the Windows-support fallback.
 Beekeeper bundles no Bumblebee or Pollen code; both are invoked as subprocesses.

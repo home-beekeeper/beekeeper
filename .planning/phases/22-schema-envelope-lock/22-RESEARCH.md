@@ -991,7 +991,7 @@ An optional `testdata/compile_fail/auto_purge_assignment.go` with `//go:build ig
 // This file demonstrates that auto_purge is NOT a valid ActionHint.
 // It does NOT compile — which is the desired property.
 package main
-import "github.com/bantuson/beekeeper/internal/corpus"
+import "github.com/home-beekeeper/beekeeper/internal/corpus"
 func main() {
     var e corpus.PushEnvelope
     e.ActionHint = "auto_purge" // COMPILE ERROR: cannot use "auto_purge" (untyped string constant) as corpus.ActionHint

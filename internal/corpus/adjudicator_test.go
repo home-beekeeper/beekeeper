@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // defaultThresholds returns the standard PLCY-01 corroboration thresholds.

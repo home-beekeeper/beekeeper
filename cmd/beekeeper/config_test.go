@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/config"
 )
 
 // TestConfigSetCmd_HardMode drives `config set nudge.mode hard` against a temp

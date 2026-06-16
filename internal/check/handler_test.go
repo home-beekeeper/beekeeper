@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/catalog"
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/llamafirewall"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/llamafirewall"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // buildTestIndex writes a small real mmap index in dir containing the

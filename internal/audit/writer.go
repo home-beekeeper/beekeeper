@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // Writer is an append-only NDJSON sink for AuditRecords. It enforces owner-only

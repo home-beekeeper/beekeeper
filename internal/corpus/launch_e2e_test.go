@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/config"
 )
 
 // TestAllSentryPatternsProduceMoatRecord is the LAUNCH-02 evaluator gate.

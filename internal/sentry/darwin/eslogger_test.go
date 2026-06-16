@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 func TestDefaultEsloggerEventsIncludesOpenAndCreate(t *testing.T) {

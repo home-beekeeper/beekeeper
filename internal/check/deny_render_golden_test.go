@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // updateGolden regenerates the committed deny-contract golden files:

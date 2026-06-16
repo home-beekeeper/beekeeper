@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/watch"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/watch"
 )
 
 // TestFirstResponderAuditRedacted verifies F-1 (TM-D-03): the audit record

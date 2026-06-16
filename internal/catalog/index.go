@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 	mmap "github.com/edsrzf/mmap-go"
 )
 

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/nudge"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/nudge"
 )
 
 // newDriftTestHandler creates a gatewayHandler with an audit path pointing to a

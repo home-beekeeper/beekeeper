@@ -19,9 +19,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bantuson/beekeeper/internal/platform"
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/policyloader"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policyloader"
 )
 
 // newPolicyCmd groups the three policy-as-code subcommands.

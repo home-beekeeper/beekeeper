@@ -3,7 +3,8 @@
 **Covers:** v1.0.0 + v1.2.0 (Runtime Hardening) + v1.3.0 (Multi-Harness Hook Enforcement) + v1.4.0 (Adjudicated Corpus, Local Loop)  
 **Originally published:** 2026-05-29 (v1.0.0, Phase 9 capstone)  
 **Last full codebase audit:** 2026-06-05  
-**Status:** Published — refreshed for v1.2.0, v1.3.0, and v1.4.0
+**Last security remediation:** 2026-06-15 (system-wide review — see §14)  
+**Status:** Published — refreshed for v1.2.0, v1.3.0, and v1.4.0; remediated 2026-06-15
 
 This document describes the security properties Beekeeper provides, the
 attack surfaces it exposes, the known gaps in its defenses, and the
@@ -39,6 +40,7 @@ CI pipeline or developer workstation.
 11. [Runtime Hardening (v1.2.0): SPATH, CORR, NUDGE](#11-runtime-hardening-v120-spath-corr-nudge)
 12. [First-Responder Quarantine and Catalog-to-Sentry Targeting (v1.3.0)](#12-first-responder-quarantine-and-catalog-to-sentry-targeting-v130-post-ship)
 13. [Adjudicated Corpus (Local Loop) (v1.4.0)](#13-adjudicated-corpus-local-loop--v140)
+14. [Security Remediation (2026-06-15)](#14-security-remediation-2026-06-15)
 
 ---
 
@@ -127,14 +129,14 @@ Actions OIDC. No long-lived private signing key exists to be stolen. The
 signing identity is tied to the GitHub Actions workflow:
 
 ```
-https://github.com/bantuson/beekeeper/.github/workflows/release.yml
+https://github.com/home-beekeeper/beekeeper/.github/workflows/release.yml
 ```
 
 Verify with cosign:
 
 ```bash
 cosign verify \
-  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
+  --certificate-identity=https://github.com/home-beekeeper/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```
@@ -155,7 +157,7 @@ Verify SLSA provenance:
 ```bash
 slsa-verifier verify-artifact beekeeper \
   --provenance-path beekeeper.intoto.jsonl \
-  --source-uri github.com/bantuson/beekeeper
+  --source-uri github.com/home-beekeeper/beekeeper
 ```
 
 ### Pinned Dependencies
@@ -450,7 +452,7 @@ the released binary was not produced from the tagged source.
 
 ```bash
 cosign verify \
-  --certificate-identity=https://github.com/bantuson/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
+  --certificate-identity=https://github.com/home-beekeeper/beekeeper/.github/workflows/release.yml@refs/tags/v<version> \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   beekeeper
 ```
@@ -464,7 +466,7 @@ held key.
 ```bash
 slsa-verifier verify-artifact beekeeper \
   --provenance-path beekeeper.intoto.jsonl \
-  --source-uri github.com/bantuson/beekeeper
+  --source-uri github.com/home-beekeeper/beekeeper
 ```
 
 SLSA Level 3 provenance confirms the build environment was ephemeral,
@@ -604,6 +606,13 @@ robust enforcement path for Hermes use cases.
 
 #### Gateway Remote-Bind Exposure and the Missing `allow_remote_gateway` Gate
 
+> **Updated 2026-06-15 (§14):** the second-factor gate **does** exist — a
+> non-loopback bind is refused unless `--allow-remote` is passed (`gateway.go`
+> `Start`, CLI-only, not settable from config). The residual is that a deliberate
+> `--allow-remote` bind is still plaintext HTTP (no TLS), so the bearer token
+> traverses the network in cleartext. The paragraph below describes the
+> pre-remediation state and is retained for history.
+
 The gateway binds to `127.0.0.1` by default. The CLI help text states that
 binding to a public interface (`--bind 0.0.0.0`) "requires
 `allow_remote_gateway:true` in config." **In the current code this second-factor
@@ -622,6 +631,14 @@ gateway to a non-loopback interface. This item is tracked for either
 implementing the gate or correcting the help text.
 
 #### Project/Env Config Layer Can Relax Fail-Closed Enforcement
+
+> **Updated 2026-06-15 (§14):** the specific relaxations below are now refused
+> from the project/env (untrusted) layer: a `fail_mode` relaxation (closed→open),
+> LlamaFirewall `fail_mode`/`sample_rate` relaxation, remote audit-sink endpoints
+> (`otlp`/`http`/`syslog`), `self_catalog.*`, and `corpus.path`. A project config
+> can still *enable* posture-tightening features (it cannot weaken the posture).
+> The text below describes the pre-remediation behavior and is retained for
+> context; treat the project `.beekeeper/config.json` as security-relevant still.
 
 Beekeeper merges a project-local `.beekeeper/config.json` (discovered by walking
 up from the working directory) **above** the user config. In Beekeeper's own
@@ -643,6 +660,14 @@ security-relevant, and do not run agents in untrusted repositories with project
 config discovery enabled if you rely on a fail-closed posture.**
 
 #### Audit Redaction Is Field-Scoped
+
+> **Updated 2026-06-15 (§14):** the two verbatim-write paths called out below are
+> now closed. The three Sentry daemons (linux/darwin/windows) and the two
+> check-handler audit writers that previously skipped redaction now route every
+> record through `RedactRecord`, so Sentry-derived file paths / network
+> destinations / exe paths and correlated extension IDs are redacted before they
+> reach disk or any remote sink. Redaction remains field-scoped (not full content
+> scanning), which is the accurate residual.
 
 Redaction (`RedactRecord`) is applied at the `beekeeper check` and gateway
 chokepoints before records fan out to remote sinks, and it covers the primary
@@ -1102,7 +1127,8 @@ anti-poisoning guards protect this stronger escalation:
 > ever present in `state.Sources`) whose comment implied a multi-source degradation
 > model that does not exist.
 >
-> **Signature verification (TM-B-02, not yet remediated):** In the live decision
+> **Signature verification (TM-B-02, partially remediated 2026-06-15 — see §14):**
+> In the live decision
 > path, a Bumblebee entry's "signed" status remains a **presence check**
 > (`catalog_signature` is non-empty), **not** an Ed25519 verification — real
 > cryptographic verification (`VerifySignatureWithKey`) is wired only for the
@@ -1110,7 +1136,12 @@ anti-poisoning guards protect this stronger escalation:
 > `Signed:false`, so the realistic primitive is a single tampered critical entry
 > → single-source false-positive block, not a malicious-allow bypass. Wiring
 > Ed25519 verification into the Bumblebee decision path remains tracked for
-> remediation. These discrepancies are disclosed here rather than silently
+> remediation. **2026-06-15 hardening (§14 #2):** the local overlay can no longer
+> be promoted to a signed source (it is forced `Signed=false`), the catalog index
+> is now written owner-only under the self-protected StateDir, the catalog dir is
+> `0o700`, and `BEEKEEPER_HOME` can no longer repoint the trust root — so
+> tampering the presence byte now requires defeating StateDir self-protection.
+> These discrepancies are disclosed here rather than silently
 > edited so the audit trail is honest.
 
 ### NUDGE — Package-Manager Hardening
@@ -1266,3 +1297,95 @@ event but produces no alert and no corpus record until a rule is written. This
 is consistent with the §8 "Detection-Completeness Gaps" entry for DNS and is
 named here because LAUNCH-04 treats it as a residual gap for the corpus layer
 specifically.
+
+---
+
+## 14. Security Remediation (2026-06-15)
+
+On 2026-06-15 a system-wide security review was run against the entire codebase:
+the threat model above, the full commit history (implementation order and the
+recurring fix patterns), and six parallel subsystem audits (policy engine +
+pkgparse, check handler + self-protection, MCP gateway + IPC, catalog integrity,
+config + audit, corpus + first-responder). The review verified the documented
+gaps against the code and surfaced additional, previously-undocumented issues.
+
+**Every finding — High through Low — was remediated the same day** on branch
+`security/remediation-260615`. Validation after the fixes: the full Go test suite
+(26 packages) is green, both live-binary E2E gates pass (the `internal/check`
+`--hook` exit-2 / SPATH / CORR / NUDGE gate and the `cmd/beekeeper` corpus moat
+loop), the fuzz seed corpus is clean, and cross-platform `go vet` (linux, darwin,
+windows) compiles the platform-guarded code. This section records what changed so
+sections 1-13 remain accurate; the most contradictory inline claims above are
+annotated with pointers here.
+
+### Findings fixed
+
+| # | Sev | Issue (verified in code) | Resolution |
+|---|-----|--------------------------|-----------|
+| 1 | High | `BEEKEEPER_HOME` repointed the entire trust root (index / policies / state / audit) in any binary, enabling an environment-influence enforcement bypass | Production builds ignore `BEEKEEPER_HOME`; it is honored only under `go test` (`testing.Testing()`) or the `beekeeperhomeoverride` build tag (which the two live-binary E2E harnesses now pass). `internal/platform/dirs.go`. |
+| 2 | High | Block decisions trusted an unauthenticated on-disk `Signed` presence byte; the local overlay could be counted as a signed corroborating source | The overlay is forced `Signed=false` in `MultiIndex`; all catalog index/JSON files are written owner-only structurally (`writeFileAtomic`->`SetOwnerOnly`) and the catalog dir is `0o700`, so the on-disk byte cannot be tampered without defeating StateDir self-protection. Cryptographic Bumblebee verification stays future work (TM-B-02; see Residuals). |
+| 3 | High | The scheduled `catalogs sync` daemon ignored `dry_run` and hardcoded the threshold -> live quarantine `os.Rename` moves when the operator chose observe-only | The daemon threads `AutoQuarantineDryRun()` (default true) and `AutoQuarantineThreshold()`; `RunFirstResponder`'s corpus branch enforces the dry-run gate in-function. |
+| 4 | High | The untrusted (project/env) config layer relaxed LlamaFirewall `fail_mode`/`sample_rate`, defeating the adjacent `Enabled` disable gate | `mergeLlamaFirewallUntrusted` refuses a `fail_mode` relaxation and a `sample_rate` reduction from the untrusted layer. |
+| 5 | High | The three Sentry daemons wrote audit records without redaction — the exact fields the redactor targets were persisted verbatim at their source | All daemons (linux/darwin/windows) route records through `RedactRecord`; the two check-handler writers that skipped it now redact too. |
+| 6 / 7 | High | Self-protection guards were defeatable: neutering the hook while keeping the marker (`\|\| true`, comment-out, binary repoint), or running mutating subcommands via `sh -c` / `$(...)` / `env` / alias | The hook-entry guard blocks any edit that modifies the marker-bearing invocation (not only removal); the CLI guard recurses into `sh -c`/`bash -c` strings, command substitutions and `env`/alias indirection. StateDir prefix matching resolves a symlinked parent of a not-yet-existing leaf; `ln`/`mklink`/`of=`/`sed -i`/`tee`/`<<<` write forms are covered. |
+| 8 | High | The gateway continued with default thresholds (fail-open) when the policies dir was unreadable; `FailOpen` was derivable from the untrusted config layer; the `--allow-remote` gate the docs denied actually exists | An unreadable policies dir now blocks unconditionally regardless of `FailOpen`; the untrusted layer cannot relax `fail_mode`. The `--allow-remote` gate is confirmed present (CLI-only); section 8 corrected. |
+| 9 | Med | IPC Unix-socket create->`chmod 0600` TOCTOU window | The socket is created under a restrictive umask so it is never momentarily group/other-accessible; `SO_PEERCRED` + 0600 remain as defense-in-depth. |
+| 10 | Med | Gateway request-smuggling: policy evaluated the parsed object while the raw bytes were forwarded (duplicate-key divergence) | The JSON-RPC parser rejects any request whose object (top-level or nested `params`) declares a duplicate key — fail-closed (`-32600`) before forwarding. |
+| 11 | Med | Egress allow/deny suffix match had no label boundary (`evilpypi.org` satisfied allow `pypi.org`); host-extraction failures collapsed a block to warn | Matching requires a label boundary; deny matching additionally scans the raw URL when host extraction is ambiguous. |
+| 12 | Med | Untrusted config could set remote audit-sink URLs and `corpus.path` (latent exfil/SSRF); sinks did no scheme/SSRF validation | The untrusted layer can no longer set remote-sink endpoints or `corpus.path`; `NewMultiSink` rejects non-`https` and loopback/link-local/private-range hosts. |
+| 13 | Med | Self-quarantine version comparison was exact-string (missed `v`-prefix / build-metadata / case variants) | Comparison is normalized (strip leading `v`, strip build metadata, lowercase). |
+| 14 | Med | The catalog sanity baseline self-poisoned: a degrading sync re-baselined to the inflated count (and `verify --clear-degraded` cleared to the poisoned value) | While degraded, the baseline `Count` is frozen at the pre-degradation floor. |
+| — | Low | mmap record-count overflow guard; manual-forward header sanitization (hop-by-hop + `X-Beekeeper-*`); Windows pipe first-instance confirmation; corpus reader fuzz target; flag-value package extraction; overlay `sensitive_path` ADS/trailing-dot normalization; `RedactPatternsWith` helper; `extractBashWriteTargets` `of=`/`sed -i`/`tee`/`<<<`; exit-2 under `--hook` for self-quarantine/setup failures | All addressed. |
+
+### Recurring exploitation pattern (from the commit history)
+
+The review's central finding was a *pattern*: several fixed vulnerability classes
+had **live sibling instances** that the original point-fix missed — a boundary-less
+suffix/prefix match (fixed once for paths, unfixed for egress hosts), a low-trust
+config layer relaxing a safety lever (gated for top-level `fail_mode`, ungated for
+LlamaFirewall / audit sinks / `corpus.path`), redaction applied at a consumer but
+not the source (Sentry daemons), and symlink/TOCTOU handling fixed for restore but
+not move. Each is now lifted toward a structural invariant rather than a per-site
+patch.
+
+### Residuals (accepted, with compensating controls)
+
+- **TM-B-02 — Bumblebee `Signed` is a presence check, not Ed25519.** No per-source
+  Bumblebee verification key is distributed, so the live path still trusts the
+  presence byte. The exploitable preconditions are now closed by index integrity
+  (owner-only index under the self-protected StateDir, overlay never a signed
+  source, `BEEKEEPER_HOME` cannot repoint the tree). `VerifySignatureWithKey`
+  exists and is tested; wiring it to a distributed key is the remaining work. The
+  realistic residual is a single-source false-positive block (coercion/DoS), not a
+  malicious-allow bypass.
+- **Self-feed verification re-marshals parsed structs** rather than verifying the
+  exact signed bytes (section 6). Not an exploitable forgery primitive (no signing
+  key; re-marshal cannot change the semantic entry set; a mismatch fails closed).
+  Verifying exact bytes (RawMessage / RFC 8785 JCS) is tracked.
+- **Slow sub-threshold sanity staircase.** The #14 fix stops automatic
+  re-baselining while degraded, but an attacker who never trips the per-tick delta
+  can still grow the catalog slowly across clean ticks. This is the count-delta
+  limitation already noted in TM-B-07; corroboration + signatures are the second
+  line.
+- **Self-quarantine network-warn-continue** (feed unreachable + no fresh cache ->
+  warn, not block) is an intentional availability tradeoff (T-09-11); an attacker
+  who can blackhole the feed host can suppress a *new* quarantine signal. An
+  embedded floor of known-bad versions is possible future hardening.
+- **Self-protection is defense-in-depth, not a hard boundary.** The agent runs as
+  the owner; the hardened content/shell-string guards raise the bar, but the
+  durable control is the StateDir/binary integrity boundary plus a future
+  out-of-band hook-integrity check.
+
+### Inline claims superseded by this section
+
+- Section 8 "the second-factor config gate does not exist" -> `--allow-remote`
+  exists (CLI-only); residual is plaintext HTTP on a deliberate non-loopback bind.
+- Section 8 "Sentry-derived fields ... written verbatim" / "the behavioral-watch
+  audit path does not currently route through `RedactRecord`" -> both now redact.
+- Section 8 "Project/Env Config Layer Can Relax Fail-Closed Enforcement" ->
+  `fail_mode`, LlamaFirewall `fail_mode`/`sample_rate`, remote audit-sink URLs,
+  `self_catalog.*`, and `corpus.path` relaxations are now refused from the
+  project/env layer (a project config can still *enable* posture-tightening
+  features).
+- Section 11 honesty note (TM-B-02) -> the presence-byte residual is now gated by
+  index integrity and the overlay-as-signed-source vector is closed.

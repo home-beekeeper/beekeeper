@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 
 // GatewayState is the persisted gateway daemon state. It is written atomically

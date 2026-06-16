@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 // TestSchemaLockNxConsoleTrace is the SCHEMA-06 evaluator gate.

@@ -7,7 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	audit "github.com/bantuson/beekeeper/internal/audit"
+	audit "github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 func TestAppModeCalm(t *testing.T) {

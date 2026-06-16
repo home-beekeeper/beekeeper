@@ -13,9 +13,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
-	catalog "github.com/bantuson/beekeeper/internal/catalog"
-	config "github.com/bantuson/beekeeper/internal/config"
-	platform "github.com/bantuson/beekeeper/internal/platform"
+	catalog "github.com/home-beekeeper/beekeeper/internal/catalog"
+	config "github.com/home-beekeeper/beekeeper/internal/config"
+	platform "github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // syncCatalogsMsg is the in-progress signal: when the user presses s the panel

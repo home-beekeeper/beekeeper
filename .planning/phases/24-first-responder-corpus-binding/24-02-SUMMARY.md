@@ -104,15 +104,15 @@ metrics:
 
 ```
 go test ./internal/watch/... -run TestFirstResponderCorpus -count=1
-ok  github.com/bantuson/beekeeper/internal/watch   PASS (5 tests)
+ok  github.com/home-beekeeper/beekeeper/internal/watch   PASS (5 tests)
 
 go test ./internal/watch/... -run TestCorpusPathHasNoPurgeCall -count=1
-ok  github.com/bantuson/beekeeper/internal/watch   PASS
+ok  github.com/home-beekeeper/beekeeper/internal/watch   PASS
 
 go test ./internal/watch/... ./internal/corpus/... ./internal/catalog/... -count=1
-ok  github.com/bantuson/beekeeper/internal/watch    PASS
-ok  github.com/bantuson/beekeeper/internal/corpus   PASS
-ok  github.com/bantuson/beekeeper/internal/catalog  PASS
+ok  github.com/home-beekeeper/beekeeper/internal/watch    PASS
+ok  github.com/home-beekeeper/beekeeper/internal/corpus   PASS
+ok  github.com/home-beekeeper/beekeeper/internal/catalog  PASS
 
 go build ./...   OK
 go vet ./internal/watch/...  OK

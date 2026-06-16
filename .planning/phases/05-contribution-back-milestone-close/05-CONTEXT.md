@@ -10,7 +10,7 @@
 The **final phase** of milestone v1.1.0 "Pollen". It closes the milestone by making the fork stand on its own: a documented sync workflow, beekeeper consuming a pinned published Pollen, the Windows honeypot E2E proving Sentry fires on Windows, `pollen-self` self-quarantine entries, and the deferred signed releases finally cut.
 
 **Three repos in play:**
-- **`bantuson/pollen`** (sibling clone at `../pollen`) — UPSTREAM.md sync doc, VERSION/CHANGES for `pollen.5`, and the signed-release pipeline (`.goreleaser.yaml`, `.github/workflows/release.yml` already exist).
+- **`home-beekeeper/pollen`** (sibling clone at `../pollen`) — UPSTREAM.md sync doc, VERSION/CHANGES for `pollen.5`, and the signed-release pipeline (`.goreleaser.yaml`, `.github/workflows/release.yml` already exist).
 - **`beekeeper`** (this repo) — go.mod/CI Pollen pin (BKINT-02), Windows honeypot E2E (PTEST-05), `pollen-self` catalog entries (SDEF-01).
 - **`perplexityai/bumblebee`** (third-party upstream) — **NO outward action this phase** (see locked decision D-2).
 
@@ -39,7 +39,7 @@ CONTEXT generated from the PRD (no discuss-phase), per maintainer choice this se
 - **SC2 disposition:** explicitly deferred to a future milestone; the verifier MUST NOT flag the absence of an upstream PR as a Phase-5 gap.
 
 ### D-3 — GitHub push is IN SCOPE this phase (reverses local-only posture)
-Both `bantuson/pollen` and `bantuson/beekeeper` may be pushed to GitHub this phase. Neither is pushed yet (v1.0.0 stayed local). Rationale: with upstream unreliable, the fork needs its own published, signed release; BKINT-02's `go.mod` pin to a published Pollen version depends on Pollen being on GitHub.
+Both `home-beekeeper/pollen` and `home-beekeeper/beekeeper` may be pushed to GitHub this phase. Neither is pushed yet (v1.0.0 stayed local). Rationale: with upstream unreliable, the fork needs its own published, signed release; BKINT-02's `go.mod` pin to a published Pollen version depends on Pollen being on GitHub.
 
 ### D-4 — Cut all four signed tags this phase
 `v0.1.1-pollen.2`, `.3`, `.4` (the three deferred per D-06 precedent) **and** `.5` (the milestone-close tag) are all cut this phase via cosign keyless signing through GitHub Actions OIDC (the `.goreleaser.yaml` + `release.yml` pipeline already exists in `../pollen`). Exact deferred-release commands are recorded in `.planning/phases/02-windows-root-resolver/02-04-SUMMARY.md` and `.planning/phases/03-windows-path-representation/03-03-SUMMARY.md`.
@@ -52,7 +52,7 @@ UPSTREAM.md documents the §6.2 8-step sync workflow: (1) `git remote update ups
 
 ### D-7 — BKINT-02: beekeeper consumes a pinned, published Pollen; Windows CI flips fully green
 Beekeeper pins Pollen at an explicit version (no auto-update; bumps require explicit beekeeper PRs). Beekeeper CI installs Pollen and runs the compatibility test (PTEST-04, already landed) + the honeypot E2E (PTEST-05) so the Windows inventory-test skip baseline is **zero** — flipping Windows CI from "skipped Bumblebee tests" to fully green.
-- **RESEARCH must resolve:** beekeeper currently consumes Pollen as a **subprocess binary** (`internal/scan` invokes the `pollen` binary — BKINT-01), NOT a Go-module import. The PRD §5.1 envisions a Go-module dependency. Determine whether BKINT-02's "go.mod pins Pollen" means (a) CI `go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4` of the binary at a pinned version, or (b) an actual Go-module import added to beekeeper's go.mod, or (c) both. Pick the smallest faithful interpretation consistent with the live subprocess boundary and PRD intent; reconcile in the plan.
+- **RESEARCH must resolve:** beekeeper currently consumes Pollen as a **subprocess binary** (`internal/scan` invokes the `pollen` binary — BKINT-01), NOT a Go-module import. The PRD §5.1 envisions a Go-module dependency. Determine whether BKINT-02's "go.mod pins Pollen" means (a) CI `go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4` of the binary at a pinned version, or (b) an actual Go-module import added to beekeeper's go.mod, or (c) both. Pick the smallest faithful interpretation consistent with the live subprocess boundary and PRD intent; reconcile in the plan.
 
 ### D-8 — PTEST-05: Windows honeypot E2E on the existing ETW Sentry
 A planted process tree on Windows that reads **synthetic** `%USERPROFILE%\.aws\credentials` (NOT real credentials) and makes an outbound connection must fire beekeeper's **exfil-signature-fusion** rule (in `internal/sentry/rules.go`) on the Windows runner. Builds on the v1.0.0 Windows ETW Sentry (`internal/sentry/windows/`). The test asserts the expected alert is emitted.

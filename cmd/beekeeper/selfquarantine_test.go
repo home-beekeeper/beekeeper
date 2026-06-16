@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 
 // makeTestCmd creates a minimal cobra.Command for use in selfquarantine tests.

@@ -30,7 +30,7 @@ Phase 2 (PRD §11 **M2.2**) makes Pollen discover all **8 package-manager roots 
 ## Implementation Decisions
 
 ### Repository & cross-repo model (LOCKED — carried verbatim from Phase 1)
-- Pollen lives at **`C:\Users\Bantu\mzansi-agentive\pollen`** (sibling to beekeeper), as **its own git repository** — NOT vendored into beekeeper (PRD §5.1). GitHub home: `github.com/bantuson/pollen`.
+- Pollen lives at **`C:\Users\Bantu\mzansi-agentive\pollen`** (sibling to beekeeper), as **its own git repository** — NOT vendored into beekeeper (PRD §5.1). GitHub home: `github.com/home-beekeeper/pollen`.
 - **GSD tracks this milestone from beekeeper.** Phase planning artifacts (CONTEXT/PLAN/SUMMARY) live in `beekeeper/.planning/phases/02-windows-root-resolver/`. The **code** is created in and committed to `../pollen` via explicit `git -C ../pollen add/commit` operations inside plan tasks. Executor tasks that produce pollen files MUST do their own `git -C ../pollen` commit and MUST NOT rely on beekeeper's auto-commit for pollen code.
 - **Preserve upstream's directory structure**; keep diffs minimal so upstream merges stay tractable (PRD §5.2). New code is build-tag-isolated where possible so Linux/macOS bytes are unchanged (protects PTEST-02).
 - **Zero non-stdlib dependencies** added (PRD §10.1).

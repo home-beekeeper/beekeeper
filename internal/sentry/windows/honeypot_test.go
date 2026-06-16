@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 // TestHoneypotExfilFusion is the Windows Sentry honeypot E2E (PTEST-05).

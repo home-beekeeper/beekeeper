@@ -4,14 +4,14 @@ slug: pollen-windows-test-coverage
 description: Pollen Windows test coverage
 date: 2026-06-11
 status: in_progress
-target_repo: ../pollen (github.com/bantuson/pollen)
+target_repo: ../pollen (github.com/home-beekeeper/pollen)
 ---
 
 # Quick Task 260611-mpe: Pollen Windows Test Coverage
 
 ## Goal
 
-Raise test coverage of the **Pollen** fork (`../pollen`, `github.com/bantuson/pollen`)
+Raise test coverage of the **Pollen** fork (`../pollen`, `github.com/home-beekeeper/pollen`)
 to its release bar, **Windows-scoped**, closing the genuinely-closeable gaps and
 formalizing a reason-coded no-test allowlist for code that is out of Pollen's
 Windows scope.

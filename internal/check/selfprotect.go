@@ -10,8 +10,8 @@ package check
 import (
 	"os"
 
-	"github.com/bantuson/beekeeper/internal/platform"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // buildSelfProtectConfig resolves the canonical, absolute prefixes Beekeeper

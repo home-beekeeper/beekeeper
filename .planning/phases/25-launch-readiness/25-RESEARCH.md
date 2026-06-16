@@ -292,7 +292,7 @@ The offline test can be 3-5 lines added to the existing handler test suite.
 
 What proves "no corpus data leaves the machine":
 
-1. `internal/corpus/store.go` imports: `[bufio, encoding/json, fmt, os, sync, github.com/bantuson/beekeeper/internal/audit, github.com/bantuson/beekeeper/internal/platform]` — NO `net`, NO `net/http`, NO `os/exec`. [VERIFIED: store.go read directly]
+1. `internal/corpus/store.go` imports: `[bufio, encoding/json, fmt, os, sync, github.com/home-beekeeper/beekeeper/internal/audit, github.com/home-beekeeper/beekeeper/internal/platform]` — NO `net`, NO `net/http`, NO `os/exec`. [VERIFIED: store.go read directly]
 2. `NewMultiSinkWithCorpus` in `internal/audit/sink.go` takes a caller-constructed `audit.Sink` and never opens a network socket for the corpus sink specifically.
 3. STORE-03 requires: "No off-machine transmission of corpus data in v1 (remote sinks are not wired for corpus)." [VERIFIED: `REQUIREMENTS.md`]
 

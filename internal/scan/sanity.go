@@ -1,6 +1,6 @@
 package scan
 
-import "github.com/bantuson/beekeeper/internal/catalog"
+import "github.com/home-beekeeper/beekeeper/internal/catalog"
 
 // resolveCatalogHealthy delegates to catalog.ResolveHealthy, the single shared
 // implementation for all caller-tier packages (check, gateway, watch, scan).

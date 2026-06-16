@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // TestLlamaFirewallE2E starts the REAL installed sidecar and asserts the four

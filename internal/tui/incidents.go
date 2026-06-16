@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	lipgloss "charm.land/lipgloss/v2"
 
-	audit "github.com/bantuson/beekeeper/internal/audit"
+	audit "github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 // IncidentAction is a containment action button shown on the incident card.

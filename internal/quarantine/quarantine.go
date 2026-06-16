@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // manifestFileName is the name of the per-quarantine-entry metadata file

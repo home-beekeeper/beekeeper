@@ -20,8 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/hooks"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/hooks"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 const (

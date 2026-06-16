@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 
 // TestCrossReferenceFindingRedacted verifies F-1 (TM-D-03): the "finding" audit

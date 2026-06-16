@@ -122,7 +122,7 @@ go mod tidy && git diff go.mod    → no change (zero new dependencies)
 
 grep -r "auto_purge" internal/corpus/    → 0 results (exit 1 = no matches)
 go list -f '{{.Imports}}' ./internal/corpus/
-→ [encoding/json errors github.com/bantuson/beekeeper/internal/audit]
+→ [encoding/json errors github.com/home-beekeeper/beekeeper/internal/audit]
   (pure: no os, net, filesystem imports)
 ```
 

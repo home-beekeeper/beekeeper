@@ -30,7 +30,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // Adjudication source constants (ADJ-03).

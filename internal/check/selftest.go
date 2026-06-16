@@ -10,9 +10,9 @@ import (
 
 	_ "embed"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // corpusJSON is the adversarial corpus embedded directly in the binary so

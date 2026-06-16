@@ -112,7 +112,7 @@ import (
     "os"
     "path/filepath"
 
-    "github.com/bantuson/beekeeper/internal/platform"
+    "github.com/home-beekeeper/beekeeper/internal/platform"
 )
 // catalog package — no internal/tui, no internal/corpus imports here.
 ```
@@ -372,7 +372,7 @@ func parsePackageID(id string) (ecosystem, pkg string) {
 **Import additions for modified file:**
 ```go
 // Add to existing import block:
-"github.com/bantuson/beekeeper/internal/corpus"
+"github.com/home-beekeeper/beekeeper/internal/corpus"
 // (internal/quarantine, internal/sentry, internal/audit already imported)
 ```
 
@@ -439,7 +439,7 @@ if cfg.Corpus.Enabled {
 **Existing import block** (lines 3–17) — additions needed:
 ```go
 // Add to existing imports:
-"github.com/bantuson/beekeeper/internal/watch"
+"github.com/home-beekeeper/beekeeper/internal/watch"
 // internal/catalog and internal/corpus already imported
 ```
 

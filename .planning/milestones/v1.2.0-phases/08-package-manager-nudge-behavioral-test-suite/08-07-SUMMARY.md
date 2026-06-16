@@ -87,7 +87,7 @@ files_modified: 1
 ### Task 2 — BTEST-03 Live-Binary E2E Release Gate
 
 - Created `internal/check/e2e_test.go` with `//go:build e2e` and RELEASE-GATE header (mirrors `parser_fuzz_test.go` convention)
-- `TestE2ELiveBinary` builds the compiled binary via `go build -o <tmp>/beekeeper github.com/bantuson/beekeeper/cmd/beekeeper` and drives 4 sub-cases with `cmd.Env = append(os.Environ(), "BEEKEEPER_HOME=<tmpdir>")`:
+- `TestE2ELiveBinary` builds the compiled binary via `go build -o <tmp>/beekeeper github.com/home-beekeeper/beekeeper/cmd/beekeeper` and drives 4 sub-cases with `cmd.Env = append(os.Environ(), "BEEKEEPER_HOME=<tmpdir>")`:
   - **SPATH:** `~/.aws/credentials` Read → exit 1 / audit `decision:"block"` — credential path blocked by real `EvaluatePath`
   - **CORR:** `npm install ai-figure` with single critical bumblebee entry → exit 1 / audit `decision:"block"` (DefaultCorroborationThresholds `SeverityOverrides["critical"].BlockAt=1`)
   - **NUDGE:** `pnpm add chalk` → exit 0 / `record_type:"nudge"` present / decision non-block (real pnpm 11.1.3 on dev box, real `DetectState` in child process, no seam swap)

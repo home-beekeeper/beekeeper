@@ -5,7 +5,7 @@ package check
 import (
 	"sync/atomic"
 
-	winsentry "github.com/bantuson/beekeeper/internal/sentry/windows"
+	winsentry "github.com/home-beekeeper/beekeeper/internal/sentry/windows"
 )
 
 // eventsLost returns the number of ETW events dropped by the Sentry consumer

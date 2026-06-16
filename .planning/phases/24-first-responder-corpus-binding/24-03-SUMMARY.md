@@ -134,13 +134,13 @@ No code written. The maintainer confirmed that the corpus-armed quarantine card 
 
 ```
 go test ./internal/quarantine/... -run TestRestoreCorpusQuarantineEntry -count=1
-ok  github.com/bantuson/beekeeper/internal/quarantine   PASS
+ok  github.com/home-beekeeper/beekeeper/internal/quarantine   PASS
 
 go test ./cmd/beekeeper/... -run TestRunCatalogsSyncFirstResponder -count=1
-ok  github.com/bantuson/beekeeper/cmd/beekeeper   PASS (all 7 FRB assertions)
+ok  github.com/home-beekeeper/beekeeper/cmd/beekeeper   PASS (all 7 FRB assertions)
 
 go test ./... -count=1
-ok  github.com/bantuson/beekeeper/...   PASS (27 packages)
+ok  github.com/home-beekeeper/beekeeper/...   PASS (27 packages)
 
 go build ./...   OK
 go vet ./...   OK

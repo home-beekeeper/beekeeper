@@ -88,8 +88,8 @@ human_verification:
 | `go test ./...` | EXIT:0 | 27 packages (internal/version has no test files), 0 failures, 0 regressions. |
 | `go mod tidy && git diff --exit-code go.mod` | EXIT:0 | Zero new dependencies. |
 | `grep -rc "auto_purge" internal/corpus/` | EXIT:1 (0 matches) | 0 matches across all 9 files (action_hint.go, behavior_sig.go, behavior_sig_test.go, corpus_test.go, schema_lock_test.go, schema_version.go, scope.go, types.go, testdata/nx_console_trace.json). |
-| `go list -f "{{.Imports}}" ./internal/corpus/` | [crypto/sha256 encoding/hex encoding/json errors github.com/bantuson/beekeeper/internal/audit path strings] | Pure package: no os, net, path/filepath. |
-| `go list -f "{{.Imports}}" ./internal/policy/` | [fmt github.com/bantuson/beekeeper/internal/pkgparse math net/url regexp sort strings] | Note: policy package itself imports net/url (existing, not added by Phase 22). corroboration.go adds no new imports — verified by TestCorroborationImportsArePure PASS. |
+| `go list -f "{{.Imports}}" ./internal/corpus/` | [crypto/sha256 encoding/hex encoding/json errors github.com/home-beekeeper/beekeeper/internal/audit path strings] | Pure package: no os, net, path/filepath. |
+| `go list -f "{{.Imports}}" ./internal/policy/` | [fmt github.com/home-beekeeper/beekeeper/internal/pkgparse math net/url regexp sort strings] | Note: policy package itself imports net/url (existing, not added by Phase 22). corroboration.go adds no new imports — verified by TestCorroborationImportsArePure PASS. |
 
 ---
 

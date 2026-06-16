@@ -20,7 +20,7 @@ OUT of scope: analytics, structured-data/JSON-LD beyond basic OG (unless trivial
 ## Implementation Decisions (locked)
 
 ### D-01 — Canonical base URL = `https://beekeeper.vercel.app`
-The site is not deployed yet (SITE-03 deferred; repo `bantuson/beekeeper` unpushed), but the **intended production host is the Vercel project URL `https://beekeeper.vercel.app`** (maintainer decision 2026-06-09). Bake this in NOW as a single source-of-truth constant used by `metadataBase`, every canonical link, absolute OG/Twitter image + `og:url`, and every `sitemap.xml` URL. One constant, one place to change if a custom domain is added later.
+The site is not deployed yet (SITE-03 deferred; repo `home-beekeeper/beekeeper` unpushed), but the **intended production host is the Vercel project URL `https://beekeeper.vercel.app`** (maintainer decision 2026-06-09). Bake this in NOW as a single source-of-truth constant used by `metadataBase`, every canonical link, absolute OG/Twitter image + `og:url`, and every `sitemap.xml` URL. One constant, one place to change if a custom domain is added later.
 
 ### D-02 — `trailingSlash: true` governs URL shape
 `next.config.mjs` already sets `trailingSlash: true` (Phases 11/13). Canonical links and sitemap URLs MUST match the emitted route shape (e.g. `https://beekeeper.vercel.app/docs/getting-started/`, home = `https://beekeeper.vercel.app/`). Do not emit canonicals that 301 to a different slash form.

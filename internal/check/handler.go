@@ -25,14 +25,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/catalog"
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/corpus"
-	"github.com/bantuson/beekeeper/internal/llamafirewall"
-	"github.com/bantuson/beekeeper/internal/platform"
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/policyloader"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/llamafirewall"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policyloader"
 )
 
 const (

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	catalog "github.com/bantuson/beekeeper/internal/catalog"
+	catalog "github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 
 func newCatalogsPanelForTest() *CatalogsPanel {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 // TestStoreAppendOnly verifies STORE-01: the corpus NDJSON file is append-only.

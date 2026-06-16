@@ -47,8 +47,8 @@ requirements: [SPATH-01, SPATH-04]
 
 ```
 go test ./internal/policy/... ./internal/policyloader/... -count=1 -timeout=60s
-ok    github.com/bantuson/beekeeper/internal/policy      1.343s
-ok    github.com/bantuson/beekeeper/internal/policyloader  1.252s
+ok    github.com/home-beekeeper/beekeeper/internal/policy      1.343s
+ok    github.com/home-beekeeper/beekeeper/internal/policyloader  1.252s
 ```
 
 - `TestPathImportsArePure` — PASS (path.go imports only "strings")

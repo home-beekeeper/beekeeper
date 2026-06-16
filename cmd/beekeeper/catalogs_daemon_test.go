@@ -14,12 +14,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/catalog"
-	"github.com/bantuson/beekeeper/internal/corpus"
-	"github.com/bantuson/beekeeper/internal/quarantine"
-	"github.com/bantuson/beekeeper/internal/sentry"
-	"github.com/bantuson/beekeeper/internal/watch"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/quarantine"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/watch"
 )
 
 // TestCatalogSyncGate proves the interval gate with an injected clock: the

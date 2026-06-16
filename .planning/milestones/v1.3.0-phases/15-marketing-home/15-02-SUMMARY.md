@@ -20,7 +20,7 @@ key_files:
 decisions:
   - "D-03 / D-04 enforced: feature cards carry exactly 6 SHIPPED capabilities; Calm-mode dashboard / Steer toward hardened / Open from day one excluded as card titles"
   - "Fake live-sync badge ('synced 6 minutes ago' + pulse animation) removed from threat list; replaced with static 'Documented 2026 campaigns' label"
-  - "Full canonical install path enforced in quickstart (github.com/bantuson/beekeeper/cmd/beekeeper@latest not the truncated mockup form)"
+  - "Full canonical install path enforced in quickstart (github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest not the truncated mockup form)"
   - "Harness caveat honest: only Claude Code locally live-verified; 15 harnesses supported per docs"
   - "OriginStory links to /docs/security (resolves) not the mockup dead anchor"
   - "Biome auto-format applied (line-length only, no logic changes)"

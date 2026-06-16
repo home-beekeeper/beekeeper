@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 )
 
 // pmStateHardenedPnpm returns a PMState with pnpm >= 11 installed + hardened.

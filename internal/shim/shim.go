@@ -23,9 +23,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/nudge"
-	"github.com/bantuson/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/nudge"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 )
 
 // DefaultTools is the canonical list of package managers and toolchains that

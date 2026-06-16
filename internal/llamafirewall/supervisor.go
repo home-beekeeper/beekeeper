@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // ErrSidecarUnavailable is returned by Scan when the sidecar has failed and the

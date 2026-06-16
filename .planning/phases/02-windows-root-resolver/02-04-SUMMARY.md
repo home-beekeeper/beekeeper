@@ -15,7 +15,7 @@
 
 The maintainer chose to batch the signed release to end-of-M2. The following are **NOT done** and remain a tracked obligation:
 
-- **Push** the 4 local commits (`2c202ef`, `eba8e4c`, `833d29d`, `c94b271`) to `origin` (`github.com/Bantuson/pollen`). `main` is currently **4 ahead of origin/main**, unpushed.
+- **Push** the 4 local commits (`2c202ef`, `eba8e4c`, `833d29d`, `c94b271`) to `origin` (`github.com/home-beekeeper/pollen`). `main` is currently **4 ahead of origin/main**, unpushed.
 - **Confirm** the 3-OS CI matrix green on the pushed commit — specifically `TestWindowsBaselineRoots` + `TestParityAllEcosystems` passing on `windows-latest` (no skip), and `TestDifferential` green on ubuntu+macos.
 - **Tag + sign** `v0.1.1-pollen.2` (triggers `release.yml`: keyless cosign OIDC + CycloneDX SBOM).
 - **Verify** the Sigstore signature + SBOM.
@@ -25,13 +25,13 @@ The maintainer chose to batch the signed release to end-of-M2. The following are
 ```bash
 # from C:\Users\Bantu\mzansi-agentive\pollen
 git push origin main                       # pushes the 4 Phase-2 commits
-gh -R Bantuson/pollen run watch            # wait: 3-OS test + differential jobs all green
+gh -R home-beekeeper/pollen run watch            # wait: 3-OS test + differential jobs all green
 git tag -a v0.1.1-pollen.2 -m "Pollen v0.1.1-pollen.2 — Windows root resolver (WRES-01, WRES-02, PTEST-01)"
 git push origin v0.1.1-pollen.2            # triggers release.yml (cosign + SBOM)
-gh -R Bantuson/pollen run watch            # wait for the release job
+gh -R home-beekeeper/pollen run watch            # wait for the release job
 # verify (download checksums.txt + .sigstore.json from the release first):
 cosign verify-blob --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/Bantuson/pollen/' \
+  --certificate-identity-regexp '^https://github\.com/home-beekeeper/pollen/' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' checksums.txt
 # expect: Verified OK ; confirm CycloneDX SBOM attached to the v0.1.1-pollen.2 release
 ```

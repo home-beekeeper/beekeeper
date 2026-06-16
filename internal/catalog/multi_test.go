@@ -3,7 +3,7 @@ package catalog
 import (
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // fakeMultiLookup is a test double for policy.MultiCatalogLookup that returns

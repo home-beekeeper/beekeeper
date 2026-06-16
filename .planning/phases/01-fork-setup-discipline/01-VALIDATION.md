@@ -63,14 +63,14 @@ The Pollen repo itself is Wave 0 — all of the following are created during Pha
 
 - [ ] `C:/Users/Bantu/mzansi-agentive/pollen/` — new git repo, `git init`, `upstream` remote → `perplexityai/bumblebee`
 - [ ] Source imported at SHA `c24089804ee66ece4bec6f14638cb98985389cdb` (v0.1.1)
-- [ ] `go.mod` — module path → `github.com/bantuson/pollen`
+- [ ] `go.mod` — module path → `github.com/home-beekeeper/pollen`
 - [ ] `cmd/pollen/` — renamed from `cmd/bumblebee/`; `main.Version` ldflags path confirmed; `bumblebee-selftest-*` temp dir → `pollen-selftest-*`; help text binary name updated
 - [ ] `LICENSE` (verbatim), `NOTICE`, `CHANGES.md`, `UPSTREAM.md`
 - [ ] `VERSION` → `0.1.1-pollen.1`
 - [ ] `Makefile` — mirrors beekeeper repro-build + `verify-release` targets
 - [ ] `.goreleaser.yaml` — derived from **beekeeper's** (NOT upstream's, which lacks `-buildvcs=false`): repro flags, cosign keyless sign, syft CycloneDX SBOM, windows build target, `pollen` binary name
 - [ ] `.github/workflows/ci.yml` — 3-OS matrix (go 1.25.x): vet + `go test -race` + selftest + build; differential (Linux+macOS); govulncheck; Windows tests explicitly `t.Skip` with structured reasons
-- [ ] `.github/workflows/release.yml` — cosign keyless OIDC (`github.com/bantuson/pollen/...` identity) + SLSA L3 + SBOM
+- [ ] `.github/workflows/release.yml` — cosign keyless OIDC (`github.com/home-beekeeper/pollen/...` identity) + SLSA L3 + SBOM
 - [ ] Differential test + normalization harness — `go test` runnable
 
 ---
@@ -79,7 +79,7 @@ The Pollen repo itself is Wave 0 — all of the following are created during Pha
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Sigstore signature verifiable on the published tag | FORK-03 | Requires the GitHub Actions release run to have executed (no remote/CI yet) | After `v0.1.1-pollen.1` release: `cosign verify-blob --certificate-identity=https://github.com/bantuson/pollen/.github/workflows/release.yml@refs/tags/v0.1.1-pollen.1 ...` |
+| Sigstore signature verifiable on the published tag | FORK-03 | Requires the GitHub Actions release run to have executed (no remote/CI yet) | After `v0.1.1-pollen.1` release: `cosign verify-blob --certificate-identity=https://github.com/home-beekeeper/pollen/.github/workflows/release.yml@refs/tags/v0.1.1-pollen.1 ...` |
 | Reproducible-build hash matches published release | FORK-03 | `make verify-release` needs `make` + CI build artifacts (not on Windows dev box) | CI `verify-release` job; documented in pollen `docs/THREAT-MODEL.md` |
 
 ---

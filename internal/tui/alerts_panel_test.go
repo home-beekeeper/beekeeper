@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	audit "github.com/bantuson/beekeeper/internal/audit"
+	audit "github.com/home-beekeeper/beekeeper/internal/audit"
 )
 
 func makeTS(offset int) string {

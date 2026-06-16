@@ -24,10 +24,10 @@ human_verification: []
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
 | 1 | pnpm build emits out/changelog/v1.0.0/, out/changelog/v1.2.0/, and out/changelog/v1.3.0/ as separate static HTML pages | VERIFIED | All three files confirmed present on disk: `web/out/changelog/v1.0.0/index.html`, `web/out/changelog/v1.2.0/index.html`, `web/out/changelog/v1.3.0/index.html`. Landing page `out/changelog/index.html` also present (WR-03 remediation). |
-| 2 | Each changelog page includes copyable cosign/SLSA verification commands AND a link to the corresponding GitHub Release | VERIFIED | grep confirms: `Bantuson/beekeeper` (capital-B cosign identity) × 1 per page; `slsa-verifier` × 1 per page; `bantuson/beekeeper/releases/tag/vX.Y.Z` × 2 per page (source URL + anchor href). SLSA `--source-uri` is lowercase `github.com/bantuson/beekeeper` (CR-01 remediated); `--provenance-path` is `beekeeper.intoto.jsonl` (CR-02 remediated). |
+| 2 | Each changelog page includes copyable cosign/SLSA verification commands AND a link to the corresponding GitHub Release | VERIFIED | grep confirms: `home-beekeeper/beekeeper` (capital-B cosign identity) × 1 per page; `slsa-verifier` × 1 per page; `home-beekeeper/beekeeper/releases/tag/vX.Y.Z` × 2 per page (source URL + anchor href). SLSA `--source-uri` is lowercase `github.com/home-beekeeper/beekeeper` (CR-01 remediated); `--provenance-path` is `beekeeper.intoto.jsonl` (CR-02 remediated). |
 | 3 | The v1.3.0 changelog page displays a prominently styled red callout for the exit-1 to exit-2 breaking change with a migration note, and this callout is ABSENT from v1.0.0/v1.2.0 | VERIFIED | Rendered v1.3.0 HTML: "breaking" × 2, `--hook` × 8, `hooks install` × 2, `restart` × 2. v1.0.0 and v1.2.0 rendered HTML: "breaking" × 0. `BreakingChangeCallout` uses `var(--red)` (raw theme token, no `--color-bk-*`). Playwright confirmed dark `rgb(248,81,73)` / light `rgb(192,57,43)` per 14-02-SUMMARY evidence. |
-| 4 | cosign `--certificate-identity-regexp` uses capital-B `Bantuson` (Pitfall 4, release-runbook.md) | VERIFIED | Source: `--certificate-identity-regexp '^https://github\\.com/Bantuson/beekeeper/'`. Rendered HTML: `&#x27;^https://github\.com/Bantuson/beekeeper/&#x27;`. Matches docs/release-runbook.md Step 6b form exactly. |
-| 5 | SLSA `--source-uri` uses lowercase `bantuson` (matches Go module source URI in docs/THREAT-MODEL.md) | VERIFIED | Source: `--source-uri github.com/bantuson/beekeeper`. Rendered HTML: `--source-uri github.com/bantuson/beekeeper`. Matches THREAT-MODEL.md lines 155-156 and 463-465 exactly. CR-01 from 14-REVIEW.md was remediated in commit c3073a0. |
+| 4 | cosign `--certificate-identity-regexp` uses capital-B `Bantuson` (Pitfall 4, release-runbook.md) | VERIFIED | Source: `--certificate-identity-regexp '^https://github\\.com/home-beekeeper/beekeeper/'`. Rendered HTML: `&#x27;^https://github\.com/home-beekeeper/beekeeper/&#x27;`. Matches docs/release-runbook.md Step 6b form exactly. |
+| 5 | SLSA `--source-uri` uses lowercase `bantuson` (matches Go module source URI in docs/THREAT-MODEL.md) | VERIFIED | Source: `--source-uri github.com/home-beekeeper/beekeeper`. Rendered HTML: `--source-uri github.com/home-beekeeper/beekeeper`. Matches THREAT-MODEL.md lines 155-156 and 463-465 exactly. CR-01 from 14-REVIEW.md was remediated in commit c3073a0. |
 | 6 | SLSA `--provenance-path` uses `beekeeper.intoto.jsonl` (artifact-named form from THREAT-MODEL.md) | VERIFIED | Source: `--provenance-path beekeeper.intoto.jsonl`. Rendered HTML: `--provenance-path beekeeper.intoto.jsonl \`. Matches THREAT-MODEL.md form. CR-02 from 14-REVIEW.md was remediated in commit c3073a0. |
 | 7 | The changelog is reachable from the docs nav (Changelog link present in docs layout) | VERIFIED | `web/app/docs/layout.tsx` contains `links: [{ text: "Changelog", url: "/changelog" }]`. `/changelog` now resolves to a landing page (WR-03 remediated — `web/content/changelog/index.mdx` added). |
 
@@ -42,7 +42,7 @@ human_verification: []
 | `web/app/changelog/[[...slug]]/page.tsx` | Catch-all route with generateStaticParams + async params | VERIFIED | Contains `generateStaticParams`, `await props.params`, imports `@/lib/changelog-source` |
 | `web/app/changelog/layout.tsx` | DocsLayout wrapper with changelog tree + nav back to docs | VERIFIED | DocsLayout with `tree={source.pageTree}`, links to `/docs/getting-started` |
 | `web/components/changelog/verify-commands.tsx` | VerifyCommands with accurate cosign/SLSA commands | VERIFIED | Exports `VerifyCommands`; capital-B `Bantuson` in cosign regexp; lowercase `bantuson` in SLSA source-uri; `beekeeper.intoto.jsonl` provenance path; CopyButton with `.catch` handler |
-| `web/components/changelog/release-links.tsx` | ReleaseLinks with canonical GitHub Release link | VERIFIED | Exports `ReleaseLinks`; `https://github.com/bantuson/beekeeper/releases/tag/${version}`; honest "resolves once published" microcopy |
+| `web/components/changelog/release-links.tsx` | ReleaseLinks with canonical GitHub Release link | VERIFIED | Exports `ReleaseLinks`; `https://github.com/home-beekeeper/beekeeper/releases/tag/${version}`; honest "resolves once published" microcopy |
 | `web/components/changelog/breaking-change-callout.tsx` | Red callout using var(--red), dual-theme correct | VERIFIED | Exports `BreakingChangeCallout`; uses `var(--red)` in all style properties; `color-mix(in srgb, var(--red) 10%, transparent)` for background; imports `TriangleAlert` from lucide-react; no `--color-bk-*` usage |
 | `web/mdx-components.tsx` | MDX map with VerifyCommands, ReleaseLinks, BreakingChangeCallout | VERIFIED | `useMDXComponents` maps all three components; `<MDX components={components} />` wiring in changelog page |
 | `web/content/changelog/meta.json` | Newest-first order: v1.3.0, v1.2.0, v1.0.0 | VERIFIED | `{ "title": "Changelog", "pages": ["v1.3.0", "v1.2.0", "v1.0.0"] }` |
@@ -73,12 +73,12 @@ Not applicable — this phase produces static MDX content rendered to HTML at bu
 | out/changelog/v1.0.0/index.html exists and is non-empty | `test -f` | EXISTS | PASS |
 | out/changelog/v1.2.0/index.html exists and is non-empty | `test -f` | EXISTS | PASS |
 | out/changelog/v1.3.0/index.html exists and is non-empty | `test -f` | EXISTS | PASS |
-| v1.0.0 page contains capital-B Bantuson cosign identity | `grep -c "Bantuson/beekeeper"` | 1 match | PASS |
-| v1.2.0 page contains capital-B Bantuson cosign identity | `grep -c "Bantuson/beekeeper"` | 1 match | PASS |
-| v1.3.0 page contains capital-B Bantuson cosign identity | `grep -c "Bantuson/beekeeper"` | 1 match | PASS |
+| v1.0.0 page contains capital-B Bantuson cosign identity | `grep -c "home-beekeeper/beekeeper"` | 1 match | PASS |
+| v1.2.0 page contains capital-B Bantuson cosign identity | `grep -c "home-beekeeper/beekeeper"` | 1 match | PASS |
+| v1.3.0 page contains capital-B Bantuson cosign identity | `grep -c "home-beekeeper/beekeeper"` | 1 match | PASS |
 | All three pages contain slsa-verifier command | `grep -c "slsa-verifier"` | 1 each | PASS |
 | All three pages contain canonical release link | `grep -c "releases/tag/vX.Y.Z"` | 2 each | PASS |
-| SLSA --source-uri is lowercase bantuson in rendered HTML | `grep "source-uri"` | `github.com/bantuson/beekeeper` | PASS |
+| SLSA --source-uri is lowercase bantuson in rendered HTML | `grep "source-uri"` | `github.com/home-beekeeper/beekeeper` | PASS |
 | SLSA --provenance-path is beekeeper.intoto.jsonl | `grep "provenance-path"` | `beekeeper.intoto.jsonl` | PASS |
 | v1.3.0 breaking-change callout present | `grep -c "breaking"` | 2 | PASS |
 | v1.0.0 breaking-change callout absent | `grep -c "breaking"` | 0 | PASS |
@@ -111,7 +111,7 @@ No TBD, FIXME, XXX, or unresolved debt markers found in phase-modified files.
 
 | Finding | Severity | Status |
 |---------|----------|--------|
-| CR-01: SLSA `--source-uri` capital-B Bantuson | Critical | FIXED — now lowercase `github.com/bantuson/beekeeper` |
+| CR-01: SLSA `--source-uri` capital-B Bantuson | Critical | FIXED — now lowercase `github.com/home-beekeeper/beekeeper` |
 | CR-02: SLSA `--provenance-path` used `${version}.intoto.jsonl` | Critical | FIXED — now `beekeeper.intoto.jsonl` |
 | WR-01: CopyButton clipboard no `.catch` | Warning | FIXED — `.catch()` handler added |
 | WR-02: docs `[[...slug]]` page rendered `<MDX />` without components map | Warning | FIXED — now passes `useMDXComponents({})` |

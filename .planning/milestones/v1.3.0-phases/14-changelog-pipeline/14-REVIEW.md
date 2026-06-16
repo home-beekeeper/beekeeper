@@ -71,10 +71,10 @@ route under static export.
 ### CR-01: SLSA `--source-uri` uses wrong casing — will break SLSA verification
 
 **File:** `web/components/changelog/verify-commands.tsx:95`
-**Issue:** The SLSA verify command uses `--source-uri github.com/Bantuson/beekeeper`
+**Issue:** The SLSA verify command uses `--source-uri github.com/home-beekeeper/beekeeper`
 (capital-B `Bantuson`). The canonical form in `docs/THREAT-MODEL.md` (lines 156, 465),
 `cmd/beekeeper/selfquarantine.go` (line 68), and the Go module path in `go.mod` is
-`github.com/bantuson/beekeeper` (lowercase). The SLSA provenance is produced by
+`github.com/home-beekeeper/beekeeper` (lowercase). The SLSA provenance is produced by
 `slsa-github-generator` and the source-uri it attests is derived from the repository's
 Go module path — always lowercase. Passing `Bantuson` (capital B) to `--source-uri` will
 cause `slsa-verifier` to reject the attestation with a source-mismatch error. A user
@@ -91,7 +91,7 @@ URI.
 // Line 95 — change Bantuson → bantuson for the slsa-verifier source-uri
 const slsaCmd = `slsa-verifier verify-artifact \\
   --provenance-path <artifact>.intoto.jsonl \\
-  --source-uri github.com/bantuson/beekeeper \\
+  --source-uri github.com/home-beekeeper/beekeeper \\
   <artifact>`;
 ```
 
@@ -124,7 +124,7 @@ separate usability concern, but the provenance path is the operationally wrong e
 // that matches docs/THREAT-MODEL.md and selfquarantine.go
 const slsaCmd = `slsa-verifier verify-artifact \\
   --provenance-path beekeeper.intoto.jsonl \\
-  --source-uri github.com/bantuson/beekeeper \\
+  --source-uri github.com/home-beekeeper/beekeeper \\
   <artifact>`;
 ```
 If per-platform filenames are preferred, use `beekeeper-<os>-<arch>.intoto.jsonl` and

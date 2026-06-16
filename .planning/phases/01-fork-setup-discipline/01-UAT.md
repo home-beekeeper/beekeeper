@@ -14,7 +14,7 @@ note: Auto-approved by user — every test backed by concrete CI/release evidenc
 ## Tests
 
 ### 1. Pollen repo exists and builds (FORK-01)
-expected: `github.com/Bantuson/pollen` is a public repo, forked at pinned SHA `c240898`, module `github.com/bantuson/pollen`, `cmd/pollen`; `pollen` binary builds on ubuntu/macos/windows.
+expected: `github.com/home-beekeeper/pollen` is a public repo, forked at pinned SHA `c240898`, module `github.com/home-beekeeper/pollen`, `cmd/pollen`; `pollen` binary builds on ubuntu/macos/windows.
 result: pass
 evidence: Repo live + public; CI `test` job green on all 3 OSes (build step ✓); local `go build ./cmd/pollen` + `GOOS=windows go build ./...` clean.
 
@@ -34,9 +34,9 @@ result: pass
 evidence: CI `differential` job green on ubuntu + macos (after fixing the scanner_version normalization gap that only surfaced in CI); Windows skip is the intentional one.
 
 ### 5. Reproducible + cosign-signed release (FORK-03)
-expected: `v0.1.1-pollen.1` built reproducibly (`-trimpath -buildvcs=false`) and cosign-keyless-signed; `cosign verify-blob` returns Verified OK against the bantuson/pollen OIDC identity.
+expected: `v0.1.1-pollen.1` built reproducibly (`-trimpath -buildvcs=false`) and cosign-keyless-signed; `cosign verify-blob` returns Verified OK against the home-beekeeper/pollen OIDC identity.
 result: pass
-evidence: Release published; `cosign verify-blob` → **Verified OK** against `^https://github.com/Bantuson/pollen/` (A1: canonical casing `Bantuson`); snapshot build reproducible across 6 targets.
+evidence: Release published; `cosign verify-blob` → **Verified OK** against `^https://github.com/home-beekeeper/pollen/` (A1: canonical casing `Bantuson`); snapshot build reproducible across 6 targets.
 
 ### 6. SBOM + SLSA provenance published (SDEF-02)
 expected: CycloneDX SBOM per archive + SLSA L3 provenance attached to the release.

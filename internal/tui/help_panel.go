@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	version "github.com/bantuson/beekeeper/internal/version"
+	version "github.com/home-beekeeper/beekeeper/internal/version"
 )
 
 // HelpPanel implements PanelContent for the help overlay.

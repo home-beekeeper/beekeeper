@@ -85,7 +85,7 @@ go test ./internal/gateway/ -run Drift -v
 --- PASS: TestRealMetadataFetchFailOpenOnError
 --- PASS: TestCheckDriftEndToEndRealFetch
 --- PASS: TestCheckDriftFloorsNeverBumped
-PASS ok github.com/bantuson/beekeeper/internal/gateway
+PASS ok github.com/home-beekeeper/beekeeper/internal/gateway
 
 go build ./...    → clean
 go vet ./internal/gateway/... → clean

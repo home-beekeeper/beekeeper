@@ -89,9 +89,9 @@ Tests: `TestCorroborateOutcome` (enforce, watch-from-critical-single-source, no-
 
 ```
 go test ./internal/audit/... ./internal/policy/... ./internal/config/...
-ok  github.com/bantuson/beekeeper/internal/audit
-ok  github.com/bantuson/beekeeper/internal/policy
-ok  github.com/bantuson/beekeeper/internal/config
+ok  github.com/home-beekeeper/beekeeper/internal/audit
+ok  github.com/home-beekeeper/beekeeper/internal/policy
+ok  github.com/home-beekeeper/beekeeper/internal/config
 
 go build ./...  → exit 0
 go mod tidy && git diff --exit-code go.mod → exit 0 (zero new dependencies)

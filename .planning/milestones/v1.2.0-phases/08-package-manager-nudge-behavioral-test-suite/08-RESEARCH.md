@@ -393,7 +393,7 @@ func Evaluate(cmd pkgparse.ParsedCommand, state PMState, cfg Config) Decision {
 // internal/check/e2e_test.go  (or a top-level e2e/ package)
 func TestE2ELiveBinary(t *testing.T) {
     bin := filepath.Join(t.TempDir(), "beekeeper.exe")
-    build := exec.Command("go", "build", "-o", bin, "github.com/bantuson/beekeeper/cmd/beekeeper")
+    build := exec.Command("go", "build", "-o", bin, "github.com/home-beekeeper/beekeeper/cmd/beekeeper")
     if out, err := build.CombinedOutput(); err != nil { t.Fatalf("build: %v\n%s", err, out) }
     // SPATH: credential read → exit 1; CORR: ai-figure critical → exit 1; NUDGE: pnpm add → parsed/audited
     cases := []struct{ name, stdin string; wantExit int }{ /* ... */ }

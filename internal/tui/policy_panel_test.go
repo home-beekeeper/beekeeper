@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/policy"
-	policyloader "github.com/bantuson/beekeeper/internal/policyloader"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	policyloader "github.com/home-beekeeper/beekeeper/internal/policyloader"
 )
 
 // newTestPolicyPanel builds a panel bound to a temp policies dir (bypassing

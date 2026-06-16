@@ -79,7 +79,7 @@ Not applicable. All content is static build-time data (server components with in
 | Behavior | Evidence | Status |
 |----------|----------|--------|
 | `out/index.html` contains headline | Grep confirmed "autonomous coding agents" present | PASS |
-| `out/index.html` contains canonical install command | Grep confirmed full `go install github.com/bantuson/beekeeper/cmd/beekeeper@latest` present | PASS |
+| `out/index.html` contains canonical install command | Grep confirmed full `go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest` present | PASS |
 | `out/index.html` contains all 4 known-gap markers | Grep confirmed "release_age", "0.0.0.0", "fail-OPEN", "UNGUARDED" each present | PASS |
 | `out/index.html` contains all harness matrix identifiers | Grep confirmed "Claude Code", "Kilo", "Trae", "Hermes" present | PASS |
 | `out/index.html` contains doc links | Grep confirmed "docs/integration", "docs/security", "docs/getting-started" present | PASS |

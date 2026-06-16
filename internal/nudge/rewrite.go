@@ -10,7 +10,7 @@ package nudge
 import (
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 )
 
 // RewriteToPnpm is the EXPORTED wrapper over rewriteToPnpm so the check adapter

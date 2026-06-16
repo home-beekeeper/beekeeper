@@ -233,7 +233,7 @@ export function InstallChip()    // no required props
 **Install command constant** (`install-chip.tsx` lines 11-12):
 ```typescript
 const INSTALL_COMMAND =
-  "go install github.com/bantuson/beekeeper/cmd/beekeeper@latest";
+  "go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@latest";
 ```
 
 **Copy button aria-label** (`install-chip.tsx` lines 93-97):
@@ -255,7 +255,7 @@ import { InstallChip } from '@/components/home/install-chip'
 describe('InstallChip', () => {
   it('renders the install command text', () => {
     render(<InstallChip />)
-    expect(screen.getByText(/go install github\.com\/bantuson\/beekeeper/)).toBeTruthy()
+    expect(screen.getByText(/go install github\.com\/home-beekeeper\/beekeeper/)).toBeTruthy()
   })
   it('copy button has accessible label', () => {
     render(<InstallChip />)

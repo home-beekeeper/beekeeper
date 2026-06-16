@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 var ParseError = errors.New("eslogger: parse error")

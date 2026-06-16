@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 // TestEsloggerFieldValidation reads a live eslogger NDJSON capture from the

@@ -21,7 +21,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/bantuson/beekeeper/internal/platform"
+	"github.com/home-beekeeper/beekeeper/internal/platform"
 )
 
 // newTestSupervisor builds a supervisor with the given FailMode and full

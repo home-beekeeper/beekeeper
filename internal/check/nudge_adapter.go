@@ -21,11 +21,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/nudge"
-	"github.com/bantuson/beekeeper/internal/pkgparse"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/nudge"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // evaluateNudge resolves the PM state fresh via the EXPORTED nudge.DetectStateFn

@@ -39,8 +39,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/pkgparse"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // ApplyPolicyOverlay evaluates package_allowlist and sensitive_path rules from

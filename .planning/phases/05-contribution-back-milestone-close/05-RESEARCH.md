@@ -12,7 +12,7 @@
 ### Locked Decisions
 
 - **D-2:** SYNC-02 DESCOPED. No contribution-back PRs against `perplexityai/bumblebee` this milestone. UPSTREAM.md records the prepared patch set + contribution-back-deferred rationale. SC2 relaxed/deferred — verifier MUST NOT flag absence of upstream PR.
-- **D-3:** GitHub push is IN SCOPE. Both `bantuson/pollen` and `bantuson/beekeeper` may be pushed to GitHub this phase. Neither is pushed yet.
+- **D-3:** GitHub push is IN SCOPE. Both `home-beekeeper/pollen` and `home-beekeeper/beekeeper` may be pushed to GitHub this phase. Neither is pushed yet.
 - **D-4:** Cut all four signed tags this phase — `v0.1.1-pollen.2`, `.3`, `.4` (deferred) and `.5` (milestone-close) via the existing cosign keyless / GitHub Actions OIDC pipeline in `../pollen`.
 - **D-5:** Outward/auth-gated steps (`gh repo create`, `git push`, tag-push triggering signing, `cosign verify`) are `autonomous: false` checkpoint tasks. Executor does all local prep + exact release runbook; maintainer performs/approves outward steps.
 - **D-6:** SYNC-01 (UPSTREAM.md repeatable sync workflow) ships; must be followable by a second maintainer cold (SC1). UPSTREAM.md already exists — extend/verify, don't recreate.
@@ -51,19 +51,19 @@
 
 ## Summary
 
-Phase 5 is the final phase of Beekeeper v1.1.0 "Pollen". It closes the milestone across two repos — `bantuson/pollen` (signed-release batch) and `bantuson/beekeeper` (CI pin, Windows honeypot, pollen-self catalog) — and ships the UPSTREAM.md sync runbook.
+Phase 5 is the final phase of Beekeeper v1.1.0 "Pollen". It closes the milestone across two repos — `home-beekeeper/pollen` (signed-release batch) and `home-beekeeper/beekeeper` (CI pin, Windows honeypot, pollen-self catalog) — and ships the UPSTREAM.md sync runbook.
 
 The five work streams are fully concrete from the live codebase:
 
 1. **SYNC-01 (UPSTREAM.md):** The file already contains an 8-step sync workflow. The delta is: add the pollen.2/3/4 version-history table rows, add the contribution-back-deferred note (D-2 rationale), and add a "prepared patch set" appendix listing the Windows diffs available for upstream if they ever want them.
 
-2. **BKINT-02 (Pollen pin + CI):** Beekeeper consumes Pollen exclusively as a subprocess binary (`lookPollenFn` + `runPollenFn` in `internal/scan/scanner.go`). There is no Go module import of `github.com/bantuson/pollen`. The correct BKINT-02 interpretation is: beekeeper CI installs the Pollen binary at a pinned version via `go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4`, adds a beekeeper `go.mod` `tool` or comment directive recording the pinned version, and adds a new step to `.github/workflows/ci.yml`. No go.mod module import is needed or appropriate.
+2. **BKINT-02 (Pollen pin + CI):** Beekeeper consumes Pollen exclusively as a subprocess binary (`lookPollenFn` + `runPollenFn` in `internal/scan/scanner.go`). There is no Go module import of `github.com/home-beekeeper/pollen`. The correct BKINT-02 interpretation is: beekeeper CI installs the Pollen binary at a pinned version via `go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4`, adds a beekeeper `go.mod` `tool` or comment directive recording the pinned version, and adds a new step to `.github/workflows/ci.yml`. No go.mod module import is needed or appropriate.
 
 3. **PTEST-05 (Windows honeypot):** SENTRY-005 (`evalSENTRY005`) is the exfil-signature-fusion rule. The test pattern is identical to the existing `rules_test.go` approach: construct a `map[uint32]ProcessNode` editor process tree, call `EvaluateEvent` directly with synthetic `SentryEvent` structs (no ETW daemon, no real filesystem writes, no live network). The test file lives in `internal/sentry/windows/` with `//go:build windows`. Credentials file is planted as a path string in a `SentryEvent{Kind: EventFileAccess, FilePath: ...}` — no actual file is created.
 
 4. **SDEF-01 (pollen-self):** The `selfCatalogEntry` schema is fully defined in `selfcatalog.go`. Adding pollen-self entries means: (a) extending `selftestEntries` in `internal/check/selftest.go` with two new entries (one beekeeper-self entry for a hypothetical bad pollen release, one for a bad beekeeper release as regression anchor), and (b) adding a corresponding fixture to `internal/catalog/testdata/` and `internal/check/corpus/fixtures.json`. The `selfCatalogAdapter.LookupAll` only matches on `ecosystem == "beekeeper"` — pollen entries use `ecosystem: "beekeeper"`, `package: "pollen"` with a distinct identifier.
 
-5. **D-4 (signed-tag batch):** `../pollen` is 14 commits ahead of origin/main. The remote `origin` is already configured as `https://github.com/Bantuson/pollen.git`. Pollen.2/3/4 commit hashes are known. The `.goreleaser.yaml` and `release.yml` pipeline is confirmed intact. The exact runbook commands are documented in the prior SUMMARY files.
+5. **D-4 (signed-tag batch):** `../pollen` is 14 commits ahead of origin/main. The remote `origin` is already configured as `https://github.com/home-beekeeper/pollen.git`. Pollen.2/3/4 commit hashes are known. The `.goreleaser.yaml` and `release.yml` pipeline is confirmed intact. The exact runbook commands are documented in the prior SUMMARY files.
 
 **Primary recommendation:** Implement in three waves — (1) local autonomous work (UPSTREAM.md delta, BKINT-02 CI edit, PTEST-05 test, SDEF-01 entries + VERSION/CHANGES pollen.5), (2) checkpoint: maintainer pushes pollen main + beekeeper main, cuts four tags in order, verifies cosign, (3) post-push verification: CI green on all 3 OSes, selftest passes, zero skips.
 
@@ -105,7 +105,7 @@ The five work streams are fully concrete from the live codebase:
 
 **Installation (beekeeper CI — new step):**
 ```bash
-go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
+go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4
 ```
 
 **Version verification (confirmed):**
@@ -133,7 +133,7 @@ go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
  │    VERSION=0.1.1-pollen.5, CHANGES.md, UPSTREAM.md             │
  │        │                                                        │
  │        ▼ [CHECKPOINT D-5: maintainer pushes + tags]             │
- │    github.com/Bantuson/pollen (origin/main + 4 tags)            │
+ │    github.com/home-beekeeper/pollen (origin/main + 4 tags)            │
  │        │                                                        │
  │        ▼ (release.yml triggered per tag)                        │
  │    GitHub Release: pollen.2/3/4/5 (cosign + SBOM + SLSA L3)    │
@@ -204,22 +204,22 @@ var runPollenFn = func(ctx context.Context, deep bool) (<-chan []byte, bool) {
 }
 ```
 
-`defaultRunPollen` calls `exec.CommandContext(ctx, bin, args...)` where `bin` is the result of `exec.LookPath("pollen")`. There is **no** `import "github.com/bantuson/pollen/..."` anywhere in beekeeper's Go source. The subprocess boundary is the only integration point.
+`defaultRunPollen` calls `exec.CommandContext(ctx, bin, args...)` where `bin` is the result of `exec.LookPath("pollen")`. There is **no** `import "github.com/home-beekeeper/pollen/..."` anywhere in beekeeper's Go source. The subprocess boundary is the only integration point.
 
-**go.mod analysis:** beekeeper's `go.mod` has no reference to `github.com/bantuson/pollen`. Adding one would require beekeeper to import a Go package from Pollen, which doesn't exist as an exported API and would violate the subprocess isolation boundary (BKINT-01 decision).
+**go.mod analysis:** beekeeper's `go.mod` has no reference to `github.com/home-beekeeper/pollen`. Adding one would require beekeeper to import a Go package from Pollen, which doesn't exist as an exported API and would violate the subprocess isolation boundary (BKINT-01 decision).
 
 **Correct BKINT-02 implementation:**
 - Add a step to `.github/workflows/ci.yml` before the `Test` step (on all three OS matrix runners):
   ```yaml
   - name: Install Pollen (BKINT-02)
-    run: go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
+    run: go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4
   ```
 - Record the pinned version as a comment in `internal/scan/scanner.go` or a new `internal/scan/pollen_version.go` file (const string, not a Go dependency).
 - The `go install` adds pollen to `$GOPATH/bin` which is on PATH in GitHub Actions runners.
 
 **Sequencing constraint (D-3):** `go install @v0.1.1-pollen.4` requires Pollen to be pushed AND tagged on GitHub first. The CI workflow edit must be committed BEFORE or in the same push as the tag. The planner must sequence: (1) prepare CI edit locally, (2) checkpoint: push pollen + cut pollen.2/3/4/5 tags, (3) then push beekeeper main with CI edit.
 
-[VERIFIED: beekeeper/.github/workflows/ci.yml — no pollen install step currently; ../pollen remote is origin=https://github.com/Bantuson/pollen.git]
+[VERIFIED: beekeeper/.github/workflows/ci.yml — no pollen install step currently; ../pollen remote is origin=https://github.com/home-beekeeper/pollen.git]
 
 ### RQ-2: Beekeeper CI Windows-green status
 
@@ -228,7 +228,7 @@ var runPollenFn = func(ctx context.Context, deep bool) (<-chan []byte, bool) {
 The existing `test` job runs on `[ubuntu-latest, macos-latest, windows-latest]` with `go test -v -race ./...`. There is no Pollen install step. The `TestPollenCompatibility` test (PTEST-04) uses `runPollenFn` injection and is **fixture-driven with zero t.Skip** — it passes on all three OSes without a real binary.
 
 **What needs to change for BKINT-02:**
-- Add `go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4` step.
+- Add `go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4` step.
 - Add `go install` to `GOPATH/bin` on PATH (standard in GitHub Actions runners via `actions/setup-go`).
 - No existing tests skip on Windows pending Pollen. PTEST-04 (`TestPollenCompatibility`) already has zero skips. The only Windows-skip in the scan package is `TestScanBumblebeeUnavailable` — wait, checking: the test is called `TestScanPollenUnavailable` and it runs on all platforms (uses the mock fn).
 
@@ -349,7 +349,7 @@ type selfCatalogEntry struct {
 ### RQ-6: Release pipeline state and runbook
 
 **Pollen repo state (confirmed):**
-- Remote `origin` = `https://github.com/Bantuson/pollen.git` (already configured).
+- Remote `origin` = `https://github.com/home-beekeeper/pollen.git` (already configured).
 - 14 commits ahead of `origin/main` (unpushed).
 - No local tags (confirmed in SUMMARY files).
 - `VERSION` = `0.1.1-pollen.4` (confirmed).
@@ -362,7 +362,7 @@ type selfCatalogEntry struct {
 - `provenance` job (after goreleaser): SLSA Level 3 via `slsa-github-generator@v2.1.0`.
 - Permissions required: `id-token: write` (for cosign OIDC) + `contents: write` (upload release assets).
 
-**cosign identity casing (confirmed from pollen.1 fix commit 37c71e5):** GitHub OIDC uses `Bantuson` (capital B). The `--certificate-identity-regexp` in `cosign verify-blob` must be `^https://github\.com/Bantuson/pollen/`.
+**cosign identity casing (confirmed from pollen.1 fix commit 37c71e5):** GitHub OIDC uses `Bantuson` (capital B). The `--certificate-identity-regexp` in `cosign verify-blob` must be `^https://github\.com/home-beekeeper/pollen/`.
 
 **Exact runbook for D-5 (verified against 02-04-SUMMARY.md + pollen CHANGES.md pattern):**
 
@@ -371,42 +371,42 @@ type selfCatalogEntry struct {
 # Then the maintainer runs these commands:
 
 # Step 1: Create beekeeper repo on GitHub (if not done)
-gh repo create bantuson/beekeeper --public --source=. --push
+gh repo create home-beekeeper/beekeeper --public --source=. --push
 # OR if repo exists but remote not set:
-git remote add origin https://github.com/bantuson/beekeeper.git
+git remote add origin https://github.com/home-beekeeper/beekeeper.git
 
 # Step 2: Push pollen main (14 commits ahead of origin/main)
 git -C /path/to/pollen push origin main
-gh -R Bantuson/pollen run watch  # wait: 3-OS CI green
+gh -R home-beekeeper/pollen run watch  # wait: 3-OS CI green
 
 # Step 3: Cut pollen.2 tag (at commit c94b271)
 git -C /path/to/pollen tag -a v0.1.1-pollen.2 c94b271 \
   -m "Pollen v0.1.1-pollen.2 — Windows root resolver (WRES-01, WRES-02, PTEST-01)"
 git -C /path/to/pollen push origin v0.1.1-pollen.2
-gh -R Bantuson/pollen run watch  # wait for release job
+gh -R home-beekeeper/pollen run watch  # wait for release job
 
 # Step 4: Cut pollen.3 tag (at commit 19695e3)
 git -C /path/to/pollen tag -a v0.1.1-pollen.3 19695e3 \
   -m "Pollen v0.1.1-pollen.3 — Windows path representation (WPATH-01, WPATH-02)"
 git -C /path/to/pollen push origin v0.1.1-pollen.3
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 
 # Step 5: Cut pollen.4 tag (at commit a9db7b3)
 git -C /path/to/pollen tag -a v0.1.1-pollen.4 a9db7b3 \
   -m "Pollen v0.1.1-pollen.4 — Windows extension & MCP coverage (WEXT-01, WEXT-02, WEXT-03)"
 git -C /path/to/pollen push origin v0.1.1-pollen.4
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 
 # Step 6: Cut pollen.5 tag (at HEAD after Phase 5 local prep)
 git -C /path/to/pollen tag -a v0.1.1-pollen.5 HEAD \
   -m "Pollen v0.1.1-pollen.5 — Milestone close (SYNC-01, BKINT-02, PTEST-05, SDEF-01)"
 git -C /path/to/pollen push origin v0.1.1-pollen.5
-gh -R Bantuson/pollen run watch
+gh -R home-beekeeper/pollen run watch
 
 # Step 7: Cosign verify each release (download checksums.txt + .sigstore.json from GitHub Release first)
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/Bantuson/pollen/' \
+  --certificate-identity-regexp '^https://github\.com/home-beekeeper/pollen/' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 # Expected output: Verified OK
@@ -418,7 +418,7 @@ gh run watch          # wait: beekeeper CI green on all 3 OSes
 
 **Note on tag ordering:** Tags must be pushed in pollen.2→3→4→5 order. GoReleaser infers the version from the tag; pushing out-of-order creates no functional problem (tags are independent artifacts) but sequential is cleaner for CHANGES.md chronology.
 
-**Note on beekeeper remote:** `git remote -v` returns empty for beekeeper — no remote is configured. `gh repo create bantuson/beekeeper --public --source=. --push` is the one-liner; or `git remote add origin https://github.com/bantuson/beekeeper.git && git push -u origin main` if the repo was created on GitHub web.
+**Note on beekeeper remote:** `git remote -v` returns empty for beekeeper — no remote is configured. `gh repo create home-beekeeper/beekeeper --public --source=. --push` is the one-liner; or `git remote add origin https://github.com/home-beekeeper/beekeeper.git && git push -u origin main` if the repo was created on GitHub web.
 
 [VERIFIED: ../pollen/.goreleaser.yaml, ../pollen/.github/workflows/release.yml, ../pollen/CHANGES.md (pollen.1 fix noting Bantuson casing), ../pollen git status]
 
@@ -443,7 +443,7 @@ gh run watch          # wait: beekeeper CI green on all 3 OSes
 | Category | Items Found | Action Required |
 |----------|-------------|------------------|
 | Stored data | No database stores pollen version strings or beekeeper-self feed entries that need patching | None — feed is HTTP-fetched at runtime |
-| Live service config | `origin` remote not configured in beekeeper repo; `origin` configured in pollen repo as `https://github.com/Bantuson/pollen.git` | beekeeper: set remote as checkpoint step (D-5); pollen: push to existing remote |
+| Live service config | `origin` remote not configured in beekeeper repo; `origin` configured in pollen repo as `https://github.com/home-beekeeper/pollen.git` | beekeeper: set remote as checkpoint step (D-5); pollen: push to existing remote |
 | OS-registered state | No Windows Task Scheduler / launchd / systemd tasks reference pollen or beekeeper version strings | None |
 | Secrets/env vars | `GITHUB_TOKEN` (GitHub Actions built-in — no change); no `.env` files | None |
 | Build artifacts | `../pollen`: 14 commits unpushed, 0 local tags. beekeeper: 0 commits unpushed | Push both as part of D-5 checkpoint |
@@ -466,14 +466,14 @@ gh run watch          # wait: beekeeper CI green on all 3 OSes
 **How to avoid:** Push tags in order: pollen.2 → pollen.3 → pollen.4 → pollen.5. Each tag triggers an independent release job; order does not affect cosign verification (each tag signs its own checksums.txt).
 
 ### Pitfall 3: `go install` version requires GitHub push first
-**What goes wrong:** Adding `go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4` to beekeeper's CI before Pollen is pushed + tagged on GitHub causes CI to fail with `no such module`.
+**What goes wrong:** Adding `go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4` to beekeeper's CI before Pollen is pushed + tagged on GitHub causes CI to fail with `no such module`.
 **Why it happens:** `go install @version` requires the module to be resolvable from the module proxy.
 **How to avoid:** Sequence matters: (1) local prep, (2) push pollen + cut tags, (3) push beekeeper CI edit. The CI edit and the tag push must happen in the same checkpoint or the tag push must precede the beekeeper push.
 
 ### Pitfall 4: cosign identity casing
-**What goes wrong:** Using `^https://github\.com/bantuson/pollen/` (lowercase) in `cosign verify-blob` fails. GitHub OIDC uses the canonical account casing `Bantuson` (capital B).
+**What goes wrong:** Using `^https://github\.com/home-beekeeper/pollen/` (lowercase) in `cosign verify-blob` fails. GitHub OIDC uses the canonical account casing `Bantuson` (capital B).
 **Why it happens:** Go module paths are case-normalized to lowercase; GitHub OIDC is not.
-**How to avoid:** Use `^https://github\.com/Bantuson/pollen/` in all verify commands (confirmed from pollen.1 fix commit 37c71e5 in CHANGES.md).
+**How to avoid:** Use `^https://github\.com/home-beekeeper/pollen/` in all verify commands (confirmed from pollen.1 fix commit 37c71e5 in CHANGES.md).
 **Warning signs:** `cosign verify-blob` returns `Error: none of the expected identities matched`.
 
 ### Pitfall 5: beekeeper `selftest` uses `catalog.Entry` not `selfCatalogEntry`
@@ -502,7 +502,7 @@ import (
     "testing"
     "time"
 
-    "github.com/bantuson/beekeeper/internal/sentry"
+    "github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 func TestHoneypotExfilFusionFires(t *testing.T) {
@@ -583,7 +583,7 @@ matches := adapter.LookupAll("beekeeper", "pollen")
 ```yaml
 # Source: beekeeper .github/workflows/ci.yml (new step)
 - name: Install Pollen (BKINT-02 — pinned binary for inventory tests)
-  run: go install github.com/bantuson/pollen/cmd/pollen@v0.1.1-pollen.4
+  run: go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4
 ```
 [VERIFIED: existing ci.yml pattern; confirmed actions/setup-go adds GOPATH/bin to PATH]
 
@@ -651,8 +651,8 @@ matches := adapter.LookupAll("beekeeper", "pollen")
 
 3. **beekeeper repo name on GitHub**
    - What we know: beekeeper has no `git remote` configured; `gh repo create` needs to run.
-   - What's unclear: should beekeeper be pushed as `bantuson/beekeeper` (matching the go.mod module path) or `Bantuson/beekeeper` (capital B consistent with pollen).
-   - Recommendation: `bantuson/beekeeper` (lowercase) matches `github.com/bantuson/beekeeper` in `go.mod`. GitHub normalizes the display case; the URL is lowercase regardless.
+   - What's unclear: should beekeeper be pushed as `home-beekeeper/beekeeper` (matching the go.mod module path) or `home-beekeeper/beekeeper` (capital B consistent with pollen).
+   - Recommendation: `home-beekeeper/beekeeper` (lowercase) matches `github.com/home-beekeeper/beekeeper` in `go.mod`. GitHub normalizes the display case; the URL is lowercase regardless.
 
 ---
 
@@ -750,7 +750,7 @@ matches := adapter.LookupAll("beekeeper", "pollen")
 - `beekeeper/internal/catalog/selfcatalog_test.go` — test patterns, `signFeedEntries` helper, fixture filenames [VERIFIED]
 - `beekeeper/internal/check/selftest.go` — `selftestEntries` `catalog.Entry` schema; `RunSelftest` flow [VERIFIED]
 - `beekeeper/.github/workflows/ci.yml` — no Pollen install step currently; 3-OS matrix confirmed [VERIFIED]
-- `beekeeper/go.mod` — no `github.com/bantuson/pollen` import; `github.com/tekert/golang-etw v0.6.2` confirmed [VERIFIED]
+- `beekeeper/go.mod` — no `github.com/home-beekeeper/pollen` import; `github.com/tekert/golang-etw v0.6.2` confirmed [VERIFIED]
 - `../pollen/UPSTREAM.md` — existing 8-step sync workflow; version history table (pollen.1 only) [VERIFIED]
 - `../pollen/.goreleaser.yaml` — GoReleaser v2 schema; cosign sign-blob; syft CycloneDX SBOM [VERIFIED]
 - `../pollen/.github/workflows/release.yml` — release trigger on `v*`; SLSA `@v2.1.0` locked; Bantuson casing [VERIFIED]

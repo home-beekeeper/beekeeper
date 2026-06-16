@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/catalog"
 )
 
 // seedMarketplaceCache writes a fresh (cached_at == now) marketplace cache entry

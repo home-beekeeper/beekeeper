@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/config"
-	"github.com/bantuson/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // AdjudicationResult carries the output of the adjudication engine (Plan 23-03)

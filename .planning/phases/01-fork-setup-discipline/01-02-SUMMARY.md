@@ -66,7 +66,7 @@ Apache-2.0 attribution for Pollen fork: verbatim NOTICE (PRD §7.2), pinned-SHA 
 | NOTICE non-affiliation statement | `grep -q "not affiliated with, endorsed by, or supported by Perplexity AI Inc." NOTICE` | PASS |
 | CHANGES.md has Added/Renamed/Modified sections | `grep -qiE "Renamed\|Modified\|Added" CHANGES.md` | PASS |
 | NOTICE contains github.com/perplexityai/bumblebee | confirmed present | PASS |
-| NOTICE contains github.com/bantuson/beekeeper | confirmed present | PASS |
+| NOTICE contains github.com/home-beekeeper/beekeeper | confirmed present | PASS |
 | NOTICE contains "Changes from upstream are documented in CHANGES.md." | confirmed present | PASS |
 | CHANGES.md names cmd/bumblebee → cmd/pollen | confirmed present | PASS |
 | CHANGES.md names module path rename | confirmed present | PASS |

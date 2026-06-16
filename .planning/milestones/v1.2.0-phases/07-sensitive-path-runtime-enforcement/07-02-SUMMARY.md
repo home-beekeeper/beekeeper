@@ -57,7 +57,7 @@ metrics:
 
 ```
 go test ./internal/check/... -count=1 -timeout=60s
-ok  github.com/bantuson/beekeeper/internal/check  10.343s
+ok  github.com/home-beekeeper/beekeeper/internal/check  10.343s
 ```
 
 All acceptance-criteria test groups pass:

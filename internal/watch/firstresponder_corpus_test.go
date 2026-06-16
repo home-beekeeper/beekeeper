@@ -21,11 +21,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bantuson/beekeeper/internal/audit"
-	"github.com/bantuson/beekeeper/internal/corpus"
-	"github.com/bantuson/beekeeper/internal/policy"
-	"github.com/bantuson/beekeeper/internal/quarantine"
-	"github.com/bantuson/beekeeper/internal/watch"
+	"github.com/home-beekeeper/beekeeper/internal/audit"
+	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/policy"
+	"github.com/home-beekeeper/beekeeper/internal/quarantine"
+	"github.com/home-beekeeper/beekeeper/internal/watch"
 )
 
 // seedCorpusFile writes a single CorpusRecord as an NDJSON line to a temp

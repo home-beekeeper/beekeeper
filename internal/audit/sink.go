@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bantuson/beekeeper/internal/config"
+	"github.com/home-beekeeper/beekeeper/internal/config"
 )
 
 // Sink is the common interface for audit output targets. Every implementation

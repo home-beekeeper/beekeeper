@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"sync/atomic"
 
-	"github.com/bantuson/beekeeper/internal/sentry"
+	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
 // EventsDropped is incremented atomically when the event channel is full.

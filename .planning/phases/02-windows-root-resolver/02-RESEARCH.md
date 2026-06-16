@@ -11,7 +11,7 @@
 
 ### Locked Decisions
 
-- Pollen lives at `C:\Users\Bantu\mzansi-agentive\pollen` (sibling to beekeeper) as its own git repository. GitHub home: `github.com/bantuson/pollen`.
+- Pollen lives at `C:\Users\Bantu\mzansi-agentive\pollen` (sibling to beekeeper) as its own git repository. GitHub home: `github.com/home-beekeeper/pollen`.
 - GSD tracks from beekeeper; code commits go to `../pollen` via explicit `git -C ../pollen add/commit`. Beekeeper GSD commits cover only planning artifacts.
 - Preserve upstream directory structure; keep diffs minimal for tractable future merges (PRD §5.2).
 - Zero non-stdlib dependencies added.
@@ -149,8 +149,8 @@ import (
     "os"
     "path/filepath"
 
-    "github.com/bantuson/pollen/internal/model"
-    "github.com/bantuson/pollen/internal/scanner"
+    "github.com/home-beekeeper/pollen/internal/model"
+    "github.com/home-beekeeper/pollen/internal/scanner"
 )
 
 // windowsBaselinePackageRoots returns the Windows-specific per-user and
@@ -645,7 +645,7 @@ Append to `../pollen/CHANGES.md` (above or as a new section after v0.1.1-pollen.
 **Verification command (from Phase 1 established pattern):**
 ```bash
 cosign verify-blob --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/Bantuson/pollen/' \
+  --certificate-identity-regexp '^https://github\.com/home-beekeeper/pollen/' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 ```

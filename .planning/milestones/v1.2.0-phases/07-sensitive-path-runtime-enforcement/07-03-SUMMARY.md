@@ -100,9 +100,9 @@ A `hasRuleID(ids []string, ruleID string) bool` local helper was added (no pre-e
 
 ```
 go test ./internal/policy/... ./internal/check/... ./internal/policyloader/... -count=1 -timeout=60s
-ok    github.com/bantuson/beekeeper/internal/policy       2.401s
-ok    github.com/bantuson/beekeeper/internal/check        10.814s
-ok    github.com/bantuson/beekeeper/internal/policyloader 1.934s
+ok    github.com/home-beekeeper/beekeeper/internal/policy       2.401s
+ok    github.com/home-beekeeper/beekeeper/internal/check        10.814s
+ok    github.com/home-beekeeper/beekeeper/internal/policyloader 1.934s
 ```
 
 All nine new tests pass individually:
@@ -118,7 +118,7 @@ go test ./internal/check/... -run "TestRunCheckCredentialFileBlocks|...|TestRunC
 --- PASS: TestRunCheckEnvSchemaAllowed (0.04s)
 --- PASS: TestRunCheckEnvProductionBlocked (0.06s)
 PASS
-ok    github.com/bantuson/beekeeper/internal/check   3.931s
+ok    github.com/home-beekeeper/beekeeper/internal/check   3.931s
 ```
 
 ## Acceptance Criteria

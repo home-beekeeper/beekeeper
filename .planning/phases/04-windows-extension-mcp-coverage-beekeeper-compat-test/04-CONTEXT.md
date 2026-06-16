@@ -10,7 +10,7 @@
 This phase completes Pollen's Windows surface coverage and connects it to Beekeeper.
 
 **Two repos in play** (same pattern as Phase 3's "both repos" plan):
-- **`bantuson/pollen`** (sibling clone at `../pollen`) — Windows editor-extension, browser-extension, and MCP host-config path enumeration (WEXT-01/02/03).
+- **`home-beekeeper/pollen`** (sibling clone at `../pollen`) — Windows editor-extension, browser-extension, and MCP host-config path enumeration (WEXT-01/02/03).
 - **`beekeeper`** (this repo) — the `pollen scan` consumption boundary and the cross-OS compatibility test (BKINT-01, PTEST-04).
 
 **What this phase delivers (the TRUE conditions from ROADMAP SC1–SC4):**

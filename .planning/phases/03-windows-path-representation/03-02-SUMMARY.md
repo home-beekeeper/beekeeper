@@ -91,7 +91,7 @@ go test ./internal/endpoint/ -v:
   === RUN   TestCurrentWindowsUID
   --- PASS: TestCurrentWindowsUID (0.00s)
   PASS
-  ok  github.com/bantuson/pollen/internal/endpoint  1.181s
+  ok  github.com/home-beekeeper/pollen/internal/endpoint  1.181s
 ```
 
 Dev OS: Windows 11. `TestCurrentWindowsUID` exercised the `runtime.GOOS == "windows"` branch and confirmed `ep.UID == ""`.

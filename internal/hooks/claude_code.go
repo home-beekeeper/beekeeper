@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/bantuson/beekeeper/internal/editorinit"
+	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
 // Beekeeper's hook command strings, used both to build the entries and to detect

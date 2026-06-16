@@ -43,7 +43,7 @@ key_files:
     - "../pollen/.github/workflows/release.yml"
 key_decisions:
   - "Differential job uses a matrix [ubuntu-latest, macos-latest] rather than if: runner.os != 'Windows' — cleaner YAML; satisfies the OR condition in the plan's acceptance criteria"
-  - "cosign identity regexp anchored to ^https://github.com/bantuson/pollen/ — Assumption A1 validated at plan 05 first-release checkpoint"
+  - "cosign identity regexp anchored to ^https://github.com/home-beekeeper/pollen/ — Assumption A1 validated at plan 05 first-release checkpoint"
   - "HARD GATE honored: ci.yml written only after 01-03-SUMMARY.md confirmed present with locked TestDifferential name"
   - "No eBPF before.hooks in .goreleaser.yaml — pollen has no eBPF code; beekeeper's hook is intentionally absent"
   - "pollen-self catalog (recursive self-quarantine) deferred to Phase 5/SDEF-01 — documented in THREAT-MODEL.md"
@@ -68,11 +68,11 @@ Pollen's self-defense build/release stack: reproducible builds (Makefile with `-
 
 ## Accomplishments
 
-- `Makefile`: MODULE `github.com/bantuson/pollen`; GOFLAGS `-trimpath -buildvcs=false -mod=readonly`; LDFLAGS `-X main.Version=$(VERSION)` (package main, not a subpackage); `verify-release` double-build sha256 compare; NO `generate` (eBPF) target
+- `Makefile`: MODULE `github.com/home-beekeeper/pollen`; GOFLAGS `-trimpath -buildvcs=false -mod=readonly`; LDFLAGS `-X main.Version=$(VERSION)` (package main, not a subpackage); `verify-release` double-build sha256 compare; NO `generate` (eBPF) target
 - `.goreleaser.yaml`: derived from beekeeper's (NOT upstream's — upstream lacks `-buildvcs=false`, cosign, syft, Windows); NO `before:` hooks; cosign `sign-blob --bundle` keyless signs stanza; syft `cyclonedx-json` sboms stanza (id `pollen-sbom`); binary `pollen`; windows zip override; `release.draft: false`
 - `ci.yml`: 3-OS matrix `[ubuntu-latest, macos-latest, windows-latest]`; `go-version-file: go.mod`; `go mod verify`; build `-trimpath -buildvcs=false`; `go test -race ./...` with `CGO_ENABLED: 1` (Pitfall 5 — race detector needs CGO, windows-latest has MSVC); `go vet`; `pollen selftest`; `go mod tidy` + `git diff --exit-code go.mod go.sum`; govulncheck job; differential job (ubuntu+macos only) invoking `go test ./cmd/pollen/ -run '^TestDifferential$' -count=1 -v`
 - `release.yml`: mirrors beekeeper's verbatim; goreleaser job with `id-token: write` + `contents: write`; cosign-installer@v3; sbom-action/download-syft@v0; goreleaser-action@v7; base64-encoded hashes output; provenance job with `slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0` (FULL semver — NEVER @v2)
-- `docs/THREAT-MODEL.md`: three supply-chain threats (upstream absorption, release pipeline, beekeeper dependency link); operator verification path with `cosign verify-blob --bundle --certificate-identity-regexp ^https://github.com/bantuson/pollen/ --certificate-oidc-issuer https://token.actions.githubusercontent.com`; SBOM records pinned SHA `c24089804ee66ece4bec6f14638cb98985389cdb`; pollen-self catalog deferred to Phase 5/SDEF-01
+- `docs/THREAT-MODEL.md`: three supply-chain threats (upstream absorption, release pipeline, beekeeper dependency link); operator verification path with `cosign verify-blob --bundle --certificate-identity-regexp ^https://github.com/home-beekeeper/pollen/ --certificate-oidc-issuer https://token.actions.githubusercontent.com`; SBOM records pinned SHA `c24089804ee66ece4bec6f14638cb98985389cdb`; pollen-self catalog deferred to Phase 5/SDEF-01
 - Verified: `go build -trimpath -buildvcs=false -ldflags "-s -w -X main.Version=0.1.1-pollen.1" -o dist/pollen ./cmd/pollen` exits 0; `dist/pollen version` prints `0.1.1-pollen.1` — proves the `main.Version` ldflags target is correct
 
 ## Cross-Plan Handoff Confirmation
@@ -128,7 +128,7 @@ All plan acceptance criteria verified:
 | `grep -q "goreleaser-action@v7" release.yml` | PASS |
 | No bare `@v2` in release.yml | PASS |
 | `grep -q "cosign verify-blob" docs/THREAT-MODEL.md` | PASS |
-| `grep -q "bantuson/pollen" docs/THREAT-MODEL.md` | PASS |
+| `grep -q "home-beekeeper/pollen" docs/THREAT-MODEL.md` | PASS |
 | `grep -q "c24089804ee66ece4bec6f14638cb98985389cdb" docs/THREAT-MODEL.md` | PASS |
 | `dist/pollen version` prints `0.1.1-pollen.1` | PASS |
 
@@ -179,4 +179,4 @@ Key acceptance criteria (all PASS):
 - `cyclonedx-json` in .goreleaser.yaml — PASS
 - `generator_generic_slsa3.yml@v2.1.0` in release.yml — PASS
 - `TestDifferential` in ci.yml with anchored regexp — PASS
-- `cosign verify-blob` + `bantuson/pollen` + pinned SHA in THREAT-MODEL.md — PASS
+- `cosign verify-blob` + `home-beekeeper/pollen` + pinned SHA in THREAT-MODEL.md — PASS

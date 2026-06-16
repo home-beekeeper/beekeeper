@@ -768,7 +768,7 @@ This phase adds metadata and static files only — no authentication, no user in
 | V5 Input Validation | no (no user input) | — |
 | V6 Cryptography | no | — |
 
-**Honesty constraint (D-04):** Meta descriptions must not claim the product is live/downloadable at `https://beekeeper.vercel.app` (repo unpushed). Reuse the honest framing from Phases 14/15. Specifically: the `go install` path in docs uses `github.com/bantuson/beekeeper` but the repo is currently unpushed. Meta descriptions should describe the product's purpose and capabilities, not claim installation instructions are live today.
+**Honesty constraint (D-04):** Meta descriptions must not claim the product is live/downloadable at `https://beekeeper.vercel.app` (repo unpushed). Reuse the honest framing from Phases 14/15. Specifically: the `go install` path in docs uses `github.com/home-beekeeper/beekeeper` but the repo is currently unpushed. Meta descriptions should describe the product's purpose and capabilities, not claim installation instructions are live today.
 
 ---
 
