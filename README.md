@@ -100,7 +100,7 @@ Documented so you do not build false confidence. None of these relax the fail-cl
 - **Tier-3 native tools are unguarded.** Kilo and Trae have no upstream hook; only MCP tools route through the gateway. Native Bash, file, and shell tools bypass Beekeeper.
 - **Hermes is fail-open**, and Windsurf is fail-open on any non-2 exit. OpenCode misses subagent `task` calls.
 - **A project config can relax fail-closed.** `.beekeeper/config.json` with `{"fail_mode":"open"}` is honored for that tree.
-- **Gateway remote-bind is plaintext.** `--bind 0.0.0.0` exposes the proxy over plain HTTP with the bearer token in cleartext; the `allow_remote_gateway` gate is not implemented. Keep it on loopback.
+- **Gateway remote-bind is plaintext.** A non-loopback bind is refused unless you pass the explicit `--allow-remote` flag (fail-closed; the opt-in is the CLI flag, not an `allow_remote_gateway` config key). Once you opt in it is still plain HTTP, so the bearer token travels in cleartext. Keep it on loopback or front it with TLS.
 - **Unlisted package managers.** `deno`, `mvn`, and `nuget` parse as "no package identified" and are allowed by default. Command chaining and env-prefixed installs are handled.
 - **DNS is ingested but not correlated**, so DNS-tunnel exfiltration is captured but not yet detected. There is no process-memory event source, so `/proc/<pid>/maps` secret scraping is undetected.
 - **`release_age` and `lifecycle_script_allowlist` policy rules are accepted but not enforced** (informational only).
