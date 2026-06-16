@@ -5,10 +5,14 @@
     "Actions pinned with automated update PRs. postUpdateOptions gomodTidy",
     "refreshes go.sum so PRs never go stale and CI go mod verify stays green",
     "(RESEARCH Pitfall 4). automerge is disabled: every dependency update",
-    "requires human review."
+    "requires human review. github-actions are pinned to commit digests and",
+    "kept updated (helpers:pinGitHubActionDigests), and minimumReleaseAge",
+    "enforces a 7-day cooldown before any new version is adopted, the same",
+    "release-age principle Beekeeper applies to npm packages."
   ],
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
   ],
   "gomod": {
     "enabled": true
@@ -20,6 +24,8 @@
     "gomodTidy"
   ],
   "automerge": false,
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
   "schedule": [
     "before 6am on monday"
   ],

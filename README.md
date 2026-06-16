@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/readme-banner.gif" alt="Beekeeper: a fail-closed safety harness for autonomous coding agents" width="100%">
+  <img src="assets/readme-banner.gif" alt="Beekeeper: threat intelligence for autonomous coding agents" width="100%">
 </p>
 
 # Beekeeper
 
-**A fail-closed safety harness for autonomous coding agents.**
+**Threat intelligence for autonomous coding agents.**
 
 Beekeeper sits between an agent and its tools. It evaluates each package install, file access, network call, and tool call before it runs, against corroboration-based threat intelligence and structural policy, and blocks what does not pass. It is a single static Go binary with no external runtime dependencies.
 
