@@ -62,6 +62,26 @@ tests, macOS `eslogger` with sudo):
 `test-sentry-kernel-5-4`, `test-sentry-kernel-5-15`, `test-eslogger-fields`,
 `release-gate`.
 
+## Important: a pre-existing CI failure blocks the `test` checks today
+
+As of this writing, `main` CI is red for a reason unrelated to the hardening.
+The `test` job's `Install Pollen` step runs
+`go install github.com/home-beekeeper/pollen/cmd/pollen@v0.2.0`, but that
+module's `go.mod` still declares its path as `github.com/bantuson/pollen` (org
+rename fallout), so Go refuses it with a version-constraints conflict. This
+fails `test (ubuntu-latest)`, `test (macos-latest)`, and `test (windows-latest)`
+on `main` and on every branch. `test-eslogger-fields` and the
+`test-sentry-kernel-*` jobs are also red on `main` for their own pre-existing,
+environment-specific reasons.
+
+Consequence: if you import this ruleset now, the required `test (os)` checks can
+never pass, so no PR could merge. Fix the Pollen module path (re-tag
+`home-beekeeper/pollen` with a corrected `go.mod`, or point the install line
+back at the module's declared path) so the `test` jobs go green first, then
+import. `zizmor` and the `fuzz` jobs are already green and safe to require
+immediately, so a smaller interim ruleset requiring only `zizmor` is a valid
+first step.
+
 ## Note
 
 This file is delivered for import; it is not consumed by CI. Importing it is a
