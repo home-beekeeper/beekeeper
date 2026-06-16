@@ -47,3 +47,4 @@ web/out/
 # fumadocs-mdx generated types (created by `next build` once Phase 13 installs it).
 # No trailing slash so `git check-ignore web/.source` matches before the dir exists.
 web/.source
+web/
