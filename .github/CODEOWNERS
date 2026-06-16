@@ -1,0 +1,27 @@
+# Code owners for Beekeeper.
+#
+# The catch-all routes every change to the maintainer, so all pull requests
+# request maintainer review. The security-critical paths are listed explicitly
+# as well, so they always route here even if the catch-all is ever narrowed.
+# The last matching pattern wins; every pattern here resolves to the same owner.
+
+# Default owner for everything in the repo.
+*                               @bantuson
+
+# CI/CD and supply-chain surface (workflows, actions config, this file itself).
+/.github/                       @bantuson
+/.github/workflows/release.yml  @bantuson
+
+# Policy engine: the pure decision library called by the hook handler,
+# the gateway, and Sentry correlation.
+/internal/policy/               @bantuson
+/internal/policyloader/         @bantuson
+
+# Sentry runtime rules.
+/internal/sentry/               @bantuson
+
+# Catalog ingestion and threat intelligence.
+/internal/catalog/              @bantuson
+
+# Audit log.
+/internal/audit/                @bantuson
