@@ -113,7 +113,13 @@ func TestLayeredConfigEnvOverridesProject(t *testing.T) {
 // .beekeeper/config.json in a temp directory (simulating a project root) when
 // given a userPath from a different location.
 func TestDiscoverProjectConfig(t *testing.T) {
-	dir := t.TempDir()
+	// Resolve OS path aliases (macOS /var -> /private/var symlink, Windows 8.3
+	// short names) up front: discoverProjectConfig resolves the working
+	// directory, so the expected path must be the de-aliased form too.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("EvalSymlinks(TempDir): %v", err)
+	}
 	beekeeperDir := filepath.Join(dir, ".beekeeper")
 	if err := os.MkdirAll(beekeeperDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
