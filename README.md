@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/readme-banner.gif" alt="Beekeeper: a fail-closed safety harness for autonomous coding agents" width="100%">
+</p>
+
 # Beekeeper
 
 **Real-time safety harness for autonomous coding agents.**
