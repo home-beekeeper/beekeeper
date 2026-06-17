@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -400,8 +401,16 @@ func DefaultAutoQuarantineConfig() AutoQuarantineConfig {
 // range [1, 3] for AutoQuarantineConfig.Threshold. These match the three
 // corroboration tiers: 1=warn, 2=block, 3=block+quarantine.
 const (
-	autoQuarantineThresholdMin     = 1
-	autoQuarantineThresholdMax     = 3
+	// AutoQuarantineThresholdMin and AutoQuarantineThresholdMax are the EXPORTED
+	// inclusive bounds for AutoQuarantineConfig.Threshold ([1, 3]). Consumers (the
+	// TUI settings panel) clamp the cursor to the same range the validator accepts
+	// instead of duplicating the literals, so the UI band cannot drift out of sync
+	// with ValidateAutoQuarantineConfig.
+	AutoQuarantineThresholdMin = 1
+	AutoQuarantineThresholdMax = 3
+
+	autoQuarantineThresholdMin     = AutoQuarantineThresholdMin
+	autoQuarantineThresholdMax     = AutoQuarantineThresholdMax
 	autoQuarantineThresholdDefault = 2
 )
 
@@ -413,6 +422,35 @@ func ValidateAutoQuarantineConfig(ac AutoQuarantineConfig) error {
 	if ac.Threshold != 0 && (ac.Threshold < autoQuarantineThresholdMin || ac.Threshold > autoQuarantineThresholdMax) {
 		return fmt.Errorf("invalid auto_quarantine threshold %d (want 0 or %d..%d)",
 			ac.Threshold, autoQuarantineThresholdMin, autoQuarantineThresholdMax)
+	}
+	return nil
+}
+
+// CorpusDownstreamCleanDaysMax is a generous sanity ceiling (10 years) for the
+// corpus downstream-clean rolling window. A value above it is almost certainly a
+// typo and is rejected fail-closed rather than silently accepted. Zero means
+// "use the 30-day default" (see CorpusDownstreamCleanDays).
+const CorpusDownstreamCleanDaysMax = 3650
+
+// ValidateCorpusConfig checks cc fail-closed (mirrors ValidateAutoQuarantineConfig).
+// CorpusConfig is a VALUE block (no pointer-absence distinction), so unlike
+// AutoQuarantine there is no "absent → skip" path: it is validated on every Load.
+// A DownstreamCleanDays of 0 is allowed (resolves to the 30-day default); a
+// negative or out-of-sanity-range window, or a Scope outside the known set, is
+// rejected so a hand-edited or poisoned config cannot silently degrade the
+// corpus loop. "community_shareable" is accepted here (it is a legal stored
+// value) even though promotion to it has no runtime effect this release.
+func ValidateCorpusConfig(cc CorpusConfig) error {
+	if cc.DownstreamCleanDays < 0 || cc.DownstreamCleanDays > CorpusDownstreamCleanDaysMax {
+		return fmt.Errorf("invalid corpus downstream_clean_days %d (want 0 or 1..%d)",
+			cc.DownstreamCleanDays, CorpusDownstreamCleanDaysMax)
+	}
+	switch cc.Scope {
+	case "", "org_only", "community_shareable":
+		// valid
+	default:
+		return fmt.Errorf("invalid corpus scope %q (want %q or %q)",
+			cc.Scope, "org_only", "community_shareable")
 	}
 	return nil
 }
@@ -687,18 +725,56 @@ func Load(path string) (Config, error) {
 		}
 	}
 
+	// Corpus is a value block (always present), so validate it unconditionally —
+	// a hand-edited negative window or an unknown scope is rejected here rather
+	// than silently accepted (symmetry with the AutoQuarantine check above).
+	if err := ValidateCorpusConfig(cfg.Corpus); err != nil {
+		return Config{}, fmt.Errorf("invalid corpus config: %w", err)
+	}
+
 	return cfg, nil
 }
 
 // Save writes cfg to path as indented JSON with 0600 permissions.
+//
+// The write is ATOMIC: cfg is marshaled to a sibling temp file (fsynced, 0600),
+// then renamed over the target. A crash mid-write, or a torn read by a concurrent
+// reader (the catalog-sync daemon or a `beekeeper check` hook reading config.json
+// with no lock), can therefore only ever observe the old complete file or the new
+// complete file — never a truncated one. os.Rename is atomic on POSIX and a
+// replace-existing move on Windows (same directory), so the previous
+// truncate-then-write race (which a frequent TUI editor could hit per keystroke)
+// is closed for every caller, including `beekeeper config set`.
 func Save(path string, cfg Config) error {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write config %q: %w", path, err)
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".config-*.json.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp config in %q: %w", dir, err)
+	}
+	tmpName := tmp.Name()
+	// Best-effort cleanup if we bail before the rename succeeds. After a
+	// successful rename the temp no longer exists and Remove is a harmless no-op.
+	defer func() { _ = os.Remove(tmpName) }()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temp config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temp config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp config: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename temp config over %q: %w", path, err)
 	}
 	return nil
 }
