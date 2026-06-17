@@ -84,7 +84,7 @@ internal/
 - Sentry rule fixtures: synthetic process trees, file access sequences, network connection events
 - OS-specific integration tests behind `//go:build linux`, `//go:build darwin`, `//go:build windows`
 - Cross-platform CI: `ubuntu-latest`, `macos-latest` (Intel + Apple Silicon), `windows-latest`
-- eBPF CI matrix: explicit Ubuntu 20.04 (kernel 5.4) and Ubuntu 22.04 (kernel 5.15) coverage — not just `ubuntu-latest`
+- eBPF CI matrix (explicit Ubuntu 20.04/kernel 5.4 and Ubuntu 22.04/kernel 5.15 coverage, not just `ubuntu-latest`) is currently **decoupled to a manual workflow** (`.github/workflows/ebpf-kernel.yml`, `workflow_dispatch`) pending a runner-toolchain rebuild; the blocking `ci.yml` builds against committed loader stubs. TODO: re-add to PR CI + the branch ruleset.
 
 ## Self-Defense Non-Negotiables
 

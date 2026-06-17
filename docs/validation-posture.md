@@ -18,7 +18,7 @@ register for the irreducible remainder, with zero silent gaps.**
 | Tier | What | How it is verified | Enforcement |
 |------|------|--------------------|-------------|
 | **Tier A** | Locally testable on the dev box (pure logic, parsers, deny contracts, installer config, the policy/correlation engines) | `go test ./...` on Windows; the coverage gate accounts every production file | **100%, gate-enforced** (`internal/coveragegate`) |
-| **Tier B** | Platform / kernel / build-tag bound (eBPF, eslogger, ETW, `-race`/CGO, Unix peer-cred, 3×GOOS cross-build) | Cross-platform CI matrix (ubuntu-20.04/k5.4 + ubuntu-22.04/k5.15 + macos-latest + windows-latest) | **CI matrix** (`.github/workflows/ci.yml`) |
+| **Tier B** | Platform / kernel / build-tag bound (eBPF, eslogger, ETW, `-race`/CGO, Unix peer-cred, 3×GOOS cross-build) | Cross-platform CI matrix (ubuntu-22.04 + macos-latest + windows-latest). The eBPF generate + two-kernel (5.4/5.15) load is **decoupled to a manual workflow** pending a toolchain rebuild. | **CI matrix** (`.github/workflows/ci.yml`); eBPF/kernel = **manual** (`ebpf-kernel.yml`) |
 | **Tier C** | Irreducible / manual / gated (a true live block on the 16 non-Claude-Code harnesses; the gated-22M-model LlamaFirewall e2e) | Documented manual procedures with sign-off | **Signed manual register** ([validation-register.md](validation-register.md)) |
 
 Only **Claude Code** crosses from Tier C into automated coverage: its live block
@@ -61,7 +61,7 @@ recognized reason code, which is reviewable in the diff (VAL-08 self-defense).
 
 | Reason code | Meaning |
 |-------------|---------|
-| `generated-bpf` | CI-generated eBPF bytecode (`bpf_*_bpfel.go`), never committed |
+| `generated-bpf` | eBPF loader bindings (`bpf_*_bpfel.go`), committed as fail-closed stubs; the real bytecode is generated out-of-band (`ebpf-kernel.yml`), not committed |
 | `platform-stub` | Fail-closed per-OS shim with no logic (`*_other.go` / `*_windows.go` / `*_unix.go`) |
 | `type-only` | Pure type/const/build-metadata, no behavior to test |
 | `exec-seam-stub` | One-line wrapper existing only as a test seam |
@@ -75,14 +75,11 @@ is the only entry — every other production file is package-tested.
 
 ## Tier B — the CI matrix (VAL-03 / VAL-04)
 
-`.github/workflows/ci.yml` gates, on a four-leg matrix, the platform-bound
-behavior that cannot run on the Windows dev box:
+`.github/workflows/ci.yml` gates the platform-bound behavior that cannot run on
+the Windows dev box:
 
 - **build** (native + a 3×GOOS cross-compile, build-only) and **vet**
 - **test** with **`-race`** (CGO enabled — the race detector requires it)
-- **eBPF** bytecode generate + load on **two explicit kernels** (5.4 and 5.15, via
-  `cilium/little-vm-helper` VM images — the eBPF bytecode is CI-generated and
-  **never committed**)
 - **eslogger** field-schema validation on macOS, **ETW** on Windows
 - **Unix peer-cred** auth (the `internal/ipc` server/client/peer Tier-B tests run
   on the Linux/macOS legs)
@@ -91,6 +88,19 @@ The **fuzz suite** is a blocking release gate (`release-gate.needs`): the policy
 engine, IPC proto parser, catalog parser, MCP message parser (gateway), and the
 **Sentry rule evaluator** (`FuzzEvaluateEvent`). A discovered panic blocks
 release.
+
+### eBPF generate + two-kernel load: currently a manual workflow
+
+The eBPF bytecode regeneration and the two-kernel (5.4 / 5.15) probe-load tests
+are **split out of blocking CI** into `.github/workflows/ebpf-kernel.yml`, which
+runs **manual-only** (`workflow_dispatch`). They were decoupled because the
+GitHub-hosted runner's `bpftool` cannot regenerate `vmlinux.h` and the
+`cilium/little-vm-helper` nested-VM setup needs a KVM-capable runner the default
+leg lacks. `ci.yml` builds the Linux code against the committed `bpf_*_bpfel.go`
+loader stubs (which fail closed at runtime when real bytecode is absent), so the
+rest of CI stays green. This leg is **not yet a required check**; the tracked TODO
+is to rebuild the toolchain on a Linux runner and re-add it to PR CI and the
+branch ruleset.
 
 > CI is statically authored and locally build/YAML-verified. The live GitHub run
 > is confirmed at first push (the repo has not yet been pushed).

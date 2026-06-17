@@ -100,7 +100,7 @@ Documented so you do not build false confidence. None of these relax the fail-cl
 - **Tier-3 native tools are unguarded.** Kilo and Trae have no upstream hook; only MCP tools route through the gateway. Native Bash, file, and shell tools bypass Beekeeper.
 - **Hermes is fail-open**, and Windsurf is fail-open on any non-2 exit. OpenCode misses subagent `task` calls.
 - **A project config can relax fail-closed.** `.beekeeper/config.json` with `{"fail_mode":"open"}` is honored for that tree.
-- **Gateway remote-bind is plaintext.** `--bind 0.0.0.0` exposes the proxy over plain HTTP with the bearer token in cleartext; the `allow_remote_gateway` gate is not implemented. Keep it on loopback.
+- **Gateway remote-bind is plaintext.** A non-loopback bind is refused unless you pass the explicit `--allow-remote` flag (fail-closed; the opt-in is the CLI flag, not an `allow_remote_gateway` config key). Once you opt in it is still plain HTTP, so the bearer token travels in cleartext. Keep it on loopback or front it with TLS.
 - **Unlisted package managers.** `deno`, `mvn`, and `nuget` parse as "no package identified" and are allowed by default. Command chaining and env-prefixed installs are handled.
 - **DNS is ingested but not correlated**, so DNS-tunnel exfiltration is captured but not yet detected. There is no process-memory event source, so `/proc/<pid>/maps` secret scraping is undetected.
 - **`release_age` and `lifecycle_script_allowlist` policy rules are accepted but not enforced** (informational only).
@@ -112,7 +112,7 @@ Documented so you do not build false confidence. None of these relax the fail-cl
 Coverage is auditable, not asserted. Validation splits three ways:
 
 - **Tier A (locally testable):** held at full coverage by a gate that accounts for every production Go file as tested or as a reason-coded, fail-closed allowlist entry. A 17-harness conformance suite golden-file-tests every installer config and deny contract.
-- **Tier B (platform-bound):** a CI matrix across two Linux kernels, macOS, and Windows, exercising eBPF, eslogger, ETW, and Unix peer-cred. Five fuzz targets, including the Sentry rule evaluator, run as a blocking release gate.
+- **Tier B (platform-bound):** a CI matrix across Linux, macOS, and Windows, exercising eslogger, ETW, `-race`/CGO, and Unix peer-cred. Five fuzz targets, including the Sentry rule evaluator, run as a blocking release gate. The eBPF generate + two-kernel (5.4/5.15) load is decoupled to a manual workflow (`ebpf-kernel.yml`) pending a toolchain rebuild, so it is not currently part of the blocking matrix.
 - **Tier C (irreducibly manual):** a signed register with a live-block procedure and a sign-off line for each of the 16 non-Claude-Code harnesses and the gated-model sidecar.
 
 Details: [docs/validation-posture.md](https://github.com/home-beekeeper/beekeeper/blob/main/docs/validation-posture.md).
