@@ -23,6 +23,7 @@ var commands = []Command{
 	{Grp: "investigate", Name: "quarantine", Desc: "review held items"},
 	{Grp: "investigate", Name: "audit tail", Desc: "stream the raw event log"},
 	{Grp: "configure", Name: "policy edit", Desc: "tune rules & thresholds"},
+	{Grp: "configure", Name: "settings", Desc: "auto-quarantine & corpus knobs"},
 	{Grp: "configure", Name: "catalogs", Desc: "source status & sync"},
 	{Grp: "configure", Name: "protect install", Desc: "enable privileged sentry daemon"},
 	{Grp: "system", Name: "help", Desc: "keybindings & concepts"},
