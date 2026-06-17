@@ -98,9 +98,11 @@ func TestPolicyPanelContent(t *testing.T) {
 	}
 }
 
-// TestAuditPanelAlertRed: sentry_alert record stored and retrievable.
-func TestAuditPanelAlertRed(t *testing.T) {
-	p := NewAuditPanel()
+// TestAuditPanelStoresLiveRecord: a live record is appended and retrievable.
+// Uses the in-memory constructor so it does not read the real audit log (which
+// NewAuditPanel now loads for history) — see audit_panel_test.go.
+func TestAuditPanelStoresLiveRecord(t *testing.T) {
+	p := newTestAuditPanel()
 	msg := newRecordsMsg{
 		{RecordType: "sentry_alert", Decision: "alert", Timestamp: "2026-05-28T14:21:54Z"},
 	}
@@ -111,17 +113,17 @@ func TestAuditPanelAlertRed(t *testing.T) {
 	}
 }
 
-// TestAuditPanelMax20: panel caps at 20 records.
-func TestAuditPanelMax20(t *testing.T) {
-	p := NewAuditPanel()
-	recs := make([]audit.AuditRecord, 21)
+// TestAuditPanelCaps: the panel caps at maxAuditLines records (newest kept).
+func TestAuditPanelCaps(t *testing.T) {
+	p := newTestAuditPanel()
+	recs := make([]audit.AuditRecord, maxAuditLines+5)
 	for i := range recs {
 		recs[i] = audit.AuditRecord{RecordType: "policy_decision", Decision: "allow", Timestamp: "2026-05-28T10:00:00Z"}
 	}
 	pc, _ := p.Update(newRecordsMsg(recs))
 	ap := pc.(*AuditPanel)
-	if len(ap.records) != 20 {
-		t.Errorf("expected 20 records (cap), got %d", len(ap.records))
+	if len(ap.records) != maxAuditLines {
+		t.Errorf("expected %d records (cap), got %d", maxAuditLines, len(ap.records))
 	}
 }
 
