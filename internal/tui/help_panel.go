@@ -54,6 +54,7 @@ func (p *HelpPanel) Body(width, height int) string {
 	sb.WriteString("  " + key(":") + explain("open command palette (do anything)") + "\n")
 	sb.WriteString("  " + key("!") + explain("jump straight to alerts") + "\n")
 	sb.WriteString("  " + key("p") + explain("open the policy editor (--admin to edit)") + "\n")
+	sb.WriteString("  " + key("s") + explain("first-responder settings: auto-quarantine & corpus (--admin to edit)") + "\n")
 	sb.WriteString("  " + key("g") + explain("go-to menu") + "\n")
 	sb.WriteString("  " + key("esc") + explain("close any overlay") + "\n")
 	sb.WriteString("\n")

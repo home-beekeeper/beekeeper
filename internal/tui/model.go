@@ -201,6 +201,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.toast, pCmd = a.toast.Show(msg.msg, toastOK)
 		return a, pCmd
 
+	case settingsEditErrMsg:
+		// A settings edit was rejected by the validation gate — surface why; the
+		// on-disk config.json is unchanged.
+		var seCmd tea.Cmd
+		a.toast, seCmd = a.toast.Show(msg.msg, toastWarn)
+		return a, seCmd
+
+	case settingsSavedMsg:
+		// A first-responder settings edit persisted successfully.
+		var ssCmd tea.Cmd
+		a.toast, ssCmd = a.toast.Show(msg.msg, toastOK)
+		return a, ssCmd
+
 	case tea.KeyPressMsg:
 		return a.handleKey(msg)
 	}
@@ -280,6 +293,8 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a.openPanel(panelAlerts, NewAlertsPanel(a.critical))
 	case "p", "P":
 		return a.openPanel(panelPolicy, NewPolicyPanel(a.adminMode))
+	case "s", "S":
+		return a.openPanel(panelSettings, NewSettingsPanel(a.adminMode))
 	case "?":
 		return a.openPanel(panelHelp, NewHelpPanel())
 	case "g", "G":
@@ -364,6 +379,10 @@ func (a App) runPaletteSelection() func() interface{} {
 
 	case "policy edit":
 		m, _ := a.openPanel(panelPolicy, NewPolicyPanel(a.adminMode))
+		return func() interface{} { return m }
+
+	case "settings":
+		m, _ := a.openPanel(panelSettings, NewSettingsPanel(a.adminMode))
 		return func() interface{} { return m }
 
 	case "catalogs":
