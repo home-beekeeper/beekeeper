@@ -1632,11 +1632,13 @@ func newShimCmd() *cobra.Command {
 }
 
 // newProtectCmd groups the Sentry daemon lifecycle subcommands.
-// On non-Linux platforms each subcommand prints a not-supported message (see protect_other.go).
+// Linux (systemd), macOS (launchd/eslogger), and Windows (Service/ETW) are
+// supported via build-tagged implementations (protect_{linux,darwin,windows}.go);
+// only genuinely unsupported platforms print a not-supported message (protect_other.go).
 func newProtectCmd() *cobra.Command {
 	protect := &cobra.Command{
 		Use:   "protect",
-		Short: "Manage the Beekeeper Sentry daemon (Linux only)",
+		Short: "Manage the Beekeeper Sentry runtime-monitor daemon",
 	}
 	protect.AddCommand(
 		newProtectInstallCmd(),
@@ -1649,7 +1651,7 @@ func newProtectCmd() *cobra.Command {
 func newProtectInstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install",
-		Short: "Install and start the Sentry daemon via systemd",
+		Short: "Install and start the Sentry daemon as an OS service (systemd / launchd / Windows Service)",
 		Args:  cobra.NoArgs,
 		RunE:  runProtectInstall,
 	}
@@ -1674,12 +1676,13 @@ func newProtectStatusCmd() *cobra.Command {
 }
 
 // newSentryCmd is the Sentry daemon subcommand. When invoked directly it runs
-// the daemon (this is the ExecStart target in the systemd unit). The rules
-// subcommand group provides live rule management via IPC.
+// the daemon (the ExecStart target of the OS service: the systemd unit on Linux,
+// launchd on macOS, the Windows Service on Windows). The rules subcommand group
+// provides live rule management via IPC.
 func newSentryCmd() *cobra.Command {
 	daemon := &cobra.Command{
 		Use:   "sentry",
-		Short: "Sentry daemon (invoked by systemd; Linux only)",
+		Short: "Sentry daemon (invoked by the OS service manager)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard.

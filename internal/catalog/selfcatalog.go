@@ -169,9 +169,21 @@ type SelfCatalogOpts struct {
 	PubKeyOverride ed25519.PublicKey
 }
 
-// selfCatalogDefaultFeedURL is the official beekeeper-self feed endpoint.
-// Configurable via config.json self_catalog.url field.
-const selfCatalogDefaultFeedURL = "https://beekeeper-self.mzansi-agentive.io/beekeeper-self.json"
+// selfCatalogDefaultFeedURL is the official beekeeper-self feed endpoint,
+// hosted in the project-controlled home-beekeeper repository.
+//
+// SECURITY: this MUST be a domain the project controls. The prior default
+// (beekeeper-self.mzansi-agentive.io) pointed at a domain the org no longer
+// owns — a real risk, because the feed is fetched on every check: an attacker
+// who registered that domain and served any feed would fail signature
+// verification (they lack the signing key), which fails CLOSED and would block
+// every tool call (a denial-of-service via domain takeover). A raw GitHub URL
+// under home-beekeeper cannot be taken over. Until a signed beekeeper-self.json
+// is published at this path, the URL 404s and the check degrades safely
+// (errNetwork → warn-and-continue), never fail-closed.
+//
+// Configurable via the config.json self_catalog.url field.
+const selfCatalogDefaultFeedURL = "https://raw.githubusercontent.com/home-beekeeper/beekeeper/main/security/beekeeper-self.json"
 
 // CheckSelfCatalog fetches, verifies, and evaluates the beekeeper-self feed
 // against the running binary version. The behaviour table:
