@@ -55,6 +55,18 @@ var packageFloors = map[string]float64{
 	"internal/nudge":    90,
 	"internal/pkgparse": 90,
 	"internal/policy":   88,
+	// OS-variant packages: these compile DIFFERENT files per GOOS (ipc uses a
+	// unix-socket transport under //go:build linux||darwin vs a Windows named
+	// pipe; quarantine has per-OS move/permission paths), so the unix-only code
+	// is compiled and partly exercised only on non-Windows. This gate runs ONLY
+	// on the canonical Linux CI runner (ci.yml coverage-floor: runs-on
+	// ubuntu-latest), where that code counts against the total — so Linux
+	// coverage is several points BELOW a Windows host (ipc 79.8% vs 87.7%,
+	// quarantine 70.3% vs 82.5%). Floors are calibrated a few points under the
+	// LINUX runner number (the gate's real environment), not the higher Windows
+	// host. Raising them needs Linux-runnable tests for the per-OS branches.
+	"internal/ipc":        75,
+	"internal/quarantine": 68,
 }
 
 // exemptPackages are OS-bound or e2e-gated packages whose real coverage is
