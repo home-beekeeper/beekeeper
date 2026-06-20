@@ -219,9 +219,38 @@ jobs:
       - name: Validate parser against live eslogger output
         run: go test -tags darwin -count=1 -v -run TestEsloggerFieldValidation ./internal/sentry/darwin/
 
+  coverage-floor:
+    # Statement-coverage FLOOR gate (internal/coveragegate/floor.go): the
+    # complement to the linkage gate (TestCoverageManifest). Linkage proves every
+    # production file is accounted; the floor proves the package-tested packages
+    # do not silently regress below their per-package minimum. Runs on the
+    # canonical Linux runner; OS-bound / e2e packages are reason-coded exempt in
+    # floor.go (their real coverage is validated by the matrix + -tags e2e jobs).
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Inventory/scan tests need the pinned Pollen binary on PATH (see the test
+      # job's note); without it those packages' coverage would be understated.
+      - name: Install Pollen (pinned binary for inventory tests)
+        run: go install github.com/bantuson/pollen/cmd/pollen@v0.2.0
+      - name: Generate coverprofile
+        run: go test ./... -coverprofile=coverage.out -covermode=set
+      - name: Enforce statement-coverage floor
+        run: BEEKEEPER_COVERPROFILE=coverage.out go test ./internal/coveragegate -run TestCoverageFloor -count=1 -v
+
   release-gate:
     runs-on: ubuntu-22.04
-    needs: [fuzz, fuzz-ipc, fuzz-llamafirewall, fuzz-sentry, test-eslogger-fields]
+    needs: [fuzz, fuzz-ipc, fuzz-llamafirewall, fuzz-sentry, test-eslogger-fields, coverage-floor]
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
