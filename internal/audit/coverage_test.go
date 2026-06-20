@@ -258,22 +258,11 @@ func TestHTTPSinkBadEndpoint(t *testing.T) {
 	}
 }
 
-// --- syslog_stub.go (Windows): direct method coverage ---
-
-// TestSyslogStubMethods constructs the stub directly and calls its Write/Close so
-// the stub method bodies are covered on Windows hosts.
-func TestSyslogStubMethods(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("syslogStub is the Windows-only build of NewSyslogSink")
-	}
-	s := &syslogStub{}
-	if err := s.Write(AuditRecord{RecordID: "s"}); !errors.Is(err, ErrSyslogNotSupported) {
-		t.Errorf("syslogStub.Write = %v, want ErrSyslogNotSupported", err)
-	}
-	if err := s.Close(); err != nil {
-		t.Errorf("syslogStub.Close = %v, want nil", err)
-	}
-}
+// TestSyslogStubMethods (syslog_stub.go direct method coverage) lives in the
+// Windows-tagged coverage_windows_test.go: syslogStub and ErrSyslogNotSupported
+// only exist under //go:build windows, so referencing them from this
+// cross-platform file fails to COMPILE on Linux/macOS (a runtime t.Skip cannot
+// rescue an undefined symbol).
 
 // --- sink.go: NewMultiSink syslog-skip + remote-name warning paths ---
 

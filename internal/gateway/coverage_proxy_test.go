@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,14 +40,29 @@ func TestGatewayFailClosedPanicFailOpen(t *testing.T) {
 // 500ms policy-eval deadline, forcing the evalCtx.Done() timeout branch. It
 // returns a restore func. A CacheDir must be set on the handler for applyPolicy
 // to reach the loader.
+//
+// On timeout the handler abandons the policy goroutine (proxy.go select returns
+// on evalCtx.Done()), but that goroutine is still inside the slow loader and has
+// already READ the loadPolicyDirFn global. A naive `defer restore()` would then
+// WRITE the global concurrently with that read — a real data race under -race.
+// So the slow loader closes `done` when it finally returns, and restore() waits
+// for it before restoring the original: the channel establishes happens-before
+// between the goroutine's read and the restore write, removing the race without
+// changing what the test exercises.
 func withSlowPolicyLoader(t *testing.T) func() {
 	t.Helper()
 	orig := loadPolicyDirFn
+	done := make(chan struct{})
+	var once sync.Once
 	loadPolicyDirFn = func(string) ([]policyloader.PolicyFile, error) {
+		defer once.Do(func() { close(done) })
 		time.Sleep(700 * time.Millisecond) // > the 500ms handler deadline
 		return nil, nil
 	}
-	return func() { loadPolicyDirFn = orig }
+	return func() {
+		<-done // wait for the abandoned slow-policy goroutine to finish its read
+		loadPolicyDirFn = orig
+	}
 }
 
 // TestGatewayPolicyTimeoutFailClosed verifies the policy-eval timeout branch
