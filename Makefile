@@ -32,7 +32,7 @@ LDFLAGS    := -s -w \
 	-X $(MODULE)/internal/version.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/version.Date=$(DATE)
 
-.PHONY: build test vet generate verify-release
+.PHONY: build test vet generate verify-release coverage
 
 # generate: run go generate for the Linux eBPF bindings.
 # Must be run on Linux with clang/llvm/libbpf installed. Used by CI and
@@ -50,6 +50,16 @@ build:
 
 test:
 	go test -race -count=1 ./...
+
+# coverage: enforce the per-package statement-coverage FLOOR (internal/coveragegate
+# floor.go), the complement to the linkage gate (TestCoverageManifest). Linkage
+# proves every production file is accounted; the floor proves the package-tested
+# packages do not silently regress below their minimum. OS-bound / e2e packages
+# are reason-coded exempt in floor.go. Generates a merged coverprofile, then runs
+# the floor gate against it.
+coverage:
+	go test ./... -coverprofile=coverage.out -covermode=set
+	BEEKEEPER_COVERPROFILE=coverage.out go test ./internal/coveragegate -run TestCoverageFloor -count=1 -v
 
 vet:
 	go vet ./...

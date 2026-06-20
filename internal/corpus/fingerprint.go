@@ -115,7 +115,8 @@ func LoadOrCreateSalt(stateDir string) (string, error) {
 	}
 
 	// First run: ensure the corpus directory exists (owner-only).
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create corpus directory for salt: %w", err)
 	}
 
@@ -126,27 +127,47 @@ func LoadOrCreateSalt(stateDir string) (string, error) {
 	}
 	salt := hex.EncodeToString(raw)
 
-	// Atomic first-writer-wins create. If a concurrent process already created
-	// the file (fs.ErrExist), read the existing salt instead of overwriting it.
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	// Write the candidate salt to a temp file in the same directory and fully
+	// flush it BEFORE publishing, so the published salt file is never observed
+	// mid-write. A prior version created the final file with O_CREATE|O_EXCL and
+	// then wrote into it: O_EXCL elected one *creator*, but the file was empty
+	// between create and write, so a concurrent loser that hit fs.ErrExist could
+	// read it in that window and see 0 hex chars ("malformed salt" — a flaky
+	// first-run race under -race). Publishing a fully-written temp file via
+	// os.Link closes that window: Link fails with fs.ErrExist if the destination
+	// already exists, preserving atomic FIRST-writer-wins (vs. rename's
+	// last-writer-wins, which would rotate the salt), and the linked file always
+	// has complete content.
+	tmp, err := os.CreateTemp(dir, saltFileName+".tmp-*")
 	if err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			// Lost the create race — the winner's salt is authoritative.
+		return "", fmt.Errorf("create temp corpus salt file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }() // best-effort; harmless if already unlinked by Link
+
+	if _, werr := tmp.WriteString(salt); werr != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("write corpus salt: %w", werr)
+	}
+	if serr := tmp.Sync(); serr != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("sync corpus salt: %w", serr)
+	}
+	if cerr := tmp.Close(); cerr != nil {
+		return "", fmt.Errorf("close temp corpus salt file: %w", cerr)
+	}
+
+	// Atomic first-writer-wins publish. If a concurrent creator already published
+	// (fs.ErrExist), the winner's salt is authoritative and fully written.
+	if lerr := os.Link(tmpName, path); lerr != nil {
+		if errors.Is(lerr, fs.ErrExist) {
 			existing, rerr := readSaltFile(path)
 			if rerr != nil {
 				return "", fmt.Errorf("read concurrently-created corpus salt: %w", rerr)
 			}
 			return existing, nil
 		}
-		return "", fmt.Errorf("create corpus salt file: %w", err)
-	}
-
-	if _, werr := f.WriteString(salt); werr != nil {
-		_ = f.Close()
-		return "", fmt.Errorf("write corpus salt: %w", werr)
-	}
-	if cerr := f.Close(); cerr != nil {
-		return "", fmt.Errorf("close corpus salt file: %w", cerr)
+		return "", fmt.Errorf("publish corpus salt file: %w", lerr)
 	}
 
 	// Enforce owner-only permissions (Windows DACL; mirrors StoreSink/T-23-03).

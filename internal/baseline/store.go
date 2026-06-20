@@ -74,12 +74,30 @@ func (s *Store) Save(bc policy.BaselineCounters) error {
 	return platform.SetOwnerOnly(s.path)
 }
 
+// tempFile is the subset of *os.File that writeBaselineAtomic depends on.
+// It exists only so tests can inject a temp file whose Write/Sync/Close fail,
+// exercising the partial-write error branches; *os.File satisfies it directly.
+type tempFile interface {
+	Name() string
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+// createTemp is the temp-file constructor used by writeBaselineAtomic. It is a
+// package variable solely so tests can substitute a failing temp file. Production
+// code never reassigns it; the default wraps os.CreateTemp and behaves exactly
+// as a direct call would.
+var createTemp = func(dir, pattern string) (tempFile, error) {
+	return os.CreateTemp(dir, pattern)
+}
+
 // writeBaselineAtomic writes data to a temp file in the same directory as path
 // then renames it over path. This mirrors the catalog/index.go writeFileAtomic
 // pattern — a partial write never leaves a corrupt baseline file.
 func writeBaselineAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	tmp, err := createTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err
 	}
