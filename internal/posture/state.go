@@ -5,7 +5,7 @@ package posture
 // read-only snapshot for the Layer-2 `beekeeper posture` view: installed
 // versions plus the derived hardening flags.
 //
-// History: relocated verbatim from the former internal/nudge package (the
+// History: relocated verbatim from the former package-manager nudge package (the
 // steering decision that consumed PMState was removed in v1.1.0). Only the
 // state shape survives.
 

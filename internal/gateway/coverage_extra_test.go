@@ -1,17 +1,12 @@
 package gateway
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/home-beekeeper/beekeeper/internal/nudge"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
@@ -114,148 +109,6 @@ func TestParseMessageDepthExceededViaArrays(t *testing.T) {
 	pe, ok := err.(*ParseError)
 	if !ok || pe.Code != -32600 {
 		t.Errorf("error = %v, want *ParseError code -32600", err)
-	}
-}
-
-// --- drift realMetadataFetch parse branches ---------------------------------
-
-// driftServer returns an httptest server emitting raw bodies per PM path.
-// A nil/empty body for a PM means that path is omitted (404).
-func driftServer(t *testing.T, pnpmBody, bunBody string) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.Contains(r.URL.Path, "/pnpm/"):
-			if pnpmBody == "" {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(pnpmBody))
-		case strings.Contains(r.URL.Path, "/bun/"):
-			if bunBody == "" {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(bunBody))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-// TestRealMetadataFetchParseError verifies per-PM fail-open when pnpm returns
-// invalid JSON: pnpm is omitted, bun is present, nil error.
-func TestRealMetadataFetchParseError(t *testing.T) {
-	srv := driftServer(t, `{"latest": not-json}`, `{"latest":"1.4.0"}`)
-	orig := npmDriftRegistryBase
-	npmDriftRegistryBase = srv.URL
-	defer func() { npmDriftRegistryBase = orig }()
-
-	versions, err := realMetadataFetch(context.Background())
-	if err != nil {
-		t.Fatalf("realMetadataFetch error = %v, want nil (per-PM fail-open)", err)
-	}
-	if _, ok := versions["pnpm"]; ok {
-		t.Errorf("pnpm present despite parse error: %v", versions["pnpm"])
-	}
-	if versions["bun"] != "1.4.0" {
-		t.Errorf("bun = %q, want 1.4.0", versions["bun"])
-	}
-}
-
-// TestRealMetadataFetchEmptyLatest verifies that an empty "latest" field omits
-// the PM (the empty-latest fail-open branch).
-func TestRealMetadataFetchEmptyLatest(t *testing.T) {
-	srv := driftServer(t, `{"latest":""}`, `{"latest":"1.4.0"}`)
-	orig := npmDriftRegistryBase
-	npmDriftRegistryBase = srv.URL
-	defer func() { npmDriftRegistryBase = orig }()
-
-	versions, err := realMetadataFetch(context.Background())
-	if err != nil {
-		t.Fatalf("realMetadataFetch error = %v, want nil", err)
-	}
-	if _, ok := versions["pnpm"]; ok {
-		t.Errorf("pnpm present despite empty latest: %v", versions["pnpm"])
-	}
-	if versions["bun"] != "1.4.0" {
-		t.Errorf("bun = %q, want 1.4.0", versions["bun"])
-	}
-}
-
-// TestRealMetadataFetchNetworkError verifies a dial error omits both PMs and
-// returns nil error (both fail-open). Points the base at an unreachable port.
-func TestRealMetadataFetchNetworkError(t *testing.T) {
-	orig := npmDriftRegistryBase
-	npmDriftRegistryBase = "http://127.0.0.1:1"
-	defer func() { npmDriftRegistryBase = orig }()
-
-	versions, err := realMetadataFetch(context.Background())
-	if err != nil {
-		t.Fatalf("realMetadataFetch error = %v, want nil (network fail-open)", err)
-	}
-	if len(versions) != 0 {
-		t.Errorf("versions = %v, want empty map on total network failure", versions)
-	}
-}
-
-// --- proxy: advisory cap with a block decision ------------------------------
-
-// TestGatewayAdvisoryCapDoesNotSuppressBlock verifies that when nudge config is
-// in block mode, the per-session advisory cap never suppresses a block: a second
-// install for the same agent still blocks (proxy.go line ~355 block branch).
-func TestGatewayAdvisoryCapDoesNotSuppressBlock(t *testing.T) {
-	orig := nudge.DetectStateFn
-	nudge.DetectStateFn = func(_ context.Context, _ nudge.Config) nudge.PMState {
-		// No pnpm installed → block mode offers pnpm and denies npm install.
-		return nudge.PMState{NodeVersion: "22.5.0"}
-	}
-	defer func() { nudge.DetectStateFn = orig }()
-
-	ncfg := nudge.DefaultConfig()
-	ncfg.Mode = "block"
-
-	cfg := Config{
-		UpstreamURL: "http://upstream-unused",
-		BindAddr:    defaultBindAddr,
-		Port:        defaultPort,
-		Nudge:       ncfg,
-	}
-	h := newGatewayHandler(cfg, "tok", allowIdx())
-
-	installBody := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"npm install lodash"}}}`)
-	send := func() *int {
-		req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(installBody))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer tok")
-		req.Header.Set("X-Beekeeper-Agent-Id", "agent-block")
-		rr := httptest.NewRecorder()
-		h.ServeHTTP(rr, req)
-		var resp struct {
-			Error *struct {
-				Code int `json:"code"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("response not valid JSON: %v\nbody: %s", err, rr.Body.String())
-		}
-		if resp.Error == nil {
-			return nil
-		}
-		return &resp.Error.Code
-	}
-
-	if c := send(); c == nil || *c != -32001 {
-		t.Fatalf("first install: got code %v, want -32001 (block mode denies npm install)", c)
-	}
-	// Second install for the SAME agent must still block — the advisory cap only
-	// suppresses warn-level advisories, never a block.
-	if c := send(); c == nil || *c != -32001 {
-		t.Errorf("second install: got code %v, want -32001 (block must not be capped)", c)
 	}
 }
 

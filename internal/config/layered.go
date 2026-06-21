@@ -100,24 +100,9 @@ func LoadLayered(opts LayerOpts) (Config, error) {
 	// Layer 5: CLI flag overrides (highest precedence).
 	cfg = applyFlagOverrides(cfg, opts.FlagOverrides)
 
-	// CLEAN-02: guarantee a non-nil, validated Nudge at the layered root, mirroring
-	// Load's single-file contract. After all layers merge, an absent nudge across
-	// every layer resolves to DefaultNudgeConfig(); a present (merged) block is
-	// validated fail-closed via the EXPORTED ValidateNudgeConfig so an invalid
-	// project nudge (e.g. mode:"aggressive") is rejected here rather than silently
-	// degrading. This makes the consumer-side nil-guards defense-in-depth, not
-	// load-bearing (T-09-07).
-	if cfg.Nudge == nil {
-		d := DefaultNudgeConfig()
-		cfg.Nudge = &d
-	} else if err := ValidateNudgeConfig(*cfg.Nudge); err != nil {
-		return Config{}, fmt.Errorf("invalid merged nudge config: %w", err)
-	}
-
-	// CSYNC: guarantee a non-nil, validated CatalogSync at the layered root,
-	// mirroring the Nudge contract. Absent across every layer → default; a merged
-	// block is validated fail-closed so an invalid project interval is rejected
-	// here rather than silently clamped.
+	// CSYNC: guarantee a non-nil, validated CatalogSync at the layered root.
+	// Absent across every layer → default; a merged block is validated fail-closed
+	// so an invalid project interval is rejected here rather than silently clamped.
 	if cfg.CatalogSync == nil {
 		cs := DefaultCatalogSyncConfig()
 		cfg.CatalogSync = &cs
@@ -243,11 +228,6 @@ func merge(dst, src Config) Config {
 		dst.SelfCatalog.PubKey = src.SelfCatalog.PubKey
 	}
 
-	// NudgeConfig — pointer field (CLEAN-02). Without this, a project-layer
-	// nudge.* override was silently dropped and any LoadLayered consumer reading
-	// cfg.Nudge without a nil-check got nil. mergeNudge carries the block through.
-	dst.Nudge = mergeNudge(dst.Nudge, src.Nudge)
-
 	// CatalogSyncConfig — pointer field (CSYNC). Trusted-layer merge: src wins
 	// where set, including a disable (a trusted user/global layer MAY opt out).
 	dst.CatalogSync = mergeCatalogSync(dst.CatalogSync, src.CatalogSync)
@@ -279,14 +259,9 @@ func merge(dst, src Config) Config {
 //     relaxation (e.g. closed → open) is silently ignored with a stderr warning.
 //   - SelfCatalog.URL / SelfCatalog.PubKey: always ignored from low-trust layers.
 //   - LlamaFirewall.Enabled == false: a disable is ignored (enable is allowed).
-//   - Nudge.Enabled == false: a disable is ignored (enable is allowed) when the
-//     nudge block contains ONLY the disable (srcHasOtherSignal == false) — the
-//     project-disable path defined in NUDGE-08/§11. When the nudge block carries
-//     other fields, the standard mergeNudge logic applies and an absent
-//     (false) Enabled does not clobber the lower layer.
 //
 // All other fields (socket token, audit sinks, redact patterns, watch dirs, etc.)
-// are merged unchanged — only the four security levers are gated here.
+// are merged unchanged — only the security levers are gated here.
 //
 // The layerName parameter ("project" or "env") is included in stderr warnings
 // so operators can locate the source of the refused relaxation.
@@ -346,9 +321,6 @@ func mergeUntrusted(dst, src Config, layerName string) Config {
 			layerName)
 	}
 
-	// NudgeConfig — use the low-trust nudge merge variant (TM-D-02).
-	dst.Nudge = mergeNudgeUntrusted(dst.Nudge, src.Nudge, layerName)
-
 	// CatalogSyncConfig — use the low-trust variant (CSYNC-04): a disable or an
 	// interval-loosening from a project/env layer is refused.
 	dst.CatalogSync = mergeCatalogSyncUntrusted(dst.CatalogSync, src.CatalogSync, layerName)
@@ -385,106 +357,6 @@ func mergeUntrusted(dst, src Config, layerName string) Config {
 	}
 
 	return dst
-}
-
-// mergeNudge merges the src Nudge pointer over dst following the layered "src
-// wins if set" discipline, and is the CLEAN-02 root-cause fix for the dropped
-// Nudge pointer in merge().
-//
-// Semantics:
-//   - src == nil: lower layer (dst) is authoritative — an ABSENT nudge key in a
-//     higher layer never zeroes a lower-layer block. Returns dst unchanged.
-//     (loadIfPresent does NOT default-fill, so a project file WITHOUT a "nudge"
-//     key yields src==nil and the lower layer survives intact — Pitfall 5.)
-//   - dst == nil, src != nil: start from a copy of *src (no lower layer to merge).
-//   - both non-nil: field-level override, src wins where set (non-empty / non-zero).
-//
-// Bool fields (Enabled, RequireHardened, CheckSocketScanner) share the
-// "encoding/json cannot distinguish absent from false" limitation already
-// documented on mergeLlamaFirewall. We resolve it to satisfy BOTH the
-// NUDGE-08 / PRD §11 project-disable (`nudge.enabled:false` must win) and the
-// partial-override case (a `mode`-only project layer must NOT silently disable
-// the nudge):
-//
-//   - srcHasOtherSignal == false (a disable-only / bare object such as
-//     `{"nudge":{"enabled":false}}` — the ONLY way Enabled is the meaningful
-//     field): the project object IS the Enabled assertion → src.Enabled wins.
-//     This lands the §11 project-disable.
-//   - srcHasOtherSignal == true (e.g. `{"nudge":{"mode":"hard"}}`): the project
-//     configured some OTHER field; its absent `enabled` (Go zero false) must NOT
-//     clobber the lower-layer Enabled. So src.Enabled is applied only when it is
-//     explicitly true (an explicit enable still wins); otherwise Enabled is
-//     inherited. A project that has other nudge fields AND wants to disable must
-//     set `enabled:false` explicitly together with them — the same accepted
-//     limitation as LlamaFirewall.Enabled, documented here.
-//
-// RequireHardened / CheckSocketScanner follow the LlamaFirewall convention:
-// applied only when src carries some other non-zero nudge signal.
-//
-// Strings (Mode, Preferred) and the nested VersionFloors / MajorDriftCheck
-// fields are src-wins-if-non-empty / non-zero, so a partial project override
-// never clobbers lower-layer non-zero values.
-func mergeNudge(dst, src *NudgeConfig) *NudgeConfig {
-	if src == nil {
-		// Absent in this layer → do not touch the lower layer.
-		return dst
-	}
-	if dst == nil {
-		// No lower layer to merge against — adopt a copy of src.
-		cp := *src
-		return &cp
-	}
-
-	out := *dst // copy so we never mutate the caller's struct
-
-	srcHasOtherSignal := src.Mode != "" || src.Preferred != "" ||
-		src.RequireHardened || src.CheckSocketScanner ||
-		src.MajorDriftCheck != (NudgeMajorDriftCheck{}) ||
-		src.VersionFloors != (NudgeVersionFloors{})
-
-	// Enabled resolution (see doc comment): a disable-only object is the Enabled
-	// assertion (§11 project-disable wins); when other fields are present, only an
-	// explicit enable applies so a partial override never silently disables.
-	if !srcHasOtherSignal || src.Enabled {
-		out.Enabled = src.Enabled
-	}
-
-	// The other bools follow the LlamaFirewall convention: apply only when src
-	// carries another non-zero nudge signal (so a bare project disable object
-	// cannot silently flip them).
-	if srcHasOtherSignal {
-		out.RequireHardened = src.RequireHardened
-		out.CheckSocketScanner = src.CheckSocketScanner
-	}
-
-	// Strings: src wins if non-empty.
-	if src.Mode != "" {
-		out.Mode = src.Mode
-	}
-	if src.Preferred != "" {
-		out.Preferred = src.Preferred
-	}
-
-	// MajorDriftCheck — field-level src-wins-if-set.
-	if src.MajorDriftCheck.Enabled {
-		out.MajorDriftCheck.Enabled = true
-	}
-	if src.MajorDriftCheck.Interval != "" {
-		out.MajorDriftCheck.Interval = src.MajorDriftCheck.Interval
-	}
-
-	// VersionFloors — field-level src-wins-if-non-empty (no zeroing).
-	if src.VersionFloors.Pnpm != "" {
-		out.VersionFloors.Pnpm = src.VersionFloors.Pnpm
-	}
-	if src.VersionFloors.Bun != "" {
-		out.VersionFloors.Bun = src.VersionFloors.Bun
-	}
-	if src.VersionFloors.Node != "" {
-		out.VersionFloors.Node = src.VersionFloors.Node
-	}
-
-	return &out
 }
 
 func mergeAudit(dst, src AuditConfig) AuditConfig {
@@ -683,66 +555,14 @@ func mergeLlamaFirewallUntrusted(dst, src LlamaFirewallConfig, layerName string)
 	return dst
 }
 
-// mergeNudgeUntrusted is the low-trust variant of mergeNudge (TM-D-02).
-// A project/env layer's nudge.enabled:false is refused when the lower layer
-// has Nudge enabled; enables from low-trust layers are always allowed. All
-// other nudge sub-fields follow the standard mergeNudge logic.
-func mergeNudgeUntrusted(dst, src *NudgeConfig, layerName string) *NudgeConfig {
-	if src == nil {
-		return dst
-	}
-	if dst == nil {
-		// No lower layer to merge — adopt src, but gate the Enabled field.
-		cp := *src
-		// If the src has only Enabled:false and nothing else, treat as default.
-		// (No lower layer means we cannot "refuse" a relax — start from src as-is.)
-		return &cp
-	}
-
-	// Determine whether src carries signal beyond Enabled.
-	srcHasOtherSignal := src.Mode != "" || src.Preferred != "" ||
-		src.RequireHardened || src.CheckSocketScanner ||
-		src.MajorDriftCheck != (NudgeMajorDriftCheck{}) ||
-		src.VersionFloors != (NudgeVersionFloors{})
-
-	// Gate: refuse a disable from a low-trust layer when the lower layer has nudge enabled.
-	// A disable-only object (!srcHasOtherSignal && !src.Enabled) from low-trust is refused.
-	if !srcHasOtherSignal && !src.Enabled && dst.Enabled {
-		fmt.Fprintf(os.Stderr,
-			"beekeeper: ignoring nudge.enabled:false from %s config layer (security)\n",
-			layerName)
-		// Run the standard merge with Enabled forced to true so all other fields
-		// are preserved but the disable is suppressed. Since src has no other
-		// signal, this effectively keeps dst unchanged.
-		srcCopy := *src
-		srcCopy.Enabled = dst.Enabled
-		return mergeNudge(dst, &srcCopy)
-	}
-
-	// For all other cases (enable, or disable accompanied by other nudge fields,
-	// or disable when lower layer already has it disabled) use standard merge —
-	// but if it's a disable with other fields and the lower layer is enabled, warn.
-	if srcHasOtherSignal && !src.Enabled && dst.Enabled {
-		fmt.Fprintf(os.Stderr,
-			"beekeeper: ignoring nudge.enabled:false from %s config layer (security)\n",
-			layerName)
-		srcCopy := *src
-		srcCopy.Enabled = dst.Enabled
-		return mergeNudge(dst, &srcCopy)
-	}
-
-	return mergeNudge(dst, src)
-}
-
 // mergeCatalogSync merges the src CatalogSync pointer over dst following the
-// layered "src wins if set" discipline (mirrors mergeNudge). This is the
-// TRUSTED-layer variant: a trusted user/global layer MAY disable sync or set
-// any in-range interval.
+// layered "src wins if set" discipline. This is the TRUSTED-layer variant: a
+// trusted user/global layer MAY disable sync or set any in-range interval.
 //
 // Semantics:
 //   - src == nil: absent in this layer → lower layer authoritative, dst returned.
 //   - dst == nil, src != nil: adopt a copy of src.
-//   - both non-nil: Enabled follows the mergeNudge bool convention (a bare /
+//   - both non-nil: Enabled follows the bool convention (a bare /
 //     interval-less object asserts Enabled; with an interval present only an
 //     explicit enable applies so a partial override never silently disables);
 //     Interval is src-wins-if-non-empty.

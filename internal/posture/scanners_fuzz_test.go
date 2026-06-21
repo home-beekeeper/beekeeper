@@ -1,12 +1,12 @@
 //go:build fuzz
 
-// RELEASE GATE: This file is required to exist for Beekeeper v1.2.0 release.
-// FuzzBunfig and FuzzPnpmWorkspace must pass (seed corpus run) in CI before
-// any release tag.
-// Run: go test -tags fuzz -run "FuzzBunfig|FuzzPnpmWorkspace" ./internal/nudge/...
-// Fuzz: go test -tags fuzz -fuzz=FuzzBunfig -fuzztime=60s ./internal/nudge/...
+// RELEASE GATE: FuzzBunfig and FuzzPnpmWorkspace must pass (seed corpus run) in
+// CI before any release tag.
+// Run: go test -tags fuzz -run "FuzzBunfig|FuzzPnpmWorkspace" ./internal/posture/...
+// Fuzz: go test -tags fuzz -fuzz=FuzzBunfig -fuzztime=60s ./internal/posture/...
 //
-// Requirements covered: BTEST-03, paragraph 10-13.
+// These scanners must never panic on any input (the pm-config-reader never-panic
+// contract, relocated with the readers from the former nudge package).
 
 package posture
 

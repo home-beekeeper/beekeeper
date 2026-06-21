@@ -88,7 +88,6 @@ func TestAuditRecordSubjectVariants(t *testing.T) {
 		want string
 	}{
 		{audit.AuditRecord{CatalogMatches: []audit.CatalogProvenance{{Ecosystem: "npm", Package: "evil", Version: "1.0"}}}, "npm:evil@1.0"},
-		{audit.AuditRecord{OriginalCommand: "npm install x"}, "npm install x"},
 		{audit.AuditRecord{SentryProcessExe: "node ext.js"}, "node ext.js"},
 		{audit.AuditRecord{SentryCorrelatedExt: "acme.evil"}, "acme.evil"},
 		{audit.AuditRecord{RecordType: "config_change", ReasonCode: "corpus.enabled"}, "corpus.enabled"},
@@ -101,15 +100,11 @@ func TestAuditRecordSubjectVariants(t *testing.T) {
 	}
 }
 
-// TestAuditDetailLinesNudgeAndSentryAndLLMF covers detail-block branches not hit
-// elsewhere: nudge rewrite, sentry process/parents/files/network, llamafirewall,
-// agent lineage/cluster/ruleset.
+// TestAuditDetailLinesRichRecord covers detail-block branches not hit elsewhere:
+// sentry process/parents/files/network, llamafirewall, agent lineage/cluster/ruleset.
 func TestAuditDetailLinesRichRecord(t *testing.T) {
 	r := rec("sentry_alert", audit.AuditRecord{
 		Decision:            "alert",
-		NudgeAction:         "rewrite",
-		OriginalCommand:     "npm i x",
-		RewrittenCommand:    "pnpm add x",
 		SentryRuleName:      "exfil",
 		SentrySeverity:      "critical",
 		SentryProcessExe:    "node",
@@ -128,7 +123,7 @@ func TestAuditDetailLinesRichRecord(t *testing.T) {
 		RulesetVersion:      "2026.06",
 	})
 	lines := strings.Join(detailLines(r), "\n")
-	for _, want := range []string{"rewrite", "pnpm add x", "exfil", "node", "launchd", "~/.aws/credentials", "1.2.3.4:443", "acme.evil", "injection", "agent-1", "cluster-9", "2026.06"} {
+	for _, want := range []string{"exfil", "node", "launchd", "~/.aws/credentials", "1.2.3.4:443", "acme.evil", "injection", "agent-1", "cluster-9", "2026.06"} {
 		if !strings.Contains(lines, want) {
 			t.Errorf("detailLines missing %q:\n%s", want, lines)
 		}
@@ -151,7 +146,6 @@ func TestIsEnforcementEventBranches(t *testing.T) {
 		{Decision: "alert"},
 		{Quarantine: true},
 		{RecordType: "sentry_alert"},
-		{RecordType: "nudge", NudgeAction: "block"},
 		{RecordType: "llmf_alert", LLMFResult: "injection"},
 	}
 	for _, r := range yes {
@@ -161,7 +155,6 @@ func TestIsEnforcementEventBranches(t *testing.T) {
 	}
 	no := []audit.AuditRecord{
 		{Decision: "allow"},
-		{RecordType: "nudge", NudgeAction: "rewrite"},
 		{RecordType: "llmf_alert", LLMFResult: "clean"},
 		{RecordType: "package"},
 	}

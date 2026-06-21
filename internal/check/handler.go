@@ -39,12 +39,10 @@ const (
 	// maxStdin is the 1MB hard cap on tool-call JSON read from stdin (HOOK-04).
 	maxStdin = 1 << 20
 	// execTimeout is the execution deadline for a single check (HOOK-04). It must
-	// exceed the worst-case sum of the network catalog sub-context (OSV/Socket get
-	// 3s, WR-05) and the package-manager detection deadline (nudge.detectionTimeout
-	// = 3s after the Windows pnpm.cmd measurement — see internal/nudge/detect.go),
-	// so a slow-but-benign install nudge stays fail-OPEN (advisory) instead of the
-	// outer deadline tripping into a fail-CLOSED block of the install. 8s leaves
-	// ~2s of slack and stays well within Claude Code's 60s hook timeout.
+	// exceed the worst-case network catalog sub-context (OSV/Socket get 3s, WR-05)
+	// with slack, so a slow-but-benign network lookup stays within budget instead
+	// of the outer deadline tripping into a fail-CLOSED block. 8s leaves ample
+	// slack and stays well within Claude Code's 60s hook timeout.
 	execTimeout = 8 * time.Second
 	// memLimit is the 256MB soft memory cap for the process (HOOK-04).
 	memLimit = 256 * 1024 * 1024
@@ -300,15 +298,14 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	//
 	//   1. ApplyPolicyOverlay  (FIRST — on the engine/catalog result, below)
 	//   2. SPATH block         (sensitive-path evaluation)
-	//   3. NUDGE block         (LAST — package-manager nudge)
+	//   3. SELF-PROTECTION     (state dir / binary / hook guard / CLI guard)
 	//
 	// The overlay runs FIRST so its package_allowlist allow escape-hatch (T-09-31)
-	// only acts on the engine/catalog result. Because the SPATH and NUDGE blocks
-	// are merged AFTER it (most-restrictive-wins), a package_allowlist allow can
-	// NEVER downgrade a sensitive-path block or a nudge block — overlays may
-	// escalate but must never silently downgrade a credential read (CR-02). NUDGE
-	// is the actual final merge, not SPATH (the pre-CLEAN-04 comment said SPATH was
-	// "merged LAST" — accurate at Phase 7, stale once the NUDGE block landed).
+	// only acts on the engine/catalog result. Because the SPATH and
+	// self-protection blocks are merged AFTER it (most-restrictive-wins), a
+	// package_allowlist allow can NEVER downgrade a sensitive-path block or a
+	// self-protection block — overlays may escalate but must never silently
+	// downgrade a credential read (CR-02).
 	// corroboration_threshold rules are NOT re-applied here — they were already
 	// passed to policy.Evaluate as thresholds above.
 	//
@@ -358,31 +355,12 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	decision = mergeDecisions(decision, evaluateHookGuard(toolCall))
 	decision = mergeDecisions(decision, evaluateCLIGuard(toolCall))
 
-	// NUDGE-03/04/08: package-manager nudge evaluation.
-	// This block runs AFTER ApplyPolicyOverlay (above) and AFTER the SPATH block so
-	// a package_allowlist allow rule CANNOT downgrade a nudge Block (CR-02 ordering,
-	// T-08-17). mergeDecisions is most-restrictive-wins.
-	//
-	// Detection runs ONLY when parsed.IsInstall (non-install commands like npm ls/run
-	// never trigger exec — T-08-18, Pitfall 2). PMState is resolved FRESH via the
-	// EXPORTED nudge.DetectStateFn seam (NOT nudge.DetectState directly) so a
-	// behavioral test in package check (Plan 07) can inject a synthetic PMState across
-	// the package boundary (Flag 2 Position B — no cache in the one-shot hook).
-	// Resolve nudge config: use loaded config if present, else DefaultNudgeConfig.
-	// CLEAN-02: config.LoadLayered now always populates a non-nil, validated
-	// cfg.Nudge at its root (mergeNudge + the LoadLayered defaulting guard), so the
-	// nil branch is DEFENSE-IN-DEPTH (T-09-07), not load-bearing: it protects a
-	// direct zero-Config construction (e.g. tests that build config.Config{} without
-	// going through LoadLayered) from a nil-pointer deref / silently-disabled nudge.
-	nudgeCfgValue := config.DefaultNudgeConfig()
-	if cfg.Nudge != nil {
-		nudgeCfgValue = *cfg.Nudge
-	}
-	if nudgeDecision, nudgeRec, nudgeOK := evaluateNudge(ctx, toolCall, nudgeCfgValue); nudgeOK {
-		decision = mergeDecisions(decision, nudgeDecision)
-		// Write the §9 audit record best-effort; a write failure NEVER changes decision.
-		writeNudgeAuditRecord(auditPath, nudgeRec)
-	}
+	// NOTE: the former package-manager nudge evaluation ran here (steer npm/yarn
+	// to pnpm/bun). It was removed in v1.1.0 — the steering behavior is gone and
+	// install posture will be re-introduced as a read-only/enforced posture check
+	// in a later phase. The pm-config readers it used now live in
+	// internal/posture. No install posture is wired into the hook at this point;
+	// the catalog, sensitive-path, and self-protection paths above are unchanged.
 
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.

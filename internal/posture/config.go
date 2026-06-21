@@ -6,10 +6,11 @@ package posture
 // and hardening state side-by-side with Beekeeper's enforced posture.
 //
 // History: this package is the relocated, steering-free remnant of the former
-// internal/nudge feature (removed in v1.1.0). Only the read-only detection of
-// installed PM versions and their config files (minimumReleaseAge, the bun
-// socket scanner, pnpm-workspace hardening) survives here to power the Layer-2
-// `beekeeper posture` view. None of the steer-to-pnpm/bun decision logic moved.
+// package-manager nudge feature (removed in v1.1.0). Only the read-only
+// detection of installed PM versions and their config files (minimumReleaseAge,
+// the bun socket scanner, pnpm-workspace hardening) survives here to power the
+// Layer-2 `beekeeper posture` view. None of the steer-to-pnpm/bun decision logic
+// moved.
 
 // minimumReleaseAgeWeaknessBaseline is the pnpm 11 default minimumReleaseAge of
 // 1440 minutes (1 day) [pnpm.io/blog/releases/11.0, pnpm.io/settings]. A value

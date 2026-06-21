@@ -35,10 +35,8 @@ import (
 //
 // SPATH case:  credential read → exit 1 / decision "block"
 // CORR case:   ai-figure critical install → exit 1 / decision "block"
-// NUDGE case:  pnpm add chalk → exit 0 / record_type "nudge" / decision non-block
-// BUN case:    bun add chalk → skipped when bun is absent (exec.LookPath fails)
+// HOOK case:   --hook claude-code credential read → exit 2 / deny stdout
 //
-// The E2E uses the REAL pnpm binary on PATH (no DetectStateFn swap — child process).
 // State/audit/catalogs all resolve under BEEKEEPER_HOME so the developer's real
 // ~/.beekeeper is never touched (T-08-23).
 func TestE2ELiveBinary(t *testing.T) {
@@ -105,8 +103,7 @@ func TestE2ELiveBinary(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(binPath, "check")
 		cmd.Stdin = strings.NewReader(stdinJSON)
-		// Set BEEKEEPER_HOME; inherit the rest of the environment (needed for PATH
-		// so the binary can find pnpm/bun/node for nudge detection).
+		// Set BEEKEEPER_HOME; inherit the rest of the environment.
 		cmd.Env = append(os.Environ(), fmt.Sprintf("BEEKEEPER_HOME=%s", homeDir))
 
 		if err := cmd.Run(); err != nil {
@@ -185,61 +182,7 @@ func TestE2ELiveBinary(t *testing.T) {
 	})
 
 	// -------------------------------------------------------------------------
-	// Case 3: NUDGE — pnpm add chalk must parse + emit a record_type "nudge" record.
-	//
-	// This case uses the REAL pnpm binary on PATH (no DetectStateFn swap — it is a
-	// child process). pnpm 11.x is installed on this dev box so the advisory fires.
-	// Asserts: exit 0 (soft advisory, non-block) + record_type "nudge" present.
-	// -------------------------------------------------------------------------
-	t.Run("NUDGE_pnpm_add_chalk", func(t *testing.T) {
-		homeDir, auditPath, catalogsDir, _ := newHome(t)
-		// Empty catalog — chalk is not malicious; catalog match does not fire.
-		seedCatalog(t, catalogsDir, nil)
-
-		stdinJSON := `{"agent_name":"e2e-agent","tool_name":"Bash","tool_input":{"command":"pnpm add chalk"}}`
-		exitCode, rec := runCase(t, homeDir, auditPath, stdinJSON, "nudge")
-
-		// Soft advisory: must not block (exit 0).
-		if exitCode != 0 {
-			t.Errorf("NUDGE: exit code = %d, want 0 (soft pnpm advisory must not block)", exitCode)
-		}
-		if rec.RecordType != "nudge" {
-			t.Errorf("NUDGE: no record_type=nudge audit record found; nudge wiring must emit §9 record for install commands (BTEST-03)")
-		}
-		// Nudge decision must be non-block in soft mode.
-		if rec.Decision == "block" {
-			t.Errorf("NUDGE: audit decision = %q, want non-block (soft advisory)", rec.Decision)
-		}
-	})
-
-	// -------------------------------------------------------------------------
-	// Case 4: NUDGE-bun — bun add chalk (skip when bun absent).
-	// bun is not installed on this dev box; the case skips gracefully.
-	// -------------------------------------------------------------------------
-	t.Run("NUDGE_bun_add_chalk", func(t *testing.T) {
-		if _, err := exec.LookPath("bun"); err != nil {
-			t.Skip("bun not installed — skipping bun NUDGE E2E case")
-		}
-
-		homeDir, auditPath, catalogsDir, _ := newHome(t)
-		seedCatalog(t, catalogsDir, nil)
-
-		stdinJSON := `{"agent_name":"e2e-agent","tool_name":"Bash","tool_input":{"command":"bun add chalk"}}`
-		exitCode, rec := runCase(t, homeDir, auditPath, stdinJSON, "nudge")
-
-		if exitCode != 0 {
-			t.Errorf("NUDGE-bun: exit code = %d, want 0 (soft bun advisory must not block)", exitCode)
-		}
-		if rec.RecordType != "nudge" {
-			t.Errorf("NUDGE-bun: no record_type=nudge audit record found")
-		}
-		if rec.Decision == "block" {
-			t.Errorf("NUDGE-bun: audit decision = %q, want non-block", rec.Decision)
-		}
-	})
-
-	// -------------------------------------------------------------------------
-	// Case 5 (VAL-05): Claude Code --hook exit-2 canary block — the documented
+	// Case 3 (VAL-05): Claude Code --hook exit-2 canary block — the documented
 	// true-block reference.
 	//
 	// Phase 10 changed the HOOK contract to exit 2 via `--hook <harness>`; the
@@ -296,8 +239,6 @@ func TestE2ELiveBinary(t *testing.T) {
 type e2eAuditRecord struct {
 	RecordType string `json:"record_type"`
 	Decision   string `json:"decision"`
-	NudgeAction string `json:"nudge_action,omitempty"`
-	ReasonCode  string `json:"reason_code,omitempty"`
 }
 
 // readE2EAuditRecord reads all NDJSON lines from auditPath and returns the last

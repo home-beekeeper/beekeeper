@@ -260,7 +260,7 @@ func TestDetectStateBunScannerSkipped(t *testing.T) {
 }
 
 // TestDetectStateFnSeamDefault proves that DetectStateFn defaults to DetectState:
-// calling nudge.DetectStateFn with injected version-fns yields the same PMState
+// calling DetectStateFn with injected version-fns yields the same PMState
 // as calling DetectState directly.
 func TestDetectStateFnSeamDefault(t *testing.T) {
 	origPnpm := pnpmVersionFn

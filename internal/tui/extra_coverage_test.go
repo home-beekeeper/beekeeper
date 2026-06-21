@@ -112,18 +112,20 @@ func TestAuditTsShortPlaceholder(t *testing.T) {
 	}
 }
 
-// TestAuditBadgeForExtraBranches covers the version_drift, clean-llmf, and
-// nudge-non-block badge branches not hit elsewhere.
+// TestAuditBadgeForExtraBranches covers the clean-llmf, alert, and
+// unknown-type badge branches not hit elsewhere. The retired nudge/version_drift
+// record types (removed in v1.1.0) fall through to the decision-based badge.
 func TestAuditBadgeForExtraBranches(t *testing.T) {
 	cases := []struct {
 		rec  audit.AuditRecord
 		want string
 	}{
-		{rec("version_drift", audit.AuditRecord{}), "DRIFT"},
 		{rec("llmf_alert", audit.AuditRecord{LLMFResult: "clean"}), "LLMF"},
-		{rec("nudge", audit.AuditRecord{NudgeAction: "rewrite"}), "NUDGE"},
 		{rec("policy_decision", audit.AuditRecord{Decision: "alert"}), "ALERT"},
 		{rec("unknown_type", audit.AuditRecord{}), "EVENT"},
+		// Retired record types with no decision fall through to EVENT.
+		{rec("version_drift", audit.AuditRecord{}), "EVENT"},
+		{rec("nudge", audit.AuditRecord{}), "EVENT"},
 	}
 	for _, c := range cases {
 		if got, _ := badgeFor(c.rec); got != c.want {

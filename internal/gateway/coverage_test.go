@@ -6,10 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,8 +16,6 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/audit"
 	"github.com/home-beekeeper/beekeeper/internal/catalog"
 	"github.com/home-beekeeper/beekeeper/internal/llamafirewall"
-	"github.com/home-beekeeper/beekeeper/internal/nudge"
-	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
@@ -66,7 +61,6 @@ func newAuditHandler(t *testing.T, idx policy.MultiCatalogLookup, upstream, audi
 		BindAddr:    defaultBindAddr,
 		Port:        defaultPort,
 		AuditPath:   auditPath,
-		Nudge:       nudge.DefaultConfig(),
 	}
 	return newGatewayHandler(cfg, "tok", idx)
 }
@@ -128,57 +122,17 @@ func TestGatewayWriteAuditOnAllow(t *testing.T) {
 	}
 }
 
-// TestGatewayWriteNudgeAudit verifies that an install command on the nudge path
-// writes a nudge audit record (drives writeNudgeAudit happy path).
-func TestGatewayWriteNudgeAudit(t *testing.T) {
-	orig := nudge.DetectStateFn
-	nudge.DetectStateFn = func(_ context.Context, _ nudge.Config) nudge.PMState {
-		return nudge.PMState{
-			PnpmInstalled: true,
-			PnpmVersion:   "11.5.0",
-			PnpmHardened:  true,
-			NodeVersion:   "22.5.0",
-		}
-	}
-	defer func() { nudge.DetectStateFn = orig }()
-
-	auditPath := filepath.Join(t.TempDir(), "audit.ndjson")
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.ReadAll(r.Body)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":"ok"}}`))
-	}))
-	defer upstream.Close()
-
-	h := newAuditHandler(t, allowIdx(), upstream.URL, auditPath)
-
-	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"Bash","arguments":{"command":"npm install lodash"}}}`)
-	postJSON(t, h, "tok", body)
-
-	recs := readAuditLines(t, auditPath)
-	var nudgeFound bool
-	for _, r := range recs {
-		if r.RecordType == "nudge" {
-			nudgeFound = true
-		}
-	}
-	if !nudgeFound {
-		t.Errorf("expected a nudge audit record; records: %+v", recs)
-	}
-}
-
-// TestGatewayAuditNoPathIsNoOp verifies that writeAudit / writeNudgeAudit return
-// early (no error, no panic) when AuditPath is empty.
+// TestGatewayAuditNoPathIsNoOp verifies that writeAudit returns early (no error,
+// no panic) when AuditPath is empty.
 func TestGatewayAuditNoPathIsNoOp(t *testing.T) {
 	h := &gatewayHandler{cfg: Config{}}
 	// Must not panic with empty AuditPath.
 	h.writeAudit(policy.ToolCall{ToolName: "Bash"}, policy.Decision{Level: "allow"})
-	h.writeNudgeAudit(audit.AuditRecord{RecordType: "nudge"})
 }
 
 // auditWriterFailPath returns a path whose parent component is a regular file,
-// so audit.NewWriter's MkdirAll fails — exercising the audit-writer-error
-// branches of writeAudit/writeNudgeAudit/emitVersionDrift.
+// so audit.NewWriter's MkdirAll fails — exercising the writeAudit
+// audit-writer-error branch.
 func auditWriterFailPath(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -197,27 +151,6 @@ func TestGatewayWriteAuditWriterError(t *testing.T) {
 	h := &gatewayHandler{cfg: Config{AuditPath: auditWriterFailPath(t)}}
 	// Should not panic; just logs to stderr and returns.
 	h.writeAudit(policy.ToolCall{ToolName: "Bash"}, policy.Decision{Level: "block"})
-}
-
-// TestGatewayWriteNudgeAuditWriterError verifies writeNudgeAudit logs and returns
-// on an unusable audit path without panicking.
-func TestGatewayWriteNudgeAuditWriterError(t *testing.T) {
-	h := &gatewayHandler{cfg: Config{AuditPath: auditWriterFailPath(t)}}
-	h.writeNudgeAudit(audit.AuditRecord{RecordType: "nudge"})
-}
-
-// TestEmitVersionDriftNoAuditPath verifies emitVersionDrift is a no-op when
-// AuditPath is empty.
-func TestEmitVersionDriftNoAuditPath(t *testing.T) {
-	h := &gatewayHandler{cfg: Config{}}
-	h.emitVersionDrift(context.Background(), "pnpm", "12.0.0", "11.0.0")
-}
-
-// TestEmitVersionDriftWriterError verifies emitVersionDrift handles an audit
-// writer failure gracefully (logs, returns, no panic).
-func TestEmitVersionDriftWriterError(t *testing.T) {
-	h := &gatewayHandler{cfg: Config{AuditPath: auditWriterFailPath(t)}}
-	h.emitVersionDrift(context.Background(), "bun", "2.0.0", "1.0.0")
 }
 
 // TestInjectWarningNoResultField verifies that injectWarning returns the input
@@ -383,15 +316,6 @@ func TestExtractToolCallFromMsgMalformed(t *testing.T) {
 	}
 }
 
-// TestNudgeDecisionForNonInstall verifies nudgeDecisionFor returns ok=false for a
-// non-install parsed command.
-func TestNudgeDecisionForNonInstall(t *testing.T) {
-	_, _, ok := nudgeDecisionFor(pkgparse.ParsedCommand{IsInstall: false}, nudge.PMState{}, nudge.DefaultConfig())
-	if ok {
-		t.Error("nudgeDecisionFor returned ok=true for non-install command, want false")
-	}
-}
-
 // TestLoadGatewayStateCorruptFile verifies LoadGatewayState surfaces a parse
 // error on a corrupt state.json.
 func TestLoadGatewayStateCorruptFile(t *testing.T) {
@@ -489,7 +413,6 @@ func TestStartLifecycle(t *testing.T) {
 		IndexPath:   indexPath,
 		CacheDir:    filepath.Join(dir, "catalogs"),
 		AuditPath:   filepath.Join(dir, "audit.ndjson"),
-		Nudge:       nudge.DefaultConfig(),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

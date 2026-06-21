@@ -250,9 +250,8 @@ func TestAuditRecordWrittenOnEveryPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit log not written: %v", err)
 	}
-	// The audit file may contain multiple NDJSON records (e.g. a nudge record
-	// followed by the policy_decision record). Scan line-by-line and look for
-	// the policy_decision record — it must always be present.
+	// The audit file may contain multiple NDJSON records. Scan line-by-line and
+	// look for the policy_decision record — it must always be present.
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
 		t.Fatal("audit log is empty, want at least one record")
@@ -1622,11 +1621,9 @@ func TestCorpusWriteErrorDoesNotChangeExitCode(t *testing.T) {
 // write to a temp file on each iteration, validating the ADJ-01 requirement that
 // the corpus append does NOT add measurable hot-path latency (p99 < 100ms).
 //
-// Tool input uses ReadFile (not a Bash npm-install command) so that the nudge
-// detection subprocess — which shells out to probe pnpm/bun and takes ~2–3s on
-// Windows — is never spawned (evaluateNudge returns false immediately for
-// non-Bash tools). This keeps the timed path to: JSON decode + catalog lookup +
-// policy evaluation + audit write + corpus append; nothing else.
+// Tool input uses ReadFile (not a Bash command) so the timed path is the pure
+// hot path: JSON decode + catalog lookup + policy evaluation + audit write +
+// corpus append; nothing else.
 //
 // The corpus path is under the temp dir passed as cacheDir to runCheck. After the
 // fix that threads cacheDir into writeCorpusRecord, the T-23-04 boundary check
@@ -1659,10 +1656,8 @@ func BenchmarkRunCheck(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// ReadFile tool: not a Bash command, so evaluateNudge returns false
-		// immediately (line 59 of nudge_adapter.go) — no pnpm/bun detection
-		// subprocess is spawned. The tool call is allowed (no catalog hit for
-		// a fictional path), producing a real audit + corpus record each iteration.
+		// ReadFile tool: the tool call is allowed (no catalog hit for a fictional
+		// path), producing a real audit + corpus record each iteration.
 		stdin := strings.NewReader(`{"agent_name":"a","tool_name":"ReadFile","tool_input":{"path":"/bench/fixture/beekeeper-test-file.txt"}}`)
 		runCheck(context.Background(), stdin, cfg, idxPath, filepath.Join(dir, "audit.ndjson"), dir, defaultOpener, io.Discard)
 	}
@@ -1701,12 +1696,8 @@ func buildTestIndexB(b *testing.B, dir string) string {
 // push the hook hot path over the latency budget — the corpus loop is off the
 // synchronous hot path exit-code decision.
 //
-// CRITICAL (Pitfall 3 from 25-RESEARCH.md §LAUNCH-03): the tool input uses ReadFile,
-// NOT a Bash npm-install command. A Bash install input triggers the pnpm/bun nudge
-// detection subprocess (~2–5s on Windows) and would make this gate meaningless.
-// ReadFile returns false from evaluateNudge immediately (non-Bash tool), so the
-// timed path is: JSON decode + catalog lookup + policy eval + audit write + corpus
-// append — nothing else.
+// The tool input uses ReadFile, so the timed path is: JSON decode + catalog
+// lookup + policy eval + audit write + corpus append — nothing else.
 func TestBenchmarkRunCheckGate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("latency gate skipped in -short")
@@ -1822,8 +1813,8 @@ func TestOfflineProtective(t *testing.T) {
 
 	// Well-formed Install input for the flagged package. The direct-shape input
 	// (ecosystem + package + version) triggers catalog lookup immediately — no
-	// Bash command parsing, no nudge subprocess, no OSV HTTP call for
-	// editor-extension. This is the cleanest path to prove a catalog-backed block.
+	// Bash command parsing, no OSV HTTP call for editor-extension. This is the
+	// cleanest path to prove a catalog-backed block.
 	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Install","tool_input":{"ecosystem":"editor-extension","package":"nrwl.angular-console","version":"18.95.0"}}`)
 
 	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), t.TempDir())
@@ -2008,8 +1999,8 @@ func TestRunCheckLocalOverlayEscalates(t *testing.T) {
 	buildOverlayTestIndex(t, cacheDir, overlayEcosystem, overlayPkg)
 
 	// Install tool call targeting the overlay package. Direct-shape input (ecosystem
-	// + package) triggers catalog lookup immediately — no Bash parsing, no nudge
-	// subprocess, no OSV HTTP call for editor-extension.
+	// + package) triggers catalog lookup immediately — no Bash parsing, no OSV
+	// HTTP call for editor-extension.
 	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Install","tool_input":{"ecosystem":"editor-extension","package":"evil.confirmed-malicious-overlay-pkg","version":"1.0.0"}}`)
 	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPathIn(t), cacheDir)
 

@@ -20,8 +20,8 @@ const maxAuditLines = 200
 // AuditPanel implements PanelContent for the audit viewer. Instead of dumping raw
 // NDJSON it renders one structured, color-coded row per record (newest first) and
 // an expandable detail view that shows the DECISION LOGIC: which corroboration
-// sources agreed/dissented, the catalog matches, the rules that fired, any nudge
-// rewrite, the Sentry process/file/network evidence, and the LlamaFirewall result.
+// sources agreed/dissented, the catalog matches, the rules that fired, the
+// Sentry process/file/network evidence, and the LlamaFirewall result.
 //
 // SECURITY: audit fields carry attacker-influenceable content (package names,
 // commands, paths). The legacy raw-JSON view was safe only because json.Marshal
@@ -258,20 +258,18 @@ func (p *AuditPanel) ensureVisible(n, maxRows int) {
 // --- helpers ---
 
 // badgeFor maps a record to a short label and its color. It keys on the record
-// type first (alerts/config/nudge/llmf), then the allow/warn/block decision.
+// type first (alerts/config/llmf), then the allow/warn/block decision.
+//
+// NOTE: the "nudge" and "version_drift" record types were emitted by the
+// package-manager nudge feature, removed in v1.1.0. They are no longer written;
+// any such records left in an old audit log fall through to the decision-based
+// badge below (typically EVENT) rather than getting a dedicated label.
 func badgeFor(rec audit.AuditRecord) (string, lipgloss.Style) {
 	switch rec.RecordType {
 	case "sentry_alert":
 		return "ALERT", styleRed
 	case "config_change":
 		return "CONFIG", styleTeal
-	case "version_drift":
-		return "DRIFT", styleAmber
-	case "nudge":
-		if rec.NudgeAction == "block" {
-			return "NUDGE", styleRed
-		}
-		return "NUDGE", styleAmber
 	case "llmf_alert":
 		if rec.LLMFResult != "" && rec.LLMFResult != "clean" {
 			return "LLMF", styleRed
@@ -292,16 +290,13 @@ func badgeFor(rec audit.AuditRecord) (string, lipgloss.Style) {
 }
 
 // isEnforcementEvent is the "enforced only" filter: a block/warn/alert decision,
-// a Sentry alert, a blocking nudge, a non-clean LlamaFirewall scan, or a quarantine.
+// a Sentry alert, a non-clean LlamaFirewall scan, or a quarantine.
 func isEnforcementEvent(rec audit.AuditRecord) bool {
 	switch rec.Decision {
 	case "block", "warn", "alert":
 		return true
 	}
 	if rec.Quarantine || rec.RecordType == "sentry_alert" {
-		return true
-	}
-	if rec.RecordType == "nudge" && rec.NudgeAction == "block" {
 		return true
 	}
 	if rec.RecordType == "llmf_alert" && rec.LLMFResult != "" && rec.LLMFResult != "clean" {
@@ -320,8 +315,6 @@ func recordSubject(rec audit.AuditRecord, max int) string {
 		if m.Version != "" {
 			s += "@" + m.Version
 		}
-	case rec.OriginalCommand != "":
-		s = rec.OriginalCommand
 	case rec.SentryProcessExe != "":
 		s = rec.SentryProcessExe
 	case rec.SentryCorrelatedExt != "":
@@ -384,12 +377,6 @@ func detailLines(rec audit.AuditRecord) []string {
 		add("  match", fmt.Sprintf("%s · %s:%s@%s · %s · %s",
 			m.CatalogSource, m.Ecosystem, m.Package, m.Version, m.Severity, sig))
 	}
-
-	if rec.NudgeAction != "" {
-		add("nudge", rec.NudgeAction)
-	}
-	add("  original", rec.OriginalCommand)
-	add("  rewritten", rec.RewrittenCommand)
 
 	if rec.SentryRuleName != "" {
 		add("sentry rule", rec.SentryRuleName+" ("+rec.SentrySeverity+")")

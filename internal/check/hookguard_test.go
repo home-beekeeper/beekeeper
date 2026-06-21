@@ -147,11 +147,11 @@ func TestCLIGuard(t *testing.T) {
 		cmd       string
 		wantBlock bool
 	}{
-		{"config set blocked", "beekeeper config set nudge.mode soft", true},
+		{"config set blocked", "beekeeper config set fail_mode open", true},
 		{"hooks uninstall blocked", "beekeeper hooks uninstall --target claude-code", true},
 		{"compound hooks uninstall blocked", "cd /tmp && beekeeper hooks uninstall", true},
 		{"env-prefixed protect install blocked", "FOO=bar beekeeper protect install", true},
-		{"path-prefixed config set blocked", "./beekeeper config set nudge.mode soft", true},
+		{"path-prefixed config set blocked", "./beekeeper config set fail_mode open", true},
 		{"scan allowed", "beekeeper scan", false},
 		{"policy list allowed", "beekeeper policy list", false},
 		{"check allowed", "beekeeper check --hook claude-code", false},
@@ -290,7 +290,7 @@ func TestCLIGuardBlocksIndirectionBypasses(t *testing.T) {
 		wantBlock bool
 	}{
 		{"sh -c double-quoted", `sh -c "beekeeper hooks uninstall --target claude-code"`, true},
-		{"bash -lc single-quoted", `bash -lc 'beekeeper config set nudge.mode soft'`, true},
+		{"bash -lc single-quoted", `bash -lc 'beekeeper config set fail_mode open'`, true},
 		{"sh -c protect uninstall", `sh -c "beekeeper protect uninstall"`, true},
 		{"command substitution $(which)", `$(which beekeeper) hooks uninstall`, true},
 		{"command substitution backtick", "`which beekeeper` hooks uninstall", true},
