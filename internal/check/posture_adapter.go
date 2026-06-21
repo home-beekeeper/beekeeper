@@ -17,13 +17,17 @@
 // posture.BoundaryStatement (internal/posture/boundary.go) - see the handler
 // wiring comment, which references that constant rather than re-typing it.
 //
-// -- Default action = WARN (Gate-1 load-bearing) --------------------------------
+// -- Default action = WARN, opt-up to block per rule (IPOVR-03) -----------------
 // The PRD default posture WARNS; it does not block. The pure EvaluateReleaseAge
 // and EvaluateLifecycle return `block` on a violation - correct for the scan/watch
 // EXTENSION supply-chain path (internal/scan, internal/watch), which is unchanged
-// and remains fail-closed. Here at the hook, posturize() re-maps any "fired"
-// outcome to a WARN decision. Raising a rule to block per ecosystem is roadmap
-// (deep per-rule editing); there is deliberately no severity knob.
+// and remains fail-closed. Here at the hook, posturizeWithAction() re-maps a
+// "fired" outcome to a WARN by default, OR keeps it a BLOCK when the user opted
+// that rule UP to block via cfg.Posture (IPOVR-03, Plan 29-01). The action is
+// resolved per rule via cfg.PostureRuleAction(...); the default (no Posture block)
+// stays warn. An untrusted layer may only tighten warn->block (config layered
+// merge), never loosen. Critically, block applies ONLY to a DEFINITE violation -
+// the unknown/fail-soft path below stays warn even under block (see warnUnknown).
 //
 // -- Fail-SOFT on unknown/timeout (Gate-1 load-bearing) -------------------------
 // Resolving release-age and lifecycle requires a registry fetch. On a missing
@@ -72,11 +76,13 @@ var (
 //   - the Bash command string is absent or empty
 //   - pkgparse.Parse reports !IsInstall (non-install commands never trigger I/O)
 //
-// When ok is true the returned decision is allow when every rule passed, or warn
-// when any rule fired (including warn-unknown on a registry miss). It NEVER
-// returns a block - that is the WARN-default + fail-soft contract above. The
-// caller merges it via mergeDecisions, so a catalog/sensitive-path/self-protect
-// BLOCK still wins (posture can never downgrade a block).
+// When ok is true the returned decision is allow when every rule passed, warn when
+// a rule fired at the default warn action, or BLOCK when a rule fired on a DEFINITE
+// violation AND the user opted that rule UP to block via cfg.Posture (IPOVR-03).
+// The warn-unknown (fail-soft) path NEVER blocks regardless of the configured
+// action. The caller merges this via mergeDecisions (most-restrictive-wins), so a
+// catalog/sensitive-path/self-protect BLOCK still wins and posture can never
+// downgrade another block.
 //
 // client and cacheDir thread the handler's HTTP client and catalogs dir; now is
 // the handler's wall-clock (time.Now().UTC() in production, synthetic in tests).
@@ -88,8 +94,6 @@ func evaluatePosture(
 	cacheDir string,
 	now time.Time,
 ) (policy.Decision, bool) {
-	_ = cfg // reserved: per-rule allowlists/thresholds are roadmap; defaults today.
-
 	if tc.ToolName != "Bash" {
 		return policy.Decision{}, false
 	}
@@ -106,15 +110,22 @@ func evaluatePosture(
 	// Start at allow; any fired rule lifts the result to warn.
 	result := policy.Decision{Allow: true, Level: "allow", Reason: "install posture: clean", RuleIDs: nil}
 
+	// Resolve the per-rule action once (IPOVR-03). Default (no Posture block) is
+	// "warn" for every rule; a trusted layer can opt a rule UP to "block".
+	remoteAction := cfg.PostureRuleAction(config.PostureRuleRemoteSource)
+	ageAction := cfg.PostureRuleAction(config.PostureRuleReleaseAge)
+	lifecycleAction := cfg.PostureRuleAction(config.PostureRuleLifecycle)
+
 	// -- Rule 1: remote source (pure, instant - no I/O) -------------------------
-	// EvaluateRemoteSource already returns warn (never block); posturize is a
-	// no-op for it but applied uniformly for clarity.
+	// EvaluateRemoteSource already returns warn (never block) from the pure
+	// evaluator; posturizeWithAction can still lift a FIRED remote-source rule to a
+	// block when the user opted that rule up. A non-fired (allow) result is unchanged.
 	remoteDec := policy.EvaluateRemoteSource(policy.RemoteSourceInput{
 		Ecosystem: parsed.Ecosystem,
 		Package:   remoteSpec(parsed),
 		Kind:      parsed.RemoteSource,
 	}, policy.DefaultRemoteSourceConfig())
-	result = mergeDecisions(result, posturize(remoteDec))
+	result = mergeDecisions(result, posturizeWithAction(remoteDec, remoteAction))
 
 	// release-age and lifecycle only make sense for a registry package install
 	// (a non-empty Package and no remote-source spec). A git/url/file install has
@@ -150,7 +161,7 @@ func evaluatePosture(
 				AgeMinutes:       ageMinutes,
 				TimestampMissing: false,
 			}, policy.DefaultReleaseAgeConfig())
-			result = mergeDecisions(result, posturize(ageDec))
+			result = mergeDecisions(result, posturizeWithAction(ageDec, ageAction))
 		}
 
 		// -- Rule 3: lifecycle scripts (fail-soft) ------------------------------
@@ -171,26 +182,41 @@ func evaluatePosture(
 				ScriptsPresent:      scripts,
 				RegistryCheckFailed: false,
 			}, nil)
-			result = mergeDecisions(result, posturize(lifeDec))
+			result = mergeDecisions(result, posturizeWithAction(lifeDec, lifecycleAction))
 		}
 	}
 
 	return result, true
 }
 
-// posturize applies the PRD Layer-1 default posture ACTION (warn) to a pure
-// evaluator's decision. If the rule did not fire (d.Allow with Level "allow"),
-// the decision passes through unchanged. If the rule "fired" - the pure
-// evaluators express that as a block (release-age too young, lifecycle scripts
-// present) or as a warn (remote source) - the outcome is normalised to a WARN:
-// Allow:true, Level:"warn". This is the single place the block→warn re-mapping
-// happens, and it is WHY a registry outage at the hook cannot block an install.
+// posturizeWithAction applies the configured per-rule posture ACTION (IPOVR-03) to
+// a pure evaluator's decision over a DEFINITE violation:
 //
-// Enforcement boundary: see the file header / posture.BoundaryStatement. Raising
-// a rule to block per ecosystem is roadmap (no severity knob today).
-func posturize(d policy.Decision) policy.Decision {
+//   - If the rule did NOT fire (d.Allow && d.Level == "allow"), the decision passes
+//     through unchanged (an allow is never lifted to warn or block).
+//   - If the rule FIRED and action == "block", the decision is returned as a BLOCK
+//     (Allow:false, Level:"block") keeping the evaluator's Reason and RuleIDs. This
+//     is the opt-up path: a user (or a tightening untrusted layer) raised this rule.
+//   - Otherwise (the rule fired and action is the default "warn"), the outcome is
+//     normalised to a WARN (Allow:true, Level:"warn") -- the shipped Phase 27 default
+//     and the block->warn re-mapping that keeps the hook fail-soft.
+//
+// This is applied ONLY to a DEFINITE violation (a fired rule on a known input). The
+// unknown/fail-soft path (warnUnknown) does NOT go through here and stays warn even
+// under block -- a registry outage cannot turn into a blocked install.
+//
+// Enforcement boundary: see the file header / posture.BoundaryStatement.
+func posturizeWithAction(d policy.Decision, action string) policy.Decision {
 	if d.Allow && d.Level == "allow" {
-		return d
+		return d // rule did not fire -- never lift an allow
+	}
+	if action == config.PostureActionBlock {
+		return policy.Decision{
+			Allow:   false,
+			Level:   "block",
+			Reason:  d.Reason,
+			RuleIDs: d.RuleIDs,
+		}
 	}
 	return policy.Decision{
 		Allow:   true,
@@ -203,6 +229,12 @@ func posturize(d policy.Decision) policy.Decision {
 // warnUnknown builds the fail-soft "unknown" warn decision used when a registry
 // fetch is missing/errored/timed out. It WARNS rather than blocks - the
 // deliberate divergence from the pure evaluators' fail-closed block.
+//
+// IPOVR-03 invariant: this is INDEPENDENT of the configured per-rule action. Block
+// mode applies only to a DEFINITE violation (see posturizeWithAction); an unknown
+// input always warns, EVEN when the rule is opted up to block. This is the line that
+// keeps a registry outage from breaking installs -- do not route this through
+// posturizeWithAction.
 func warnUnknown(reason, ruleID string) policy.Decision {
 	return policy.Decision{
 		Allow:   true,
