@@ -355,12 +355,24 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	decision = mergeDecisions(decision, evaluateHookGuard(toolCall))
 	decision = mergeDecisions(decision, evaluateCLIGuard(toolCall))
 
-	// NOTE: the former package-manager nudge evaluation ran here (steer npm/yarn
-	// to pnpm/bun). It was removed in v1.1.0 — the steering behavior is gone and
-	// install posture will be re-introduced as a read-only/enforced posture check
-	// in a later phase. The pm-config readers it used now live in
-	// internal/posture. No install posture is wired into the hook at this point;
-	// the catalog, sensitive-path, and self-protection paths above are unchanged.
+	// INSTALL POSTURE (PRD Layer 1, IPST-01/02/03) — runs at the former nudge
+	// position: AFTER self-protection, BEFORE the final deadline check. It replaces
+	// the removed package-manager nudge (the pm-config readers it used now live in
+	// internal/posture). evaluatePosture parses the install command and evaluates
+	// the three posture rules (remote-source / release-age / lifecycle-scripts) at
+	// the WARN default, FAIL-SOFT on registry miss/timeout (a child ctx caps the
+	// fetches). It NEVER returns a block, so mergeDecisions (most-restrictive-wins)
+	// guarantees a catalog, sensitive-path, or self-protection BLOCK above still
+	// wins — posture can only ADD a warn, never downgrade a block.
+	//
+	// Enforcement boundary (IPBND-01): this hook prevents posture violations only
+	// for hooked Tier-1 harnesses and inherits their tier caveats; installs run
+	// outside a hooked tool call are observed/audited by Sentry, not prevented
+	// here. The single source of truth for that statement is
+	// posture.BoundaryStatement (internal/posture) — see posture_adapter.go.
+	if postureDec, ok := evaluatePosture(ctx, toolCall, cfg, httpClient, cacheDir, time.Now().UTC()); ok {
+		decision = mergeDecisions(decision, postureDec)
+	}
 
 	// Final deadline check: if we blew the budget during evaluation, fail closed
 	// rather than emit a possibly-stale allow.

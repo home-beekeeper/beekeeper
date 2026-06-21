@@ -5,6 +5,11 @@ import "fmt"
 // ruleReleaseAge is the rule ID for the release-age policy (PLCY-02).
 const ruleReleaseAge = "release-age-policy"
 
+// RuleReleaseAge is the exported rule ID for the release-age policy, used by the
+// hook posture adapter (internal/check) to tag its fail-soft warn-unknown
+// decisions consistently with EvaluateReleaseAge's own RuleIDs.
+const RuleReleaseAge = ruleReleaseAge
+
 // ReleaseAgeInput carries the caller-resolved publish timestamp for a package.
 // The I/O adapter (internal/catalog/age_cache.go) fetches and caches it; the
 // policy function receives only the resolved duration (pure, no I/O).
