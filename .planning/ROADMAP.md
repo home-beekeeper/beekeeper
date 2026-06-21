@@ -104,7 +104,7 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 - [x] **Phase 27: Layer 1 Hook Enforcement + Sentry Observation** — IPST-01, IPST-02, IPST-03, IPST-06, IPBND-01, NMIG-04. **← Gate 1 PASSED 2026-06-21.** Maintainer ratified the enforcement map + boundary copy + warn/fail-soft default; added IPOVR-03 (users can opt a rule up to block) to v1.0; shim made real (27-03). 4 plans (27-01/02/03 + boundary tighten).
   Goal: wire the posture rules (release-age warn, lifecycle warn, git/remote warn) into the pre-exec hook via the existing engine, replacing the nudge block; have Sentry observe + audit installs as detection-not-prevention; write the canonical boundary statement in code.
   Success: (1) an agent npm install of a <24h version warns at the hook with the reason in the audit record; (2) a lifecycle-script install and a git/remote-URL install each warn with their reason; (3) tier caveats are inherited and documented in code; (4) a Sentry-observed install (incl. human-run) produces an audit record labeled detection; (5) the canonical boundary statement exists in code, ready for Gate 1 review.
-- [ ] **Phase 28: Layer 2 `beekeeper posture` View (read-only)** — IPVIEW-01, IPVIEW-02, IPBND-01
+- [x] **Phase 28: Layer 2 `beekeeper posture` View (read-only)** — IPVIEW-01, IPVIEW-02, IPBND-01 ✅ 2026-06-21 (pure comparison model shared by CLI+TUI; byte-for-byte read-only guarantee test; boundary statement in output; release-age derived from policy default)
   Goal: a machine-wide read-only `beekeeper posture` view (CLI + TUI) that reads each detected pm's config and shows it against Beekeeper's enforced posture, naming gaps.
   Success: (1) `beekeeper posture` shows npm + at least one other ecosystem (pnpm) config vs enforced posture and names the covered gaps; (2) a test asserts the view writes no pm config file; (3) the boundary statement appears in the view output.
 - [ ] **Phase 29: Layer 3 Scoped Override + Per-Rule Severity** — IPOVR-01, IPOVR-02, IPOVR-03
@@ -168,7 +168,7 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 | 25. Launch Readiness | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 26. Nudge Removal & Posture Rule Foundation | v1.5.0 | 2/2 | Complete | 2026-06-21 |
 | 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 4/4 | Complete — **Gate 1 PASSED** (+ IPOVR-03 added to v1.0) | 2026-06-21 |
-| 28. Layer 2 `beekeeper posture` View | v1.5.0 | 0/? | Not started | — |
+| 28. Layer 2 `beekeeper posture` View | v1.5.0 | 1/1 | Complete | 2026-06-21 |
 | 29. Layer 3 Scoped Override | v1.5.0 | 0/? | Not started | — |
 | 30. Docs, Home Page & Boundary Statements | v1.5.0 | 0/? | Not started | — |
 | 31. Test, Coverage & E2E + CI Matrix (Gate 2 after) | v1.5.0 | 0/? | Not started | — |
