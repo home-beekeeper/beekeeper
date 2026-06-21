@@ -18,14 +18,13 @@ package posture
 // BoundaryStatement is the full canonical enforcement-boundary statement.
 const BoundaryStatement = "Install posture is enforced pre-execution at the agent hook for hooked " +
 	"harnesses that support it, inheriting each harness tier's caveats. For " +
-	"harnesses with no pre-exec hook and for installs a person runs directly in a " +
+	"harnesses with no pre-exec hook, and for installs a person runs directly in a " +
 	"terminal, it is observed and audited by the Sentry layer rather than " +
-	"prevented. The MCP gateway is not a general install surface. The " +
-	"package-manager shim extends this same pre-exec enforcement to installs a " +
-	"person runs directly in a terminal, but it is experimental and limited: it " +
-	"only covers package managers invoked through the shimmed PATH, it can be " +
-	"bypassed by calling a tool by its absolute path, and it requires adding the " +
-	"shim directory to your PATH. It is not a headline v1.0 guarantee."
+	"prevented, unless the experimental package-manager shim is installed. The MCP " +
+	"gateway is not a general install surface. The shim extends pre-exec " +
+	"enforcement to installs run through the shimmed PATH, but it is limited: it " +
+	"can be bypassed by calling a tool by its absolute path, and it requires adding " +
+	"the shim directory to your PATH. It is not a headline v1.0 guarantee."
 
 // BoundaryShort is the one-line short form for help text and compact UI.
 const BoundaryShort = "Posture is prevented at the hook for hooked harnesses, and experimentally at the PATH shim for human-run installs; everything else Sentry observes and audits without preventing."
