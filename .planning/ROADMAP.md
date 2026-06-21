@@ -19,7 +19,8 @@
 - ✅ **v1.4.0 — "Adjudicated Corpus (Local Loop)"** — Phases 22–25 (shipped 2026-06-15)
   Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). Requirements: [`milestones/v1.4.0-REQUIREMENTS.md`](milestones/v1.4.0-REQUIREMENTS.md). Audit: RESOLVED — found the FRB-05 enforcement BLOCKER, fixed same-day at close ([`milestones/v1.4.0-MILESTONE-AUDIT.md`](milestones/v1.4.0-MILESTONE-AUDIT.md)).
 
-- 📋 **Next milestone (after v1.4.0)** — TBD (carried candidates below; v1.1.0 Pollen resume is independent)
+- 🔨 **v1.5.0 — "Install Posture"** — Phases 26–31 (ACTIVE; ships publicly as release `v1.1.0`)
+  Goal: retire the package-manager nudge and ship tool-agnostic install posture (default posture enforced at the hook, a read-only machine-wide posture view, scoped audited overrides), honest about its enforcement boundaries. Scope source: [`beekeeper-install-posture-prd.md`](../beekeeper-install-posture-prd.md). Requirements: [`REQUIREMENTS.md`](REQUIREMENTS.md). *Internal milestone number is v1.5.0 to avoid colliding with the parked v1.1.0 "Pollen" GSD milestone; the release tag is v1.1.0.*
 
 ## Phases
 
@@ -93,6 +94,29 @@ Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). The
 
 </details>
 
+### 🔨 v1.5.0 Install Posture (Phases 26–31) — ACTIVE — ships as release v1.1.0
+
+Retire the nudge; ship tool-agnostic install posture with honest enforcement boundaries. PRD: `beekeeper-install-posture-prd.md`. Two human gates: **Gate 1** (enforcement-boundary review) after Phase 27; **Gate 2** (release signing) after Phase 31.
+
+- [ ] **Phase 26: Nudge Removal & Posture Rule Foundation** — NMIG-01, NMIG-02, NMIG-04, IPST-04, IPST-05
+  Goal: remove the nudge steering (preserving release-age + the pm-config readers), add the new git/remote-URL pure detection, repoint the shim. Pure-library layer only; no behavior wired to the hook yet.
+  Success: (1) the `beekeeper nudge` CLI, `config set nudge.*`, the steer-to-pnpm/Bun copy, and `ensureNudgeBlockDefault` are gone; (2) `pkgparse` + a pure policy evaluator detect git/remote/URL/file install specs with unit tests; (3) `internal/nudge/detect.go` + `scanners.go` are relocated (not deleted) under the posture package; (4) build + vet green, pure-import purity tests still pass; (5) the shim builds and routes through `beekeeper check`.
+- [ ] **Phase 27: Layer 1 Hook Enforcement + Sentry Observation** — IPST-01, IPST-02, IPST-03, IPST-06, IPBND-01. **← Gate 1**
+  Goal: wire the posture rules (release-age warn, lifecycle warn, git/remote warn) into the pre-exec hook via the existing engine, replacing the nudge block; have Sentry observe + audit installs as detection-not-prevention; write the canonical boundary statement in code.
+  Success: (1) an agent npm install of a <24h version warns at the hook with the reason in the audit record; (2) a lifecycle-script install and a git/remote-URL install each warn with their reason; (3) tier caveats are inherited and documented in code; (4) a Sentry-observed install (incl. human-run) produces an audit record labeled detection; (5) the canonical boundary statement exists in code, ready for Gate 1 review.
+- [ ] **Phase 28: Layer 2 `beekeeper posture` View (read-only)** — IPVIEW-01, IPVIEW-02, IPBND-01
+  Goal: a machine-wide read-only `beekeeper posture` view (CLI + TUI) that reads each detected pm's config and shows it against Beekeeper's enforced posture, naming gaps.
+  Success: (1) `beekeeper posture` shows npm + at least one other ecosystem (pnpm) config vs enforced posture and names the covered gaps; (2) a test asserts the view writes no pm config file; (3) the boundary statement appears in the view output.
+- [ ] **Phase 29: Layer 3 Scoped Override** — IPOVR-01, IPOVR-02
+  Goal: on a posture decision, offer allow-once / allow-always-with-recorded-reason / block; each writes a scoped audit entry; allow-always persists via the existing policy overlay.
+  Success: (1) the three graduated responses are offered (CLI + TUI incident card); (2) each produces the correct distinct audit-log entry; (3) allow-always persists as a scoped overlay entry and is honored on the next matching install.
+- [ ] **Phase 30: Docs, Home Page & Boundary Statements** — IPBND-02, NMIG-03, REL-01 (prep)
+  Goal: bring the docs current to the shipped feature, propagate the boundary statement everywhere, replace the home "Agent safety" nudge bullet, remove nudge copy, and prepare the release (version → v1.1.0, changelog).
+  Success: (1) install-posture docs + posture-view usage + boundary statement land, no roadmap item documented as shipped; (2) the home bullet is replaced with install-posture framing + the npm v12 obsolescence note; (3) all steer-to-pnpm/Bun copy is gone; (4) version bumped to v1.1.0 and changelog updated with a roadmap note for the deferred layers.
+- [ ] **Phase 31: Test, Coverage & E2E + CI Matrix** — IPST/IPVIEW/IPOVR test coverage, REL-01 (finalize). **← Gate 2 after**
+  Goal: complete the test/coverage/E2E bar and get local (Win+WSL) + CI matrix green; produce a coverage report with honest gaps named.
+  Success: (1) every posture rule + decision branch + tier-caveat path has a behavior-asserting test; release-age/lifecycle/git boundary conditions covered; (2) each scoped-override path asserts its audit entry; the view read-only and observed-install audit are tested; (3) E2E proves agent-install-blocked-at-hook-with-reason+audit, human-install-observed-not-blocked, and the view across npm + one other; (4) coverage report with deliberate gaps documented; (5) local + CI matrix green.
+
 ## Carried Candidates for the Next Milestone
 
 - Live external `beekeeper-self` hosting (separate host + signing key) + end-to-end refuse-to-run validation; independent external security review + VDP publication (from v1.0.0).
@@ -142,3 +166,9 @@ Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). The
 | 23. Corpus Store & Adjudication Engine | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 24. First Responder Corpus Binding | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 25. Launch Readiness | v1.4.0 | 3/3 | Complete | 2026-06-14 |
+| 26. Nudge Removal & Posture Rule Foundation | v1.5.0 | 0/? | Not started | — |
+| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 0/? | Not started | — |
+| 28. Layer 2 `beekeeper posture` View | v1.5.0 | 0/? | Not started | — |
+| 29. Layer 3 Scoped Override | v1.5.0 | 0/? | Not started | — |
+| 30. Docs, Home Page & Boundary Statements | v1.5.0 | 0/? | Not started | — |
+| 31. Test, Coverage & E2E + CI Matrix (Gate 2 after) | v1.5.0 | 0/? | Not started | — |
