@@ -115,6 +115,8 @@ func newRootCmd() *cobra.Command {
 		newHooksCmd(),
 		newGatewayCmd(),
 		newShimCmd(),
+		// Phase 28: read-only install-posture view (IPVIEW-01/02, IPBND-01).
+		newPostureCmd(),
 		newAuditRecordCmd(),
 		newProtectCmd(),
 		newSentryCmd(),
