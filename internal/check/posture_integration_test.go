@@ -9,7 +9,20 @@ import (
 	"testing"
 
 	"github.com/home-beekeeper/beekeeper/internal/catalog"
+	"github.com/home-beekeeper/beekeeper/internal/config"
 )
+
+// closedBlockReleaseAgeConfig is a fail-closed config that opts the release-age
+// posture rule UP to block (IPOVR-03). Used to prove the LIVE hook blocks a
+// definite release-age violation while the unknown path stays fail-soft warn.
+func closedBlockReleaseAgeConfig() config.Config {
+	return config.Config{
+		FailMode: config.FailModeClosed,
+		Posture: &config.PostureConfig{
+			ReleaseAge: config.PostureRuleConfig{Action: config.PostureActionBlock},
+		},
+	}
+}
 
 // buildBlockingNPMIndex writes an index with a SIGNED critical entry for an npm
 // package so that a Bash `npm install <pkg>` triggers a genuine catalog BLOCK
@@ -152,6 +165,102 @@ func TestRunCheckPostureCannotDowngradeCatalogBlock(t *testing.T) {
 	}
 	if res.Decision.Level != "block" {
 		t.Fatalf("Level = %q, want block (posture warn cannot downgrade); decision: %+v", res.Decision.Level, res.Decision)
+	}
+
+	rec := readPolicyDecisionRecord(t, auditPath)
+	if rec["decision"] != "block" {
+		t.Fatalf("audit decision = %v, want block; record: %+v", rec["decision"], rec)
+	}
+}
+
+// TestRunCheckPostureBlockModeBlocksFreshPackage is the IPOVR-03 live-path proof
+// (test the PATH not the component): with release-age opted UP to block, a Bash
+// `npm install <fresh-pkg>` drives the real RunCheck and must BLOCK (exit non-zero)
+// on a DEFINITE <24h violation. This is the new opt-up capability.
+func TestRunCheckPostureBlockModeBlocksFreshPackage(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // <24h, definite violation
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir) // unsigned editor entry -> no npm catalog match
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-posture-blockmode-xyz-not-real@1.0.0"}}`)
+
+	res := RunCheck(context.Background(), stdin, closedBlockReleaseAgeConfig(), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitBlock {
+		t.Fatalf("ExitCode = %d, want %d (release-age opted up to block must block a <24h package)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow {
+		t.Fatalf("Allow = true, want false (block mode); decision: %+v", res.Decision)
+	}
+	if res.Decision.Level != "block" {
+		t.Fatalf("Level = %q, want block; decision: %+v", res.Decision.Level, res.Decision)
+	}
+
+	rec := readPolicyDecisionRecord(t, auditPath)
+	if rec["decision"] != "block" {
+		t.Fatalf("audit decision = %v, want block; record: %+v", rec["decision"], rec)
+	}
+}
+
+// TestRunCheckPostureBlockModeMissingTimestampStillWarns proves the IPOVR-03
+// fail-soft invariant on the LIVE path: EVEN with release-age opted up to block, a
+// MISSING publish timestamp (unknown input) must WARN (exit 0), not block. A
+// registry outage cannot break a build even under block mode.
+func TestRunCheckPostureBlockModeMissingTimestampStillWarns(t *testing.T) {
+	stubPostureFetchers(t, 0, true, nil, nil, false, nil) // timestamp missing (unknown)
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-posture-blockmode-missing-xyz-not-real@1.0.0"}}`)
+
+	res := RunCheck(context.Background(), stdin, closedBlockReleaseAgeConfig(), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitAllow {
+		t.Fatalf("ExitCode = %d, want %d (unknown stays fail-soft warn even under block mode)", res.ExitCode, exitAllow)
+	}
+	if !res.Decision.Allow {
+		t.Fatalf("Allow = false, want true (fail-soft warn); decision: %+v", res.Decision)
+	}
+	if res.Decision.Level == "block" {
+		t.Fatalf("Level = block, want warn (unknown stays fail-soft even under block mode); decision: %+v", res.Decision)
+	}
+
+	rec := readPolicyDecisionRecord(t, auditPath)
+	if rec["decision"] == "block" {
+		t.Fatalf("audit decision = block, want a non-block warn (fail-soft unknown); record: %+v", rec)
+	}
+}
+
+// TestRunCheckPostureBlockModeCannotDowngradeCatalogBlock proves most-restrictive
+// merge still holds with block mode active: a catalog block + a posture block both
+// fire; the result is a block whose reason is the CATALOG reason (the catalog block
+// is merged first and a posture block cannot downgrade it). Asserts both block and
+// the catalog rule survives.
+func TestRunCheckPostureBlockModeCannotDowngradeCatalogBlock(t *testing.T) {
+	const blockedPkg = "beekeeper-posture-blockmode-catalog-not-real"
+	stubPostureFetchers(t, 10, false, nil, nil, false, nil) // fresh -> posture release-age fires (block under this cfg)
+
+	dir := t.TempDir()
+	idxPath := buildBlockingNPMIndex(t, dir, blockedPkg)
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install ` + blockedPkg + `@1.0.0"}}`)
+
+	res := RunCheck(context.Background(), stdin, closedBlockReleaseAgeConfig(), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitBlock {
+		t.Fatalf("ExitCode = %d, want %d (catalog block must hold)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow || res.Decision.Level != "block" {
+		t.Fatalf("decision = %+v, want a block (catalog wins, posture cannot downgrade)", res.Decision)
+	}
+	// The catalog block is merged BEFORE posture; most-restrictive merge keeps the
+	// first block's reason, so the catalog block (not the posture block) is surfaced.
+	if !strings.Contains(strings.ToLower(res.Decision.Reason), "catalog") &&
+		!strings.Contains(strings.ToLower(res.Decision.Reason), "corrobor") &&
+		!strings.Contains(strings.ToLower(res.Decision.Reason), "block") {
+		t.Errorf("block reason = %q, expected the catalog block reason to win", res.Decision.Reason)
 	}
 
 	rec := readPolicyDecisionRecord(t, auditPath)

@@ -46,6 +46,103 @@ func runPosture(t *testing.T, tc policy.ToolCall) (policy.Decision, bool) {
 	return evaluatePosture(context.Background(), tc, config.Config{}, &http.Client{}, t.TempDir(), postureNow)
 }
 
+// runPostureCfg runs evaluatePosture with an explicit config (IPOVR-03 per-rule
+// action overrides).
+func runPostureCfg(t *testing.T, tc policy.ToolCall, cfg config.Config) (policy.Decision, bool) {
+	t.Helper()
+	return evaluatePosture(context.Background(), tc, cfg, &http.Client{}, t.TempDir(), postureNow)
+}
+
+// blockReleaseAgeCfg returns a config that opts the release-age rule UP to block.
+func blockReleaseAgeCfg() config.Config {
+	return config.Config{Posture: &config.PostureConfig{
+		ReleaseAge: config.PostureRuleConfig{Action: config.PostureActionBlock},
+	}}
+}
+
+// TestPostureBlockModeBlocksFreshPackage: with release-age opted up to block, a
+// <24h package on a DEFINITE violation BLOCKS (Allow:false, Level:block).
+func TestPostureBlockModeBlocksFreshPackage(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // 30 min old, definite violation
+	dec, ok := runPostureCfg(t, bashInstall("npm install left-pad@1.0.0"), blockReleaseAgeCfg())
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if dec.Allow || dec.Level != "block" {
+		t.Fatalf("decision = %+v, want Allow:false Level:block (release-age opted up to block on a <24h package)", dec)
+	}
+}
+
+// TestPostureBlockModeMissingTimestampStillWarns: the IPOVR-03 fail-soft invariant
+// at the adapter level. With release-age opted up to block, a MISSING timestamp
+// (unknown input) still WARNS, never blocks -- a registry outage cannot turn into a
+// blocked install even under block mode.
+func TestPostureBlockModeMissingTimestampStillWarns(t *testing.T) {
+	stubPostureFetchers(t, 0, true, nil, nil, false, nil) // timestamp missing (unknown)
+	dec, ok := runPostureCfg(t, bashInstall("npm install left-pad@1.0.0"), blockReleaseAgeCfg())
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec.Allow || dec.Level == "block" {
+		t.Fatalf("decision = %+v, want a non-block warn (unknown stays fail-soft even under block mode)", dec)
+	}
+}
+
+// TestPostureBlockModeRegistryErrorStillWarns: a registry error under block mode
+// still warns (fail-soft), never blocks.
+func TestPostureBlockModeRegistryErrorStillWarns(t *testing.T) {
+	stubPostureFetchers(t, 0, false, context.DeadlineExceeded, nil, false, nil)
+	dec, ok := runPostureCfg(t, bashInstall("npm install left-pad@1.0.0"), blockReleaseAgeCfg())
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec.Allow || dec.Level == "block" {
+		t.Fatalf("decision = %+v, want a non-block warn on registry error even under block mode", dec)
+	}
+}
+
+// TestPostureBlockModeOldCleanPackageAllows: block mode does NOT block a clean
+// install -- only a fired rule. An old, script-free package still allows.
+func TestPostureBlockModeOldCleanPackageAllows(t *testing.T) {
+	stubPostureFetchers(t, 100000, false, nil, nil, false, nil) // old, clean
+	dec, ok := runPostureCfg(t, bashInstall("npm install lodash@4.17.21"), blockReleaseAgeCfg())
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec.Allow || dec.Level != "allow" {
+		t.Fatalf("decision = %+v, want Allow:true Level:allow (block mode never blocks a clean install)", dec)
+	}
+}
+
+// TestPostureDefaultNoConfigStillWarns: with no Posture config at all, a fresh
+// package still WARNS (the default is unchanged by this plan).
+func TestPostureDefaultNoConfigStillWarns(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil)
+	dec, ok := runPostureCfg(t, bashInstall("npm install left-pad@1.0.0"), config.Config{})
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec.Allow || dec.Level != "warn" {
+		t.Fatalf("decision = %+v, want Allow:true Level:warn (default unchanged: fresh package warns)", dec)
+	}
+}
+
+// TestPostureBlockModeOnlyAffectsOptedRule: with ONLY lifecycle opted up to block, a
+// fresh-package release-age violation still WARNS (release-age left at warn).
+func TestPostureBlockModeOnlyAffectsOptedRule(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // fresh (release-age fires), no lifecycle scripts
+	cfg := config.Config{Posture: &config.PostureConfig{
+		Lifecycle: config.PostureRuleConfig{Action: config.PostureActionBlock},
+	}}
+	dec, ok := runPostureCfg(t, bashInstall("npm install left-pad@1.0.0"), cfg)
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec.Allow || dec.Level != "warn" {
+		t.Fatalf("decision = %+v, want Allow:true Level:warn (only lifecycle is opted up; release-age stays warn)", dec)
+	}
+}
+
 // TestPostureFreshPackageWarns: a <24h package produces a WARN (age below
 // minimum), Allow:true (exit 0, does not block).
 func TestPostureFreshPackageWarns(t *testing.T) {
@@ -187,24 +284,64 @@ func TestPostureSkipsNonInstall(t *testing.T) {
 	}
 }
 
-// TestPosturizeAllowPassesThrough: posturize leaves an allow unchanged.
+// TestPosturizeAllowPassesThrough: posturizeWithAction leaves an allow unchanged,
+// even under the block action (an allow is never lifted).
 func TestPosturizeAllowPassesThrough(t *testing.T) {
 	in := policy.Decision{Allow: true, Level: "allow", Reason: "ok", RuleIDs: []string{"x"}}
-	out := posturize(in)
-	if out.Level != "allow" || !out.Allow {
-		t.Fatalf("posturize(allow) = %+v, want unchanged allow", out)
+	for _, action := range []string{config.PostureActionWarn, config.PostureActionBlock, ""} {
+		out := posturizeWithAction(in, action)
+		if out.Level != "allow" || !out.Allow {
+			t.Fatalf("posturizeWithAction(allow, %q) = %+v, want unchanged allow", action, out)
+		}
 	}
 }
 
-// TestPosturizeBlockBecomesWarn: posturize re-maps a pure-evaluator BLOCK to a
-// WARN (Allow:true) - the WARN-default contract.
+// TestPosturizeBlockBecomesWarn: with the default warn action, posturizeWithAction
+// re-maps a pure-evaluator BLOCK to a WARN (Allow:true) - the WARN-default contract.
 func TestPosturizeBlockBecomesWarn(t *testing.T) {
 	in := policy.Decision{Allow: false, Level: "block", Reason: "too young", RuleIDs: []string{"release-age-policy"}}
-	out := posturize(in)
+	out := posturizeWithAction(in, config.PostureActionWarn)
 	if !out.Allow || out.Level != "warn" {
-		t.Fatalf("posturize(block) = %+v, want Allow:true Level:warn (default posture is warn)", out)
+		t.Fatalf("posturizeWithAction(block, warn) = %+v, want Allow:true Level:warn (default posture is warn)", out)
 	}
 	if out.Reason != in.Reason {
-		t.Errorf("posturize dropped reason: got %q want %q", out.Reason, in.Reason)
+		t.Errorf("posturizeWithAction dropped reason: got %q want %q", out.Reason, in.Reason)
+	}
+}
+
+// TestPosturizeBlockActionKeepsBlock: with action=block, posturizeWithAction keeps a
+// fired rule a BLOCK (Allow:false), preserving the evaluator reason and rule IDs.
+// This is the IPOVR-03 opt-up path.
+func TestPosturizeBlockActionKeepsBlock(t *testing.T) {
+	in := policy.Decision{Allow: false, Level: "block", Reason: "too young", RuleIDs: []string{"release-age-policy"}}
+	out := posturizeWithAction(in, config.PostureActionBlock)
+	if out.Allow || out.Level != "block" {
+		t.Fatalf("posturizeWithAction(block, block) = %+v, want Allow:false Level:block (opted up)", out)
+	}
+	if out.Reason != in.Reason {
+		t.Errorf("posturizeWithAction(block) dropped reason: got %q want %q", out.Reason, in.Reason)
+	}
+	if len(out.RuleIDs) != 1 || out.RuleIDs[0] != "release-age-policy" {
+		t.Errorf("posturizeWithAction(block) dropped rule IDs: got %v", out.RuleIDs)
+	}
+}
+
+// TestPosturizeWarnActionKeepsRemoteWarn: a remote-source rule fires as a warn
+// (not a block) from the pure evaluator; under the warn action it stays a warn.
+func TestPosturizeWarnActionKeepsRemoteWarn(t *testing.T) {
+	in := policy.Decision{Allow: true, Level: "warn", Reason: "remote source", RuleIDs: []string{"remote-source-policy"}}
+	out := posturizeWithAction(in, config.PostureActionWarn)
+	if !out.Allow || out.Level != "warn" {
+		t.Fatalf("posturizeWithAction(remote-warn, warn) = %+v, want Allow:true Level:warn", out)
+	}
+}
+
+// TestPosturizeBlockActionLiftsRemoteWarn: a fired remote-source warn is lifted to
+// a BLOCK when that rule is opted up to block (a fired rule, definite violation).
+func TestPosturizeBlockActionLiftsRemoteWarn(t *testing.T) {
+	in := policy.Decision{Allow: true, Level: "warn", Reason: "remote source", RuleIDs: []string{"remote-source-policy"}}
+	out := posturizeWithAction(in, config.PostureActionBlock)
+	if out.Allow || out.Level != "block" {
+		t.Fatalf("posturizeWithAction(remote-warn, block) = %+v, want Allow:false Level:block (opted up)", out)
 	}
 }
