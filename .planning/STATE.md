@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-06-15 -- v1.4.0 milestone close)
 
 ## Current Position
 
-Phase: 27 — Layer 1 Hook Enforcement + Sentry Observation (Gate 1 at end)
-Plan: planning 27-01
-Status: Phase 26 ✅ complete & verified (nudge removed; git/remote rule + posture pkg added). Wiring posture into the hook next.
-Last activity: 2026-06-21 — Phase 26 complete (3 commits, all signed); independently re-verified green. NEXT: plan + execute Phase 27 (wire release-age + lifecycle + git/remote posture rules into the check hook at WARN default via catalog I/O adapters; Sentry observes installs as detection; write the canonical boundary statement) → STOP at Gate 1 (maintainer enforcement-boundary review).
+Phase: 27 — Layer 1 Hook Enforcement + Sentry Observation — ✅ IMPLEMENTED + VERIFIED, ⏸ AT GATE 1
+Plan: 27-01 + 27-02 executed (gsd-executor) before a power cut; resumed, independently re-verified + reviewed + style-cleaned.
+Status: ⏸ STOPPED AT GATE 1 — awaiting maintainer enforcement-boundary review before propagating the boundary copy to docs/home (Phase 30) and building Layers 2-3 (Phases 28-29). All Phase 26-27 work committed + signed on feat/install-posture-foundation; build/vet/full-suite green; live-path security properties proven.
+Last activity: 2026-06-21 — Phase 27 reached Gate 1. Presented the enforcement map, the exact posture.BoundaryStatement copy, and the two PRD divergences (warn+fail-soft default; shim kept-and-repointed) to the maintainer. NEXT after approval: Phase 28 (beekeeper posture read-only view).
 
 ## Phase Summary (v1.5.0 — Install Posture, ships as v1.1.0)
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 26 | Nudge Removal & Posture Rule Foundation | NMIG-01/02/04, IPST-04/05 | ✅ Complete & verified 2026-06-21 (26-01 new git/remote-URL pure rule by orchestrator; 26-02 nudge removal + relocate pm-config readers→internal/posture + shim repoint by gsd-executor, independently re-verified: build+vet+full suite+fuzz green, grep gates clean, handler.go merge chain + layered.go untrusted invariants intact, frozen audit schema preserved). Commits 4451a1f, 347e3cd, fe1c692 |
-| 27 | Layer 1 Hook Enforcement + Sentry Observation (**Gate 1**) | IPST-01/02/03/06, IPBND-01 | 🔨 In progress |
+| 27 | Layer 1 Hook Enforcement + Sentry Observation (**Gate 1**) | IPST-01/02/03/06, IPBND-01 | ✅ Implemented + verified, ⏸ AWAITING GATE 1 (maintainer enforcement-boundary review) 2026-06-21. 27-01 cached lifecycle adapter + posture hook adapter (warn default, fail-soft, latency-bounded, never blocks) wired at the former nudge position; 27-02 SENTRY-009 detection-only install observation (cross-platform) + canonical posture.BoundaryStatement. Independently re-verified after power-cut: build+vet+full suite green; live-path RunCheck integration tests prove fresh→warn, missing-timestamp→warn-not-block (under fail-closed), catalog-block survives posture warn (most-restrictive). Em-dashes stripped from new code. Commits 5275296, f575365, 391c4b4, 58921ff, 6387b20 |
 | 28 | Layer 2 `beekeeper posture` View | IPVIEW-01/02, IPBND-01 | ⬜ Not started |
 | 29 | Layer 3 Scoped Override | IPOVR-01/02 | ⬜ Not started |
 | 30 | Docs, Home Page & Boundary Statements | IPBND-02, NMIG-03, REL-01 (prep) | ⬜ Not started |
