@@ -61,13 +61,16 @@ func TestDetectStateParallelProbes(t *testing.T) {
 		return "", errors.New("slow probe → not installed")
 	}
 
+	origNpm := npmVersionFn
 	origPnpm := pnpmVersionFn
 	origBun := bunVersionFn
 	origNode := nodeVersionFn
+	npmVersionFn = blocker
 	pnpmVersionFn = blocker
 	bunVersionFn = blocker
 	nodeVersionFn = blocker
 	defer func() {
+		npmVersionFn = origNpm
 		pnpmVersionFn = origPnpm
 		bunVersionFn = origBun
 		nodeVersionFn = origNode
@@ -84,7 +87,7 @@ func TestDetectStateParallelProbes(t *testing.T) {
 	}
 
 	// Fail-open preserved: every PM reports not installed.
-	if state.PnpmInstalled || state.BunInstalled || state.NodeVersion != "" {
+	if state.NpmInstalled || state.PnpmInstalled || state.BunInstalled || state.NodeVersion != "" {
 		t.Errorf("fail-open violated: %+v — slow probes must yield 'not installed'", state)
 	}
 }

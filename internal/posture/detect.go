@@ -55,6 +55,16 @@ var detectionTimeout = 3 * time.Second
 // FIXED argv only — "pnpm"/"bun"/"node", "--version". No user-controlled path or
 // argument is ever passed.
 
+var npmVersionFn = func(ctx context.Context) (string, error) {
+	cctx, cancel := context.WithTimeout(ctx, detectionTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, "npm", "--version").Output()
+	if err != nil {
+		return "", err // timeout (DeadlineExceeded) or not-found → "not installed"
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 var pnpmVersionFn = func(ctx context.Context) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, detectionTimeout)
 	defer cancel()
@@ -101,9 +111,9 @@ var nodeVersionFn = func(ctx context.Context) (string, error) {
 // probes complete.
 func DetectState(ctx context.Context, cfg Config) PMState {
 	var (
-		wg                       sync.WaitGroup
-		pnpmVer, bunVer, nodeVer string
-		pnpmErr, bunErr, nodeErr error
+		wg                               sync.WaitGroup
+		npmVer, pnpmVer, bunVer, nodeVer string
+		npmErr, pnpmErr, bunErr, nodeErr error
 	)
 	probe := func(fn func(context.Context) (string, error), ver *string, errp *error) {
 		defer wg.Done()
@@ -117,13 +127,22 @@ func DetectState(ctx context.Context, cfg Config) PMState {
 		}()
 		*ver, *errp = fn(ctx)
 	}
-	wg.Add(3)
+	wg.Add(4)
+	go probe(npmVersionFn, &npmVer, &npmErr)
 	go probe(pnpmVersionFn, &pnpmVer, &pnpmErr)
 	go probe(bunVersionFn, &bunVer, &bunErr)
 	go probe(nodeVersionFn, &nodeVer, &nodeErr)
 	wg.Wait()
 
 	var state PMState
+
+	// Detect npm. npm has no install-time hardening of its own; the posture view
+	// reports the detected version side-by-side with Beekeeper's enforced posture.
+	if npmErr == nil && npmVer != "" {
+		state.NpmInstalled = true
+		state.NpmVersion = npmVer
+	}
+	// On npmVersionFn error/timeout: NpmInstalled=false, proceed (fail-open).
 
 	// Detect pnpm.
 	if pnpmErr == nil && pnpmVer != "" {
@@ -165,6 +184,22 @@ func DetectState(ctx context.Context, cfg Config) PMState {
 	// On nodeVersionFn error/timeout: NodeVersion="", proceed (fail-open).
 
 	return state
+}
+
+// PnpmWeaknessNote reads pnpm-workspace.yaml at the current working directory and
+// returns a short human-readable note when an explicit hardening WEAKNESS is
+// present (e.g. minimumReleaseAge set below the 1440-minute baseline, or
+// blockExoticSubdeps disabled). It returns "" when no weakness is detected or the
+// file is absent. This is READ-ONLY: it only reads the workspace file via the
+// injectable readFileFn and never writes anything. It exists so the posture view
+// (BuildComparison) can be honest about a downgraded pnpm without the impure read
+// leaking into the pure view model.
+func PnpmWeaknessNote() string {
+	hr := DetectPnpmHardening(pnpmWorkspacePath())
+	if hr.WeaknessLogged {
+		return "Hardening downgraded in pnpm-workspace.yaml."
+	}
+	return ""
 }
 
 // probePanicError wraps a value recovered from a panicking version-fn so that a
