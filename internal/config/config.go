@@ -358,7 +358,37 @@ type PostureRuleConfig struct {
 	Action string `json:"action,omitempty"`
 }
 
-// PostureConfig holds the per-rule install-posture severity overrides (IPOVR-03).
+// PostureAllow is one scoped "allow always" standing exception for the install
+// posture (IPOVR-01/02, Plan 29-02). It exempts a package from the named posture
+// rule (or every posture rule when Rule is "") so that rule stops firing for that
+// package at the pre-exec hook.
+//
+// SECURITY (load-bearing, T-09-31): this is a POSTURE-SCOPED allowlist. It is
+// consumed ONLY by the posture adapter (evaluatePosture), which threads matching
+// entries into the per-rule Exclude/allowlist of the pure evaluators
+// (EvaluateReleaseAge / EvaluateLifecycle / EvaluateRemoteSource). It is NEVER
+// fed into ApplyPolicyOverlay or the catalog/corroboration path. A posture
+// allow-always therefore silences a posture WARN but can never downgrade a
+// catalog-corroborated malware block for the same package -- unlike the general
+// package_allowlist policy rule, which IS a user-trust override that downgrades a
+// catalog block. Do not reuse package_allowlist for posture allow-always.
+type PostureAllow struct {
+	// Ecosystem narrows the entry to one ecosystem (e.g. "npm"). Empty matches any
+	// ecosystem (the package name alone is the key).
+	Ecosystem string `json:"ecosystem,omitempty"`
+	// Package is the registry package name (or install spec) being exempted. It is
+	// required; an entry with an empty Package matches nothing.
+	Package string `json:"package"`
+	// Rule scopes the exemption to one posture rule: "" (all rules), "release-age",
+	// "lifecycle", or "git-remote". Validated by ValidatePostureConfig.
+	Rule string `json:"rule,omitempty"`
+	// Reason is the operator-recorded justification (PRD: allow-always records a
+	// reason). Redacted in the audit trail like other reason fields.
+	Reason string `json:"reason,omitempty"`
+}
+
+// PostureConfig holds the per-rule install-posture severity overrides (IPOVR-03)
+// and the scoped allow-always standing exceptions (IPOVR-01/02, Plan 29-02).
 //
 // Each rule defaults to warn (the shipped Phase 27 default). A user may opt an
 // individual rule UP to block via a trusted layer; an untrusted (project/env) layer
@@ -366,7 +396,7 @@ type PostureRuleConfig struct {
 //
 // The field is a POINTER on Config so the layered merge can distinguish an absent
 // block (nil -> all rules default to warn) from an explicit override, exactly like
-// CatalogSync and AutoQuarantine. The scoped allow list is added in Plan 29-02.
+// CatalogSync and AutoQuarantine.
 type PostureConfig struct {
 	// ReleaseAge overrides the action for the release-age rule (package younger
 	// than the configured minimum).
@@ -377,6 +407,12 @@ type PostureConfig struct {
 	// RemoteSource overrides the action for the git/remote-source rule (install
 	// from a git/url/file spec rather than a registry package).
 	RemoteSource PostureRuleConfig `json:"remote_source,omitempty"`
+	// Allow is the posture-scoped allow-always list (IPOVR-01/02). Each entry
+	// exempts a package from one or all posture rules. Adding an entry LOOSENS the
+	// posture, so entries flow from TRUSTED layers only -- mergePostureUntrusted
+	// DROPS src.Allow (an untrusted project/env layer may not add an exemption).
+	// This list NEVER touches catalog/corroboration enforcement (see PostureAllow).
+	Allow []PostureAllow `json:"allow,omitempty"`
 }
 
 // DefaultPostureConfig returns the documented default: every rule warns. A missing
@@ -401,9 +437,22 @@ func validPostureAction(a string) bool {
 	}
 }
 
+// validPostureRule reports whether r is an accepted posture rule scope for a
+// PostureAllow entry. "" means "all posture rules"; the three named rules scope
+// the exemption to one rule. Anything else is rejected fail-closed at load time.
+func validPostureRule(r string) bool {
+	switch r {
+	case "", PostureRuleReleaseAge, PostureRuleLifecycle, PostureRuleRemoteSource:
+		return true
+	default:
+		return false
+	}
+}
+
 // ValidatePostureConfig checks pc fail-closed (mirrors ValidateAutoQuarantineConfig).
 // Any rule Action outside {"", "warn", "block"} is rejected so a typo or a bogus
 // value cannot silently land somewhere undefined -- the load fails loudly instead.
+// Each Allow entry must name a real package and a valid Rule scope (IPOVR-01/02).
 func ValidatePostureConfig(pc PostureConfig) error {
 	for rule, action := range map[string]string{
 		PostureRuleReleaseAge:   pc.ReleaseAge.Action,
@@ -415,7 +464,58 @@ func ValidatePostureConfig(pc PostureConfig) error {
 				rule, action, PostureActionWarn, PostureActionBlock)
 		}
 	}
+	for i, a := range pc.Allow {
+		if a.Package == "" {
+			return fmt.Errorf("invalid posture allow entry %d: package is required", i)
+		}
+		if !validPostureRule(a.Rule) {
+			return fmt.Errorf("invalid posture allow entry %d: rule %q (want %q, %q, %q, or %q)",
+				i, a.Rule, "", PostureRuleReleaseAge, PostureRuleLifecycle, PostureRuleRemoteSource)
+		}
+	}
 	return nil
+}
+
+// PostureRuleExcludes returns the list of package names exempted from the named
+// posture rule by the scoped allow-always list (IPOVR-01/02). An entry matches
+// when (a) its Rule is "" (all rules) or equals rule, AND (b) its Ecosystem is ""
+// (any) or equals ecosystem. The returned names feed the per-rule Exclude/allowlist
+// of the pure evaluators in the posture adapter; they NEVER touch catalog/
+// corroboration enforcement. nil-safe: a nil Posture block returns nil.
+func (c Config) PostureRuleExcludes(rule, ecosystem string) []string {
+	if c.Posture == nil || len(c.Posture.Allow) == 0 {
+		return nil
+	}
+	var out []string
+	for _, a := range c.Posture.Allow {
+		if a.Package == "" {
+			continue
+		}
+		if a.Rule != "" && a.Rule != rule {
+			continue
+		}
+		if a.Ecosystem != "" && a.Ecosystem != ecosystem {
+			continue
+		}
+		out = append(out, a.Package)
+	}
+	return out
+}
+
+// AddPostureAllow appends a scoped allow-always entry to the Posture block,
+// creating the block if absent. It is idempotent: an entry with the same
+// (Ecosystem, Package, Rule) tuple is not duplicated (the Reason of the existing
+// entry is left unchanged). Used by `beekeeper posture allow --always`.
+func (c *Config) AddPostureAllow(entry PostureAllow) {
+	if c.Posture == nil {
+		c.Posture = &PostureConfig{}
+	}
+	for _, a := range c.Posture.Allow {
+		if a.Ecosystem == entry.Ecosystem && a.Package == entry.Package && a.Rule == entry.Rule {
+			return
+		}
+	}
+	c.Posture.Allow = append(c.Posture.Allow, entry)
 }
 
 // PostureRuleAction returns the effective action ("warn" by default) for the given

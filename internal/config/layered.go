@@ -917,6 +917,13 @@ func mergePosture(dst, src *PostureConfig) *PostureConfig {
 	if src.RemoteSource.Action != "" {
 		out.RemoteSource.Action = src.RemoteSource.Action
 	}
+	// Allow (IPOVR-01/02): the scoped allow-always list is additive. From a TRUSTED
+	// layer, src entries are appended to the lower layer's entries (a higher trusted
+	// layer can add standing exemptions). Untrusted layers DROP Allow entirely (see
+	// mergePostureUntrusted) because adding an allow LOOSENS the posture.
+	if len(src.Allow) > 0 {
+		out.Allow = append(append([]PostureAllow(nil), dst.Allow...), src.Allow...)
+	}
 	return &out
 }
 
@@ -932,13 +939,30 @@ func mergePostureUntrusted(dst, src *PostureConfig, layerName string) *PostureCo
 	if src == nil {
 		return dst
 	}
+	// Allow (IPOVR-01/02): an untrusted layer may NOT add a scoped allow-always
+	// entry. Adding an allow LOOSENS the posture (it silences a rule for a package),
+	// so a poisoned project/env config must never introduce an exemption. Drop
+	// src.Allow with a warning whenever the untrusted layer tries to add one.
+	if len(src.Allow) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"beekeeper: ignoring %d posture.allow entr(ies) from %s config layer (security: an untrusted layer cannot add an allow)\n",
+			len(src.Allow), layerName)
+	}
 	if dst == nil {
-		// No trusted baseline to protect -- adopt src as-is (it can only tighten
-		// relative to the warn default, since the only stricter value is block).
-		cp := *src
-		return &cp
+		// No trusted baseline to protect -- adopt src's per-rule ACTIONS as-is (they
+		// can only tighten relative to the warn default). Allow is DROPPED: an
+		// untrusted layer never contributes a standing exemption.
+		out := PostureConfig{
+			ReleaseAge:   src.ReleaseAge,
+			Lifecycle:    src.Lifecycle,
+			RemoteSource: src.RemoteSource,
+			// Allow intentionally omitted (dropped from the untrusted layer).
+		}
+		return &out
 	}
 	out := *dst
+	// Preserve the trusted lower layer's Allow list unchanged; never append src's.
+	out.Allow = append([]PostureAllow(nil), dst.Allow...)
 	out.ReleaseAge.Action = tightenPostureAction(dst.ReleaseAge.Action, src.ReleaseAge.Action, PostureRuleReleaseAge, layerName)
 	out.Lifecycle.Action = tightenPostureAction(dst.Lifecycle.Action, src.Lifecycle.Action, PostureRuleLifecycle, layerName)
 	out.RemoteSource.Action = tightenPostureAction(dst.RemoteSource.Action, src.RemoteSource.Action, PostureRuleRemoteSource, layerName)

@@ -110,11 +110,37 @@ func evaluatePosture(
 	// Start at allow; any fired rule lifts the result to warn.
 	result := policy.Decision{Allow: true, Level: "allow", Reason: "install posture: clean", RuleIDs: nil}
 
+	// Allow-once (IPOVR-01): a one-shot token for this (ecosystem, package) consumes
+	// the WHOLE posture evaluation for this install. Checked and CONSUMED (removed)
+	// BEFORE any rule fires, so the very next matching install allows and the one
+	// after warns again. The store lives next to the catalogs dir under stateDir;
+	// it is owner-only and fail-open on a read error (a corrupt convenience store
+	// must not block an install). consumeAllowOnce is the only write the adapter
+	// makes, and only on a match.
+	if parsed.Package != "" && consumeAllowOnceFn(postureStateDir(cacheDir), parsed.Ecosystem, parsed.Package) {
+		return policy.Decision{
+			Allow:   true,
+			Level:   "allow",
+			Reason:  "install posture: allow-once token consumed for " + parsed.Package,
+			RuleIDs: nil,
+		}, true
+	}
+
 	// Resolve the per-rule action once (IPOVR-03). Default (no Posture block) is
 	// "warn" for every rule; a trusted layer can opt a rule UP to "block".
 	remoteAction := cfg.PostureRuleAction(config.PostureRuleRemoteSource)
 	ageAction := cfg.PostureRuleAction(config.PostureRuleReleaseAge)
 	lifecycleAction := cfg.PostureRuleAction(config.PostureRuleLifecycle)
+
+	// Resolve the per-rule allow-always excludes once (IPOVR-02). A scoped
+	// allow-always entry (cfg.Posture.Allow) feeds the Exclude/allowlist of the
+	// matching pure evaluator so an allowlisted package stops firing THAT posture
+	// rule. SECURITY: these excludes are confined to the pure posture evaluators -
+	// they never reach the catalog/corroboration path, so allow-always can silence a
+	// posture warn but can never bypass a malware block (T-09-31).
+	remoteExcludes := cfg.PostureRuleExcludes(config.PostureRuleRemoteSource, parsed.Ecosystem)
+	ageExcludes := cfg.PostureRuleExcludes(config.PostureRuleReleaseAge, parsed.Ecosystem)
+	lifecycleExcludes := cfg.PostureRuleExcludes(config.PostureRuleLifecycle, parsed.Ecosystem)
 
 	// -- Rule 1: remote source (pure, instant - no I/O) -------------------------
 	// EvaluateRemoteSource already returns warn (never block) from the pure
@@ -124,7 +150,7 @@ func evaluatePosture(
 		Ecosystem: parsed.Ecosystem,
 		Package:   remoteSpec(parsed),
 		Kind:      parsed.RemoteSource,
-	}, policy.DefaultRemoteSourceConfig())
+	}, policy.RemoteSourceConfig{Exclude: remoteExcludes})
 	result = mergeDecisions(result, posturizeWithAction(remoteDec, remoteAction))
 
 	// release-age and lifecycle only make sense for a registry package install
@@ -155,12 +181,14 @@ func evaluatePosture(
 				policy.RuleReleaseAge,
 			))
 		} else {
+			ageCfg := policy.DefaultReleaseAgeConfig()
+			ageCfg.Exclude = ageExcludes
 			ageDec := policy.EvaluateReleaseAge(policy.ReleaseAgeInput{
 				Ecosystem:        parsed.Ecosystem,
 				Package:          parsed.Package,
 				AgeMinutes:       ageMinutes,
 				TimestampMissing: false,
-			}, policy.DefaultReleaseAgeConfig())
+			}, ageCfg)
 			result = mergeDecisions(result, posturizeWithAction(ageDec, ageAction))
 		}
 
@@ -181,7 +209,7 @@ func evaluatePosture(
 				Package:             parsed.Package,
 				ScriptsPresent:      scripts,
 				RegistryCheckFailed: false,
-			}, nil)
+			}, lifecycleExcludes)
 			result = mergeDecisions(result, posturizeWithAction(lifeDec, lifecycleAction))
 		}
 	}
