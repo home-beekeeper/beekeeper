@@ -269,6 +269,117 @@ func TestRunCheckPostureBlockModeCannotDowngradeCatalogBlock(t *testing.T) {
 	}
 }
 
+// allowAlwaysConfig returns a fail-closed config with a posture-scoped
+// allow-always entry for pkg (all rules, npm) -- mirrors `beekeeper posture allow
+// <pkg> --always`. SECURITY: this is config.Posture.Allow, NOT package_allowlist.
+func allowAlwaysConfig(pkg string) config.Config {
+	return config.Config{
+		FailMode: config.FailModeClosed,
+		Posture: &config.PostureConfig{
+			Allow: []config.PostureAllow{{Ecosystem: "npm", Package: pkg, Reason: "vetted by operator"}},
+		},
+	}
+}
+
+// TestRunCheckPostureAllowAlwaysAllowsFreshPackage is the IPOVR-02 live-path proof
+// (test the PATH not the component): a posture allow-always for a fresh (<24h)
+// package makes the LIVE hook ALLOW it (no posture warn), while a non-allowlisted
+// fresh package still warns.
+func TestRunCheckPostureAllowAlwaysAllowsFreshPackage(t *testing.T) {
+	const pkg = "beekeeper-posture-allowalways-fresh-not-real"
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // <24h, no lifecycle scripts
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir) // unsigned editor entry -> no npm catalog match
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install ` + pkg + `@1.0.0"}}`)
+
+	res := RunCheck(context.Background(), stdin, allowAlwaysConfig(pkg), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitAllow {
+		t.Fatalf("ExitCode = %d, want %d (a posture allow-always for the package must allow)", res.ExitCode, exitAllow)
+	}
+	if !res.Decision.Allow || res.Decision.Level != "allow" {
+		t.Fatalf("decision = %+v, want Allow:true Level:allow (allow-always exempts the fresh package)", res.Decision)
+	}
+}
+
+// TestRunCheckPostureAllowAlwaysDoesNotBypassCatalogBlock is THE load-bearing
+// security-distinction test (T-09-31): a posture allow-always for package X makes
+// a <24h X install ALLOW on the posture rules, BUT a CATALOG-blocked X still
+// BLOCKS. The posture-scoped allow-always never bypasses malware enforcement.
+//
+// If allow-always had (wrongly) reused package_allowlist, ApplyPolicyOverlay would
+// treat the entry as a user-trust override and DOWNGRADE the catalog block to an
+// allow -- this test would then fail (exit 0). It must stay a block (exit non-zero).
+func TestRunCheckPostureAllowAlwaysDoesNotBypassCatalogBlock(t *testing.T) {
+	const pkg = "beekeeper-posture-allowalways-catalog-not-real"
+	// Fresh package: WITHOUT the catalog block, posture would warn; WITH the
+	// allow-always, posture allows. The catalog block must still win regardless.
+	stubPostureFetchers(t, 10, false, nil, nil, false, nil)
+
+	dir := t.TempDir()
+	idxPath := buildBlockingNPMIndex(t, dir, pkg) // signed critical npm entry -> catalog block
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install ` + pkg + `@1.0.0"}}`)
+
+	// allow-always for the SAME package X.
+	res := RunCheck(context.Background(), stdin, allowAlwaysConfig(pkg), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitBlock {
+		t.Fatalf("ExitCode = %d, want %d -- a posture allow-always must NOT bypass a catalog malware block (T-09-31)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow || res.Decision.Level != "block" {
+		t.Fatalf("decision = %+v, want a block (catalog enforcement is untouched by posture allow-always)", res.Decision)
+	}
+
+	rec := readPolicyDecisionRecord(t, auditPath)
+	if rec["decision"] != "block" {
+		t.Fatalf("audit decision = %v, want block; record: %+v", rec["decision"], rec)
+	}
+}
+
+// TestRunCheckPostureAllowOnceConsumedThenWarns is the IPOVR-01 live-path proof: a
+// recorded one-shot token allows the NEXT matching install on the live hook, and
+// the SUBSEQUENT identical install warns again (token consumed). A shared cacheDir
+// across both RunCheck calls exercises the real on-disk consume.
+func TestRunCheckPostureAllowOnceConsumedThenWarns(t *testing.T) {
+	const pkg = "beekeeper-posture-allowonce-not-real"
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // fresh package -> would warn
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+
+	stateDir := t.TempDir()
+	cacheDir := filepath.Join(stateDir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		t.Fatalf("mkdir cacheDir: %v", err)
+	}
+	if err := AddAllowOnce(stateDir, "npm", pkg, "trying once"); err != nil {
+		t.Fatalf("AddAllowOnce: %v", err)
+	}
+
+	cmdJSON := `{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install ` + pkg + `@1.0.0"}}`
+
+	// First install consumes the one-shot token -> allow.
+	res1 := RunCheck(context.Background(), strings.NewReader(cmdJSON), closedConfig(), idxPath, auditPathIn(t), cacheDir)
+	if res1.ExitCode != exitAllow {
+		t.Fatalf("first install ExitCode = %d, want %d (one-shot token allows)", res1.ExitCode, exitAllow)
+	}
+	if res1.Decision.Level != "allow" {
+		t.Fatalf("first install Level = %q, want allow (one-shot token consumed); decision: %+v", res1.Decision.Level, res1.Decision)
+	}
+
+	// Second install: token gone -> the fresh package warns again.
+	res2 := RunCheck(context.Background(), strings.NewReader(cmdJSON), closedConfig(), idxPath, auditPathIn(t), cacheDir)
+	if res2.ExitCode != exitAllow {
+		t.Fatalf("second install ExitCode = %d, want %d (warn does not block)", res2.ExitCode, exitAllow)
+	}
+	if res2.Decision.Level != "warn" {
+		t.Fatalf("second install Level = %q, want warn (token already consumed); decision: %+v", res2.Decision.Level, res2.Decision)
+	}
+}
+
 // TestRunCheckShimShapeEnforcesPosture proves the shim now actually enforces.
 // A shim invocation (beekeeper check --tool npm --args install <pkg>) is
 // reconstructed by buildShimToolCall (cmd/beekeeper) into exactly this shape:

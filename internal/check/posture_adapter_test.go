@@ -3,6 +3,8 @@ package check
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -343,5 +345,99 @@ func TestPosturizeBlockActionLiftsRemoteWarn(t *testing.T) {
 	out := posturizeWithAction(in, config.PostureActionBlock)
 	if out.Allow || out.Level != "block" {
 		t.Fatalf("posturizeWithAction(remote-warn, block) = %+v, want Allow:false Level:block (opted up)", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Scoped allow-always (IPOVR-02): a posture-scoped Allow entry feeds the per-rule
+// Exclude of the pure evaluator so the package stops firing THAT posture rule.
+// ---------------------------------------------------------------------------
+
+// allowAlwaysCfg returns a config with a posture-scoped allow-always entry for pkg
+// (all rules, npm) -- mirrors what `beekeeper posture allow --always` records.
+func allowAlwaysCfg(pkg string) config.Config {
+	return config.Config{Posture: &config.PostureConfig{
+		Allow: []config.PostureAllow{{Ecosystem: "npm", Package: pkg, Reason: "vetted"}},
+	}}
+}
+
+// TestPostureAllowAlwaysExemptsFreshPackage: a fresh (<24h) package that is
+// posture-allowlisted ALLOWS (no warn) while a non-allowlisted fresh package still
+// WARNS. Proves the Exclude wiring reaches the release-age evaluator.
+func TestPostureAllowAlwaysExemptsFreshPackage(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // fresh, no lifecycle scripts
+
+	// Allowlisted fresh package -> allow.
+	dec, ok := runPostureCfg(t, bashInstall("npm install vetted-fresh@1.0.0"), allowAlwaysCfg("vetted-fresh"))
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec.Allow || dec.Level != "allow" {
+		t.Fatalf("allowlisted fresh package decision = %+v, want Allow:true Level:allow (posture allow-always exempts it)", dec)
+	}
+
+	// A DIFFERENT fresh package (not allowlisted) still warns under the same config.
+	dec2, ok := runPostureCfg(t, bashInstall("npm install other-fresh@1.0.0"), allowAlwaysCfg("vetted-fresh"))
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec2.Allow || dec2.Level != "warn" {
+		t.Fatalf("non-allowlisted fresh package decision = %+v, want Allow:true Level:warn (only the allowlisted package is exempt)", dec2)
+	}
+}
+
+// TestPostureAllowAlwaysRuleScoped: a release-age-scoped allow-always exempts the
+// release-age rule but NOT the lifecycle rule -- a fresh package with lifecycle
+// scripts still warns on the lifecycle rule.
+func TestPostureAllowAlwaysRuleScoped(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, []string{"postinstall"}, false, nil) // fresh AND lifecycle scripts
+	cfg := config.Config{Posture: &config.PostureConfig{
+		Allow: []config.PostureAllow{{Ecosystem: "npm", Package: "scoped-pkg", Rule: config.PostureRuleReleaseAge, Reason: "r"}},
+	}}
+	dec, ok := runPostureCfg(t, bashInstall("npm install scoped-pkg@1.0.0"), cfg)
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	// release-age is exempted, but lifecycle scripts still fire -> warn (not allow).
+	if !dec.Allow || dec.Level != "warn" {
+		t.Fatalf("decision = %+v, want Allow:true Level:warn (release-age exempt but lifecycle still warns)", dec)
+	}
+}
+
+// TestPostureAllowOnceConsumedThenWarns drives the allow-once path through the
+// adapter: with a one-shot token recorded, the first matching install ALLOWS, and
+// (the token consumed) the next identical install WARNS again. The store lives
+// under the parent of cacheDir, so a shared cacheDir across both calls exercises
+// the real consume.
+func TestPostureAllowOnceConsumedThenWarns(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // fresh package -> would warn
+
+	stateDir := t.TempDir()
+	cacheDir := filepath.Join(stateDir, "catalogs")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		t.Fatalf("mkdir cacheDir: %v", err)
+	}
+	if err := AddAllowOnce(stateDir, "npm", "once-pkg", "trying once"); err != nil {
+		t.Fatalf("AddAllowOnce: %v", err)
+	}
+
+	tc := bashInstall("npm install once-pkg@1.0.0")
+
+	// First install consumes the token -> allow.
+	dec1, ok := evaluatePosture(context.Background(), tc, config.Config{}, &http.Client{}, cacheDir, postureNow)
+	if !ok {
+		t.Fatal("first install: ok = false, want true")
+	}
+	if !dec1.Allow || dec1.Level != "allow" {
+		t.Fatalf("first install decision = %+v, want Allow:true Level:allow (one-shot token consumed)", dec1)
+	}
+
+	// Second install: token gone -> the fresh package warns again.
+	dec2, ok := evaluatePosture(context.Background(), tc, config.Config{}, &http.Client{}, cacheDir, postureNow)
+	if !ok {
+		t.Fatal("second install: ok = false, want true")
+	}
+	if !dec2.Allow || dec2.Level != "warn" {
+		t.Fatalf("second install decision = %+v, want Allow:true Level:warn (token already consumed, warns again)", dec2)
 	}
 }
