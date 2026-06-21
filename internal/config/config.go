@@ -327,6 +327,125 @@ func (c Config) AutoQuarantineThreshold() int {
 	return parseClampAutoQuarantineThreshold(c.AutoQuarantine.Threshold)
 }
 
+// Posture rule action values. "" is treated as the default (warn). "warn" is the
+// shipped default posture (surface, do not block). "block" opts the rule UP to a
+// hard block on a DEFINITE violation (IPOVR-03). The unknown/fail-soft path in the
+// check adapter always warns regardless of this value (a registry outage cannot
+// turn into a blocked install even when a rule is set to block).
+const (
+	PostureActionWarn  = "warn"
+	PostureActionBlock = "block"
+)
+
+// Posture rule names. These are the stable, user-facing keys used in config and by
+// the accessor PostureRuleAction. They are intentionally distinct from the internal
+// policy rule IDs (release-age-policy / lifecycle-script-policy / remote-source-policy)
+// so the config surface stays decoupled from the pure evaluator rule IDs.
+const (
+	PostureRuleReleaseAge   = "release-age"
+	PostureRuleLifecycle    = "lifecycle"
+	PostureRuleRemoteSource = "git-remote"
+)
+
+// PostureRuleConfig holds the per-rule install-posture severity override (IPOVR-03).
+//
+// Action is "" (treated as warn) | "warn" | "block". A user opts a rule UP to block
+// by setting Action:"block"; that blocks a DEFINITE violation (release age below
+// threshold, lifecycle scripts present, remote source present). The unknown path
+// (missing timestamp / registry error / fetch timeout) STAYS fail-soft warn even
+// under block -- that mapping lives in the check adapter, not here.
+type PostureRuleConfig struct {
+	Action string `json:"action,omitempty"`
+}
+
+// PostureConfig holds the per-rule install-posture severity overrides (IPOVR-03).
+//
+// Each rule defaults to warn (the shipped Phase 27 default). A user may opt an
+// individual rule UP to block via a trusted layer; an untrusted (project/env) layer
+// may only TIGHTEN a rule warn->block, never loosen block->warn (mergePostureUntrusted).
+//
+// The field is a POINTER on Config so the layered merge can distinguish an absent
+// block (nil -> all rules default to warn) from an explicit override, exactly like
+// CatalogSync and AutoQuarantine. The scoped allow list is added in Plan 29-02.
+type PostureConfig struct {
+	// ReleaseAge overrides the action for the release-age rule (package younger
+	// than the configured minimum).
+	ReleaseAge PostureRuleConfig `json:"release_age,omitempty"`
+	// Lifecycle overrides the action for the lifecycle-script rule (package carries
+	// install lifecycle scripts).
+	Lifecycle PostureRuleConfig `json:"lifecycle,omitempty"`
+	// RemoteSource overrides the action for the git/remote-source rule (install
+	// from a git/url/file spec rather than a registry package).
+	RemoteSource PostureRuleConfig `json:"remote_source,omitempty"`
+}
+
+// DefaultPostureConfig returns the documented default: every rule warns. A missing
+// "posture" block resolves to this value (all-warn, fail-soft -- the Phase 27 default).
+func DefaultPostureConfig() PostureConfig {
+	return PostureConfig{
+		ReleaseAge:   PostureRuleConfig{Action: PostureActionWarn},
+		Lifecycle:    PostureRuleConfig{Action: PostureActionWarn},
+		RemoteSource: PostureRuleConfig{Action: PostureActionWarn},
+	}
+}
+
+// validPostureAction reports whether a is an accepted posture action.
+// "" is accepted (resolves to warn in the accessor); "warn" and "block" are the
+// only non-empty legal values. Anything else is rejected fail-closed at load time.
+func validPostureAction(a string) bool {
+	switch a {
+	case "", PostureActionWarn, PostureActionBlock:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidatePostureConfig checks pc fail-closed (mirrors ValidateAutoQuarantineConfig).
+// Any rule Action outside {"", "warn", "block"} is rejected so a typo or a bogus
+// value cannot silently land somewhere undefined -- the load fails loudly instead.
+func ValidatePostureConfig(pc PostureConfig) error {
+	for rule, action := range map[string]string{
+		PostureRuleReleaseAge:   pc.ReleaseAge.Action,
+		PostureRuleLifecycle:    pc.Lifecycle.Action,
+		PostureRuleRemoteSource: pc.RemoteSource.Action,
+	} {
+		if !validPostureAction(action) {
+			return fmt.Errorf("invalid posture %s action %q (want %q or %q)",
+				rule, action, PostureActionWarn, PostureActionBlock)
+		}
+	}
+	return nil
+}
+
+// PostureRuleAction returns the effective action ("warn" by default) for the given
+// posture rule name (PostureRuleReleaseAge / PostureRuleLifecycle /
+// PostureRuleRemoteSource). It is nil-safe: a nil Posture block, an unknown rule
+// name, or an empty Action all resolve to "warn" (the shipped default). The check
+// adapter calls this per rule and applies block only when this returns "block" AND
+// the rule fired on a DEFINITE violation.
+func (c Config) PostureRuleAction(rule string) string {
+	resolve := func(action string) string {
+		if action == PostureActionBlock {
+			return PostureActionBlock
+		}
+		return PostureActionWarn
+	}
+	if c.Posture == nil {
+		return PostureActionWarn
+	}
+	switch rule {
+	case PostureRuleReleaseAge:
+		return resolve(c.Posture.ReleaseAge.Action)
+	case PostureRuleLifecycle:
+		return resolve(c.Posture.Lifecycle.Action)
+	case PostureRuleRemoteSource:
+		return resolve(c.Posture.RemoteSource.Action)
+	default:
+		return PostureActionWarn
+	}
+}
+
 // CorpusConfig holds Phase 22+ corpus configuration (SCHEMA-01/02/05).
 //
 // Follows the same pattern as AuditConfig. This block is additive and backward-
@@ -429,6 +548,15 @@ type Config struct {
 	// defines the type and config shape only; no decision behavior is changed in
 	// Phase 22 (store wiring is Phase 23, T-22-04).
 	Corpus CorpusConfig `json:"corpus,omitempty"`
+
+	// Posture holds the per-rule install-posture severity overrides (IPOVR-03,
+	// Plan 29-01). A nil pointer means the block was absent; the accessor
+	// PostureRuleAction resolves nil (and any unset rule) to "warn" -- the shipped
+	// Phase 27 default. An explicit block is validated fail-closed via
+	// ValidatePostureConfig so a bogus action is rejected at load time. An untrusted
+	// (project/env) layer may only TIGHTEN a rule warn->block, never loosen
+	// (mergePostureUntrusted) -- the IPOVR-03 self-defense invariant.
+	Posture *PostureConfig `json:"posture,omitempty"`
 }
 
 // CorpusDownstreamCleanDays returns the downstream_clean rolling window in days.
@@ -530,6 +658,16 @@ func Load(path string) (Config, error) {
 	// than silently accepted (symmetry with the AutoQuarantine check above).
 	if err := ValidateCorpusConfig(cfg.Corpus); err != nil {
 		return Config{}, fmt.Errorf("invalid corpus config: %w", err)
+	}
+
+	// IPOVR-03: resolve the Posture block -- absent (nil) leaves nil (the accessor
+	// PostureRuleAction resolves nil to "warn"); present -> validated fail-closed via
+	// ValidatePostureConfig so a bogus per-rule action is rejected here rather than
+	// silently landing somewhere undefined.
+	if cfg.Posture != nil {
+		if err := ValidatePostureConfig(*cfg.Posture); err != nil {
+			return Config{}, fmt.Errorf("invalid posture config: %w", err)
+		}
 	}
 
 	return cfg, nil
