@@ -355,7 +355,7 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	decision = mergeDecisions(decision, evaluateHookGuard(toolCall))
 	decision = mergeDecisions(decision, evaluateCLIGuard(toolCall))
 
-	// INSTALL POSTURE (PRD Layer 1, IPST-01/02/03) — runs at the former nudge
+	// INSTALL POSTURE (PRD Layer 1, IPST-01/02/03): runs at the former nudge
 	// position: AFTER self-protection, BEFORE the final deadline check. It replaces
 	// the removed package-manager nudge (the pm-config readers it used now live in
 	// internal/posture). evaluatePosture parses the install command and evaluates
@@ -363,13 +363,13 @@ func runCheck(ctx context.Context, stdin io.Reader, cfg config.Config, indexPath
 	// the WARN default, FAIL-SOFT on registry miss/timeout (a child ctx caps the
 	// fetches). It NEVER returns a block, so mergeDecisions (most-restrictive-wins)
 	// guarantees a catalog, sensitive-path, or self-protection BLOCK above still
-	// wins — posture can only ADD a warn, never downgrade a block.
+	// wins, so posture can only ADD a warn, never downgrade a block.
 	//
 	// Enforcement boundary (IPBND-01): this hook prevents posture violations only
 	// for hooked Tier-1 harnesses and inherits their tier caveats; installs run
 	// outside a hooked tool call are observed/audited by Sentry, not prevented
 	// here. The single source of truth for that statement is
-	// posture.BoundaryStatement (internal/posture) — see posture_adapter.go.
+	// posture.BoundaryStatement (internal/posture), see posture_adapter.go.
 	if postureDec, ok := evaluatePosture(ctx, toolCall, cfg, httpClient, cacheDir, time.Now().UTC()); ok {
 		decision = mergeDecisions(decision, postureDec)
 	}

@@ -1,34 +1,34 @@
-// Package check — impure install-posture adapter (PRD Layer 1, IPST-01/02/03).
+// Package check - impure install-posture adapter (PRD Layer 1, IPST-01/02/03).
 //
 // This file wires the three install-posture rules into the pre-exec hook, where
 // the package-manager nudge used to sit (removed in v1.1.0). It is the impure
-// adapter — it does the registry I/O and applies the configured posture action —
+// adapter - it does the registry I/O and applies the configured posture action -
 // while the rules themselves stay pure in internal/policy (EvaluateReleaseAge,
 // EvaluateLifecycle, EvaluateRemoteSource). This mirrors paths.go's role for the
 // sensitive-path feature and the old nudge_adapter.go's role for the nudge.
 //
-// ── Enforcement boundary (IPBND-01) ────────────────────────────────────────────
+// -- Enforcement boundary (IPBND-01) --------------------------------------------
 // Posture is enforced PRE-EXEC at the agent hook for hooked (Tier-1) harnesses
 // only, inheriting each harness tier's caveats. Installs run OUTSIDE a hooked
 // tool call are OBSERVED and AUDITED by the Sentry layer, not prevented here. The
 // MCP gateway is not a general install surface, and the package-manager shim that
 // would extend pre-exec enforcement to every install is experimental/roadmap, not
 // a headline guarantee. The single source of truth for this statement is
-// posture.BoundaryStatement (internal/posture/boundary.go) — see the handler
+// posture.BoundaryStatement (internal/posture/boundary.go) - see the handler
 // wiring comment, which references that constant rather than re-typing it.
 //
-// ── Default action = WARN (Gate-1 load-bearing) ────────────────────────────────
+// -- Default action = WARN (Gate-1 load-bearing) --------------------------------
 // The PRD default posture WARNS; it does not block. The pure EvaluateReleaseAge
-// and EvaluateLifecycle return `block` on a violation — correct for the scan/watch
+// and EvaluateLifecycle return `block` on a violation - correct for the scan/watch
 // EXTENSION supply-chain path (internal/scan, internal/watch), which is unchanged
 // and remains fail-closed. Here at the hook, posturize() re-maps any "fired"
 // outcome to a WARN decision. Raising a rule to block per ecosystem is roadmap
 // (deep per-rule editing); there is deliberately no severity knob.
 //
-// ── Fail-SOFT on unknown/timeout (Gate-1 load-bearing) ─────────────────────────
+// -- Fail-SOFT on unknown/timeout (Gate-1 load-bearing) -------------------------
 // Resolving release-age and lifecycle requires a registry fetch. On a missing
 // publish timestamp, an unsupported ecosystem, a registry error, or a fetch
-// timeout, posture WARNS ("release age unknown" / "lifecycle scripts unknown") —
+// timeout, posture WARNS ("release age unknown" / "lifecycle scripts unknown") -
 // it does NOT block. This is a DELIBERATE divergence from the pure evaluators'
 // fail-closed block (which stays for the extension path). Rationale: the PRD's
 // explicit goal is "do not break the build"; the primary malware defense is the
@@ -50,7 +50,7 @@ import (
 
 // postureFetchTimeout caps the registry I/O for a single posture evaluation.
 // It is applied as a child context derived from the handler ctx, so posture can
-// never blow the hook budget — on deadline the rule warns-unknown (fail-soft)
+// never blow the hook budget - on deadline the rule warns-unknown (fail-soft)
 // and moves on. ~2.5s leaves slack under the 8s hook deadline even when both the
 // release-age and lifecycle fetches miss the cache.
 const postureFetchTimeout = 2500 * time.Millisecond
@@ -74,7 +74,7 @@ var (
 //
 // When ok is true the returned decision is allow when every rule passed, or warn
 // when any rule fired (including warn-unknown on a registry miss). It NEVER
-// returns a block — that is the WARN-default + fail-soft contract above. The
+// returns a block - that is the WARN-default + fail-soft contract above. The
 // caller merges it via mergeDecisions, so a catalog/sensitive-path/self-protect
 // BLOCK still wins (posture can never downgrade a block).
 //
@@ -106,7 +106,7 @@ func evaluatePosture(
 	// Start at allow; any fired rule lifts the result to warn.
 	result := policy.Decision{Allow: true, Level: "allow", Reason: "install posture: clean", RuleIDs: nil}
 
-	// ── Rule 1: remote source (pure, instant — no I/O) ─────────────────────────
+	// -- Rule 1: remote source (pure, instant - no I/O) -------------------------
 	// EvaluateRemoteSource already returns warn (never block); posturize is a
 	// no-op for it but applied uniformly for clarity.
 	remoteDec := policy.EvaluateRemoteSource(policy.RemoteSourceInput{
@@ -118,7 +118,7 @@ func evaluatePosture(
 
 	// release-age and lifecycle only make sense for a registry package install
 	// (a non-empty Package and no remote-source spec). A git/url/file install has
-	// no registry name to resolve — the remote-source rule above already flagged it.
+	// no registry name to resolve - the remote-source rule above already flagged it.
 	registryInstall := parsed.RemoteSource == "" && parsed.Package != ""
 	if registryInstall {
 		// Child context so the registry fetches can never blow the hook budget;
@@ -131,7 +131,7 @@ func evaluatePosture(
 			version = "latest"
 		}
 
-		// ── Rule 2: release age (fail-soft) ────────────────────────────────────
+		// -- Rule 2: release age (fail-soft) ------------------------------------
 		ageMinutes, missing, ageErr := posturePublishAgeFn(
 			fetchCtx, client, cacheDir, parsed.Ecosystem, parsed.Package, version, now,
 		)
@@ -153,7 +153,7 @@ func evaluatePosture(
 			result = mergeDecisions(result, posturize(ageDec))
 		}
 
-		// ── Rule 3: lifecycle scripts (fail-soft) ──────────────────────────────
+		// -- Rule 3: lifecycle scripts (fail-soft) ------------------------------
 		scripts, failed, lifeErr := postureLifecycleFn(
 			fetchCtx, client, cacheDir, parsed.Ecosystem, parsed.Package, version, now,
 		)
@@ -180,9 +180,9 @@ func evaluatePosture(
 
 // posturize applies the PRD Layer-1 default posture ACTION (warn) to a pure
 // evaluator's decision. If the rule did not fire (d.Allow with Level "allow"),
-// the decision passes through unchanged. If the rule "fired" — the pure
+// the decision passes through unchanged. If the rule "fired" - the pure
 // evaluators express that as a block (release-age too young, lifecycle scripts
-// present) or as a warn (remote source) — the outcome is normalised to a WARN:
+// present) or as a warn (remote source) - the outcome is normalised to a WARN:
 // Allow:true, Level:"warn". This is the single place the block→warn re-mapping
 // happens, and it is WHY a registry outage at the hook cannot block an install.
 //
@@ -201,7 +201,7 @@ func posturize(d policy.Decision) policy.Decision {
 }
 
 // warnUnknown builds the fail-soft "unknown" warn decision used when a registry
-// fetch is missing/errored/timed out. It WARNS rather than blocks — the
+// fetch is missing/errored/timed out. It WARNS rather than blocks - the
 // deliberate divergence from the pure evaluators' fail-closed block.
 func warnUnknown(reason, ruleID string) policy.Decision {
 	return policy.Decision{

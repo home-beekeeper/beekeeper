@@ -20,7 +20,7 @@ import (
 //
 // Both the success outcome (a script list, possibly empty) AND the failure
 // outcome (unsupported ecosystem / registry error) are cached, so a non-npm
-// ecosystem or a flaky registry is not re-fetched within the TTL window — this
+// ecosystem or a flaky registry is not re-fetched within the TTL window - this
 // mirrors age_cache.go's Missing-entry caching of fetch failures.
 type lifecycleCacheEntry struct {
 	Scripts  []string  `json:"scripts"`
@@ -84,7 +84,7 @@ func writeLifecycleCacheEntry(path string, entry lifecycleCacheEntry) error {
 //     fetchLifecycleScripts.
 //  3. On fetch error (registry error or unsupported ecosystem): write a
 //     Failed:true entry (so the registry is not hammered within the TTL window)
-//     and return (nil, true, nil) — the failed signal the caller maps to
+//     and return (nil, true, nil) - the failed signal the caller maps to
 //     LifecycleInput.RegistryCheckFailed.
 //  4. On fetch success: write a fresh cache entry with the script list and return
 //     (scripts, false, nil).
@@ -95,15 +95,15 @@ func writeLifecycleCacheEntry(path string, entry lifecycleCacheEntry) error {
 //
 // Return contract:
 //
-//	(scripts, false, nil) — script list resolved (may be empty); build LifecycleInput with it
-//	(nil, true, nil)      — registry/ecosystem failure; set RegistryCheckFailed:true
-//	(_, _, non-nil)       — unexpected I/O error (cache write failure etc.)
+//	(scripts, false, nil) - script list resolved (may be empty); build LifecycleInput with it
+//	(nil, true, nil)      - registry/ecosystem failure; set RegistryCheckFailed:true
+//	(_, _, non-nil)       - unexpected I/O error (cache write failure etc.)
 //
 // IMPORTANT: this adapter caches the FAILED outcome and returns it as a soft
 // "failed" signal. The pure EvaluateLifecycle still BLOCKS on
 // RegistryCheckFailed:true (fail-closed, correct for the scan/watch extension
 // path). The HOOK posture adapter intentionally re-maps that block to a WARN
-// (fail-soft) — see internal/check/posture_adapter.go. This adapter itself takes
+// (fail-soft) - see internal/check/posture_adapter.go. This adapter itself takes
 // no posture stance; it only resolves the input.
 func FetchLifecycleScripts(
 	ctx context.Context,
@@ -123,7 +123,7 @@ func FetchLifecycleScripts(
 		}
 	}
 
-	// 2. Cache miss or stale — fetch from registry.
+	// 2. Cache miss or stale - fetch from registry.
 	fetched, fetchErr := fetchLifecycleScripts(ctx, client, ecosystem, pkg, version)
 	if fetchErr != nil {
 		// 3. Fetch failed (registry error OR unsupported ecosystem): cache the

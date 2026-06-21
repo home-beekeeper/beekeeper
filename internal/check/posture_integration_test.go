@@ -17,7 +17,7 @@ import (
 // prove a posture WARN cannot downgrade a catalog block on the live hook path.
 //
 // The package name is fictional so a live OSV query (npm IS an OSV ecosystem)
-// returns no extra match — the block comes from the signed bumblebee entry alone.
+// returns no extra match - the block comes from the signed bumblebee entry alone.
 func buildBlockingNPMIndex(t *testing.T, dir, pkg string) string {
 	t.Helper()
 	entries := []catalog.Entry{
@@ -67,7 +67,7 @@ func readPolicyDecisionRecord(t *testing.T, auditPath string) map[string]any {
 // TestRunCheckPostureFreshPackageWarns is the live-path proof (test the PATH not
 // the component): a Bash `npm install <fresh-pkg>` drives the real RunCheck with
 // the posture fetchers stubbed to a <24h package + no lifecycle scripts. The
-// returned decision AND the audit record must be a WARN with exit code 0 — a
+// returned decision AND the audit record must be a WARN with exit code 0 - a
 // warn does not block.
 func TestRunCheckPostureFreshPackageWarns(t *testing.T) {
 	// <24h-old package, no lifecycle scripts. No network: seams short-circuit the
@@ -133,7 +133,7 @@ func TestRunCheckPostureMissingTimestampWarnsNotBlock(t *testing.T) {
 // never downgrade a block.
 func TestRunCheckPostureCannotDowngradeCatalogBlock(t *testing.T) {
 	const blockedPkg = "beekeeper-posture-blocked-pkg-not-real"
-	// Stub posture to "fired" results (fresh + lifecycle scripts) — these are
+	// Stub posture to "fired" results (fresh + lifecycle scripts) - these are
 	// warns. If posture could downgrade, the catalog block would become a warn.
 	stubPostureFetchers(t, 10, false, nil, []string{"postinstall"}, false, nil)
 

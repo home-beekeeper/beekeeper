@@ -14,8 +14,10 @@ func TestBoundaryStatementHonestyContent(t *testing.T) {
 		t.Fatal("BoundaryStatement is empty")
 	}
 
-	// No em dashes (— U+2014, – U+2013). The honesty standard mandates plain ASCII
-	// dashes so the copy renders identically across product, help text, and docs.
+	// No em dashes (em-dash U+2014, en-dash U+2013). The honesty standard mandates
+	// plain ASCII dashes so the copy renders identically across product, help text,
+	// and docs. The two string literals below are the forbidden characters we scan
+	// for; they are the one intentional exception to the no-em-dash rule.
 	for _, bad := range []string{"—", "–"} {
 		if strings.Contains(BoundaryStatement, bad) {
 			t.Errorf("BoundaryStatement contains an em/en dash %q; use a plain ASCII dash", bad)
@@ -40,7 +42,7 @@ func TestBoundaryStatementHonestyContent(t *testing.T) {
 	}
 
 	// The roadmap framing for the shim must be explicit (experimental / roadmap),
-	// not implied — this is the specific honesty point the PRD divergence calls out.
+	// not implied, this is the specific honesty point the PRD divergence calls out.
 	if !strings.Contains(lower, "roadmap") && !strings.Contains(lower, "experimental") {
 		t.Error("BoundaryStatement must frame the shim as experimental/roadmap")
 	}

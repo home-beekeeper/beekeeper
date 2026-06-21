@@ -1,11 +1,11 @@
 package posture
 
-// boundary.go — the SINGLE canonical enforcement-boundary statement (IPBND-01).
+// boundary.go - the SINGLE canonical enforcement-boundary statement (IPBND-01).
 //
 // This is the one source of truth for how Beekeeper describes WHERE install
-// posture is prevented versus merely observed. Every later surface — the posture
+// posture is prevented versus merely observed. Every later surface - the posture
 // adapter comment (internal/check), the `beekeeper posture` view, `beekeeper
-// check`/posture help text, and the docs/web copy — references these constants
+// check`/posture help text, and the docs/web copy - references these constants
 // rather than re-typing the prose. Re-typed copies drift; keep ONE source so the
 // honesty standard is enforced from a single place.
 //

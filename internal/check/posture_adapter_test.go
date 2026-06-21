@@ -86,7 +86,7 @@ func TestPostureLifecycleScriptsWarn(t *testing.T) {
 }
 
 // TestPostureRemoteSourceWarns: a git install warns via the remote-source rule
-// WITHOUT any registry fetch (the fetchers must not even be consulted — assert
+// WITHOUT any registry fetch (the fetchers must not even be consulted - assert
 // by stubbing them to block-equivalent results that, if used, would surface).
 func TestPostureRemoteSourceWarns(t *testing.T) {
 	// If the registry fetchers were (incorrectly) consulted for a git install,
@@ -109,7 +109,7 @@ func TestPostureRemoteSourceWarns(t *testing.T) {
 }
 
 // TestPostureMissingTimestampWarnsNotBlock: a missing publish timestamp produces
-// a WARN-unknown (NOT a block) — the deliberate fail-soft divergence from the
+// a WARN-unknown (NOT a block) - the deliberate fail-soft divergence from the
 // pure evaluator's fail-closed block.
 func TestPostureMissingTimestampWarnsNotBlock(t *testing.T) {
 	stubPostureFetchers(t, 0, true, nil, nil, false, nil) // timestamp missing
@@ -197,7 +197,7 @@ func TestPosturizeAllowPassesThrough(t *testing.T) {
 }
 
 // TestPosturizeBlockBecomesWarn: posturize re-maps a pure-evaluator BLOCK to a
-// WARN (Allow:true) — the WARN-default contract.
+// WARN (Allow:true) - the WARN-default contract.
 func TestPosturizeBlockBecomesWarn(t *testing.T) {
 	in := policy.Decision{Allow: false, Level: "block", Reason: "too young", RuleIDs: []string{"release-age-policy"}}
 	out := posturize(in)

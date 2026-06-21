@@ -5,31 +5,31 @@ import (
 	"time"
 )
 
-// install_observe.go — SENTRY-009: detection-only observation of install-class
+// install_observe.go - SENTRY-009: detection-only observation of install-class
 // process spawns (IPST-06). DETECTION, NEVER PREVENTION.
 //
-// ── What this does ─────────────────────────────────────────────────────────────
+// -- What this does -------------------------------------------------------------
 // When a monitored-descendant process (editor- or agent-descended, the SAME
 // ancestry gate the other Sentry rules use) is observed spawning a package-manager
 // install (npm/pnpm/bun/yarn install|add, pip install, cargo add|install, etc.),
 // Sentry emits a detection-only audit record attributing the install: the
 // package-manager process PID/PPID, exe, and cmdline. This covers installs the
-// pre-exec hook cannot see — a human running `npm install` directly in an editor
-// terminal, or a harness with no pre-exec hook — closing the boundary the hook
+// pre-exec hook cannot see - a human running `npm install` directly in an editor
+// terminal, or a harness with no pre-exec hook - closing the boundary the hook
 // leaves open (see posture.BoundaryStatement / IPBND-01).
 //
-// ── HONEST SCOPE (do NOT overstate) ────────────────────────────────────────────
+// -- HONEST SCOPE (do NOT overstate) --------------------------------------------
 // Sentry records THAT an install happened (process attribution only). It does
 // NOT fetch the registry to compute release-age or lifecycle-script posture in
-// the privileged daemon — we deliberately add NO network I/O to the privileged
+// the privileged daemon - we deliberately add NO network I/O to the privileged
 // tier. Posture MATCHING is the hook's job (internal/check/posture_adapter.go).
 // This rule must never imply Sentry evaluates posture; it only observes the spawn.
 //
-// ── Detection-only invariant ───────────────────────────────────────────────────
+// -- Detection-only invariant ---------------------------------------------------
 // The emitted alert carries Severity "info" and QuarantineRec=false, so the
 // daemons' alertToAuditRecord maps it to an "observe" decision and the
 // sentry_install_observed record type. Sentry takes NO block/kill/quarantine
-// action here (or anywhere — it is detection-only by design).
+// action here (or anywhere - it is detection-only by design).
 
 // installManagers maps a process base-name to its ecosystem-agnostic manager key.
 // These are the SAME managers pkgparse recognizes at the hook; kept as a local
@@ -51,7 +51,7 @@ var installVerbs = map[string]bool{
 
 // isInstallProcess reports whether a process (identified by its exe base-name and
 // full cmdline) is an install-class package-manager invocation. It is a pure,
-// conservative token scan — no shell parsing, no I/O — intended only to LABEL an
+// conservative token scan - no shell parsing, no I/O - intended only to LABEL an
 // observed spawn, not to gate enforcement (the hook owns enforcement).
 //
 // It requires BOTH a known manager base-name AND an install verb token in the
@@ -76,7 +76,7 @@ func isInstallProcess(exe, cmdline string) bool {
 // editor-terminal human installs and standalone-agent installs. It is
 // detection-only: Severity "info", QuarantineRec false, no kill/quarantine.
 //
-// No window/state is kept — every observed install spawn produces exactly one
+// No window/state is kept - every observed install spawn produces exactly one
 // observation record (process spawns are discrete, unlike the clustering rules).
 func evalSENTRY009(
 	event SentryEvent,

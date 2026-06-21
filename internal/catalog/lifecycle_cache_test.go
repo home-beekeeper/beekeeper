@@ -93,7 +93,7 @@ func TestFetchLifecycleScriptsCacheHit(t *testing.T) {
 		t.Fatalf("first call: failed = true, want false")
 	}
 
-	// Close the server — subsequent real network calls will fail.
+	// Close the server - subsequent real network calls will fail.
 	srv.Close()
 	npmRegistryBase = origBase
 

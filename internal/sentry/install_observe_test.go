@@ -49,7 +49,7 @@ func TestSENTRY009ObservesInstall(t *testing.T) {
 		t.Errorf("Severity = %q, want info (detection-only)", obs.Severity)
 	}
 	if obs.QuarantineRec {
-		t.Error("QuarantineRec = true, want false — Sentry install observation must never recommend quarantine")
+		t.Error("QuarantineRec = true, want false - Sentry install observation must never recommend quarantine")
 	}
 	// Install attribution is carried.
 	if obs.ProcessPID != 200 {

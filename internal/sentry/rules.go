@@ -392,7 +392,7 @@ func EvaluateEvent(
 	case EventProcessCreate:
 		alerts = append(alerts, evalSENTRY002(event, state, tree, inventory, cfg, baseline, now)...)
 		// SENTRY-009 (IPST-06): detection-only observation of install-class spawns.
-		// It does not block/kill/quarantine and adds no network I/O — it only
+		// It does not block/kill/quarantine and adds no network I/O, it only
 		// records THAT an install happened (process attribution). Posture matching
 		// is the hook's job. See install_observe.go.
 		alerts = append(alerts, evalSENTRY009(event, tree, baseline, now)...)
