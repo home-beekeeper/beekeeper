@@ -150,6 +150,7 @@ func TestRunPaletteSelectionAllCommands(t *testing.T) {
 		"policy edit": panelPolicy,
 		"settings":    panelSettings,
 		"catalogs":    panelCatalogs,
+		"posture":     panelPosture,
 		"scan now":    panelScan,
 		"scan --quick": panelScan,
 		"scan history": panelScan,

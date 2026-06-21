@@ -22,6 +22,7 @@ var commands = []Command{
 	{Grp: "investigate", Name: "alerts", Desc: "open the sentry alert log"},
 	{Grp: "investigate", Name: "quarantine", Desc: "review held items"},
 	{Grp: "investigate", Name: "audit tail", Desc: "stream the raw event log"},
+	{Grp: "investigate", Name: "posture", Desc: "package-manager posture vs enforced (read-only)"},
 	{Grp: "configure", Name: "policy edit", Desc: "tune rules & thresholds"},
 	{Grp: "configure", Name: "settings", Desc: "auto-quarantine & corpus knobs"},
 	{Grp: "configure", Name: "catalogs", Desc: "source status & sync"},
