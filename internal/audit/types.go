@@ -97,6 +97,24 @@ type AuditRecord struct {
 	// RulesetVersion is the catalog snapshot version at decision time. Populated
 	// by the policy loader. Recorded so schema/rule evolution is detectable. (SCHEMA-05)
 	RulesetVersion string `json:"ruleset_version,omitempty"`
+
+	// Phase 29 posture-override additions (IPOVR-01/02). These are set ONLY on a
+	// record_type "posture_override" record, written by `beekeeper posture
+	// allow|enforce`. They are additive omitempty so existing audit consumers and
+	// the policy_decision path are unaffected.
+
+	// PostureOverrideAction names the graduated override the operator chose:
+	// "allow_once" | "allow_always" | "enforce_block" | "enforce_warn". This is the
+	// distinct-record discriminator the verifier and the audit viewer key on.
+	PostureOverrideAction string `json:"posture_override_action,omitempty"`
+	// PostureRule is the posture rule the override scopes to: "" (all rules, for an
+	// all-rules allow), "release-age", "lifecycle", or "git-remote".
+	PostureRule string `json:"posture_rule,omitempty"`
+	// PostureEcosystem is the optional ecosystem the allow override is scoped to.
+	PostureEcosystem string `json:"posture_ecosystem,omitempty"`
+	// PosturePackage is the package an allow override exempts (empty for an enforce
+	// override, which scopes to a rule, not a package).
+	PosturePackage string `json:"posture_package,omitempty"`
 }
 
 // CatalogProvenance is the audit-record view of a single catalog hit. It mirrors

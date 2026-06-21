@@ -65,5 +65,10 @@ hook.`,
 		},
 	}
 	cmd.Flags().BoolVar(&full, "full", false, "Print the full enforcement-boundary statement instead of the short form")
+
+	// Plan 29-02: the actionable scoped-override surface (allow / enforce). The
+	// parent `posture` command stays read-only; these subcommands are the ones that
+	// record a graduated, audited override (IPOVR-01/02).
+	addPostureOverrideCommands(cmd)
 	return cmd
 }

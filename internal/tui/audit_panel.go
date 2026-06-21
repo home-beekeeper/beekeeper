@@ -270,6 +270,8 @@ func badgeFor(rec audit.AuditRecord) (string, lipgloss.Style) {
 		return "ALERT", styleRed
 	case "config_change":
 		return "CONFIG", styleTeal
+	case "posture_override":
+		return "POSTURE", styleTeal
 	case "llmf_alert":
 		if rec.LLMFResult != "" && rec.LLMFResult != "clean" {
 			return "LLMF", styleRed
@@ -321,6 +323,13 @@ func recordSubject(rec audit.AuditRecord, max int) string {
 		s = rec.SentryCorrelatedExt
 	case rec.RecordType == "config_change" && rec.ReasonCode != "":
 		s = rec.ReasonCode
+	case rec.RecordType == "posture_override":
+		// Prefer the package (allow override); fall back to the rule (enforce override).
+		if rec.PosturePackage != "" {
+			s = rec.PosturePackage
+		} else {
+			s = rec.PostureRule
+		}
 	default:
 		s = rec.ToolName
 	}
@@ -352,6 +361,12 @@ func detailLines(rec audit.AuditRecord) []string {
 	}
 
 	add("decision", rec.Decision)
+	if rec.RecordType == "posture_override" {
+		add("override", rec.PostureOverrideAction)
+		add("posture rule", rec.PostureRule)
+		add("ecosystem", rec.PostureEcosystem)
+		add("package", rec.PosturePackage)
+	}
 	add("reason", rec.Reason)
 	add("surface", strings.TrimSpace(rec.Endpoint+" "+rec.SourceSurface))
 	add("agent", rec.AgentName)
