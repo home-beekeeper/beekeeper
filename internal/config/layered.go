@@ -110,6 +110,15 @@ func LoadLayered(opts LayerOpts) (Config, error) {
 		return Config{}, fmt.Errorf("invalid merged catalog_sync config: %w", err)
 	}
 
+	// IPOVR-03: a merged Posture block is validated fail-closed. nil is fine (the
+	// accessor resolves nil to warn); a non-nil merged block with a bogus action is
+	// rejected here rather than silently honored. Mirrors the CatalogSync guard.
+	if cfg.Posture != nil {
+		if err := ValidatePostureConfig(*cfg.Posture); err != nil {
+			return Config{}, fmt.Errorf("invalid merged posture config: %w", err)
+		}
+	}
+
 	// Final validation: reject an invalid merged FailMode rather than silently
 	// using an insecure default (mitigates T-09-08).
 	return validate(cfg)
@@ -247,6 +256,12 @@ func merge(dst, src Config) Config {
 		dst.AutoQuarantine = &merged
 	}
 
+	// PostureConfig (IPOVR-03) -- pointer field. Trusted-layer merge: a per-rule
+	// action set in src wins (a trusted user/global layer MAY raise OR lower a rule).
+	// Merged in BOTH merge() and mergeUntrusted() so a posture block can never be
+	// silently zero-valued (do NOT repeat the v1.4.0 FRB-05 missing-merge bug).
+	dst.Posture = mergePosture(dst.Posture, src.Posture)
+
 	return dst
 }
 
@@ -355,6 +370,12 @@ func mergeUntrusted(dst, src Config, layerName string) Config {
 		}
 		dst.AutoQuarantine.Enabled = true
 	}
+
+	// PostureConfig (IPOVR-03) -- TIGHTEN-ONLY from a low-trust layer (mirrors
+	// failModeStrictness / the LlamaFirewall.FailMode gate). An untrusted layer may
+	// raise a rule warn->block (a tightening); a block->warn loosening is refused.
+	// Merged in BOTH merge() and mergeUntrusted() (FRB-05 missing-merge guard).
+	dst.Posture = mergePostureUntrusted(dst.Posture, src.Posture, layerName)
 
 	return dst
 }
@@ -857,4 +878,95 @@ func mergeAutoQuarantine(dst, src AutoQuarantineConfig) AutoQuarantineConfig {
 		dst.Threshold = src.Threshold
 	}
 	return dst
+}
+
+// postureActionStrictness maps a posture action to an integer where higher means
+// more restrictive. Used by mergePostureUntrusted to allow only tightening changes
+// from low-trust layers (IPOVR-03), mirroring failModeStrictness (TM-D-01).
+//
+//	block(1) > warn(0)   -- "" (unset) is treated as warn (the shipped default)
+func postureActionStrictness(action string) int {
+	if action == PostureActionBlock {
+		return 1
+	}
+	return 0 // "" and "warn" are equally the warn-default
+}
+
+// mergePosture merges the src Posture pointer over dst for the TRUSTED layer.
+// A trusted user/global layer MAY raise OR lower a per-rule action, so a non-empty
+// src action wins for that rule; an empty src action leaves the lower layer's value.
+//
+//   - src == nil: absent in this layer -> lower layer authoritative, dst returned.
+//   - dst == nil, src != nil: adopt a copy of src.
+//   - both non-nil: per rule, src.Action wins when non-empty.
+func mergePosture(dst, src *PostureConfig) *PostureConfig {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		cp := *src
+		return &cp
+	}
+	out := *dst
+	if src.ReleaseAge.Action != "" {
+		out.ReleaseAge.Action = src.ReleaseAge.Action
+	}
+	if src.Lifecycle.Action != "" {
+		out.Lifecycle.Action = src.Lifecycle.Action
+	}
+	if src.RemoteSource.Action != "" {
+		out.RemoteSource.Action = src.RemoteSource.Action
+	}
+	return &out
+}
+
+// mergePostureUntrusted is the low-trust variant of mergePosture (IPOVR-03). It is
+// TIGHTEN-ONLY: per rule, the src action is applied ONLY when it is equal-or-stricter
+// than the lower layer's effective action (postureActionStrictness(src) >=
+// postureActionStrictness(dst)). A loosening (block -> warn, or block -> "") from a
+// project/env layer is refused with a stderr warning, mirroring the FailMode and
+// LlamaFirewall.FailMode untrusted gates. This is the IPOVR-03 self-defense
+// invariant: a poisoned repo config can raise a rule to block but can never opt a
+// rule that the user blocked back down to warn.
+func mergePostureUntrusted(dst, src *PostureConfig, layerName string) *PostureConfig {
+	if src == nil {
+		return dst
+	}
+	if dst == nil {
+		// No trusted baseline to protect -- adopt src as-is (it can only tighten
+		// relative to the warn default, since the only stricter value is block).
+		cp := *src
+		return &cp
+	}
+	out := *dst
+	out.ReleaseAge.Action = tightenPostureAction(dst.ReleaseAge.Action, src.ReleaseAge.Action, PostureRuleReleaseAge, layerName)
+	out.Lifecycle.Action = tightenPostureAction(dst.Lifecycle.Action, src.Lifecycle.Action, PostureRuleLifecycle, layerName)
+	out.RemoteSource.Action = tightenPostureAction(dst.RemoteSource.Action, src.RemoteSource.Action, PostureRuleRemoteSource, layerName)
+	return &out
+}
+
+// tightenPostureAction returns the effective action for one rule under the
+// tighten-only untrusted rule. An empty src means "absent in this layer" -> keep
+// dst. A non-empty src is applied only when it is equal-or-stricter than dst; a
+// loosening is refused (kept at dst) with a stderr warning naming the rule and layer.
+func tightenPostureAction(dstAction, srcAction, rule, layerName string) string {
+	if srcAction == "" {
+		return dstAction // absent in this layer -> lower layer authoritative
+	}
+	if postureActionStrictness(srcAction) >= postureActionStrictness(dstAction) {
+		return srcAction // equal or stricter -> tightening is always safe
+	}
+	fmt.Fprintf(os.Stderr,
+		"beekeeper: ignoring posture.%s action relaxation %q->%q from %s config layer (security)\n",
+		rule, effectivePostureAction(dstAction), srcAction, layerName)
+	return dstAction
+}
+
+// effectivePostureAction renders an action for a log message, mapping the unset
+// "" to its effective "warn" so the warning reads sensibly.
+func effectivePostureAction(action string) string {
+	if action == "" {
+		return PostureActionWarn
+	}
+	return action
 }
