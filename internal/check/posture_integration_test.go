@@ -159,3 +159,29 @@ func TestRunCheckPostureCannotDowngradeCatalogBlock(t *testing.T) {
 		t.Fatalf("audit decision = %v, want block; record: %+v", rec["decision"], rec)
 	}
 }
+
+// TestRunCheckShimShapeEnforcesPosture proves the shim now actually enforces.
+// A shim invocation (beekeeper check --tool npm --args install <pkg>) is
+// reconstructed by buildShimToolCall (cmd/beekeeper) into exactly this shape:
+// tool_name "Bash" with the FULL command string. This test drives that exact
+// shape through the live RunCheck and asserts posture fires (a fresh package
+// warns), closing the latent gap where the old {tool_name:"execute",
+// command:"npm", args:[...]} shape parsed no install and allowed everything.
+func TestRunCheckShimShapeEnforcesPosture(t *testing.T) {
+	stubPostureFetchers(t, 30, false, nil, nil, false, nil) // <24h, no lifecycle scripts
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	auditPath := auditPathIn(t)
+	// The exact JSON buildShimToolCall produces for: shim npm install <pkg>.
+	stdin := strings.NewReader(`{"agent_name":"shim","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-shim-fresh-xyz-not-real@1.0.0"}}`)
+
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitAllow {
+		t.Fatalf("ExitCode = %d, want %d (shim posture warn does not block)", res.ExitCode, exitAllow)
+	}
+	if res.Decision.Level != "warn" {
+		t.Fatalf("Level = %q, want warn (shim-intercepted fresh install must be evaluated, not allowed silently)", res.Decision.Level)
+	}
+}

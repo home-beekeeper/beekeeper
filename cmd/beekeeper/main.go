@@ -367,14 +367,7 @@ func newCheckCmd() *cobra.Command {
 				allArgs := make([]string, 0, len(toolArgs)+len(args))
 				allArgs = append(allArgs, toolArgs...)
 				allArgs = append(allArgs, args...)
-				tc := map[string]any{
-					"tool_name":  "execute",
-					"agent_name": "shim",
-					"tool_input": map[string]any{
-						"command": toolName,
-						"args":    allArgs,
-					},
-				}
+				tc := buildShimToolCall(toolName, allArgs)
 				data, merr := json.Marshal(tc)
 				if merr != nil {
 					return failClosed(fmt.Errorf("marshal shim tool call: %w", merr))
@@ -421,6 +414,29 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&toolArgs, "args", nil, "Arguments for shim invocations (used with --tool)")
 	cmd.Flags().StringVar(&hookTarget, "hook", "", "Harness name for hook invocations (emits exit 2 + harness-specific deny JSON on block; default mode unchanged)")
 	return cmd
+}
+
+// buildShimToolCall constructs the tool call JSON for a shim invocation
+// (beekeeper check --tool <tool> --args <args...>). It reconstructs the full
+// shell command and shapes it as a Bash tool call, because the shim intercepts a
+// shell invocation of a package manager and Bash is the shape the catalog engine
+// (policy extract) and the install-posture adapter (evaluatePosture) parse. This
+// is what makes the shim actually enforce: without the reconstruction, command is
+// the bare tool name ("npm") and no install is identified, so beekeeper check
+// would allow it. Injection-safe: the command is a JSON string value built by
+// json.Marshal and parsed by the pure pkgparse, never executed by a shell.
+func buildShimToolCall(tool string, args []string) map[string]any {
+	command := tool
+	if len(args) > 0 {
+		command = tool + " " + strings.Join(args, " ")
+	}
+	return map[string]any{
+		"tool_name":  "Bash",
+		"agent_name": "shim",
+		"tool_input": map[string]any{
+			"command": command,
+		},
+	}
 }
 
 // newCatalogsCmd groups catalog-management subcommands.
@@ -1477,6 +1493,15 @@ func newShimCmd() *cobra.Command {
 	shimCmd := &cobra.Command{
 		Use:   "shim",
 		Short: "Manage PATH shims for package managers and toolchains",
+		Long: `Install PATH-prepended wrapper scripts that run 'beekeeper check' before each
+package-manager install, so catalog corroboration and install posture apply to
+installs you run yourself in a terminal.
+
+This is an experimental surface with real limits: it only covers tools invoked
+through the shimmed PATH, it can be bypassed by calling a tool by its absolute
+path, and it requires adding the shim directory to the front of your PATH. It is
+not a complete machine-wide guarantee. For hooked agents the pre-exec hook is the
+primary enforcement point; see the install-posture docs for the full boundary.`,
 	}
 
 	// shim install

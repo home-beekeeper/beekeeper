@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-06-15 -- v1.4.0 milestone close)
 
 Phase: 27 — Layer 1 Hook Enforcement + Sentry Observation — ✅ IMPLEMENTED + VERIFIED, ⏸ AT GATE 1
 Plan: 27-01 + 27-02 executed (gsd-executor) before a power cut; resumed, independently re-verified + reviewed + style-cleaned.
-Status: ⏸ STOPPED AT GATE 1 — awaiting maintainer enforcement-boundary review before propagating the boundary copy to docs/home (Phase 30) and building Layers 2-3 (Phases 28-29). All Phase 26-27 work committed + signed on feat/install-posture-foundation; build/vet/full-suite green; live-path security properties proven.
-Last activity: 2026-06-21 — Phase 27 reached Gate 1. Presented the enforcement map, the exact posture.BoundaryStatement copy, and the two PRD divergences (warn+fail-soft default; shim kept-and-repointed) to the maintainer. NEXT after approval: Phase 28 (beekeeper posture read-only view).
+Status: ⏸ AT GATE 1 (re-presenting) — Gate-1 review surfaced that the shim enforced NOTHING (its --tool/--args tool-call shape was never parsed into an install, so beekeeper check allowed it; a pre-existing latent gap). Maintainer chose "make it real". Plan 27-03 fixes it: buildShimToolCall reconstructs the full command as a Bash tool call so catalog + posture actually fire on shim-intercepted installs; boundary copy + shim help/doc updated to honest "experimental, enforces with absolute-path-bypass + PATH-prepend caveats"; tests (buildShimToolCall shape + shim-shape RunCheck enforcement). Awaiting final maintainer boundary approval before Phases 28-30.
+Last activity: 2026-06-21 — Phase 27 at Gate 1; implemented 27-03 (shim made real) after the maintainer's shim decision. NEXT: re-present updated Gate 1 map + boundary copy; after approval, Phase 28 (beekeeper posture read-only view).
 
 ## Phase Summary (v1.5.0 — Install Posture, ships as v1.1.0)
 

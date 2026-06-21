@@ -3,21 +3,23 @@
 // by invoking `beekeeper check --tool <tool> --args …` before forwarding to the
 // real binary.
 //
-// HONEST BOUNDARY / ROADMAP STATUS: the PATH-prepended shim is an EXPERIMENTAL,
-// roadmap surface for machine-wide, human-run installs — it is NOT a headline
-// v1.0 install-posture surface, and it has real bypass limitations:
+// HONEST BOUNDARY: the PATH-prepended shim is an EXPERIMENTAL surface for
+// machine-wide, human-run installs. It is NOT a headline v1.0 install-posture
+// guarantee, and it has real bypass limitations:
 //
-//   - An install invoked by ABSOLUTE PATH (e.g. /usr/local/bin/npm or a tool a
+//   - An install invoked by ABSOLUTE PATH (e.g. /usr/local/bin/npm, or a tool a
 //     PATH-respecting agent resolves itself) never hits the shim, so the shim
 //     cannot be relied on as the sole enforcement point.
 //   - The shim must be installed by a human and the shim directory PATH-prepended
 //     in the operator's shell RC; an agent cannot install it for itself (and is
 //     blocked from doing so by self-protection).
 //
-// The shims defer ALL policy to `beekeeper check`, so once install posture is
-// wired into the check path (a later phase) the shim inherits it with no
-// per-package-manager logic of its own. The former nudge-before-proxy helper
-// (which steered npm/yarn to pnpm/bun) was removed in v1.1.0.
+// Each intercepted install is reconstructed into a shell command and evaluated by
+// `beekeeper check` (catalog corroboration AND install posture) before the real
+// binary runs; see buildShimToolCall in cmd/beekeeper. So catalog blocking and
+// install-posture warnings DO apply to shim-intercepted installs, within the
+// bypass limits above. The former nudge-before-proxy helper (which steered
+// npm/yarn to pnpm/bun) was removed in v1.1.0.
 //
 // CONCURRENCY NOTE: findRealBinary temporarily modifies os.Getenv("PATH") via
 // os.Setenv. This is not goroutine-safe. It is only called from shim install,

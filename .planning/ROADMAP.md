@@ -167,7 +167,7 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 | 24. First Responder Corpus Binding | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 25. Launch Readiness | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 26. Nudge Removal & Posture Rule Foundation | v1.5.0 | 2/2 | Complete | 2026-06-21 |
-| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 2/2 | Implemented + verified; ⏸ awaiting Gate 1 | 2026-06-21 |
+| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 3/3 | Implemented + verified (incl. 27-03 shim made real); ⏸ awaiting Gate 1 | 2026-06-21 |
 | 28. Layer 2 `beekeeper posture` View | v1.5.0 | 0/? | Not started | — |
 | 29. Layer 3 Scoped Override | v1.5.0 | 0/? | Not started | — |
 | 30. Docs, Home Page & Boundary Statements | v1.5.0 | 0/? | Not started | — |
