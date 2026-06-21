@@ -294,9 +294,9 @@ func buildBunRow(version string, scannerOK bool) ManagerRow {
 func (r ManagerRow) Summary() string {
 	ver := r.Version
 	if ver == "" {
-		ver = "detected"
+		ver = "detected."
 	} else {
-		ver = "v" + ver + " detected"
+		ver = "v" + ver + " detected."
 	}
 
 	self := joinSentences(r.SelfPosture)
