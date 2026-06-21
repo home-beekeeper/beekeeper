@@ -101,15 +101,15 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 - [x] **Phase 26: Nudge Removal & Posture Rule Foundation** — NMIG-01, NMIG-02, NMIG-04, IPST-04, IPST-05 ✅ 2026-06-21
   Goal: remove the nudge steering (preserving release-age + the pm-config readers), add the new git/remote-URL pure detection, repoint the shim. Pure-library layer only; no behavior wired to the hook yet.
   Success: (1) the `beekeeper nudge` CLI, `config set nudge.*`, the steer-to-pnpm/Bun copy, and `ensureNudgeBlockDefault` are gone; (2) `pkgparse` + a pure policy evaluator detect git/remote/URL/file install specs with unit tests; (3) `internal/nudge/detect.go` + `scanners.go` are relocated (not deleted) under the posture package; (4) build + vet green, pure-import purity tests still pass; (5) the shim builds and routes through `beekeeper check`.
-- [~] **Phase 27: Layer 1 Hook Enforcement + Sentry Observation** — IPST-01, IPST-02, IPST-03, IPST-06, IPBND-01. **← Gate 1 (implemented + verified 2026-06-21; awaiting maintainer boundary review)**
+- [x] **Phase 27: Layer 1 Hook Enforcement + Sentry Observation** — IPST-01, IPST-02, IPST-03, IPST-06, IPBND-01, NMIG-04. **← Gate 1 PASSED 2026-06-21.** Maintainer ratified the enforcement map + boundary copy + warn/fail-soft default; added IPOVR-03 (users can opt a rule up to block) to v1.0; shim made real (27-03). 4 plans (27-01/02/03 + boundary tighten).
   Goal: wire the posture rules (release-age warn, lifecycle warn, git/remote warn) into the pre-exec hook via the existing engine, replacing the nudge block; have Sentry observe + audit installs as detection-not-prevention; write the canonical boundary statement in code.
   Success: (1) an agent npm install of a <24h version warns at the hook with the reason in the audit record; (2) a lifecycle-script install and a git/remote-URL install each warn with their reason; (3) tier caveats are inherited and documented in code; (4) a Sentry-observed install (incl. human-run) produces an audit record labeled detection; (5) the canonical boundary statement exists in code, ready for Gate 1 review.
 - [ ] **Phase 28: Layer 2 `beekeeper posture` View (read-only)** — IPVIEW-01, IPVIEW-02, IPBND-01
   Goal: a machine-wide read-only `beekeeper posture` view (CLI + TUI) that reads each detected pm's config and shows it against Beekeeper's enforced posture, naming gaps.
   Success: (1) `beekeeper posture` shows npm + at least one other ecosystem (pnpm) config vs enforced posture and names the covered gaps; (2) a test asserts the view writes no pm config file; (3) the boundary statement appears in the view output.
-- [ ] **Phase 29: Layer 3 Scoped Override** — IPOVR-01, IPOVR-02
-  Goal: on a posture decision, offer allow-once / allow-always-with-recorded-reason / block; each writes a scoped audit entry; allow-always persists via the existing policy overlay.
-  Success: (1) the three graduated responses are offered (CLI + TUI incident card); (2) each produces the correct distinct audit-log entry; (3) allow-always persists as a scoped overlay entry and is honored on the next matching install.
+- [ ] **Phase 29: Layer 3 Scoped Override + Per-Rule Severity** — IPOVR-01, IPOVR-02, IPOVR-03
+  Goal: introduce per-rule posture config (action warn|block, default warn, tighten-only from untrusted layers) so a user can opt a rule UP to block (IPOVR-03, maintainer-directed at Gate 1); and on a posture decision (warn or block) offer allow-once / allow-always-with-recorded-reason / block, each audited, allow-always persisting via the existing policy overlay.
+  Success: (1) a posture rule set to block in config blocks a definite violation, while the unknown path stays fail-soft warn, and an untrusted layer cannot loosen a rule; (2) the three graduated responses are offered (CLI + TUI incident card) and operate on a WARN as well as a block; (3) each produces the correct distinct audit-log entry; (4) allow-always persists as a scoped overlay entry and is honored on the next matching install.
 - [ ] **Phase 30: Docs, Home Page & Boundary Statements** — IPBND-02, NMIG-03, REL-01 (prep)
   Goal: bring the docs current to the shipped feature, propagate the boundary statement everywhere, replace the home "Agent safety" nudge bullet, remove nudge copy, and prepare the release (version → v1.1.0, changelog).
   Success: (1) install-posture docs + posture-view usage + boundary statement land, no roadmap item documented as shipped; (2) the home bullet is replaced with install-posture framing + the npm v12 obsolescence note; (3) all steer-to-pnpm/Bun copy is gone; (4) version bumped to v1.1.0 and changelog updated with a roadmap note for the deferred layers.
@@ -167,7 +167,7 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 | 24. First Responder Corpus Binding | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 25. Launch Readiness | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 26. Nudge Removal & Posture Rule Foundation | v1.5.0 | 2/2 | Complete | 2026-06-21 |
-| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 3/3 | Implemented + verified (incl. 27-03 shim made real); ⏸ awaiting Gate 1 | 2026-06-21 |
+| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 4/4 | Complete — **Gate 1 PASSED** (+ IPOVR-03 added to v1.0) | 2026-06-21 |
 | 28. Layer 2 `beekeeper posture` View | v1.5.0 | 0/? | Not started | — |
 | 29. Layer 3 Scoped Override | v1.5.0 | 0/? | Not started | — |
 | 30. Docs, Home Page & Boundary Statements | v1.5.0 | 0/? | Not started | — |

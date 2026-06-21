@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-06-15 -- v1.4.0 milestone close)
 
 ## Current Position
 
-Phase: 27 — Layer 1 Hook Enforcement + Sentry Observation — ✅ IMPLEMENTED + VERIFIED, ⏸ AT GATE 1
-Plan: 27-01 + 27-02 executed (gsd-executor) before a power cut; resumed, independently re-verified + reviewed + style-cleaned.
-Status: ⏸ AT GATE 1 (re-presenting) — Gate-1 review surfaced that the shim enforced NOTHING (its --tool/--args tool-call shape was never parsed into an install, so beekeeper check allowed it; a pre-existing latent gap). Maintainer chose "make it real". Plan 27-03 fixes it: buildShimToolCall reconstructs the full command as a Bash tool call so catalog + posture actually fire on shim-intercepted installs; boundary copy + shim help/doc updated to honest "experimental, enforces with absolute-path-bypass + PATH-prepend caveats"; tests (buildShimToolCall shape + shim-shape RunCheck enforcement). Awaiting final maintainer boundary approval before Phases 28-30.
-Last activity: 2026-06-21 — Phase 27 at Gate 1; implemented 27-03 (shim made real) after the maintainer's shim decision. NEXT: re-present updated Gate 1 map + boundary copy; after approval, Phase 28 (beekeeper posture read-only view).
+Phase: 28 — Layer 2 `beekeeper posture` read-only view (NEXT). Phase 27 ✅ COMPLETE, GATE 1 PASSED.
+Plan: planning 28-01.
+Status: ✅ GATE 1 PASSED 2026-06-21. Maintainer ratified the enforcement map, the exact posture.BoundaryStatement copy, and the warn+fail-soft default; resolved the shim (made real, experimental, honest); and ADDED IPOVR-03 to v1.0 (users can opt a posture rule up to block; config tighten-only; fail-soft unknown stays warn; the scoped override operates on warns too) → implemented in Phase 29. NEXT: Phase 28 (read-only `beekeeper posture` view, CLI + TUI, reads each pm config vs Beekeeper's enforced posture, displays each rule's configured action, never writes config).
+Last activity: 2026-06-21 — Gate 1 PASSED; recorded IPOVR-03 scope addition. Proceeding to Phase 28.
 
 ## Phase Summary (v1.5.0 — Install Posture, ships as v1.1.0)
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
 | 26 | Nudge Removal & Posture Rule Foundation | NMIG-01/02/04, IPST-04/05 | ✅ Complete & verified 2026-06-21 (26-01 new git/remote-URL pure rule by orchestrator; 26-02 nudge removal + relocate pm-config readers→internal/posture + shim repoint by gsd-executor, independently re-verified: build+vet+full suite+fuzz green, grep gates clean, handler.go merge chain + layered.go untrusted invariants intact, frozen audit schema preserved). Commits 4451a1f, 347e3cd, fe1c692 |
-| 27 | Layer 1 Hook Enforcement + Sentry Observation (**Gate 1**) | IPST-01/02/03/06, IPBND-01 | ✅ Implemented + verified, ⏸ AWAITING GATE 1 (maintainer enforcement-boundary review) 2026-06-21. 27-01 cached lifecycle adapter + posture hook adapter (warn default, fail-soft, latency-bounded, never blocks) wired at the former nudge position; 27-02 SENTRY-009 detection-only install observation (cross-platform) + canonical posture.BoundaryStatement. Independently re-verified after power-cut: build+vet+full suite green; live-path RunCheck integration tests prove fresh→warn, missing-timestamp→warn-not-block (under fail-closed), catalog-block survives posture warn (most-restrictive). Em-dashes stripped from new code. Commits 5275296, f575365, 391c4b4, 58921ff, 6387b20 |
+| 27 | Layer 1 Hook Enforcement + Sentry Observation (**Gate 1**) | IPST-01/02/03/06, IPBND-01, NMIG-04 | ✅ COMPLETE — **GATE 1 PASSED 2026-06-21**. 27-01 posture hook adapter (warn default, fail-soft, latency-bounded, never blocks) + cached lifecycle adapter; 27-02 SENTRY-009 detection-only install observation (cross-platform) + canonical posture.BoundaryStatement; 27-03 shim MADE REAL (buildShimToolCall reconstructs the install so catalog+posture fire on shim installs; was a latent no-op) + honest boundary/help. Maintainer ratified the map + boundary copy + warn/fail-soft default; **added IPOVR-03 (opt a rule up to block) to v1.0 → Phase 29**. Build+vet+full suite green; live-path tests prove fresh→warn, missing-ts→warn-not-block, catalog-block survives posture warn, shim-shape enforces. Commits 5275296, f575365, 391c4b4, 58921ff, 6387b20, 8de66fc, 93312ba + boundary tighten |
 | 28 | Layer 2 `beekeeper posture` View | IPVIEW-01/02, IPBND-01 | ⬜ Not started |
-| 29 | Layer 3 Scoped Override | IPOVR-01/02 | ⬜ Not started |
+| 29 | Layer 3 Scoped Override + Per-Rule Severity | IPOVR-01/02/03 | ⬜ Not started (IPOVR-03 = opt-rule-up-to-block, maintainer-added at Gate 1; config tighten-only, fail-soft unknown stays warn; override operates on warns too) |
 | 30 | Docs, Home Page & Boundary Statements | IPBND-02, NMIG-03, REL-01 (prep) | ⬜ Not started |
 | 31 | Test, Coverage & E2E + CI Matrix (**Gate 2** after) | test coverage, REL-01 (finalize) | ⬜ Not started |
 

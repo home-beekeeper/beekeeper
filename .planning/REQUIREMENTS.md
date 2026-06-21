@@ -30,9 +30,10 @@
 - [ ] **IPVIEW-01**: `beekeeper posture` (CLI + TUI) reads each detected package manager's actual config read-only and displays it side by side with Beekeeper's enforced posture, naming the gaps Beekeeper covers. Machine-wide. (AC4)
 - [ ] **IPVIEW-02**: The posture view writes no package-manager config file — read-only guarantee, asserted by test. (AC4, AC6)
 
-### Install Posture — Layer 3 scoped override (IPOVR)
-- [ ] **IPOVR-01**: A posture-rule decision at the hook offers graduated scoped responses (allow once; allow always with a recorded reason; block) rather than a binary on/off. (AC5)
+### Install Posture — Layer 3 scoped override + per-rule severity (IPOVR)
+- [ ] **IPOVR-01**: A posture-rule decision at the hook (warn OR block) offers graduated scoped responses (allow once; allow always with a recorded reason; block this package) rather than a binary on/off. Operates on a WARN (the default), since the fail-soft default does not block. (AC5)
 - [ ] **IPOVR-02**: Each override is written to the audit log as a scoped, recorded trust decision (allow-always persists via the existing policy overlay; nothing is a silent weakening). (AC5)
+- [ ] **IPOVR-03**: A user can raise an individual posture rule from warn to block via layered config (per rule: release-age / lifecycle / git-remote). Untrusted (project) layers may only TIGHTEN (warn→block), never loosen, mirroring the fail_mode invariant. A definite violation uses the configured action; the unknown path (missing timestamp / registry error / timeout) stays fail-soft warn. (Maintainer-directed at Gate 1; pulls part of the PRD roadmap per-rule severity into v1.0.)
 
 ### Nudge removal & migration (NMIG)
 - [ ] **NMIG-01**: The nudge feature and its steer-to-pnpm/Bun copy are removed from the product and docs (package, check adapter, gateway derivation, `beekeeper nudge` CLI, `config set nudge.*`, `ensureNudgeBlockDefault` npm/yarn-deny on install, layered nudge invariants, audit nudge fields). (Migration note)
@@ -46,7 +47,7 @@
 ---
 
 ## Future Requirements (deferred to roadmap, marked as such)
-- Deep per-rule per-ecosystem policy editing (release-age window, warn/block/quarantine per rule per ecosystem, per-project overrides) in the existing policy editor extended with posture rules. (PRD Layer 3 deferral)
+- Deep per-rule per-ECOSYSTEM policy editing (custom release-age windows, warn/block/quarantine per rule PER ECOSYSTEM, per-project granular overrides, quarantine action) in the TUI policy editor. NOTE: the global per-rule warn→block opt-up moved INTO v1.0 as IPOVR-03 by maintainer decision; only the finer-grained per-ecosystem/per-project matrix and custom thresholds remain deferred. (PRD Layer 3 partial deferral)
 - The package-manager shim as a first-class machine-wide human-install pre-exec enforcement surface (Surface 4). It exists today but is documented as roadmap/experimental, not promoted in v1.0. (PRD Surface 4)
 - Config mutation: opt-in, reversible, audited, dry-run-by-default generation of recommended pm config that closes a posture gap. (PRD Layer 4)
 
