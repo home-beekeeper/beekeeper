@@ -32,7 +32,7 @@
 
 ### Install Posture — Layer 3 scoped override + per-rule severity (IPOVR)
 - [ ] **IPOVR-01**: A posture-rule decision at the hook (warn OR block) offers graduated scoped responses (allow once; allow always with a recorded reason; block this package) rather than a binary on/off. Operates on a WARN (the default), since the fail-soft default does not block. (AC5)
-- [ ] **IPOVR-02**: Each override is written to the audit log as a scoped, recorded trust decision (allow-always persists via the existing policy overlay; nothing is a silent weakening). (AC5)
+- [ ] **IPOVR-02**: Each override is written to the audit log as a scoped, recorded trust decision (a distinct posture_override record per action). Allow-always persists as a POSTURE-SCOPED standing exception (a posture allowlist consulted only by the posture adapter), NOT the general package_allowlist overlay, which would over-broadly downgrade a catalog/corroboration block (T-09-31) and let a posture allow whitelist a package past malware detection. Nothing is a silent weakening. (AC5)
 - [ ] **IPOVR-03**: A user can raise an individual posture rule from warn to block via layered config (per rule: release-age / lifecycle / git-remote). Untrusted (project) layers may only TIGHTEN (warn→block), never loosen, mirroring the fail_mode invariant. A definite violation uses the configured action; the unknown path (missing timestamp / registry error / timeout) stays fail-soft warn. (Maintainer-directed at Gate 1; pulls part of the PRD roadmap per-rule severity into v1.0.)
 
 ### Nudge removal & migration (NMIG)
