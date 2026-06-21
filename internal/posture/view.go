@@ -1,6 +1,7 @@
 package posture
 
-// view.go - PURE (imports only "fmt" and "sort"). This is the single source of
+// view.go - PURE (no I/O, no goroutines, no clock; imports fmt/io/sort and
+// policy.DefaultReleaseAgeConfig, a pure constructor). This is the single source of
 // truth for the Layer-2 `beekeeper posture` comparison model, shared by BOTH the
 // CLI command (cmd/beekeeper) and the TUI panel (internal/tui). It takes a
 // caller-resolved PMState (the read-only detection done in detect.go/scanners.go)
@@ -17,15 +18,19 @@ package posture
 // whole CLI path through this model and asserts no package-manager config file is
 // touched.
 //
-// Beekeeper's enforced posture is fixed default-action prose here (release-age
-// 24h, lifecycle scripts warned, git/remote-URL deps flagged), all at WARN by
-// default at the hook. This view DISPLAYS that default posture; it does not set,
-// tighten, or mutate anything. The opt-up-to-block config is Phase 29.
+// Beekeeper's enforced posture is shown as default-action display copy: the
+// release-age window is DERIVED from policy.DefaultReleaseAgeConfig so it cannot
+// drift from what the hook enforces, and lifecycle scripts are warned and
+// git/remote-URL deps flagged, all at WARN by default at the hook. This view
+// DISPLAYS that default posture; it does not set, tighten, or mutate anything.
+// The opt-up-to-block config is Phase 29.
 
 import (
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
 // Enforced is Beekeeper's default enforced posture as displayed by the view.
@@ -43,15 +48,29 @@ type Enforced struct {
 }
 
 // DefaultEnforced returns the canonical default enforced posture shown by the
-// view. It mirrors policy.DefaultReleaseAgeConfig (1440 minutes / 24h) and the
-// lifecycle + remote-source rules wired into the hook at WARN default (Phase 27).
-// It is plain display copy - no policy decision is made here.
+// view. The release-age figure is DERIVED from policy.DefaultReleaseAgeConfig
+// (the same default the hook actually enforces) rather than hardcoded, so the
+// view cannot drift from the real enforced window. The lifecycle + remote-source
+// rules are warn-by-default at the hook (Phase 27). This is display copy only; no
+// policy decision is made here, and policy.DefaultReleaseAgeConfig is a pure
+// constructor so view.go stays I/O-free.
 func DefaultEnforced() Enforced {
 	return Enforced{
-		ReleaseAge:       "release-age 24h",
+		ReleaseAge:       formatReleaseAge(policy.DefaultReleaseAgeConfig().DefaultMinutes),
 		LifecycleScripts: "scripts warned",
 		RemoteSource:     "git deps flagged",
 	}
+}
+
+// formatReleaseAge renders the enforced minimum publish age for display, deriving
+// "release-age 24h" from 1440 minutes. Whole hours render as "Nh"; otherwise the
+// raw minutes render as "Nm", so a future change to the policy default is shown
+// accurately without re-typing the figure.
+func formatReleaseAge(minutes int64) string {
+	if minutes > 0 && minutes%60 == 0 {
+		return fmt.Sprintf("release-age %dh", minutes/60)
+	}
+	return fmt.Sprintf("release-age %dm", minutes)
 }
 
 // ManagerRow is one detected ecosystem/manager's side-by-side comparison: what
