@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-06-15 -- v1.4.0 milestone close)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-06-21 — Milestone v1.5.0 started
+Phase: 27 — Layer 1 Hook Enforcement + Sentry Observation (Gate 1 at end)
+Plan: planning 27-01
+Status: Phase 26 ✅ complete & verified (nudge removed; git/remote rule + posture pkg added). Wiring posture into the hook next.
+Last activity: 2026-06-21 — Phase 26 complete (3 commits, all signed); independently re-verified green. NEXT: plan + execute Phase 27 (wire release-age + lifecycle + git/remote posture rules into the check hook at WARN default via catalog I/O adapters; Sentry observes installs as detection; write the canonical boundary statement) → STOP at Gate 1 (maintainer enforcement-boundary review).
 
 ## Phase Summary (v1.5.0 — Install Posture, ships as v1.1.0)
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
-| 26 | Nudge Removal & Posture Rule Foundation | NMIG-01/02/04, IPST-04/05 | ⬜ Not started |
-| 27 | Layer 1 Hook Enforcement + Sentry Observation (**Gate 1**) | IPST-01/02/03/06, IPBND-01 | ⬜ Not started |
+| 26 | Nudge Removal & Posture Rule Foundation | NMIG-01/02/04, IPST-04/05 | ✅ Complete & verified 2026-06-21 (26-01 new git/remote-URL pure rule by orchestrator; 26-02 nudge removal + relocate pm-config readers→internal/posture + shim repoint by gsd-executor, independently re-verified: build+vet+full suite+fuzz green, grep gates clean, handler.go merge chain + layered.go untrusted invariants intact, frozen audit schema preserved). Commits 4451a1f, 347e3cd, fe1c692 |
+| 27 | Layer 1 Hook Enforcement + Sentry Observation (**Gate 1**) | IPST-01/02/03/06, IPBND-01 | 🔨 In progress |
 | 28 | Layer 2 `beekeeper posture` View | IPVIEW-01/02, IPBND-01 | ⬜ Not started |
 | 29 | Layer 3 Scoped Override | IPOVR-01/02 | ⬜ Not started |
 | 30 | Docs, Home Page & Boundary Statements | IPBND-02, NMIG-03, REL-01 (prep) | ⬜ Not started |

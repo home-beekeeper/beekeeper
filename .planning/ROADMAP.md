@@ -98,7 +98,7 @@ Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). The
 
 Retire the nudge; ship tool-agnostic install posture with honest enforcement boundaries. PRD: `beekeeper-install-posture-prd.md`. Two human gates: **Gate 1** (enforcement-boundary review) after Phase 27; **Gate 2** (release signing) after Phase 31.
 
-- [ ] **Phase 26: Nudge Removal & Posture Rule Foundation** — NMIG-01, NMIG-02, NMIG-04, IPST-04, IPST-05
+- [x] **Phase 26: Nudge Removal & Posture Rule Foundation** — NMIG-01, NMIG-02, NMIG-04, IPST-04, IPST-05 ✅ 2026-06-21
   Goal: remove the nudge steering (preserving release-age + the pm-config readers), add the new git/remote-URL pure detection, repoint the shim. Pure-library layer only; no behavior wired to the hook yet.
   Success: (1) the `beekeeper nudge` CLI, `config set nudge.*`, the steer-to-pnpm/Bun copy, and `ensureNudgeBlockDefault` are gone; (2) `pkgparse` + a pure policy evaluator detect git/remote/URL/file install specs with unit tests; (3) `internal/nudge/detect.go` + `scanners.go` are relocated (not deleted) under the posture package; (4) build + vet green, pure-import purity tests still pass; (5) the shim builds and routes through `beekeeper check`.
 - [ ] **Phase 27: Layer 1 Hook Enforcement + Sentry Observation** — IPST-01, IPST-02, IPST-03, IPST-06, IPBND-01. **← Gate 1**
@@ -166,8 +166,8 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 | 23. Corpus Store & Adjudication Engine | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 24. First Responder Corpus Binding | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 25. Launch Readiness | v1.4.0 | 3/3 | Complete | 2026-06-14 |
-| 26. Nudge Removal & Posture Rule Foundation | v1.5.0 | 0/? | Not started | — |
-| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 0/? | Not started | — |
+| 26. Nudge Removal & Posture Rule Foundation | v1.5.0 | 2/2 | Complete | 2026-06-21 |
+| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 0/? | In progress | — |
 | 28. Layer 2 `beekeeper posture` View | v1.5.0 | 0/? | Not started | — |
 | 29. Layer 3 Scoped Override | v1.5.0 | 0/? | Not started | — |
 | 30. Docs, Home Page & Boundary Statements | v1.5.0 | 0/? | Not started | — |
