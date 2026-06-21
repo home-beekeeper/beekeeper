@@ -20,17 +20,24 @@ import "strings"
 // Unpinned (NUDGE-05): true when Version ends with "latest", when there is no
 // "@version" at all (bare name), or when Version starts with "^" or "~"; false
 // for an exact pinned version (e.g. "5.4.0").
+//
+// RemoteSource (install-posture, git/remote-URL rule): the kind of non-registry
+// source the install pulls from, classified from the raw install token before
+// version splitting. "" means a normal registry install. The install-posture
+// engine flags non-empty kinds (see policy.EvaluateRemoteSource). Values:
+// "git", "github", "url", "tarball", "file".
 type ParsedCommand struct {
-	Raw       string // original command verbatim
-	Manager   string // "npm" | "pnpm" | "bun" | "yarn" | "npx" | "pip" | ...
-	Ecosystem string // catalog key: "npm" / "pypi" / "go" / "rubygems" / "cargo" / "packagist"
-	Verb      string // "install" | "i" | "add" | "get" | "require" | "dlx" | "x" | ""
-	Package   string // normalized (lowercase + trimmed); "" for no-arg install
-	Version   string // from trailing @version; "" if absent
-	IsInstall bool   // true for install-class verbs
-	IsExec    bool   // true for exec verbs (npx, pnpm dlx, bun x)
-	Sudo      bool   // true when "sudo " prefix was stripped
-	Unpinned  bool   // true when no exact version pin (NUDGE-05)
+	Raw          string // original command verbatim
+	Manager      string // "npm" | "pnpm" | "bun" | "yarn" | "npx" | "pip" | ...
+	Ecosystem    string // catalog key: "npm" / "pypi" / "go" / "rubygems" / "cargo" / "packagist"
+	Verb         string // "install" | "i" | "add" | "get" | "require" | "dlx" | "x" | ""
+	Package      string // normalized (lowercase + trimmed); "" for no-arg install
+	Version      string // from trailing @version; "" if absent
+	IsInstall    bool   // true for install-class verbs
+	IsExec       bool   // true for exec verbs (npx, pnpm dlx, bun x)
+	Sudo         bool   // true when "sudo " prefix was stripped
+	Unpinned     bool   // true when no exact version pin (NUDGE-05)
+	RemoteSource string // non-registry source kind: "git"/"github"/"url"/"tarball"/"file"; "" = registry install
 }
 
 // installEntry is one row in the prefix dispatch table.
@@ -167,29 +174,38 @@ func parseSegment(raw, seg string) (ParsedCommand, bool) {
 		ver := ""
 		unpinned := false
 
-		if token != "" {
+		// Classify a non-registry source (git ref, remote URL, tarball, host
+		// shorthand, local file spec) from the RAW token, BEFORE splitVersion —
+		// otherwise a "git+https://…#v1" / "https://…@1" token would be mangled
+		// into a bogus Package/Version. A non-empty RemoteSource means there is
+		// no registry package name to match, so Package/Version stay empty and
+		// the install-posture remote-source rule (policy.EvaluateRemoteSource)
+		// flags it.
+		remoteSource := classifyRemoteSource(token)
+
+		if remoteSource == "" && token != "" {
 			name, v := splitVersion(token)
 			if name != "" {
 				pkg = normalize(name)
 				ver = strings.TrimSpace(v)
 				unpinned = computeUnpinned(pkg, ver)
 			}
-		} else {
-			// No-arg install (§10-8): IsInstall=true, Package="" — Unpinned is not
-			// meaningful for a no-arg install (no package to pin), leave false.
 		}
+		// else: no-arg install (§10-8) OR a remote-source spec — Package="" in
+		// both cases; Unpinned is not meaningful, leave false.
 
 		return ParsedCommand{
-			Raw:       raw,
-			Manager:   entry.manager,
-			Ecosystem: entry.ecosystem,
-			Verb:      entry.verb,
-			Package:   pkg,
-			Version:   ver,
-			IsInstall: true,
-			IsExec:    entry.isExec,
-			Sudo:      sudo,
-			Unpinned:  unpinned,
+			Raw:          raw,
+			Manager:      entry.manager,
+			Ecosystem:    entry.ecosystem,
+			Verb:         entry.verb,
+			Package:      pkg,
+			Version:      ver,
+			IsInstall:    true,
+			IsExec:       entry.isExec,
+			Sudo:         sudo,
+			Unpinned:     unpinned,
+			RemoteSource: remoteSource,
 		}, true
 	}
 
@@ -340,6 +356,53 @@ func packageFlagValue(rest string) string {
 			}
 			return ""
 		}
+	}
+	return ""
+}
+
+// classifyRemoteSource inspects a raw install token and returns the kind of
+// non-registry source it pulls from, or "" for a normal registry package name.
+// Pure string-prefix/suffix matching only (no net/url, no regexp) so pkgparse
+// stays import-pure. Conservative on file specs to avoid misclassifying ordinary
+// package names. Order matters: git and host-shorthands are checked before the
+// generic http(s) URL branch, and a tarball URL is preferred over a plain URL.
+//
+//	"git"     — git+…, git://…, git@host:…, or a path ending in ".git"
+//	"github"  — github:/gitlab:/bitbucket: host shorthands (owner/repo)
+//	"tarball" — an http(s) URL whose path ends in .tgz/.tar.gz/.tar
+//	"url"     — any other http:// or https:// URL
+//	"file"    — file:… or an explicit local path (./ or ../)
+//	""        — a normal registry install (e.g. "left-pad@1.0.0", "@scope/pkg")
+func classifyRemoteSource(token string) string {
+	if token == "" {
+		return ""
+	}
+	lower := strings.ToLower(token)
+
+	switch {
+	case strings.HasPrefix(lower, "git+"),
+		strings.HasPrefix(lower, "git://"),
+		strings.HasPrefix(lower, "git@"),
+		strings.HasSuffix(lower, ".git"):
+		return "git"
+	case strings.HasPrefix(lower, "github:"),
+		strings.HasPrefix(lower, "gitlab:"),
+		strings.HasPrefix(lower, "bitbucket:"):
+		return "github"
+	case strings.HasPrefix(lower, "file:"),
+		strings.HasPrefix(token, "./"),
+		strings.HasPrefix(token, "../"):
+		return "file"
+	case strings.HasPrefix(lower, "http://"), strings.HasPrefix(lower, "https://"):
+		// Strip a trailing fragment/query before checking the tarball suffix.
+		path := lower
+		if i := strings.IndexAny(path, "#?"); i >= 0 {
+			path = path[:i]
+		}
+		if strings.HasSuffix(path, ".tgz") || strings.HasSuffix(path, ".tar.gz") || strings.HasSuffix(path, ".tar") {
+			return "tarball"
+		}
+		return "url"
 	}
 	return ""
 }
