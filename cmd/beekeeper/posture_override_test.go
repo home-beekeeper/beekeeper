@@ -316,6 +316,23 @@ func TestPostureAllowRejectsBothModes(t *testing.T) {
 	}
 }
 
+// TestPostureAllowOnceRejectsRule: --once does not support --rule (H-01). A
+// one-shot token is consumed for the WHOLE posture evaluation (allowOnceToken has
+// no rule field), so accepting --rule would record a posture_override audit entry
+// that over-claims its scope. The combination is rejected before runPostureAllowOnce
+// (the only writer) runs, so no token or audit record is written.
+func TestPostureAllowOnceRejectsRule(t *testing.T) {
+	stagePostureHome(t)
+	cmd := newPostureAllowCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"some-pkg", "--once", "--rule", "release-age", "--reason", "r"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("posture allow --once --rule release-age: err = nil, want an unsupported-combination error")
+	}
+}
+
 // TestPostureEnforceRejectsBadRule: an unknown rule is rejected fail-closed.
 func TestPostureEnforceRejectsBadRule(t *testing.T) {
 	stagePostureHome(t)

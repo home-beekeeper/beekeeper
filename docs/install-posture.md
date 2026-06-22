@@ -66,9 +66,9 @@ A posture warn (or block) offers a graduated response: allow this install once,
 allow a package always with a recorded reason, or raise a rule to block.
 
 ```sh
-beekeeper posture allow <package> --once               # allow the next matching install, then warn again
+beekeeper posture allow <package> --once               # allow the next matching install, then warn again (all rules)
 beekeeper posture allow <package> --always --reason "…" # standing exception (reason recorded)
-    --rule release-age|lifecycle|git-remote            # scope to one rule (omit = all posture rules)
+    --rule release-age|lifecycle|git-remote            # with --always: scope to one rule (omit = all rules; not supported with --once)
     --ecosystem npm                                    # scope to one ecosystem (empty = any)
 
 beekeeper posture enforce <rule> --block               # opt a rule UP from warn to block

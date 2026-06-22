@@ -79,7 +79,9 @@ func newPostureAllowCmd() *cobra.Command {
 
 The exception is POSTURE-SCOPED: it silences a posture warn for this package but
 NEVER downgrades a catalog/corroboration malware block for the same package. Use
---rule to scope the exception to one rule; omit it to exempt all posture rules.
+--rule WITH --always to scope a standing exception to one rule; omit it to exempt
+all posture rules. --rule is not supported with --once: a one-shot always applies
+to all posture rules.
 
 Each invocation writes a distinct posture_override audit record.`,
 		Args: cobra.ExactArgs(1),
@@ -104,11 +106,21 @@ Each invocation writes a distinct posture_override audit record.`,
 				}
 				return runPostureAllowAlways(cmd, ecosystem, pkg, rule, reason)
 			}
+			// --once does not support --rule: a one-shot token is consumed for the
+			// WHOLE posture evaluation (allowOnceToken has no rule scope), so accepting
+			// --rule here would record a rule-scoped posture_override audit entry that
+			// enforcement does not honor (it would silence all three rules). Reject the
+			// combination rather than write a record that over-claims its scope. Use
+			// --always --rule for a rule-scoped standing exception; per-rule one-shot is
+			// a documented follow-up.
+			if rule != "" {
+				return fmt.Errorf("posture allow --once does not support --rule (a one-shot allow applies to all posture rules; use --once alone, or --always --rule %q for a rule-scoped standing exception)", rule)
+			}
 			return runPostureAllowOnce(cmd, ecosystem, pkg, rule, reason)
 		},
 	}
 	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Scope the exception to one ecosystem (e.g. npm); empty matches any")
-	cmd.Flags().StringVar(&rule, "rule", "", "Scope to one rule: release-age|lifecycle|git-remote; empty = all posture rules")
+	cmd.Flags().StringVar(&rule, "rule", "", "Scope an --always exception to one rule: release-age|lifecycle|git-remote; empty = all rules. Not supported with --once.")
 	cmd.Flags().BoolVar(&once, "once", false, "Allow the next matching install once, then warn again")
 	cmd.Flags().BoolVar(&always, "always", false, "Record a standing exception (requires --reason)")
 	cmd.Flags().StringVar(&reason, "reason", "", "Recorded justification (required for --always)")
