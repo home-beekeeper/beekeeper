@@ -19,8 +19,8 @@
 - ✅ **v1.4.0 — "Adjudicated Corpus (Local Loop)"** — Phases 22–25 (shipped 2026-06-15)
   Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). Requirements: [`milestones/v1.4.0-REQUIREMENTS.md`](milestones/v1.4.0-REQUIREMENTS.md). Audit: RESOLVED — found the FRB-05 enforcement BLOCKER, fixed same-day at close ([`milestones/v1.4.0-MILESTONE-AUDIT.md`](milestones/v1.4.0-MILESTONE-AUDIT.md)).
 
-- 🔨 **v1.5.0 — "Install Posture"** — Phases 26–31 (ACTIVE; ships publicly as release `v1.1.0`)
-  Goal: retire the package-manager nudge and ship tool-agnostic install posture (default posture enforced at the hook, a read-only machine-wide posture view, scoped audited overrides), honest about its enforcement boundaries. Scope source: [`beekeeper-install-posture-prd.md`](../beekeeper-install-posture-prd.md). Requirements: [`REQUIREMENTS.md`](REQUIREMENTS.md). *Internal milestone number is v1.5.0 to avoid colliding with the parked v1.1.0 "Pollen" GSD milestone; the release tag is v1.1.0.*
+- ✅ **v1.5.0 — "Install Posture"** — Phases 26–31 (shipped 2026-06-22 as release `v1.1.0`)
+  Full detail: [`milestones/v1.5.0-ROADMAP.md`](milestones/v1.5.0-ROADMAP.md). Requirements: [`milestones/v1.5.0-REQUIREMENTS.md`](milestones/v1.5.0-REQUIREMENTS.md). Audit: `tech_debt` (zero blockers) — [`milestones/v1.5.0-MILESTONE-AUDIT.md`](milestones/v1.5.0-MILESTONE-AUDIT.md). Maintainer-signed `v1.1.0` tag on merged `main`. *Internal GSD number v1.5.0 (decoupled from the parked v1.1.0 "Pollen" milestone); released publicly as v1.1.0.*
 
 ## Phases
 
@@ -94,28 +94,19 @@ Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). The
 
 </details>
 
-### 🔨 v1.5.0 Install Posture (Phases 26–31) — CODE-COMPLETE (all 6 phases done; AWAITING GATE 2 = maintainer signs the v1.1.0 tag) — ships as release v1.1.0
+<details>
+<summary>✅ v1.5.0 Install Posture (Phases 26–31) — SHIPPED 2026-06-22 (released as v1.1.0)</summary>
 
-Retire the nudge; ship tool-agnostic install posture with honest enforcement boundaries. PRD: `beekeeper-install-posture-prd.md`. Two human gates: **Gate 1** (enforcement-boundary review) after Phase 27; **Gate 2** (release signing) after Phase 31.
+- [x] Phase 26: Nudge Removal & Posture Rule Foundation (2/2) — NMIG-01/02/04, IPST-04/05
+- [x] Phase 27: Layer 1 Hook Enforcement + Sentry Observation (4/4) — IPST-01/02/03/06, IPBND-01, NMIG-04 (**Gate 1 PASSED**; IPOVR-03 added to v1.0; shim made real; SENTRY-009)
+- [x] Phase 28: Layer 2 `beekeeper posture` View (1/1) — IPVIEW-01/02, IPBND-01
+- [x] Phase 29: Layer 3 Scoped Override + Per-Rule Severity (2/2) — IPOVR-01/02/03
+- [x] Phase 30: Docs, Home Page & Boundary Statements (1/1) — IPBND-02, NMIG-03, REL-01 (prep)
+- [x] Phase 31: Test, Coverage & E2E + CI Matrix (1/1) — test coverage, REL-01 (finalize) (**Gate 2 after**)
 
-- [x] **Phase 26: Nudge Removal & Posture Rule Foundation** — NMIG-01, NMIG-02, NMIG-04, IPST-04, IPST-05 ✅ 2026-06-21
-  Goal: remove the nudge steering (preserving release-age + the pm-config readers), add the new git/remote-URL pure detection, repoint the shim. Pure-library layer only; no behavior wired to the hook yet.
-  Success: (1) the `beekeeper nudge` CLI, `config set nudge.*`, the steer-to-pnpm/Bun copy, and `ensureNudgeBlockDefault` are gone; (2) `pkgparse` + a pure policy evaluator detect git/remote/URL/file install specs with unit tests; (3) `internal/nudge/detect.go` + `scanners.go` are relocated (not deleted) under the posture package; (4) build + vet green, pure-import purity tests still pass; (5) the shim builds and routes through `beekeeper check`.
-- [x] **Phase 27: Layer 1 Hook Enforcement + Sentry Observation** — IPST-01, IPST-02, IPST-03, IPST-06, IPBND-01, NMIG-04. **← Gate 1 PASSED 2026-06-21.** Maintainer ratified the enforcement map + boundary copy + warn/fail-soft default; added IPOVR-03 (users can opt a rule up to block) to v1.0; shim made real (27-03). 4 plans (27-01/02/03 + boundary tighten).
-  Goal: wire the posture rules (release-age warn, lifecycle warn, git/remote warn) into the pre-exec hook via the existing engine, replacing the nudge block; have Sentry observe + audit installs as detection-not-prevention; write the canonical boundary statement in code.
-  Success: (1) an agent npm install of a <24h version warns at the hook with the reason in the audit record; (2) a lifecycle-script install and a git/remote-URL install each warn with their reason; (3) tier caveats are inherited and documented in code; (4) a Sentry-observed install (incl. human-run) produces an audit record labeled detection; (5) the canonical boundary statement exists in code, ready for Gate 1 review.
-- [x] **Phase 28: Layer 2 `beekeeper posture` View (read-only)** — IPVIEW-01, IPVIEW-02, IPBND-01 ✅ 2026-06-21 (pure comparison model shared by CLI+TUI; byte-for-byte read-only guarantee test; boundary statement in output; release-age derived from policy default)
-  Goal: a machine-wide read-only `beekeeper posture` view (CLI + TUI) that reads each detected pm's config and shows it against Beekeeper's enforced posture, naming gaps.
-  Success: (1) `beekeeper posture` shows npm + at least one other ecosystem (pnpm) config vs enforced posture and names the covered gaps; (2) a test asserts the view writes no pm config file; (3) the boundary statement appears in the view output.
-- [x] **Phase 29: Layer 3 Scoped Override + Per-Rule Severity** — IPOVR-01, IPOVR-02, IPOVR-03 ✅ 2026-06-21 (per-rule opt-up-to-block, tighten-only; scoped override allow-once/allow-always/block; posture-scoped allowlist never bypasses a catalog block; distinct posture_override audit records; display-only TUI card)
-  Goal: introduce per-rule posture config (action warn|block, default warn, tighten-only from untrusted layers) so a user can opt a rule UP to block (IPOVR-03, maintainer-directed at Gate 1); and on a posture decision (warn or block) offer allow-once / allow-always-with-recorded-reason / block, each audited, allow-always persisting via the existing policy overlay.
-  Success: (1) a posture rule set to block in config blocks a definite violation, while the unknown path stays fail-soft warn, and an untrusted layer cannot loosen a rule; (2) the three graduated responses are offered (CLI + TUI incident card) and operate on a WARN as well as a block; (3) each produces the correct distinct audit-log entry; (4) allow-always persists as a scoped overlay entry and is honored on the next matching install.
-- [x] **Phase 30: Docs, Home Page & Boundary Statements** — IPBND-02, NMIG-03, REL-01 (prep) ✅ 2026-06-22 (BOTH repos). Go: docs/nudge.md retired → docs/install-posture.md + SENTRY-009 in THREAT-MODEL (0b0bfcf, 02def02). Web (separate repo beekeeper-web @ a9016e5): home bullet → install posture, ~10 docs reframed, dead nudge.go source_doc paths fixed (accuracy gate RED→GREEN 27/27), SENTRY-001..009, boundary statement propagated, v1.1.0 badges + changelog. Independently re-verified both repos.
-  Goal: bring the docs current to the shipped feature, propagate the boundary statement everywhere, replace the home "Agent safety" nudge bullet, remove nudge copy, and prepare the release (version → v1.1.0, changelog).
-  Success: (1) install-posture docs + posture-view usage + boundary statement land, no roadmap item documented as shipped; (2) the home bullet is replaced with install-posture framing + the npm v12 obsolescence note; (3) all steer-to-pnpm/Bun copy is gone; (4) version bumped to v1.1.0 and changelog updated with a roadmap note for the deferred layers.
-- [x] **Phase 31: Test, Coverage & E2E + CI Matrix** — IPST/IPVIEW/IPOVR test coverage, REL-01 (finalize). **← Gate 2 after** ✅ 2026-06-22 (7 signed commits a1b4452..00d9f7d). Gap-fill over the already-heavy 26-29 coverage: release-age 24h boundary + 6 lifecycle script types + fetch-timeout fail-soft; live-RunCheck block-mode for lifecycle + git-remote + default-warns attribution sibling; override enforce-warn + ecosystem-scoped allow + config persistence; real-binary E2E git-remote warn/block-under-opt-up + honest SENTRY-009 CI-only skip; CI e2e job → release-gate.needs; docs/posture-validation.md (3 named gaps); REL-01 confirmed. Independently re-verified (all 7 test bodies genuine; full gate green; p99 latency flake cleared isolated).
-  Goal: complete the test/coverage/E2E bar and get local (Win+WSL) + CI matrix green; produce a coverage report with honest gaps named.
-  Success: (1) every posture rule + decision branch + tier-caveat path has a behavior-asserting test; release-age/lifecycle/git boundary conditions covered; (2) each scoped-override path asserts its audit entry; the view read-only and observed-install audit are tested; (3) E2E proves agent-install-blocked-at-hook-with-reason+audit, human-install-observed-not-blocked, and the view across npm + one other; (4) coverage report with deliberate gaps documented; (5) local + CI matrix green.
+Full detail: [`milestones/v1.5.0-ROADMAP.md`](milestones/v1.5.0-ROADMAP.md). Released as `v1.1.0` (maintainer-signed tag on merged `main`). Audit `tech_debt` (zero blockers). Deferred to roadmap: per-ecosystem policy matrix, the shim as a first-class enforcement surface, config mutation (PRD Layer 4).
+
+</details>
 
 ## Carried Candidates for the Next Milestone
 
@@ -123,6 +114,7 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 - Deferred nudge/corroboration follow-ups: NUDGE-F1 (hard-rewrite on-by-default), NUDGE-F2 (Yarn Berry + pip/cargo/gem/composer), NUDGE-F3 (`GHSA-*` vs `MAL-*`), CORR-F1 (OSV/Socket as automatic hot-path second source).
 - **SITE-03** — live Vercel deploy of the v1.3.0 site (page already build-verified; pending repo push / Vercel setup).
 - Docs: command-card-per-copy split + a full Fumadocs-theme redesign (own UI-SPEC).
+- **From v1.5.0 (install posture):** deep per-rule per-ecosystem policy matrix + custom thresholds; the package-manager shim as a first-class machine-wide enforcement surface; config mutation (opt-in/reversible/audited recommended-config generation, PRD Layer 4); the deferred tech-debt items M-01/M-02 + lows (see `phases/31-test-coverage-e2e-ci/31-REVIEW-DECISION.md`).
 - **Independent of any milestone:** v1.1.0 "Pollen" resumes via `docs/release-runbook.md` when the maintainer chooses.
 
 ## Progress
@@ -170,5 +162,5 @@ Retire the nudge; ship tool-agnostic install posture with honest enforcement bou
 | 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 4/4 | Complete — **Gate 1 PASSED** (+ IPOVR-03 added to v1.0) | 2026-06-21 |
 | 28. Layer 2 `beekeeper posture` View | v1.5.0 | 1/1 | Complete | 2026-06-21 |
 | 29. Layer 3 Scoped Override + Per-Rule Severity | v1.5.0 | 2/2 | Complete | 2026-06-21 |
-| 30. Docs, Home Page & Boundary Statements | v1.5.0 | 0/? | Not started | — |
-| 31. Test, Coverage & E2E + CI Matrix (Gate 2 after) | v1.5.0 | 0/? | Not started | — |
+| 30. Docs, Home Page & Boundary Statements | v1.5.0 | 1/1 | Complete | 2026-06-22 |
+| 31. Test, Coverage & E2E + CI Matrix (Gate 2 after) | v1.5.0 | 1/1 | Complete — **Gate 2 PASSED** (maintainer-signed v1.1.0 tag) | 2026-06-22 |

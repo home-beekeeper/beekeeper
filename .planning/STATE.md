@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v1.5.0
 milestone_name: Install Posture
-status: planning
-last_updated: "2026-06-22T10:00:00.000Z"
+status: shipped
+last_updated: "2026-06-22T12:00:00.000Z"
 last_activity: 2026-06-22
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 11
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-15 -- v1.4.0 milestone close)
+See: .planning/PROJECT.md (updated 2026-06-22 -- v1.5.0 milestone close)
 
 **Core value:** A hijacked or off-task agent cannot successfully act on the developer's machine without Beekeeper deciding to permit it.
-**Current focus:** 🔨 Milestone **v1.5.0 "Install Posture"** ACTIVE (started 2026-06-21; ships publicly as release v1.1.0). Retire the package-manager nudge; ship tool-agnostic install posture (Layer 1 default posture at the hook + Layer 2 read-only `beekeeper posture` view + Layer 3 scoped audited overrides), honest about enforcement boundaries. Scope = `beekeeper-install-posture-prd.md` AC 1-8; phases 26-31; REQ-IDs in `.planning/REQUIREMENTS.md`. Two human gates: Gate 1 (enforcement-boundary review) after Phase 27; Gate 2 (release signing) after Phase 31. **Verified arch (memory install-posture-arch.md):** release-age + lifecycle already exist as pure policy evaluators wired to scan/watch but NOT the hook (hook runs evaluateNudge@internal/check/handler.go:381); git/remote-URL rule is new; preserve internal/nudge/detect.go + scanners.go for the Layer-2 view; shim already exists → keep+repoint+document-as-roadmap (maintainer-approved). NEXT: /gsd-plan-phase 26. Carried-forward (not in this milestone): v1.4.0 overlay wiring for gateway/scan/watch + PRD §6/§7 (org push / community feed); SITE-03 live Vercel deploy; CORR-F1. (v1.1.0 Pollen remains PARKED, independent; resume via docs/release-runbook.md.)
+**Current focus:** ✅ Milestone **v1.5.0 "Install Posture"** SHIPPED & ARCHIVED 2026-06-22 (released publicly as `v1.1.0`, maintainer-signed SSH tag on merged `main` `4e92130`; GitHub PR #19 Go core + beekeeper-web #1 docs). Retired the package-manager nudge; shipped tool-agnostic install posture (Layer 1 default posture at the hook warn + fail-soft + Layer 2 read-only `beekeeper posture` view + Layer 3 scoped audited overrides + per-rule warn→block opt-up + SENTRY-009 detection-only install observation + honest enforcement-boundary statement everywhere). All 18 reqs satisfied; audit `tech_debt` (zero blockers, `milestones/v1.5.0-MILESTONE-AUDIT.md`); both human gates cleared. Archives: `milestones/v1.5.0-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md`. **NEXT: `/gsd-new-milestone`** (or resume parked v1.1.0 Pollen via `docs/release-runbook.md`). Carried-forward to a future milestone: per-ecosystem policy matrix + shim-as-first-class-surface + config mutation (PRD Layer 4); tech debt M-01/M-02 + lows (`phases/31-test-coverage-e2e-ci/31-REVIEW-DECISION.md`); v1.4.0 overlay wiring for gateway/scan/watch + PRD §6/§7; SITE-03 live Vercel deploy; CORR-F1. (v1.1.0 Pollen remains PARKED, independent.)
 
 > ⏸ **v1.1.0 "Pollen" is PARKED, not closed** — paused at the 05-05 maintainer release checkpoint. To resume the release: see `.planning/phases/05-contribution-back-milestone-close/.continue-here.md` and `docs/release-runbook.md`. The four signed-tag releases remain in the "Deferred Items" table below. Do not archive v1.1.0 until the runbook is run + 05-05 Task 3 completes.
 
@@ -210,6 +210,16 @@ Recent decisions from Phase 07 (v1.2.0 — Sensitive-Path Runtime Enforcement):
 | 260615-ky4 | **FRB-05 enforcement fix — closes the v1.4.0 milestone-audit BLOCKER.** The local catalog overlay (`local-overlay.idx`, written by Phase 24 `AddLocalOverlayEntry`) was never loaded by any production enforcement path. `internal/check/handler.go:236` now calls `catalog.NewMultiIndexWithOverlay(..., filepath.Join(cacheDir,"local-overlay.idx"))` (was `NewMultiIndex`, no overlay), with a dedicated `defer` closing only `multiIdx.Overlay`. Honest escalation is **allow→warn** (overlay entries are unsigned per CTLG-07; block still requires 2+ signed sources — anti-poisoning), NOT allow→block. +RunCheck-level regression tests: `TestRunCheckLocalOverlayEscalates` (overlay match → warn; revert-verified to fail under plain `NewMultiIndex`) + `TestRunCheckNoOverlayUnchanged` (missing overlay → allow, fail-closed guard). Full suite green 27 pkgs + build + vet. **Scoped out (recorded):** gateway (`gateway.go:141`) = clean follow-up; daemon:113 left alone (no self-feedback loop); scan/watch separate flows. On branch `fix/frb-05-overlay-check-path` (off main, NOT merged). | 2026-06-15 | `fc9fd66`,`4f1756f` | [260615-ky4-wire-the-local-catalog-overlay-into-the-](./quick/260615-ky4-wire-the-local-catalog-overlay-into-the-/) |
 
 ## Deferred Items
+
+**Acknowledged at v1.5.0 milestone close (2026-06-22):** the pre-close `audit-open` surfaced the same 4 carried items (2 done-but-unmarked quick tasks `260612-f80`/`260615-ky4`, the IPv6-normalization todo, and the already-shipped `docs-styling-polish` todo) — none a v1.5.0 gap. Plus the v1.5.0 tech debt (zero blockers, tracked in `phases/31-test-coverage-e2e-ci/31-REVIEW-DECISION.md`):
+
+| Category | Item | Status |
+|----------|------|--------|
+| tech_debt (MED) | M-01: `PostureIncidentModel` (`internal/tui/posture_incident.go`) reads pkg/eco from `CatalogMatches` (empty for posture) and is not wired into the live TUI feed | Latent/display-only; on no E2E path. Fix when the incident card is wired in (thread the package into the hook posture decision record) |
+| tech_debt (MED) | M-02: `alertToAuditRecord` keys the install-observed mapping on `Severity=="info"` not `RuleID=="SENTRY-009"` | Currently correct (only SENTRY-009 emits info); fragility fix across 3 daemons deferred |
+| tech_debt (LOW/INFO) | L-01..L-05 + I-01/I-02 + non-exploitable Unix-shim `fmt.Sprintf` quoting note | All minor; none affects a requirement/seam/flow/invariant |
+| doc-style | `docs/THREAT-MODEL.md` paraphrases (vs embeds) the literal `posture.BoundaryStatement` constant | Semantics accurate + cross-referenced; not a failing REQ |
+| roadmap (intentional) | per-ecosystem policy matrix + custom thresholds; shim as a first-class enforcement surface; config mutation (PRD Layer 4) | Deferred to a future milestone, marked as such in the docs |
 
 **Acknowledged at v1.4.0 milestone close (2026-06-15):** the pre-close artifact audit (`audit-open`) surfaced 4 items; each cross-checked and confirmed not a real gap:
 

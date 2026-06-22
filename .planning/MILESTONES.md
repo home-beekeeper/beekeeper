@@ -1,5 +1,31 @@
 # Milestones
 
+## v1.5.0 — Install Posture (Shipped: 2026-06-22, released as v1.1.0)
+
+**Phases:** 6 (26–31, numbering continues from v1.4.0) · **Plans:** 11 · **Timeline:** 2026-06-21 → 2026-06-22
+**Audit:** `tech_debt` (zero blockers). All 18 requirements satisfied; cross-phase integration + 4 E2E flows all WIRED; release-gate security review APPROVE (all 8 invariants HELD) + code review (1 HIGH fixed pre-merge). Archive: [`milestones/v1.5.0-ROADMAP.md`](milestones/v1.5.0-ROADMAP.md) / [`milestones/v1.5.0-REQUIREMENTS.md`](milestones/v1.5.0-REQUIREMENTS.md) / [`milestones/v1.5.0-MILESTONE-AUDIT.md`](milestones/v1.5.0-MILESTONE-AUDIT.md).
+
+**Versioning:** internal GSD number **v1.5.0** (decoupled from the parked v1.1.0 "Pollen" milestone); **released publicly as `v1.1.0`** — maintainer-signed git tag (SSH ED25519) on merged `main` (`4e92130`), GitHub PR #19 (Go core) + beekeeper-web PR #1 (docs).
+
+**Delivered:** Retired the package-manager nudge and shipped tool-agnostic **install posture** — three rules (release-age <24h, lifecycle scripts, git/remote-URL deps) enforced at the pre-exec hook, warn + fail-soft by default; a read-only machine-wide `beekeeper posture` view; scoped audited overrides (`posture allow`/`enforce`) with per-rule warn→block opt-up; SENTRY-009 detection-only install observation (incl. human-run installs); and an honest enforcement-boundary statement propagated everywhere install posture is described. The posture layer is warn-only, most-restrictive-merged, and structurally isolated so it can never lift a catalog/SPATH/self-protection block (T-09-31). The pure libraries (`policy`/`pkgparse`/`posture`) stayed I/O-free.
+
+**Key accomplishments:**
+
+1. **Nudge retired, posture foundation laid (Phase 26)** — `beekeeper nudge` CLI + `internal/nudge` + `config set nudge.*` removed; release-age preserved + the pm-config readers relocated under `internal/posture`; a new pure `pkgparse.RemoteSource` + `policy.EvaluateRemoteSource` git/remote-URL rule; shim repointed onto `beekeeper check`.
+2. **Layer 1 hook enforcement + Gate 1 (Phase 27)** — `posture_adapter` wires the three rules into the hook at warn + fail-soft (an unknown answer never blocks); SENTRY-009 cross-platform; canonical `posture.BoundaryStatement`; the shim made real (`buildShimToolCall`). Gate 1 ratified; IPOVR-03 pulled into v1.0.
+3. **Layer 2 read-only view (Phase 28)** — shared `view.BuildComparison` (CLI + TUI) with a sha256 byte-for-byte read-only guarantee test (IPVIEW-02).
+4. **Layer 3 scoped override + per-rule severity (Phase 29)** — `posture allow`/`enforce`, per-rule warn→block opt-up (tighten-only from untrusted layers), a posture-scoped allowlist that never bypasses a catalog block (T-09-31), distinct `posture_override` audit records.
+5. **Docs + release prep (Phase 30) and the test/E2E/CI bar (Phase 31)** — `docs/install-posture.md`, SENTRY-009 in the threat model, the home card reframed + ~10 web docs corrected (accuracy gate RED→GREEN), v1.1.0 changelog; boundary/timeout/block-mode/override tests, a real-binary posture E2E, a CI `e2e` job wired into the release gate, `docs/posture-validation.md`.
+6. **Two human gates cleared** — Gate 1 (enforcement-boundary review) and Gate 2 (the maintainer cut + signed the `v1.1.0` release tag). The agent prepared the release fully but did not self-sign.
+
+**Known deferred / accepted at close:**
+- **Tech debt (zero blockers):** M-01 (latent unwired TUI incident card), M-02 (Sentry record mapping keys on severity vs RuleID — currently correct), 5 Low / 2 Info + a non-exploitable Unix-shim quoting note, and `THREAT-MODEL.md` paraphrasing (vs embedding) the boundary constant. Tracked in `phases/31-test-coverage-e2e-ci/31-REVIEW-DECISION.md`.
+- **Deferred to roadmap (intentional):** deep per-rule per-ecosystem policy matrix + custom thresholds; the package-manager shim as a first-class machine-wide enforcement surface; config mutation (PRD Layer 4).
+- **Known deferred items at close: 4** (audit-open) — quick tasks `260612-f80`/`260615-ky4` (done; "unknown" only by heuristic) + the IPv6-normalization todo + the already-shipped `docs-styling-polish` todo. See STATE.md "Deferred Items".
+- **v1.1.0 "Pollen" remains PARKED** at its maintainer release checkpoint — independent of this close.
+
+---
+
 ## v1.4.0 — Adjudicated Corpus (Local Loop) (Shipped: 2026-06-15)
 
 **Phases:** 4 (22–25, numbering continues from v1.3.0) · **Plans:** 12 (3 per phase) + 1 quick task (FRB-05 fix) · **Timeline:** 2026-06-13 → 2026-06-15
