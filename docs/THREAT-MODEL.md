@@ -692,7 +692,14 @@ and the Linux fanotify path counts drops (`EventsDropped`). v1.3.0 (Phase 20)
 added SENTRY-006 (agent-descendant credential cluster), SENTRY-007 (generalized
 exfil fusion with no fresh-extension precondition), SENTRY-008 (persistence-
 location write), agent-CLI ancestry, file-write ingestion, and a cloud-credential
-watchlist expansion. The remaining honest gaps are:
+watchlist expansion. v1.1.0 (install posture) added SENTRY-009 (install
+observation): when a monitored descendant spawns a package-manager install,
+including an install a person runs directly in a terminal or on a harness with no
+pre-exec hook, Sentry emits a detection-only `sentry_install_observed` record
+attributing the install (process PID/PPID, exe, cmdline). It adds no registry I/O
+and does not evaluate posture in the privileged daemon; posture matching is the
+hook's job (`internal/check/posture_adapter.go`). It records but never blocks,
+kills, or quarantines. The remaining honest gaps are:
 
 1. **Scope.** Rules require ancestry from an editor (code/cursor/windsurf/codium)
    or a known agent CLI (claude/codex/cursor-agent/gemini/copilot/qwen/aider/
