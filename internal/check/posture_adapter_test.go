@@ -103,6 +103,31 @@ func TestPostureBlockModeRegistryErrorStillWarns(t *testing.T) {
 	}
 }
 
+// TestPostureFetchTimeout: the IPOVR-03 fail-soft invariant on the explicit
+// fetch-TIMEOUT path. The production timeout (postureFetchTimeout ~2500ms) maps a
+// deadline-exceeded fetch to warnUnknown -- exactly the value the publish-age
+// fetcher returns here (context.DeadlineExceeded). EVEN with release-age opted up
+// to block, a fetch that times out (an UNKNOWN answer) WARNS, never blocks: a slow
+// or unreachable registry cannot turn into a blocked install under block mode.
+// This is distinct from the registry-error case above -- it asserts the timeout
+// answer the production fetchCtx deadline produces is treated as fail-soft.
+func TestPostureFetchTimeout(t *testing.T) {
+	// Publish-age fetch reports the deadline-exceeded error the postureFetchTimeout
+	// child context surfaces on a real timeout. No sleep needed: the production code
+	// maps ageErr != nil (and fetchCtx.Err() != nil) to the same warnUnknown branch.
+	stubPostureFetchers(t, 0, false, context.DeadlineExceeded, nil, false, nil)
+	dec, ok := runPostureCfg(t, bashInstall("npm install left-pad@1.0.0"), blockReleaseAgeCfg())
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if !dec.Allow || dec.Level != "warn" {
+		t.Fatalf("decision = %+v, want Allow:true Level:warn (a fetch timeout stays fail-soft warn even under block mode)", dec)
+	}
+	if dec.Level == "block" {
+		t.Fatalf("decision = %+v, want warn not block on fetch timeout (fail-soft invariant)", dec)
+	}
+}
+
 // TestPostureBlockModeOldCleanPackageAllows: block mode does NOT block a clean
 // install -- only a fired rule. An old, script-free package still allows.
 func TestPostureBlockModeOldCleanPackageAllows(t *testing.T) {
