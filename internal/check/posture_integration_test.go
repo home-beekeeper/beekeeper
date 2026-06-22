@@ -203,6 +203,124 @@ func TestRunCheckPostureBlockModeBlocksFreshPackage(t *testing.T) {
 	}
 }
 
+// closedBlockLifecycleConfig opts the lifecycle posture rule UP to block.
+func closedBlockLifecycleConfig() config.Config {
+	return config.Config{
+		FailMode: config.FailModeClosed,
+		Posture: &config.PostureConfig{
+			Lifecycle: config.PostureRuleConfig{Action: config.PostureActionBlock},
+		},
+	}
+}
+
+// closedBlockRemoteSourceConfig opts the git-remote posture rule UP to block.
+func closedBlockRemoteSourceConfig() config.Config {
+	return config.Config{
+		FailMode: config.FailModeClosed,
+		Posture: &config.PostureConfig{
+			RemoteSource: config.PostureRuleConfig{Action: config.PostureActionBlock},
+		},
+	}
+}
+
+// TestRunCheckPostureBlockModeBlocksLifecycle is the IPOVR-03 live-path proof for
+// the lifecycle rule (test the PATH not the component): with lifecycle opted UP to
+// block, a Bash `npm install <pkg>` whose package carries a postinstall lifecycle
+// script drives the real RunCheck and must BLOCK (exit 1) with a lifecycle reason +
+// audit decision "block". The package is old (release-age clean) so the block is
+// attributable to the lifecycle rule alone.
+func TestRunCheckPostureBlockModeBlocksLifecycle(t *testing.T) {
+	// Old (release-age clean) + a postinstall lifecycle script -> lifecycle fires.
+	stubPostureFetchers(t, 100000, false, nil, []string{"postinstall"}, false, nil)
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir) // unsigned editor entry -> no npm catalog match
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install beekeeper-posture-lifecycle-xyz-not-real@1.0.0"}}`)
+
+	res := RunCheck(context.Background(), stdin, closedBlockLifecycleConfig(), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitBlock {
+		t.Fatalf("ExitCode = %d, want %d (lifecycle opted up to block must block a package with a postinstall script)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow || res.Decision.Level != "block" {
+		t.Fatalf("decision = %+v, want Allow:false Level:block (lifecycle opt-up)", res.Decision)
+	}
+	if !strings.Contains(strings.ToLower(res.Decision.Reason), "lifecycle") &&
+		!strings.Contains(strings.ToLower(res.Decision.Reason), "postinstall") {
+		t.Errorf("block reason = %q, want it to mention the lifecycle script", res.Decision.Reason)
+	}
+
+	rec := readPolicyDecisionRecord(t, auditPath)
+	if rec["decision"] != "block" {
+		t.Fatalf("audit decision = %v, want block; record: %+v", rec["decision"], rec)
+	}
+}
+
+// TestRunCheckPostureBlockModeBlocksRemoteSource is the IPOVR-03 live-path proof
+// for the git-remote rule: with git-remote opted UP to block, a Bash
+// `npm install git+https://...` drives the real RunCheck and must BLOCK (exit 1)
+// with a remote-source reason + audit decision "block". The git-remote rule is
+// parsed entirely from the command string (no registry fetch), so this is
+// deterministic with no network. The fetchers are stubbed to fail-soft values to
+// prove they are not even consulted for a remote install.
+func TestRunCheckPostureBlockModeBlocksRemoteSource(t *testing.T) {
+	// Fetchers stubbed to "would warn" values; a remote install never consults them.
+	stubPostureFetchers(t, 0, true, nil, nil, true, nil)
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir) // unsigned editor entry -> no npm catalog match
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install git+https://github.com/evil/pkg.git"}}`)
+
+	res := RunCheck(context.Background(), stdin, closedBlockRemoteSourceConfig(), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitBlock {
+		t.Fatalf("ExitCode = %d, want %d (git-remote opted up to block must block a git install)", res.ExitCode, exitBlock)
+	}
+	if res.Decision.Allow || res.Decision.Level != "block" {
+		t.Fatalf("decision = %+v, want Allow:false Level:block (git-remote opt-up)", res.Decision)
+	}
+	if !strings.Contains(strings.ToLower(res.Decision.Reason), "git") &&
+		!strings.Contains(strings.ToLower(res.Decision.Reason), "source") {
+		t.Errorf("block reason = %q, want it to mention the remote/git source", res.Decision.Reason)
+	}
+
+	rec := readPolicyDecisionRecord(t, auditPath)
+	if rec["decision"] != "block" {
+		t.Fatalf("audit decision = %v, want block; record: %+v", rec["decision"], rec)
+	}
+}
+
+// TestRunCheckPostureRemoteSourceDefaultWarnsNotBlock is the attribution sibling
+// for the git-remote block above: the SAME git install under the DEFAULT (warn)
+// config must WARN (exit 0), NOT block. This proves the block in
+// TestRunCheckPostureBlockModeBlocksRemoteSource is attributable to the opt-up,
+// not to the git-remote rule firing a block on its own (the pure evaluator warns).
+func TestRunCheckPostureRemoteSourceDefaultWarnsNotBlock(t *testing.T) {
+	stubPostureFetchers(t, 0, true, nil, nil, true, nil)
+
+	dir := t.TempDir()
+	idxPath := buildTestIndex(t, dir)
+	auditPath := auditPathIn(t)
+	stdin := strings.NewReader(`{"agent_name":"a","tool_name":"Bash","tool_input":{"command":"npm install git+https://github.com/evil/pkg.git"}}`)
+
+	// closedConfig() is FailModeClosed with NO Posture block -> git-remote defaults to warn.
+	res := RunCheck(context.Background(), stdin, closedConfig(), idxPath, auditPath, t.TempDir())
+
+	if res.ExitCode != exitAllow {
+		t.Fatalf("ExitCode = %d, want %d (a git install warns by default, does not block)", res.ExitCode, exitAllow)
+	}
+	if !res.Decision.Allow || res.Decision.Level != "warn" {
+		t.Fatalf("decision = %+v, want Allow:true Level:warn (default git-remote posture is warn)", res.Decision)
+	}
+
+	rec := readPolicyDecisionRecord(t, auditPath)
+	if rec["decision"] != "warn" {
+		t.Fatalf("audit decision = %v, want warn; record: %+v", rec["decision"], rec)
+	}
+}
+
 // TestRunCheckPostureBlockModeMissingTimestampStillWarns proves the IPOVR-03
 // fail-soft invariant on the LIVE path: EVEN with release-age opted up to block, a
 // MISSING publish timestamp (unknown input) must WARN (exit 0), not block. A
