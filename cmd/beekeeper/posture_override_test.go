@@ -190,6 +190,106 @@ func TestPostureEnforceBlockWritesDistinctRecordAndConfig(t *testing.T) {
 	}
 }
 
+// TestPostureEnforceWarnWritesRecord: `posture enforce <rule> --warn` writes a
+// DISTINCT enforce_warn posture_override record AND sets the rule action back to
+// warn in the persisted config (the lower-it-back path, mirror of enforce_block).
+func TestPostureEnforceWarnWritesRecord(t *testing.T) {
+	stagePostureHome(t)
+
+	// First raise release-age to block, then lower it back with --warn.
+	execPostureEnforce(t, "release-age", "--block")
+	execPostureEnforce(t, "release-age", "--warn")
+
+	recs := readPostureOverrideRecords(t)
+	if len(recs) != 2 {
+		t.Fatalf("posture_override records = %d, want 2 (enforce_block then enforce_warn); got %+v", len(recs), recs)
+	}
+	last := recs[len(recs)-1]
+	if last["posture_override_action"] != "enforce_warn" {
+		t.Errorf("last posture_override_action = %v, want enforce_warn", last["posture_override_action"])
+	}
+	if last["posture_rule"] != "release-age" {
+		t.Errorf("posture_rule = %v, want release-age", last["posture_rule"])
+	}
+
+	cfgPath, err := platform.ConfigPath()
+	if err != nil {
+		t.Fatalf("resolve config path: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config after enforce --warn: %v", err)
+	}
+	if got := cfg.PostureRuleAction("release-age"); got != config.PostureActionWarn {
+		t.Errorf("release-age action = %q, want warn (enforce --warn lowers the rule back)", got)
+	}
+}
+
+// TestPostureAllowAlwaysEcosystemScoped: `posture allow <pkg> --always --ecosystem
+// npm --reason ...` records a posture-scoped allow confined to npm. The persisted
+// entry carries Ecosystem=="npm", so PostureRuleExcludes for npm includes the
+// package but the SAME name under pypi does NOT -- a pypi install of the same name
+// would still warn.
+func TestPostureAllowAlwaysEcosystemScoped(t *testing.T) {
+	stagePostureHome(t)
+
+	execPostureAllow(t, "scoped-pkg", "--always", "--ecosystem", "npm", "--reason", "vetted for npm only")
+
+	cfgPath, err := platform.ConfigPath()
+	if err != nil {
+		t.Fatalf("resolve config path: %v", err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Posture == nil || len(cfg.Posture.Allow) != 1 {
+		t.Fatalf("config.Posture.Allow = %+v, want exactly one posture-scoped allow entry", cfg.Posture)
+	}
+	if cfg.Posture.Allow[0].Ecosystem != "npm" {
+		t.Errorf("allow entry Ecosystem = %q, want npm (the exemption must be ecosystem-scoped)", cfg.Posture.Allow[0].Ecosystem)
+	}
+
+	// npm install of the package is exempt...
+	if ex := cfg.PostureRuleExcludes("release-age", "npm"); len(ex) != 1 || ex[0] != "scoped-pkg" {
+		t.Errorf("PostureRuleExcludes(release-age, npm) = %v, want [scoped-pkg]", ex)
+	}
+	// ...but the SAME name under pypi is NOT exempt (would still warn).
+	if ex := cfg.PostureRuleExcludes("release-age", "pypi"); len(ex) != 0 {
+		t.Errorf("PostureRuleExcludes(release-age, pypi) = %v, want empty (an npm-scoped allow must not exempt pypi)", ex)
+	}
+}
+
+// TestPostureAllowAlwaysConfigPersistence: after `posture allow --always`, reload
+// the config from disk via config.Load on the same path and assert the Allow entry
+// survives the round-trip (it is written to and read back from the config file,
+// not just held in memory).
+func TestPostureAllowAlwaysConfigPersistence(t *testing.T) {
+	stagePostureHome(t)
+
+	execPostureAllow(t, "persisted-pkg", "--always", "--ecosystem", "npm", "--rule", "release-age", "--reason", "survives reload")
+
+	cfgPath, err := platform.ConfigPath()
+	if err != nil {
+		t.Fatalf("resolve config path: %v", err)
+	}
+	// Reload from disk: a fresh config.Load on the same path must see the entry.
+	reloaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("reload config from disk: %v", err)
+	}
+	if reloaded.Posture == nil || len(reloaded.Posture.Allow) != 1 {
+		t.Fatalf("reloaded config.Posture.Allow = %+v, want one persisted entry", reloaded.Posture)
+	}
+	got := reloaded.Posture.Allow[0]
+	if got.Package != "persisted-pkg" || got.Ecosystem != "npm" || got.Rule != "release-age" {
+		t.Errorf("reloaded allow entry = %+v, want {Package:persisted-pkg, Ecosystem:npm, Rule:release-age}", got)
+	}
+	if got.Reason != "survives reload" {
+		t.Errorf("reloaded allow entry Reason = %q, want %q (the recorded justification must survive)", got.Reason, "survives reload")
+	}
+}
+
 // TestPostureAllowAlwaysRequiresReason: `--always` without `--reason` is rejected.
 func TestPostureAllowAlwaysRequiresReason(t *testing.T) {
 	stagePostureHome(t)
