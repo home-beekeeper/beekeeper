@@ -15,10 +15,10 @@ CI pipeline or developer workstation.
 
 > **Version note.** The v1.0.0 sections below remain accurate and are preserved
 > verbatim. Two new top-level sections cover the work shipped after v1.0.0:
-> **§10 Multi-Harness Hook Enforcement (v1.3.0)** — the exit-2 deny protocol,
+> **§10 Multi-Harness Hook Enforcement (v1.3.0)** - the exit-2 deny protocol,
 > the per-harness deny contract families, the Hermes fail-OPEN class, and the
-> 15 per-harness config-file installers — and **§11 Runtime Hardening (v1.2.0):
-> SPATH, CORR, NUDGE**. The Attack Surface Summary (§1) and the Known Gaps
+> 15 per-harness config-file installers - and **§11 Runtime Hardening (v1.2.0):
+> SPATH, CORR, and install posture (v1.1.0)**. The Attack Surface Summary (§1) and the Known Gaps
 > section (§8) have been refreshed to reference these. Where a v1.0.0 claim was
 > found to be stronger on paper than in code during the 2026-06-05 audit, the
 > discrepancy is called out honestly in §8 rather than silently edited.
@@ -37,7 +37,7 @@ CI pipeline or developer workstation.
 8. [Known Gaps and Explicit Non-Defenses](#8-known-gaps-and-explicit-non-defenses)
 9. [Declarative Policy Overlay: Escape Hatch and Known Limitations](#9-declarative-policy-overlay-escape-hatch-and-known-limitations)
 10. [Multi-Harness Hook Enforcement (v1.3.0)](#10-multi-harness-hook-enforcement-v130)
-11. [Runtime Hardening (v1.2.0): SPATH, CORR, NUDGE](#11-runtime-hardening-v120-spath-corr-nudge)
+11. [Runtime Hardening (v1.2.0): SPATH, CORR, and install posture (v1.1.0)](#11-runtime-hardening-v120-spath-corr-and-install-posture-v110)
 12. [First-Responder Quarantine and Catalog-to-Sentry Targeting (v1.3.0)](#12-first-responder-quarantine-and-catalog-to-sentry-targeting-v130-post-ship)
 13. [Adjudicated Corpus (Local Loop) (v1.4.0)](#13-adjudicated-corpus-local-loop--v140)
 14. [Security Remediation (2026-06-15)](#14-security-remediation-2026-06-15)
@@ -646,8 +646,10 @@ threat model the working tree is an untrusted surface — it is exactly the
 agent-cloned repository the tool exists to police. A project-local
 `{"fail_mode":"open"}` (or a dependency `postinstall` that writes one) therefore
 converts every fail-closed safety net — crash, timeout, oversized stdin,
-missing/corrupt index — into fail-open, and the same layer can disable `nudge`
-and the LlamaFirewall sidecar or repoint the `self_catalog` URL+key.
+missing/corrupt index — into fail-open, and the same layer can disable the
+LlamaFirewall sidecar or repoint the `self_catalog` URL+key. (Install posture is
+the exception: an untrusted project/env layer is tighten-only, so it can raise a
+posture rule to block but never lower one below the default warn.)
 
 The v1.0.0 model framed this under "Direct Human Malice" (the operator can
 always disable enforcement). That remains true for a deliberate operator, but
@@ -898,7 +900,7 @@ with Beekeeper itself — the agent *is* the owner. The only layer that can tell
 check` blocks the agent's tool calls that target Beekeeper's own footprint
 (`internal/check/selfprotect.go`, `hookguard.go`; pure matcher
 `internal/policy/selfpath.go`). Enforced in `beekeeper check` only (D-03), after
-`ApplyPolicyOverlay` and before NUDGE, merged most-restrictive — so a
+`ApplyPolicyOverlay` and before the install-posture merge, merged most-restrictive — so a
 `package_allowlist` allow can never downgrade a self-protection block.
 
 - **State directory (read + write).** The resolved `platform.StateDir()` prefix
@@ -960,6 +962,12 @@ policies (configured via catalog entries and `internal/config`) remain the enfor
 path for these rule types. Declarative policy files can declare `release_age` rules
 for documentation and `policy test` dry-run context, but they do not affect live
 `beekeeper check` decisions in v1.
+
+Note that this limitation is specific to the **declarative policy overlay** rule
+types. Install posture (v1.1.0, §11) is a separate mechanism with its own
+`PostureConfig`: it does evaluate release age and lifecycle install scripts at the
+hook, but as a fail-soft **warn** (opt-up to block per rule), not an overlay
+`release_age` / `lifecycle_script_allowlist` rule.
 
 **Future work:** A v2 overlay enhancement could pass catalog-side metadata (package
 publish timestamp, lifecycle-script hash) into the overlay for these rule types.
@@ -1072,10 +1080,13 @@ Hermes fail-OPEN class are restated as known gaps in §8.
 
 ---
 
-## 11. Runtime Hardening (v1.2.0): SPATH, CORR, NUDGE
+## 11. Runtime Hardening (v1.2.0): SPATH, CORR, and install posture (v1.1.0)
 
 v1.2.0 tightened the policy engine and added runtime sensitive-path enforcement.
-These controls were not present in the v1.0.0 model.
+These controls were not present in the v1.0.0 model. The package-manager nudge
+that v1.2.0 originally shipped here was removed in v1.1.0 "Install Posture" and
+replaced by the tool-agnostic install-posture warn layer described at the end of
+this section (see also [install-posture.md](install-posture.md)).
 
 ### SPATH — Sensitive-Path Runtime Enforcement
 
@@ -1088,13 +1099,17 @@ streams and trailing-dot tricks. In the Sentry, paths are normalized with
 `filepath.ToSlash` so backslash paths from Windows ETW match the same rules.
 
 **The merge-ordering invariant (most important property):** in the check
-handler, the declarative policy overlay is applied **first**, and only then are
-the SPATH (sensitive-path) and NUDGE (package-manager) blocks merged in, using
+handler, the declarative policy overlay is applied **first**, then the SPATH
+(sensitive-path) block, then the install-posture decision, each merged in using
 **most-restrictive-wins**. The practical guarantee is that a `package_allowlist`
-`allow` escape hatch (§9) can **never downgrade a credential-read block or a
-nudge block** — the allowlist can only relax the catalog/engine base decision,
-which is computed before the SPATH/NUDGE merge. The same parity check runs in the
-MCP gateway, so a tool call cannot escape SPATH by going through the gateway
+`allow` escape hatch (§9) can **never downgrade a credential-read block** — the
+allowlist can only relax the catalog/engine base decision, which is computed
+before the SPATH and posture merges. Install posture is a fail-soft warn by
+default rather than a block (an operator can opt an individual rule up to block
+with `beekeeper posture enforce <rule> --block`), and because it is merged last
+with most-restrictive-wins it can only ADD a warn, never downgrade a catalog,
+sensitive-path, or self-protection block above it. The same parity check runs in
+the MCP gateway, so a tool call cannot escape SPATH by going through the gateway
 instead of the hook.
 
 ### CORR — Per-Severity Corroboration and Anti-Poisoning Sanity Bounds
@@ -1151,23 +1166,33 @@ anti-poisoning guards protect this stronger escalation:
 > These discrepancies are disclosed here rather than silently
 > edited so the audit trail is honest.
 
-### NUDGE — Package-Manager Hardening
+### Install posture — package-install hardening (v1.1.0)
 
-NUDGE normalizes package-manager invocations (`pnpm`/`bun`/`yarn` → `npm`
-semantics, plus `npm add`/`npm exec` verbs) so install/exec detection is not
-trivially evaded by using an alternate front-end. The package-manager detector
-that backs the soft "nudge" advisory is **fail-OPEN by design** — a slow or
-erroring package manager is treated as "not installed" so a soft advisory never
-blocks a legitimate install — and it execs only fixed argv with never-panic,
+Install posture replaced the v1.2.0 package-manager nudge. At the agent pre-exec
+hook it evaluates three tool-agnostic structural rules on every package install
+(`internal/check/posture_adapter.go`, rules in `internal/posture` and
+`internal/policy`): release age (a first-publish younger than 24 hours),
+lifecycle install scripts, and git or remote-URL dependencies. All three **warn
+by default and fail soft**: an unknown answer (a registry timeout, a missing
+publish timestamp) warns rather than blocks, so a slow or offline check never
+stops a legitimate install. An operator can opt an individual rule up to block
+with `beekeeper posture enforce <rule> --block`; the unknown / fail-soft path
+still warns even under block. The checks are the same regardless of which package
+manager the agent reaches for, and they exec only fixed argv with never-panic,
 overflow-guarded file scanners.
+
+Posture is a warn layer, not part of the exit-2 block set. The hook's exit-2
+blocks are the corroborated-malicious catalog decision (CORR) and the
+sensitive-path read (SPATH); install posture adds a fail-soft warn on top, never
+an exit-2 deny by default (see [install-posture.md](install-posture.md) for the
+canonical enforcement boundary).
 
 **Known limitation (see §8 "Zero-Day Agent Tool-Call Semantics"):** install
 *parsing* is fail-open for invocation forms the parser does not recognize.
 Command-chaining (`&&`, `;`, `|`), leading environment-variable assignments
 (`FOO=bar npm install …`), and package managers not in the table (e.g. `deno`,
-`mvn`, `nuget`) parse as "no package identified" and are allowed by default
-rather than blocked. SPATH credential-read detection runs independently of this
-parser.
+`mvn`, `nuget`) parse as "no package identified" and so posture does not evaluate
+them. SPATH credential-read detection runs independently of this parser.
 
 ---
 
@@ -1319,7 +1344,7 @@ gaps against the code and surfaced additional, previously-undocumented issues.
 **Every finding — High through Low — was remediated the same day** on branch
 `security/remediation-260615`. Validation after the fixes: the full Go test suite
 (26 packages) is green, both live-binary E2E gates pass (the `internal/check`
-`--hook` exit-2 / SPATH / CORR / NUDGE gate and the `cmd/beekeeper` corpus moat
+`--hook` exit-2 / SPATH / CORR / install-posture gate and the `cmd/beekeeper` corpus moat
 loop), the fuzz seed corpus is clean, and cross-platform `go vet` (linux, darwin,
 windows) compiles the platform-guarded code. This section records what changed so
 sections 1-13 remain accurate; the most contradictory inline claims above are
