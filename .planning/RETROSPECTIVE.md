@@ -144,6 +144,41 @@ The moat: a frozen four-layer event schema (behavior/decision/outcome/context) +
 
 ---
 
+## Milestone: v1.5.0 — Install Posture (released as v1.1.0)
+
+**Shipped:** 2026-06-22
+**Phases:** 6 (26–31) | **Plans:** 11 | **Span:** 2 days (2026-06-21 → 2026-06-22)
+
+### What Was Built
+Retired the package-manager nudge and shipped tool-agnostic install posture: three rules (release-age / lifecycle / git-remote) enforced at the pre-exec hook at warn + fail-soft; a read-only machine-wide `beekeeper posture` view (CLI + TUI); scoped audited overrides (`posture allow`/`enforce`) with per-rule warn→block opt-up; SENTRY-009 detection-only install observation; and a canonical enforcement-boundary statement propagated to code, help, docs, and the web site. Shipped across two repos (Go core `home-beekeeper/beekeeper` + docs `beekeeper-web`).
+
+### What Worked
+- **The two-gate structure paid off.** Gate 1 (enforcement-boundary review) is where the maintainer pulled IPOVR-03 (per-rule opt-up) into v1.0 and ratified warn/fail-soft — a scope decision made at exactly the right moment, before propagation. Gate 2 (release signing) kept the irreversible signature with the human by design.
+- **Release-gate reviews beat a formal milestone audit at finding real issues.** The security review (all 8 invariants HELD) + code review caught the H-01 ship-gate (`posture allow --once --rule` recorded a scope it didn't enforce) *before* merge; the milestone audit then confirmed zero blockers. Running the reviews on the full merged diff, adversarially, was higher-yield than the checkbox audit.
+- **The posture layer's structural isolation was verifiable.** Designing posture as warn-only + most-restrictive-merged + a separate allowlist (never `package_allowlist`) meant the T-09-31 "can't bypass a malware block" invariant was provable by both a live-RunCheck test and the security review, not just asserted.
+- **Independent re-verification per phase** (orchestrator re-ran build/vet/test/e2e after each delegated phase) caught the load-flaky p99 latency gate as environmental, not a regression — no false alarm at the gate.
+
+### What Was Inefficient
+- **A docs agent that ran build + accuracy but not lint** shipped a biome-format miss that only surfaced in web CI (red on the first PR run). Lesson: reproduce the *full* CI gate set locally before pushing, not a subset.
+- **Cross-repo `source_doc` drift was latent until CI.** Deleting `cmd/beekeeper/nudge.go` silently red-ed the web accuracy gate (dead `source_doc` paths) — caught only because the gate resolves against the sibling checkout. A pre-delete grep for inbound `source_doc` references would have surfaced it at edit time.
+- **The hand-managed milestone (no per-phase VERIFICATION.md/SUMMARY.md) doesn't fit the stock audit-milestone workflow**, which mechanically flags every phase "unverified." The audit had to be run evidence-based against merged `main` — worth formalizing as the convention for this project.
+
+### Patterns Established
+- **Decoupled internal-vs-public version numbers.** GSD milestone `v1.5.0` ships as release `v1.1.0` to avoid colliding with the parked Pollen `v1.1.0` GSD milestone — archives use the internal number, the git tag uses the public one.
+- **Two-repo release via paired PRs** (Go core + beekeeper-web), each CI-gated, merged independently, with the signed tag on the core repo only.
+- **Audit-as-evidence for hand-managed milestones:** verify each REQ-ID against merged code + release-gate reviews + integration checker + green CI, not against per-phase planning files.
+
+### Key Lessons
+- Put the irreversible, outward-facing step (signing, publishing) behind an explicit human gate and prepare everything else fully — the agent took the release to a one-command signature.
+- Adversarial security + code review on the merged diff is the highest-leverage pre-ship gate; the formal milestone audit is a confirmation, not the primary net.
+- When a feature is a *safety* layer, design it so its safety invariant is *testable* (structural isolation + a live-path test), not just documented.
+
+### Cost Observations
+- Model mix: orchestration on Opus; the web reframe, Go test executor, security/code reviewers, and integration checker on delegated agents.
+- Notable: the security review (8 invariants HELD) + code review (1 HIGH fixed) on the merged diff was the highest-yield spend — it caught the only ship-gate bug before merge, which the subsequent milestone audit then confirmed clear.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Recurring wins
