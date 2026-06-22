@@ -52,7 +52,7 @@ var packageFloors = map[string]float64{
 	"internal/watch":      85,
 	// Already-high, OS-independent pure-logic packages.
 	"internal/corpus":   88,
-	"internal/nudge":    90,
+	"internal/posture":  85,
 	"internal/pkgparse": 90,
 	"internal/policy":   88,
 	// OS-variant packages: these compile DIFFERENT files per GOOS (ipc uses a

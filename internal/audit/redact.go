@@ -182,6 +182,12 @@ func RedactRecord(rec AuditRecord, patterns []redactPattern) AuditRecord {
 	out.RewrittenCommand = applyRedaction(rec.RewrittenCommand, patterns)
 	out.PMState = applyRedaction(rec.PMState, patterns)
 
+	// Phase 29 posture-override fields: the operator-supplied package name is
+	// redacted defensively (a package spec can embed a registry URL with a token),
+	// consistent with the Reason / OriginalCommand redaction above. The override
+	// reason itself flows through Reason and is already redacted.
+	out.PosturePackage = applyRedaction(rec.PosturePackage, patterns)
+
 	// TM-D-03: redact Sentry string fields that may carry credential-adjacent
 	// data (process paths, network destinations, correlated extension IDs).
 	out.SentryProcessExe = applyRedaction(rec.SentryProcessExe, patterns)

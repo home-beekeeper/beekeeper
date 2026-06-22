@@ -389,6 +389,10 @@ func (a App) runPaletteSelection() func() interface{} {
 		m, _ := a.openPanel(panelCatalogs, NewCatalogsPanel())
 		return func() interface{} { return m }
 
+	case "posture":
+		m, _ := a.openPanel(panelPosture, NewPosturePanel())
+		return func() interface{} { return m }
+
 	case "scan now":
 		m, _ := a.openPanel(panelScan, NewScanPanel("deep"))
 		return func() interface{} { return m }

@@ -10,11 +10,9 @@
 // catalog source. All other Phase 2 catalog source config is wired in Plan 08.
 // Full layered config remains Phase 9.
 //
-// Phase 8 addition: NudgeConfig block (NUDGE-08) + EXPORTED ValidateNudgeConfig.
-// config imports only stdlib — it MUST NOT import internal/nudge (cycle).
-// cmd/beekeeper (package main, Plan 08) calls ValidateNudgeConfig directly for
-// the §10-17 config-set rejection test; Load delegates to the same exported
-// function so there is exactly ONE validator.
+// History: a Phase 8 NudgeConfig block (package-manager nudge / NUDGE-08) lived
+// here. The nudge feature was removed in v1.1.0; its config block, validator, and
+// layered-merge handling are gone. config imports only stdlib.
 package config
 
 import (
@@ -23,8 +21,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -93,176 +89,6 @@ type LlamaFirewallConfig struct {
 	PythonPath string `json:"python_path,omitempty"`
 }
 
-// NudgeMajorDriftCheck holds the periodic major-version drift check settings.
-type NudgeMajorDriftCheck struct {
-	// Enabled controls whether the weekly pnpm/bun major-version drift check runs.
-	Enabled bool `json:"enabled"`
-	// Interval is the time between drift checks as a Go duration string (e.g. "168h").
-	// Default "168h" (7 days). Must be parseable by time.ParseDuration.
-	Interval string `json:"interval,omitempty"`
-}
-
-// NudgeVersionFloors holds the minimum version floors for each supported package manager.
-type NudgeVersionFloors struct {
-	// Pnpm is the minimum acceptable pnpm version, e.g. "11.0.0".
-	Pnpm string `json:"pnpm,omitempty"`
-	// Bun is the minimum acceptable bun version, e.g. "1.3.0".
-	Bun string `json:"bun,omitempty"`
-	// Node is the minimum Node.js version for pnpm 11 compatibility, e.g. "22.0.0".
-	// Note: Node 24 is the current Active LTS (Node 22 is Maintenance LTS through 2027-04);
-	// the floor remains 22 because pnpm 11 requires Node 22+.
-	Node string `json:"node,omitempty"`
-}
-
-// NudgeConfig holds Phase 8 package-manager nudge configuration (NUDGE-08).
-//
-// This struct is defined in internal/config to avoid an import cycle: config is
-// imported by many packages; internal/nudge imports config, so config must not
-// import internal/nudge.
-//
-// PRD §5 defaults:
-//   - Enabled: true (nudge is on out of the box)
-//   - Mode: "soft" (advise + proceed; respects agent agency)
-//   - Preferred: "pnpm" (pnpm defaults are on automatically; bun requires the Socket scanner)
-//   - CheckSocketScanner: true (verify @socketsecurity/bun-security-scanner for bun)
-//   - MajorDriftCheck: enabled, interval "168h" (weekly)
-//   - VersionFloors: pnpm 11.0.0, bun 1.3.0, node 22.0.0
-//
-// Project-level .beekeeper.json nudge.enabled:false wins over user config
-// (layered merge, NUDGE-08 / PRD §11).
-type NudgeConfig struct {
-	// Enabled controls whether the nudge feature runs at all. Default true.
-	// Set to false in project .beekeeper.json to opt out project-wide.
-	Enabled bool `json:"enabled"`
-	// Mode is the nudge aggressiveness:
-	//   "soft"  (advise + proceed, default) — warn but allow the npm install.
-	//   "hard"  (rewrite the command to its pnpm/bun equivalent, advisory; allow).
-	//   "block" (DENY npm/yarn installs when a hardened PM is available, telling
-	//           the agent to use pnpm/bun instead — supply-chain enforcement).
-	// All other values are rejected by ValidateNudgeConfig (fail-closed).
-	Mode string `json:"mode,omitempty"`
-	// RequireHardened, when true, blocks npm install when no hardened PM is
-	// installed. Default false (npm calls proceed with advisory).
-	RequireHardened bool `json:"require_hardened,omitempty"`
-	// Preferred selects the preferred hardened PM when both pnpm and bun are
-	// available. Must be "pnpm" (default) or "bun". Other values are rejected.
-	Preferred string `json:"preferred,omitempty"`
-	// CheckSocketScanner controls whether bun is only considered "hardened"
-	// when @socketsecurity/bun-security-scanner is present in bunfig.toml.
-	// Default true.
-	CheckSocketScanner bool `json:"check_socket_scanner,omitempty"`
-	// MajorDriftCheck holds the periodic pnpm/bun major-version drift check
-	// settings (PRD §7.1).
-	MajorDriftCheck NudgeMajorDriftCheck `json:"major_drift_check,omitempty"`
-	// VersionFloors holds the minimum acceptable versions for each PM.
-	VersionFloors NudgeVersionFloors `json:"version_floors,omitempty"`
-}
-
-// DefaultNudgeConfig returns the PRD §5.1 default nudge configuration.
-// A missing "nudge" block in config.json resolves to this value.
-func DefaultNudgeConfig() NudgeConfig {
-	return NudgeConfig{
-		Enabled:            true,
-		Mode:               "soft",
-		RequireHardened:    false,
-		Preferred:          "pnpm",
-		CheckSocketScanner: true,
-		MajorDriftCheck: NudgeMajorDriftCheck{
-			Enabled:  true,
-			Interval: "168h",
-		},
-		VersionFloors: NudgeVersionFloors{
-			Pnpm: "11.0.0",
-			Bun:  "1.3.0",
-			Node: "22.0.0",
-		},
-	}
-}
-
-// legalNudgeModes is the complete enum of valid nudge Mode values.
-// Any value not in this set is rejected by ValidateNudgeConfig (fail-closed,
-// mirrors legalRuleTypes / legalActions in internal/policyloader/validate.go).
-var legalNudgeModes = map[string]bool{
-	"soft":  true,
-	"hard":  true,
-	"block": true,
-}
-
-// legalNudgePreferred is the complete enum of valid Preferred values.
-var legalNudgePreferred = map[string]bool{
-	"pnpm": true,
-	"bun":  true,
-}
-
-// parseVersionFloor checks that a non-empty version floor is a syntactically
-// valid "major.minor[.patch]" string (all integer components). It returns an
-// error when the string is non-empty but malformed.
-//
-// Full semver range validation (pre-release labels, build metadata) is not
-// required: the floors are simple major.minor gates (11.0 / 1.3 / 22) per
-// research Anti-Patterns ("No new dep for simple floor checks; major.minor
-// int compare suffices"). A local pure check keeps config free of imports.
-func parseVersionFloor(v string) error {
-	if v == "" {
-		return nil
-	}
-	parts := strings.Split(v, ".")
-	if len(parts) < 2 || len(parts) > 3 {
-		return fmt.Errorf("version floor %q must be major.minor or major.minor.patch", v)
-	}
-	for _, p := range parts {
-		if _, err := strconv.Atoi(p); err != nil {
-			return fmt.Errorf("version floor %q: component %q is not an integer", v, p)
-		}
-	}
-	return nil
-}
-
-// ValidateNudgeConfig checks nc for correctness using fail-closed bounds
-// validation (mirrors validateCorroborationThresholds / CORR-02 discipline).
-//
-// This function is EXPORTED because cmd/beekeeper (package main, Plan 08)
-// calls it directly for the §10-17 config-set rejection test — an unexported
-// function in internal/config cannot be called from package main.
-// Load delegates to this same exported function; there is exactly ONE validator.
-//
-// Rejects:
-//   - Mode not in {"soft", "hard", "block"} (e.g. "aggressive" is not a valid mode)
-//   - Preferred not in {"pnpm", "bun"}
-//   - Malformed version floor (non-empty string that is not major.minor[.patch])
-//   - Malformed MajorDriftCheck.Interval (non-empty string that time.ParseDuration rejects)
-func ValidateNudgeConfig(nc NudgeConfig) error {
-	// Validate Mode (closed enum).
-	if nc.Mode != "" && !legalNudgeModes[nc.Mode] {
-		return fmt.Errorf("invalid nudge mode %q (want %q, %q, or %q)", nc.Mode, "soft", "hard", "block")
-	}
-
-	// Validate Preferred (closed enum).
-	if nc.Preferred != "" && !legalNudgePreferred[nc.Preferred] {
-		return fmt.Errorf("invalid nudge preferred %q (want %q or %q)", nc.Preferred, "pnpm", "bun")
-	}
-
-	// Validate version floors (must be parseable major.minor[.patch]).
-	if err := parseVersionFloor(nc.VersionFloors.Pnpm); err != nil {
-		return fmt.Errorf("nudge version_floors.pnpm: %w", err)
-	}
-	if err := parseVersionFloor(nc.VersionFloors.Bun); err != nil {
-		return fmt.Errorf("nudge version_floors.bun: %w", err)
-	}
-	if err := parseVersionFloor(nc.VersionFloors.Node); err != nil {
-		return fmt.Errorf("nudge version_floors.node: %w", err)
-	}
-
-	// Validate MajorDriftCheck.Interval (must be a valid Go duration when non-empty).
-	if nc.MajorDriftCheck.Interval != "" {
-		if _, err := time.ParseDuration(nc.MajorDriftCheck.Interval); err != nil {
-			return fmt.Errorf("nudge major_drift_check.interval %q: %w", nc.MajorDriftCheck.Interval, err)
-		}
-	}
-
-	return nil
-}
-
 // CatalogSyncConfig holds Phase 20 background catalog-sync configuration
 // (CSYNC-01..06).
 //
@@ -275,8 +101,7 @@ func ValidateNudgeConfig(nc NudgeConfig) error {
 // user/global layer may opt out.
 //
 // The field is a POINTER on Config so the layered merge can distinguish an
-// absent block (nil → inherit lower layer) from an explicit disable, exactly
-// like Nudge.
+// absent block (nil → inherit lower layer) from an explicit disable.
 type CatalogSyncConfig struct {
 	// Enabled controls whether background catalog sync runs. Default true.
 	Enabled bool `json:"enabled"`
@@ -303,7 +128,7 @@ func DefaultCatalogSyncConfig() CatalogSyncConfig {
 	return CatalogSyncConfig{Enabled: true, Interval: "2h"}
 }
 
-// ValidateCatalogSyncConfig checks csc fail-closed (mirrors ValidateNudgeConfig).
+// ValidateCatalogSyncConfig checks csc fail-closed.
 // An empty Interval is allowed (resolves to the default). A non-empty Interval
 // must be parseable by time.ParseDuration AND fall within [2h, 24h]; anything
 // else is rejected so a typo or out-of-range value cannot silently degrade the
@@ -372,7 +197,7 @@ func (c Config) CatalogSyncEnabled() bool {
 //
 // The field is a POINTER on Config so the layered merge can distinguish an
 // absent block (nil -> use defaults) from an explicit disable, exactly like
-// Nudge and CatalogSync.
+// CatalogSync.
 type AutoQuarantineConfig struct {
 	// Enabled controls whether auto-quarantine fires at all. Default false (opt-in).
 	// Set to true to activate the first-responder reversible-move at >= Threshold.
@@ -502,6 +327,225 @@ func (c Config) AutoQuarantineThreshold() int {
 	return parseClampAutoQuarantineThreshold(c.AutoQuarantine.Threshold)
 }
 
+// Posture rule action values. "" is treated as the default (warn). "warn" is the
+// shipped default posture (surface, do not block). "block" opts the rule UP to a
+// hard block on a DEFINITE violation (IPOVR-03). The unknown/fail-soft path in the
+// check adapter always warns regardless of this value (a registry outage cannot
+// turn into a blocked install even when a rule is set to block).
+const (
+	PostureActionWarn  = "warn"
+	PostureActionBlock = "block"
+)
+
+// Posture rule names. These are the stable, user-facing keys used in config and by
+// the accessor PostureRuleAction. They are intentionally distinct from the internal
+// policy rule IDs (release-age-policy / lifecycle-script-policy / remote-source-policy)
+// so the config surface stays decoupled from the pure evaluator rule IDs.
+const (
+	PostureRuleReleaseAge   = "release-age"
+	PostureRuleLifecycle    = "lifecycle"
+	PostureRuleRemoteSource = "git-remote"
+)
+
+// PostureRuleConfig holds the per-rule install-posture severity override (IPOVR-03).
+//
+// Action is "" (treated as warn) | "warn" | "block". A user opts a rule UP to block
+// by setting Action:"block"; that blocks a DEFINITE violation (release age below
+// threshold, lifecycle scripts present, remote source present). The unknown path
+// (missing timestamp / registry error / fetch timeout) STAYS fail-soft warn even
+// under block -- that mapping lives in the check adapter, not here.
+type PostureRuleConfig struct {
+	Action string `json:"action,omitempty"`
+}
+
+// PostureAllow is one scoped "allow always" standing exception for the install
+// posture (IPOVR-01/02, Plan 29-02). It exempts a package from the named posture
+// rule (or every posture rule when Rule is "") so that rule stops firing for that
+// package at the pre-exec hook.
+//
+// SECURITY (load-bearing, T-09-31): this is a POSTURE-SCOPED allowlist. It is
+// consumed ONLY by the posture adapter (evaluatePosture), which threads matching
+// entries into the per-rule Exclude/allowlist of the pure evaluators
+// (EvaluateReleaseAge / EvaluateLifecycle / EvaluateRemoteSource). It is NEVER
+// fed into ApplyPolicyOverlay or the catalog/corroboration path. A posture
+// allow-always therefore silences a posture WARN but can never downgrade a
+// catalog-corroborated malware block for the same package -- unlike the general
+// package_allowlist policy rule, which IS a user-trust override that downgrades a
+// catalog block. Do not reuse package_allowlist for posture allow-always.
+type PostureAllow struct {
+	// Ecosystem narrows the entry to one ecosystem (e.g. "npm"). Empty matches any
+	// ecosystem (the package name alone is the key).
+	Ecosystem string `json:"ecosystem,omitempty"`
+	// Package is the registry package name (or install spec) being exempted. It is
+	// required; an entry with an empty Package matches nothing.
+	Package string `json:"package"`
+	// Rule scopes the exemption to one posture rule: "" (all rules), "release-age",
+	// "lifecycle", or "git-remote". Validated by ValidatePostureConfig.
+	Rule string `json:"rule,omitempty"`
+	// Reason is the operator-recorded justification (PRD: allow-always records a
+	// reason). Redacted in the audit trail like other reason fields.
+	Reason string `json:"reason,omitempty"`
+}
+
+// PostureConfig holds the per-rule install-posture severity overrides (IPOVR-03)
+// and the scoped allow-always standing exceptions (IPOVR-01/02, Plan 29-02).
+//
+// Each rule defaults to warn (the shipped Phase 27 default). A user may opt an
+// individual rule UP to block via a trusted layer; an untrusted (project/env) layer
+// may only TIGHTEN a rule warn->block, never loosen block->warn (mergePostureUntrusted).
+//
+// The field is a POINTER on Config so the layered merge can distinguish an absent
+// block (nil -> all rules default to warn) from an explicit override, exactly like
+// CatalogSync and AutoQuarantine.
+type PostureConfig struct {
+	// ReleaseAge overrides the action for the release-age rule (package younger
+	// than the configured minimum).
+	ReleaseAge PostureRuleConfig `json:"release_age,omitempty"`
+	// Lifecycle overrides the action for the lifecycle-script rule (package carries
+	// install lifecycle scripts).
+	Lifecycle PostureRuleConfig `json:"lifecycle,omitempty"`
+	// RemoteSource overrides the action for the git/remote-source rule (install
+	// from a git/url/file spec rather than a registry package).
+	RemoteSource PostureRuleConfig `json:"remote_source,omitempty"`
+	// Allow is the posture-scoped allow-always list (IPOVR-01/02). Each entry
+	// exempts a package from one or all posture rules. Adding an entry LOOSENS the
+	// posture, so entries flow from TRUSTED layers only -- mergePostureUntrusted
+	// DROPS src.Allow (an untrusted project/env layer may not add an exemption).
+	// This list NEVER touches catalog/corroboration enforcement (see PostureAllow).
+	Allow []PostureAllow `json:"allow,omitempty"`
+}
+
+// DefaultPostureConfig returns the documented default: every rule warns. A missing
+// "posture" block resolves to this value (all-warn, fail-soft -- the Phase 27 default).
+func DefaultPostureConfig() PostureConfig {
+	return PostureConfig{
+		ReleaseAge:   PostureRuleConfig{Action: PostureActionWarn},
+		Lifecycle:    PostureRuleConfig{Action: PostureActionWarn},
+		RemoteSource: PostureRuleConfig{Action: PostureActionWarn},
+	}
+}
+
+// validPostureAction reports whether a is an accepted posture action.
+// "" is accepted (resolves to warn in the accessor); "warn" and "block" are the
+// only non-empty legal values. Anything else is rejected fail-closed at load time.
+func validPostureAction(a string) bool {
+	switch a {
+	case "", PostureActionWarn, PostureActionBlock:
+		return true
+	default:
+		return false
+	}
+}
+
+// validPostureRule reports whether r is an accepted posture rule scope for a
+// PostureAllow entry. "" means "all posture rules"; the three named rules scope
+// the exemption to one rule. Anything else is rejected fail-closed at load time.
+func validPostureRule(r string) bool {
+	switch r {
+	case "", PostureRuleReleaseAge, PostureRuleLifecycle, PostureRuleRemoteSource:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidatePostureConfig checks pc fail-closed (mirrors ValidateAutoQuarantineConfig).
+// Any rule Action outside {"", "warn", "block"} is rejected so a typo or a bogus
+// value cannot silently land somewhere undefined -- the load fails loudly instead.
+// Each Allow entry must name a real package and a valid Rule scope (IPOVR-01/02).
+func ValidatePostureConfig(pc PostureConfig) error {
+	for rule, action := range map[string]string{
+		PostureRuleReleaseAge:   pc.ReleaseAge.Action,
+		PostureRuleLifecycle:    pc.Lifecycle.Action,
+		PostureRuleRemoteSource: pc.RemoteSource.Action,
+	} {
+		if !validPostureAction(action) {
+			return fmt.Errorf("invalid posture %s action %q (want %q or %q)",
+				rule, action, PostureActionWarn, PostureActionBlock)
+		}
+	}
+	for i, a := range pc.Allow {
+		if a.Package == "" {
+			return fmt.Errorf("invalid posture allow entry %d: package is required", i)
+		}
+		if !validPostureRule(a.Rule) {
+			return fmt.Errorf("invalid posture allow entry %d: rule %q (want %q, %q, %q, or %q)",
+				i, a.Rule, "", PostureRuleReleaseAge, PostureRuleLifecycle, PostureRuleRemoteSource)
+		}
+	}
+	return nil
+}
+
+// PostureRuleExcludes returns the list of package names exempted from the named
+// posture rule by the scoped allow-always list (IPOVR-01/02). An entry matches
+// when (a) its Rule is "" (all rules) or equals rule, AND (b) its Ecosystem is ""
+// (any) or equals ecosystem. The returned names feed the per-rule Exclude/allowlist
+// of the pure evaluators in the posture adapter; they NEVER touch catalog/
+// corroboration enforcement. nil-safe: a nil Posture block returns nil.
+func (c Config) PostureRuleExcludes(rule, ecosystem string) []string {
+	if c.Posture == nil || len(c.Posture.Allow) == 0 {
+		return nil
+	}
+	var out []string
+	for _, a := range c.Posture.Allow {
+		if a.Package == "" {
+			continue
+		}
+		if a.Rule != "" && a.Rule != rule {
+			continue
+		}
+		if a.Ecosystem != "" && a.Ecosystem != ecosystem {
+			continue
+		}
+		out = append(out, a.Package)
+	}
+	return out
+}
+
+// AddPostureAllow appends a scoped allow-always entry to the Posture block,
+// creating the block if absent. It is idempotent: an entry with the same
+// (Ecosystem, Package, Rule) tuple is not duplicated (the Reason of the existing
+// entry is left unchanged). Used by `beekeeper posture allow --always`.
+func (c *Config) AddPostureAllow(entry PostureAllow) {
+	if c.Posture == nil {
+		c.Posture = &PostureConfig{}
+	}
+	for _, a := range c.Posture.Allow {
+		if a.Ecosystem == entry.Ecosystem && a.Package == entry.Package && a.Rule == entry.Rule {
+			return
+		}
+	}
+	c.Posture.Allow = append(c.Posture.Allow, entry)
+}
+
+// PostureRuleAction returns the effective action ("warn" by default) for the given
+// posture rule name (PostureRuleReleaseAge / PostureRuleLifecycle /
+// PostureRuleRemoteSource). It is nil-safe: a nil Posture block, an unknown rule
+// name, or an empty Action all resolve to "warn" (the shipped default). The check
+// adapter calls this per rule and applies block only when this returns "block" AND
+// the rule fired on a DEFINITE violation.
+func (c Config) PostureRuleAction(rule string) string {
+	resolve := func(action string) string {
+		if action == PostureActionBlock {
+			return PostureActionBlock
+		}
+		return PostureActionWarn
+	}
+	if c.Posture == nil {
+		return PostureActionWarn
+	}
+	switch rule {
+	case PostureRuleReleaseAge:
+		return resolve(c.Posture.ReleaseAge.Action)
+	case PostureRuleLifecycle:
+		return resolve(c.Posture.Lifecycle.Action)
+	case PostureRuleRemoteSource:
+		return resolve(c.Posture.RemoteSource.Action)
+	default:
+		return PostureActionWarn
+	}
+}
+
 // CorpusConfig holds Phase 22+ corpus configuration (SCHEMA-01/02/05).
 //
 // Follows the same pattern as AuditConfig. This block is additive and backward-
@@ -583,14 +627,6 @@ type Config struct {
 	// Leave both fields empty to use the compiled-in defaults.
 	SelfCatalog SelfCatalogConfig `json:"self_catalog,omitempty"`
 
-	// Nudge holds Phase 8 package-manager nudge configuration (NUDGE-08).
-	// A nil pointer means the nudge block was absent from the config file;
-	// Load replaces nil with DefaultNudgeConfig() so callers always see a
-	// fully-populated struct. An explicit nudge.enabled:false in a project
-	// .beekeeper.json is preserved verbatim (the pointer is non-nil, Enabled
-	// is false) — project config wins over user config (layered merge, §11).
-	Nudge *NudgeConfig `json:"nudge,omitempty"`
-
 	// CatalogSync holds Phase 20 background catalog-sync configuration
 	// (CSYNC-01..06). A nil pointer means the block was absent; Load resolves
 	// nil → DefaultCatalogSyncConfig() so callers always see a populated struct.
@@ -612,6 +648,15 @@ type Config struct {
 	// defines the type and config shape only; no decision behavior is changed in
 	// Phase 22 (store wiring is Phase 23, T-22-04).
 	Corpus CorpusConfig `json:"corpus,omitempty"`
+
+	// Posture holds the per-rule install-posture severity overrides (IPOVR-03,
+	// Plan 29-01). A nil pointer means the block was absent; the accessor
+	// PostureRuleAction resolves nil (and any unset rule) to "warn" -- the shipped
+	// Phase 27 default. An explicit block is validated fail-closed via
+	// ValidatePostureConfig so a bogus action is rejected at load time. An untrusted
+	// (project/env) layer may only TIGHTEN a rule warn->block, never loosen
+	// (mergePostureUntrusted) -- the IPOVR-03 self-defense invariant.
+	Posture *PostureConfig `json:"posture,omitempty"`
 }
 
 // CorpusDownstreamCleanDays returns the downstream_clean rolling window in days.
@@ -663,12 +708,10 @@ func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// Missing file = use defaults. Apply DefaultNudgeConfig +
-			// DefaultCatalogSyncConfig so callers always get fully-populated
-			// blocks (mirrors FailMode default).
-			d := DefaultNudgeConfig()
+			// Missing file = use defaults. Apply DefaultCatalogSyncConfig so callers
+			// always get a fully-populated block (mirrors FailMode default).
 			cs := DefaultCatalogSyncConfig()
-			return Config{FailMode: FailModeClosed, Nudge: &d, CatalogSync: &cs}, nil
+			return Config{FailMode: FailModeClosed, CatalogSync: &cs}, nil
 		}
 		return Config{}, fmt.Errorf("read config %q: %w", path, err)
 	}
@@ -690,22 +733,7 @@ func Load(path string) (Config, error) {
 			cfg.FailMode, FailModeClosed, FailModeOpen, FailModeWarn)
 	}
 
-	// Phase 8 (NUDGE-08): resolve the Nudge block.
-	// A missing key (nil pointer) resolves to documented defaults (PRD §5.1) —
-	// mirrors the FailMode=="" → FailModeClosed defaulting idiom.
-	// An explicit block (non-nil) is validated fail-closed via ValidateNudgeConfig —
-	// a typo or out-of-range value is rejected here so it can never silently degrade.
-	// Load delegates to the EXPORTED ValidateNudgeConfig so there is one validator.
-	if cfg.Nudge == nil {
-		d := DefaultNudgeConfig()
-		cfg.Nudge = &d
-	} else {
-		if err := ValidateNudgeConfig(*cfg.Nudge); err != nil {
-			return Config{}, fmt.Errorf("invalid nudge config: %w", err)
-		}
-	}
-
-	// Phase 20 (CSYNC): resolve the CatalogSync block the same way as Nudge —
+	// Phase 20 (CSYNC): resolve the CatalogSync block —
 	// absent (nil) → DefaultCatalogSyncConfig(); present → validated fail-closed
 	// via the EXPORTED ValidateCatalogSyncConfig so an out-of-range or malformed
 	// interval is rejected here rather than silently clamped.
@@ -730,6 +758,16 @@ func Load(path string) (Config, error) {
 	// than silently accepted (symmetry with the AutoQuarantine check above).
 	if err := ValidateCorpusConfig(cfg.Corpus); err != nil {
 		return Config{}, fmt.Errorf("invalid corpus config: %w", err)
+	}
+
+	// IPOVR-03: resolve the Posture block -- absent (nil) leaves nil (the accessor
+	// PostureRuleAction resolves nil to "warn"); present -> validated fail-closed via
+	// ValidatePostureConfig so a bogus per-rule action is rejected here rather than
+	// silently landing somewhere undefined.
+	if cfg.Posture != nil {
+		if err := ValidatePostureConfig(*cfg.Posture); err != nil {
+			return Config{}, fmt.Errorf("invalid posture config: %w", err)
+		}
 	}
 
 	return cfg, nil

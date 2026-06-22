@@ -5,6 +5,11 @@ import "strings"
 // ruleLifecycleScript is the rule ID for the lifecycle-script policy (PLCY-03).
 const ruleLifecycleScript = "lifecycle-script-policy"
 
+// RuleLifecycleScript is the exported rule ID for the lifecycle-script policy,
+// used by the hook posture adapter (internal/check) to tag its fail-soft
+// warn-unknown decisions consistently with EvaluateLifecycle's own RuleIDs.
+const RuleLifecycleScript = ruleLifecycleScript
+
 // LifecycleInput carries the caller-resolved script fields for a package.
 // The I/O adapter (internal/catalog/registry.go) fetches registry metadata;
 // the policy function receives pre-resolved booleans. This keeps EvaluateLifecycle

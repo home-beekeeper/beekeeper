@@ -30,7 +30,6 @@ func TestAuditBadgeFor(t *testing.T) {
 		{rec("policy_decision", audit.AuditRecord{Decision: "allow"}), "ALLOW"},
 		{rec("sentry_alert", audit.AuditRecord{}), "ALERT"},
 		{rec("config_change", audit.AuditRecord{}), "CONFIG"},
-		{rec("nudge", audit.AuditRecord{NudgeAction: "block"}), "NUDGE"},
 		{rec("llmf_alert", audit.AuditRecord{LLMFResult: "injection"}), "LLMF"},
 	}
 	for _, c := range cases {
@@ -169,7 +168,7 @@ func TestAuditRenderNoPanicAllRows(t *testing.T) {
 	// Render every row selected + expanded across record types — must not panic.
 	recs := []audit.AuditRecord{
 		rec("policy_decision", audit.AuditRecord{Decision: "block", CatalogMatches: []audit.CatalogProvenance{{CatalogSource: "osv", Ecosystem: "pypi", Package: "p", Version: "1"}}}),
-		rec("nudge", audit.AuditRecord{NudgeAction: "rewrite", OriginalCommand: "npm i x", RewrittenCommand: "pnpm add x"}),
+		rec("policy_decision", audit.AuditRecord{Decision: "warn", ToolName: "Bash"}),
 		rec("sentry_alert", audit.AuditRecord{SentryRuleName: "exfil", SentrySeverity: "critical", SentryProcessExe: "node", SentryNetworkDests: []string{"1.2.3.4:443"}}),
 		rec("config_change", audit.AuditRecord{ReasonCode: "auto_quarantine.enabled", Reason: "changed"}),
 	}

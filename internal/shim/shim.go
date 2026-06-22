@@ -1,12 +1,25 @@
 // Package shim creates and manages OS-native wrapper scripts placed in
 // ~/.beekeeper/shims/ that intercept package manager and toolchain invocations
-// by invoking beekeeper check before forwarding to the real binary.
+// by invoking `beekeeper check --tool <tool> --args …` before forwarding to the
+// real binary.
 //
-// Purpose: INTG-06. PATH-prepended shims provide universal coverage for any
-// agent that executes package managers directly (npm, pip, cargo, etc.) without
-// going through a hook or MCP gateway. This completes the defense-in-depth
-// story: native hooks cover hook-enabled agents, the MCP gateway covers MCP
-// clients, and shims cover everything else.
+// HONEST BOUNDARY: the PATH-prepended shim is an EXPERIMENTAL surface for
+// machine-wide, human-run installs. It is NOT a headline v1.0 install-posture
+// guarantee, and it has real bypass limitations:
+//
+//   - An install invoked by ABSOLUTE PATH (e.g. /usr/local/bin/npm, or a tool a
+//     PATH-respecting agent resolves itself) never hits the shim, so the shim
+//     cannot be relied on as the sole enforcement point.
+//   - The shim must be installed by a human and the shim directory PATH-prepended
+//     in the operator's shell RC; an agent cannot install it for itself (and is
+//     blocked from doing so by self-protection).
+//
+// Each intercepted install is reconstructed into a shell command and evaluated by
+// `beekeeper check` (catalog corroboration AND install posture) before the real
+// binary runs; see buildShimToolCall in cmd/beekeeper. So catalog blocking and
+// install-posture warnings DO apply to shim-intercepted installs, within the
+// bypass limits above. The former nudge-before-proxy helper (which steered
+// npm/yarn to pnpm/bun) was removed in v1.1.0.
 //
 // CONCURRENCY NOTE: findRealBinary temporarily modifies os.Getenv("PATH") via
 // os.Setenv. This is not goroutine-safe. It is only called from shim install,
@@ -15,17 +28,12 @@
 package shim
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/home-beekeeper/beekeeper/internal/config"
-	"github.com/home-beekeeper/beekeeper/internal/nudge"
-	"github.com/home-beekeeper/beekeeper/internal/pkgparse"
 )
 
 // DefaultTools is the canonical list of package managers and toolchains that
@@ -141,79 +149,6 @@ func filterPathEntries(path, exclude string) string {
 		}
 	}
 	return strings.Join(filtered, sep)
-}
-
-// NudgeResult is the outcome of NudgeCheck for a single command.
-type NudgeResult struct {
-	// Applicable is true when the command is an install-class command that
-	// triggers nudge evaluation.
-	Applicable bool
-	// Decision is the nudge Action string (proceed|advise|rewrite|block).
-	Decision string
-	// Advisory is a human-readable advisory message for Advise/Rewrite actions.
-	// Empty when Action is Proceed or Block.
-	Advisory string
-	// ShouldBlock is true when RequireHardened=true and no hardened PM is installed.
-	// In soft mode, ShouldBlock is always false (advise + proceed).
-	ShouldBlock bool
-}
-
-// NudgeCheck evaluates the nudge feature for a single command string. It is
-// the nudge-before-proxy logic: the shim (short-lived, one-shot) calls this
-// before executing any install command so nudge advice is surfaced even when
-// the command bypasses the MCP gateway and the beekeeper check hook.
-//
-// Mirrors the check hook path (Flag 2 Position B): detection is fresh via the
-// EXPORTED nudge.DetectStateFn seam (no cache — a shim process is short-lived
-// and gets no cache hits). Tests can inject a synthetic PMState by reassigning
-// nudge.DetectStateFn and defer-restoring it (T-08-10b).
-//
-// Returns NudgeResult{Applicable:false} for non-install commands or when nudge
-// is disabled.
-//
-// Advisory: Advise/Rewrite actions return a non-empty Advisory string. Callers
-// should surface this advisory to stdout/stderr WITHOUT blocking (soft mode does
-// not block). Block action (requireHardened) sets ShouldBlock=true.
-func NudgeCheck(ctx context.Context, cmd string, nc config.NudgeConfig) NudgeResult {
-	parsed, ok := pkgparse.Parse(cmd)
-	if !ok || !parsed.IsInstall {
-		return NudgeResult{Applicable: false}
-	}
-
-	// Build nudge.Config via the LOCKED single mapper (BLOCKER 1 closed).
-	nudgeCfg := nudge.ConfigFrom(
-		nc.Enabled,
-		nc.Mode,
-		nc.Preferred,
-		nc.CheckSocketScanner,
-		nc.VersionFloors.Pnpm,
-		nc.VersionFloors.Bun,
-		nc.VersionFloors.Node,
-		nc.MajorDriftCheck.Enabled,
-		nc.MajorDriftCheck.Interval,
-	)
-
-	// Resolve PMState FRESH via the EXPORTED seam (not nudge.DetectState directly).
-	// Short-lived shim: no cache benefit possible (Flag 2 Position B).
-	state := nudge.DetectStateFn(ctx, nudgeCfg)
-
-	// Pure decision.
-	d := nudge.Evaluate(parsed, state, nudgeCfg)
-
-	actionStr := nudge.ActionString(d.Action)
-	result := NudgeResult{
-		Applicable:  true,
-		Decision:    actionStr,
-		ShouldBlock: d.Action == nudge.Block,
-	}
-
-	switch d.Action {
-	case nudge.Advise:
-		result.Advisory = fmt.Sprintf("beekeeper nudge: %s (run with pnpm or bun for improved security)", d.Reason)
-	case nudge.Rewrite:
-		result.Advisory = fmt.Sprintf("beekeeper nudge: rewrite suggestion: %s", d.Rewritten)
-	}
-	return result
 }
 
 // printPathInstructions writes shell-specific PATH prepend instructions for

@@ -8,9 +8,12 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 )
 
-// TestNudgeFieldsRoundTrip verifies that all five Phase 8 nudge provenance
-// fields (including NudgeAction) marshal and unmarshal correctly on an
-// AuditRecord with record_type "nudge".
+// TestNudgeFieldsRoundTrip verifies that the deprecated-but-retained nudge
+// provenance fields (OriginalCommand/RewrittenCommand/ReasonCode/PMState/
+// NudgeAction) still marshal and unmarshal correctly. The nudge feature was
+// removed in v1.1.0, but these fields are RETAINED in the frozen CorpusRecord
+// schema (CorpusSchemaVersion 1.0) — this test guards that the frozen schema
+// can still serialize a record carrying them.
 func TestNudgeFieldsRoundTrip(t *testing.T) {
 	rec := AuditRecord{
 		RecordType:       "nudge",
@@ -70,16 +73,16 @@ func TestNudgeFieldsRoundTrip(t *testing.T) {
 	}
 }
 
-// TestNudgeRecordConformsToPRDSection9 is the BTEST-01 §10-14 conformance test.
-// It constructs a representative "nudge" AuditRecord, marshals it to JSON, and
-// asserts that EVERY field required by PRD §9 is present and that the closed
-// enum fields contain legal values.
+// TestNudgeRecordConformsToPRDSection9 guards the FROZEN nudge record schema.
+// The nudge feature was removed in v1.1.0, but the AuditRecord nudge fields are
+// retained for corpus schema compatibility (CorpusSchemaVersion 1.0). This test
+// constructs a representative nudge record, marshals it to JSON, and asserts the
+// historical PRD §9 field set still serializes with legal closed-enum values, so
+// a frozen-schema corpus reader can still parse such records.
 //
-// Closed sets are defined as test-local literals here because internal/audit
-// MUST NOT import internal/nudge (that would create an import cycle). The sets
-// mirror reasons.go and the §9 schema.
+// Closed sets are defined as test-local literals (the package that defined them
+// is gone); they mirror the historical §9 schema.
 func TestNudgeRecordConformsToPRDSection9(t *testing.T) {
-	// Closed enums — audit must not import internal/nudge so we define them locally.
 	legalDecisions := map[string]bool{
 		"allow": true,
 		"warn":  true,
@@ -91,7 +94,7 @@ func TestNudgeRecordConformsToPRDSection9(t *testing.T) {
 		"rewrite": true,
 		"block":   true,
 	}
-	// Closed reason enum mirroring internal/nudge/reasons.go.
+	// Closed reason enum mirroring the historical §9 schema.
 	legalReasonCodes := map[string]bool{
 		"pnpm-available-soft":            true,
 		"pnpm-available-hard":            true,
