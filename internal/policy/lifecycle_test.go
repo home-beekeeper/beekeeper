@@ -126,6 +126,47 @@ func TestLifecycleMultipleScriptsReason(t *testing.T) {
 	}
 }
 
+// TestLifecycleEachScriptTypeFires asserts every lifecycle script type the
+// evaluator can be handed fires the block (and is named in the reason), not just
+// postinstall. EvaluateLifecycle treats ANY non-empty ScriptsPresent entry as a
+// fired rule and joins the names into the reason; this table locks that each of
+// the npm install-time hooks (preinstall, install, postinstall) AND the
+// uninstall-time hooks (preuninstall, postuninstall) -- any of which the I/O
+// adapter can surface in ScriptsPresent -- produces a block whose reason names
+// the script.
+func TestLifecycleEachScriptTypeFires(t *testing.T) {
+	for _, script := range []string{
+		"preinstall",
+		"install",
+		"postinstall",
+		"prepare",
+		"preuninstall",
+		"postuninstall",
+	} {
+		t.Run(script, func(t *testing.T) {
+			input := LifecycleInput{
+				Ecosystem:      "npm",
+				Package:        "scripted-pkg",
+				ScriptsPresent: []string{script},
+			}
+			d := EvaluateLifecycle(input, nil)
+
+			if d.Level != "block" {
+				t.Errorf("Level = %q, want %q (a %s lifecycle script must block)", d.Level, "block", script)
+			}
+			if d.Allow {
+				t.Errorf("Allow = true, want false (a %s lifecycle script must block)", script)
+			}
+			if !strings.Contains(d.Reason, script) {
+				t.Errorf("Reason %q should name the firing script %q", d.Reason, script)
+			}
+			if len(d.RuleIDs) == 0 {
+				t.Errorf("RuleIDs is empty, want the lifecycle rule ID for a %s block", script)
+			}
+		})
+	}
+}
+
 // TestLifecycleImportsArePure enforces the pure-library contract on lifecycle.go.
 func TestLifecycleImportsArePure(t *testing.T) {
 	const srcPath = "lifecycle.go"

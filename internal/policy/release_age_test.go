@@ -50,6 +50,28 @@ func TestReleaseAgeOldPackageAllowed(t *testing.T) {
 	}
 }
 
+// TestReleaseAgeExactly24hBoundary: a package aged exactly at the 1440-minute
+// (24h) default threshold resolves to ALLOW. The age check is strictly
+// "younger-than" (AgeMinutes < threshold blocks), so exactly-at-threshold is
+// clean. This locks the boundary so a future off-by-one (changing < to <=)
+// cannot silently start blocking a package that is exactly 24h old.
+func TestReleaseAgeExactly24hBoundary(t *testing.T) {
+	input := ReleaseAgeInput{
+		Ecosystem:  "npm",
+		Package:    "exactly-24h-pkg",
+		AgeMinutes: 1440, // exactly the default threshold
+	}
+	cfg := DefaultReleaseAgeConfig() // DefaultMinutes == 1440
+	d := EvaluateReleaseAge(input, cfg)
+
+	if d.Level != "allow" {
+		t.Errorf("Level = %q, want %q (exactly-24h is not younger-than the threshold)", d.Level, "allow")
+	}
+	if !d.Allow {
+		t.Errorf("Allow = false, want true (exactly-at-threshold age must allow)")
+	}
+}
+
 // TestReleaseAgeTimestampMissingBlocks: TimestampMissing true → fail-closed block.
 func TestReleaseAgeTimestampMissingBlocks(t *testing.T) {
 	input := ReleaseAgeInput{
