@@ -41,15 +41,30 @@ func hermesConfigPath(homeDir string) string {
 	return homeDir + "/.hermes/config.yaml"
 }
 
+// hermesLineIsBeekeeperCommand reports whether a YAML config line is a beekeeper
+// pre_tool_call command entry. The line has the form `- command: <cmd>` (after
+// leading indentation is trimmed). It extracts the <cmd> value and runs the
+// beekeeper-anchored matchesBeekeeperCommand on it, so a third-party entry such
+// as `- command: audit-logger check --hook hermes` is NOT matched (the command's
+// program token must be beekeeper). Matches BOTH old bare-name and new abspath
+// forms.
+func hermesLineIsBeekeeperCommand(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	const prefix = "- command:"
+	if !strings.HasPrefix(trimmed, prefix) {
+		return false
+	}
+	cmd := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+	return matchesBeekeeperCommand(cmd, hermesCheckSuffix)
+}
+
 // hasHermesBeekeeperHook reports whether content already has a pre_tool_call
-// entry that matches the hermesCheckSuffix. It does a simple line scan —
-// sufficient for the single-command case and avoids a YAML parser dependency.
-// Matches BOTH old bare-name and new abspath forms.
+// entry that is a beekeeper command. It does a simple line scan — sufficient for
+// the single-command case and avoids a YAML parser dependency.
 func hasHermesBeekeeperHook(content string) bool {
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if matchesBeekeeperCommand(line, hermesCheckSuffix) {
+		if hermesLineIsBeekeeperCommand(scanner.Text()) {
 			return true
 		}
 	}
@@ -155,9 +170,8 @@ func patchHermesConfigMigrate(content string) string {
 	lines := strings.Split(content, "\n")
 	newLines := make([]string, 0, len(lines))
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		// Match any "- command: …" YAML list item that contains the suffix.
-		if strings.HasPrefix(trimmed, "- command:") && matchesBeekeeperCommand(trimmed, hermesCheckSuffix) {
+		// Replace only a beekeeper-anchored "- command: <beekeeper> …" line.
+		if hermesLineIsBeekeeperCommand(line) {
 			newLines = append(newLines, newCmd)
 		} else {
 			newLines = append(newLines, line)
@@ -292,9 +306,9 @@ func removeHermesBeekeeperHook(content string) string {
 	lines := strings.Split(content, "\n")
 	filtered := make([]string, 0, len(lines))
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		// Match any "- command: …" YAML list item that contains the stable suffix.
-		if strings.HasPrefix(trimmed, "- command:") && matchesBeekeeperCommand(trimmed, hermesCheckSuffix) {
+		// Drop only a beekeeper-anchored "- command: <beekeeper> …" line; a
+		// third-party "- command: audit-logger …" line is preserved.
+		if hermesLineIsBeekeeperCommand(line) {
 			continue
 		}
 		filtered = append(filtered, line)

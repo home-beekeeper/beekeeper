@@ -224,4 +224,60 @@ func TestMatchesBeekeeperCommand(t *testing.T) {
 			t.Fatalf("exact suffix must match, got false")
 		}
 	})
+
+	// TestMatchesBeekeeperCommand anchoring regression (T-w7y-03):
+	// the matcher MUST anchor on the beekeeper program token, not just the suffix
+	// substring. Otherwise a third-party command whose ARGS contain a weak suffix
+	// (e.g. "audit-record") would match — and because mergeClaudeHookEntry REPLACES
+	// any matched entry during migration, that would silently CLOBBER the user's
+	// own hook. These cases are the exact decoys that the unanchored implementation
+	// failed (a third-party program with beekeeper-shaped args).
+	t.Run("anchoring_regression_decoys", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			cmd    string
+			suffix string
+			want   bool
+		}{
+			// Third-party program whose args contain the weak "audit-record" suffix.
+			{"third_party_audit_record", "some-tool audit-record", "audit-record", false},
+			// Third-party linter whose args contain a "check --hook" token for a
+			// different harness — must not be mistaken for beekeeper.
+			{"third_party_check_hook", "other-linter check --hook foo", "check --hook claude-code", false},
+			// Real abspath beekeeper PostToolUse command — must match.
+			{"abspath_audit_record", `"C:/x/beekeeper.exe" audit-record`, "audit-record", true},
+			// Real bare-name beekeeper PostToolUse command — must match.
+			{"bare_audit_record", "beekeeper audit-record", "audit-record", true},
+			// Real unix abspath PreToolUse command — must match.
+			{"unix_abspath_check_hook", `"/usr/local/bin/beekeeper" check --hook claude-code`, "check --hook claude-code", true},
+			// A program literally named "audit-logger" whose args end in audit-record
+			// (the exact clobber scenario from the review) — must NOT match.
+			{"audit_logger_decoy", "audit-logger audit-record", "audit-record", false},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if got := matchesBeekeeperCommand(tc.cmd, tc.suffix); got != tc.want {
+					t.Fatalf("matchesBeekeeperCommand(%q, %q) = %v, want %v", tc.cmd, tc.suffix, got, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("unterminated_quote_does_not_match", func(t *testing.T) {
+		// A malformed command with an unterminated leading quote must not match
+		// (defensive: never treat garbage as a beekeeper entry).
+		cmd := `"/path/to/beekeeper audit-record`
+		if matchesBeekeeperCommand(cmd, "audit-record") {
+			t.Fatal("unterminated-quote command must not match")
+		}
+	})
+
+	t.Run("empty_command_does_not_match", func(t *testing.T) {
+		if matchesBeekeeperCommand("", "audit-record") {
+			t.Fatal("empty command must not match")
+		}
+		if matchesBeekeeperCommand("   ", "audit-record") {
+			t.Fatal("whitespace-only command must not match")
+		}
+	})
 }

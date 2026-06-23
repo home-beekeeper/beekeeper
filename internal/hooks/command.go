@@ -74,15 +74,61 @@ func beekeeperCmd(args string) string {
 //   - Old bare-name form:  "beekeeper check --hook claude-code"
 //   - New abspath form:    `"/path/to/beekeeper" check --hook claude-code`
 //
-// The match is anchored on the beekeeper-specific stable token (the suffix
-// argument), NOT on the bare word "beekeeper" alone. This prevents a coincidental
-// third-party command that merely contains the word "beekeeper" from being
-// matched, migrated, or removed (T-w7y-03).
+// The match is ANCHORED on the beekeeper program token (the leading word/quoted
+// path of the command), NOT on the suffix substring alone. This is the T-w7y-03
+// requirement: a third-party command whose args happen to contain a weak suffix
+// like "audit-record" (e.g. `audit-logger audit-record`) must NOT match — because
+// mergeClaudeHookEntry REPLACES any matched entry during migration, an unanchored
+// match would silently clobber the user's own hook.
+//
+// Anchoring algorithm:
+//  1. Extract the leading program token: the double-quoted abspath if cmd starts
+//     with a quote, otherwise the first whitespace-delimited word.
+//  2. Require the program token's basename to be "beekeeper" (quotes/path/.exe
+//     stripped, lowercased — mirrors hookguard.go programBase for consistency).
+//  3. Require the remaining args (everything after the program token) to contain
+//     the stable suffix.
 //
 // Callers pass the harness-specific stable suffix such as:
 //   - "check --hook claude-code"
 //   - "check --hook cursor"
 //   - "audit-record"
 func matchesBeekeeperCommand(cmd, suffix string) bool {
-	return strings.HasSuffix(cmd, suffix) || strings.Contains(cmd, suffix)
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return false
+	}
+	var prog, rest string
+	if cmd[0] == '"' {
+		end := strings.IndexByte(cmd[1:], '"')
+		if end < 0 {
+			return false // unterminated quote
+		}
+		prog = cmd[1 : 1+end]
+		rest = strings.TrimSpace(cmd[1+end+1:])
+	} else if sp := strings.IndexAny(cmd, " \t"); sp >= 0 {
+		prog = cmd[:sp]
+		rest = strings.TrimSpace(cmd[sp+1:])
+	} else {
+		prog = cmd
+		rest = ""
+	}
+	if !programIsBeekeeper(prog) {
+		return false
+	}
+	return strings.Contains(rest, suffix)
+}
+
+// programIsBeekeeper reports whether a program token's basename is the beekeeper
+// binary (surrounding quotes, directory path, and a .exe suffix stripped;
+// lowercased). Mirrors internal/check/hookguard.go programBase so the installer
+// and the self-protection guard agree on what "the beekeeper binary" means.
+func programIsBeekeeper(prog string) bool {
+	prog = strings.Trim(prog, `"'`)
+	if idx := strings.LastIndexAny(prog, `/\`); idx >= 0 {
+		prog = prog[idx+1:]
+	}
+	prog = strings.ToLower(prog)
+	prog = strings.TrimSuffix(prog, ".exe")
+	return prog == "beekeeper"
 }

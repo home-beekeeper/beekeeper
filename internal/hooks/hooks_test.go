@@ -10,6 +10,27 @@ import (
 	"testing"
 )
 
+// TestMain installs a package-wide default execResolver that returns a
+// beekeeper-named binary path. This reflects PRODUCTION reality: the running
+// binary is `beekeeper`, so matchesBeekeeperCommand (which anchors on the
+// program basename being "beekeeper") recognises installed hook commands.
+//
+// Without this, the test binary's basename is "hooks.test(.exe)", so every
+// install-then-detect/idempotency/uninstall assertion would fail — not because
+// the installer is wrong, but because the test process is not named beekeeper.
+// Individual tests that need a SPECIFIC path still override execResolver via
+// fakeExecResolver and restore it with t.Cleanup.
+func TestMain(m *testing.M) {
+	var defaultBeekeeperPath string
+	if runtime.GOOS == "windows" {
+		defaultBeekeeperPath = `C:\Program Files\beekeeper\beekeeper.exe`
+	} else {
+		defaultBeekeeperPath = "/usr/local/bin/beekeeper"
+	}
+	execResolver = func() (string, error) { return defaultBeekeeperPath, nil }
+	os.Exit(m.Run())
+}
+
 // -----------------------------------------------------------------------
 // helpers
 // -----------------------------------------------------------------------
@@ -51,6 +72,84 @@ func globFiles(t *testing.T, dir, pattern string) []string {
 		t.Fatalf("glob: %v", err)
 	}
 	return matches
+}
+
+// entriesContainRawCommand reports whether any entry in a Claude-style event
+// array has an inner hooks command EXACTLY equal to want. Unlike the production
+// claudeEntriesContainCommand (which is anchored to the beekeeper program token
+// via matchesBeekeeperCommand), this helper does plain string equality — so it
+// can assert the presence/survival of arbitrary THIRD-PARTY hook commands in
+// preservation tests. Tolerates the loosely-typed map[string]any/[]any shapes.
+func entriesContainRawCommand(entries []any, want string) bool {
+	for _, e := range entries {
+		em, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		inner, ok := em["hooks"].([]any)
+		if !ok {
+			continue
+		}
+		for _, h := range inner {
+			hm, ok := h.(map[string]any)
+			if !ok {
+				continue
+			}
+			if c, _ := hm["command"].(string); c == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// codexEntriesHaveRawCommand does plain string-equality lookup over codex
+// entries (typed structs), for asserting third-party hook survival — the
+// production containsCodexHookByCommand is beekeeper-anchored and cannot match
+// foreign commands.
+func codexEntriesHaveRawCommand(entries []codexHookEntry, want string) bool {
+	for _, entry := range entries {
+		for _, h := range entry.Hooks {
+			if h.Command == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// cursorHooksHaveRawCommand does plain string-equality lookup over cursor hooks
+// (typed structs), for asserting third-party hook survival.
+func cursorHooksHaveRawCommand(hooks []cursorHook, want string) bool {
+	for _, h := range hooks {
+		if h.Command == want {
+			return true
+		}
+	}
+	return false
+}
+
+// geminiHooksHaveRawCommand does plain string-equality lookup over gemini hook
+// entries (typed structs), for asserting third-party hook survival.
+func geminiHooksHaveRawCommand(hooks []geminiHookEntry, want string) bool {
+	for _, h := range hooks {
+		if h.Command == want {
+			return true
+		}
+	}
+	return false
+}
+
+// windsurfHooksHaveRawCommand does plain string-equality lookup over windsurf
+// hooks (typed structs, either Command or PowerShell field), for asserting
+// third-party hook survival.
+func windsurfHooksHaveRawCommand(hooks []windsurfHook, want string) bool {
+	for _, h := range hooks {
+		if h.Command == want || h.PowerShell == want {
+			return true
+		}
+	}
+	return false
 }
 
 // -----------------------------------------------------------------------
@@ -392,7 +491,7 @@ func TestInstallCodex(t *testing.T) {
 		}
 
 		// Verify original hook was preserved.
-		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "some-other-checker") {
+		if !codexEntriesHaveRawCommand(f.Hooks["PreToolUse"], "some-other-checker") {
 			t.Fatal("expected original hook (some-other-checker) to be preserved")
 		}
 
@@ -651,7 +750,7 @@ func TestInstallClaudeCodePreservesExistingHooks(t *testing.T) {
 	hooks := m["hooks"].(map[string]any)
 
 	pre := hooks["PreToolUse"].([]any)
-	if !claudeEntriesContainCommand(pre, "my-existing-guard.js") {
+	if !entriesContainRawCommand(pre, "my-existing-guard.js") {
 		t.Fatal("pre-existing PreToolUse guard was clobbered by install")
 	}
 	if !claudeEntriesContainCommand(pre, claudeCheckSuffix) {
@@ -691,7 +790,7 @@ func TestInstallClaudeCodePreservesExistingHooks(t *testing.T) {
 	if claudeEntriesContainCommand(pre, claudeCheckSuffix) {
 		t.Fatalf("%s should be removed after uninstall", claudeCheckSuffix)
 	}
-	if !claudeEntriesContainCommand(pre, "my-existing-guard.js") {
+	if !entriesContainRawCommand(pre, "my-existing-guard.js") {
 		t.Fatal("pre-existing guard must survive uninstall")
 	}
 	if _, ok := hooks["PostToolUse"]; ok {
@@ -834,7 +933,7 @@ func TestUninstallCursor(t *testing.T) {
 		json.Unmarshal(data, &f)
 
 		// The original "some-other-linter" entry in "preToolUse" must survive.
-		if !containsCursorHookByCommand(f.Hooks["preToolUse"], "some-other-linter") {
+		if !cursorHooksHaveRawCommand(f.Hooks["preToolUse"], "some-other-linter") {
 			t.Fatal("foreign hook (some-other-linter) must survive uninstall")
 		}
 	})
@@ -892,7 +991,7 @@ func TestInstallAugment(t *testing.T) {
 		hooks := m["hooks"].(map[string]any)
 		pre := hooks["PreToolUse"].([]any)
 
-		if !claudeEntriesContainCommand(pre, "my-augment-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-augment-guard.sh") {
 			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
 		}
 		if !claudeEntriesContainCommand(pre, augmentCheckSuffix) {
@@ -971,7 +1070,7 @@ func TestInstallAugment(t *testing.T) {
 		if claudeEntriesContainCommand(pre, augmentCheckSuffix) {
 			t.Fatalf("beekeeper %q must be removed after uninstall", augmentCheckSuffix)
 		}
-		if !claudeEntriesContainCommand(pre, "my-augment-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-augment-guard.sh") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 	})
@@ -1028,7 +1127,7 @@ func TestInstallCodeBuddy(t *testing.T) {
 		hooks := m["hooks"].(map[string]any)
 		pre := hooks["PreToolUse"].([]any)
 
-		if !claudeEntriesContainCommand(pre, "my-codebuddy-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-codebuddy-guard.sh") {
 			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
 		}
 		if !claudeEntriesContainCommand(pre, codebuddyCheckSuffix) {
@@ -1101,7 +1200,7 @@ func TestInstallCodeBuddy(t *testing.T) {
 		if claudeEntriesContainCommand(pre, codebuddyCheckSuffix) {
 			t.Fatalf("beekeeper %q must be removed after uninstall", codebuddyCheckSuffix)
 		}
-		if !claudeEntriesContainCommand(pre, "my-codebuddy-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-codebuddy-guard.sh") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 	})
@@ -1158,7 +1257,7 @@ func TestInstallQwen(t *testing.T) {
 		hooks := m["hooks"].(map[string]any)
 		pre := hooks["PreToolUse"].([]any)
 
-		if !claudeEntriesContainCommand(pre, "my-qwen-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-qwen-guard.sh") {
 			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
 		}
 		if !claudeEntriesContainCommand(pre, qwenCheckSuffix) {
@@ -1231,7 +1330,7 @@ func TestInstallQwen(t *testing.T) {
 		if claudeEntriesContainCommand(pre, qwenCheckSuffix) {
 			t.Fatalf("beekeeper %q must be removed after uninstall", qwenCheckSuffix)
 		}
-		if !claudeEntriesContainCommand(pre, "my-qwen-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-qwen-guard.sh") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 	})
@@ -1325,7 +1424,7 @@ func TestInstallCopilot(t *testing.T) {
 		hooks := m["hooks"].(map[string]any)
 		pre := hooks["preToolUse"].([]any)
 
-		if !claudeEntriesContainCommand(pre, "my-copilot-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-copilot-guard.sh") {
 			t.Fatal("pre-existing preToolUse hook must be preserved after install")
 		}
 		if !claudeEntriesContainCommand(pre, copilotCheckSuffix) {
@@ -1406,7 +1505,7 @@ func TestInstallCopilot(t *testing.T) {
 		if claudeEntriesContainCommand(pre, copilotCheckSuffix) {
 			t.Fatalf("beekeeper %q must be removed after uninstall", copilotCheckSuffix)
 		}
-		if !claudeEntriesContainCommand(pre, "my-copilot-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-copilot-guard.sh") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 	})
@@ -1475,7 +1574,7 @@ func TestInstallGemini(t *testing.T) {
 		json.Unmarshal(data, &f)
 
 		// Both the original and beekeeper entry must exist.
-		if !containsGeminiHookByCommand(f.Hooks, "my-gemini-guard.sh") {
+		if !geminiHooksHaveRawCommand(f.Hooks, "my-gemini-guard.sh") {
 			t.Fatal("pre-existing hook must be preserved")
 		}
 		if !containsGeminiHookByCommand(f.Hooks, geminiCheckSuffix) {
@@ -1532,7 +1631,7 @@ func TestInstallGemini(t *testing.T) {
 		if containsGeminiHookByCommand(f.Hooks, geminiCheckSuffix) {
 			t.Fatal("beekeeper entry must be removed after uninstall")
 		}
-		if !containsGeminiHookByCommand(f.Hooks, "my-gemini-guard.sh") {
+		if !geminiHooksHaveRawCommand(f.Hooks, "my-gemini-guard.sh") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 	})
@@ -1592,7 +1691,7 @@ func TestInstallAntigravity(t *testing.T) {
 		hooks := m["hooks"].(map[string]any)
 		pre := hooks["PreToolUse"].([]any)
 
-		if !claudeEntriesContainCommand(pre, "my-antigravity-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-antigravity-guard.sh") {
 			t.Fatal("pre-existing PreToolUse hook must be preserved after install")
 		}
 		if !claudeEntriesContainCommand(pre, antigravityCheckSuffix) {
@@ -1673,7 +1772,7 @@ func TestInstallAntigravity(t *testing.T) {
 		if claudeEntriesContainCommand(pre, antigravityCheckSuffix) {
 			t.Fatalf("beekeeper %q must be removed after uninstall", antigravityCheckSuffix)
 		}
-		if !claudeEntriesContainCommand(pre, "my-antigravity-guard.sh") {
+		if !entriesContainRawCommand(pre, "my-antigravity-guard.sh") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 	})
@@ -1816,7 +1915,7 @@ func TestInstallWindsurf(t *testing.T) {
 		json.Unmarshal(data, &f)
 
 		// Foreign hook must survive.
-		if !containsWindsurfHookByCommand(f.Hooks["pre_run_command"], "my-other-tool") {
+		if !windsurfHooksHaveRawCommand(f.Hooks["pre_run_command"], "my-other-tool") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 	})
@@ -2370,20 +2469,35 @@ func TestDualFormUninstallClaudeCode(t *testing.T) {
 	})
 }
 
-// TestPreservationRegressionClaudeCode verifies that a third-party hook
-// survives install (including migration path) AND uninstall.
+// TestPreservationRegressionClaudeCode verifies that third-party hooks survive
+// install (including the migration path) AND uninstall.
+//
+// CRITICAL anchoring regression (T-w7y-03): the seed deliberately includes
+// third-party hooks whose commands contain beekeeper-shaped argument tokens:
+//   - a PostToolUse hook `audit-logger audit-record` — its args end in the weak
+//     "audit-record" suffix used by beekeeper's PostToolUse matcher
+//   - a PreToolUse hook `linter check --hook ci` — its args contain a
+//     "check --hook" token
+// With an UNANCHORED matcher these would be matched, then migration would CLOBBER
+// them (replace with the beekeeper abspath command) on install, or uninstall
+// would delete them. This test is exactly the one that catches that clobber.
 func TestPreservationRegressionClaudeCode(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 	settingsPath := filepath.Join(dir, "settings.json")
 
-	// Seed: a foreign hook + an old bare-name beekeeper entry.
+	// Seed: foreign hooks (incl. beekeeper-shaped decoys) + an old bare-name
+	// beekeeper entry that the installer should migrate.
 	seed := `{
   "hooks": {
     "PreToolUse": [
       {"matcher": "Write", "hooks": [{"type": "command", "command": "my-security-guard.sh"}]},
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "linter check --hook ci"}]},
       {"matcher": ".*", "hooks": [{"type": "command", "command": "beekeeper check --hook claude-code"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": ".*", "hooks": [{"type": "command", "command": "audit-logger audit-record"}]}
     ]
   }
 }`
@@ -2398,13 +2512,21 @@ func TestPreservationRegressionClaudeCode(t *testing.T) {
 		t.Fatalf("installClaudeCode (migration): %v", err)
 	}
 
-	// Foreign hook must survive migration.
+	// Foreign hooks (incl. beekeeper-shaped decoys) must survive migration verbatim.
 	m := readJSON(t, settingsPath)
 	hooks := m["hooks"].(map[string]any)
 	pre := hooks["PreToolUse"].([]any)
-	if !claudeEntriesContainCommand(pre, "my-security-guard.sh") {
-		t.Fatal("foreign hook must survive install + migration")
+	post := hooks["PostToolUse"].([]any)
+	if !entriesContainRawCommand(pre, "my-security-guard.sh") {
+		t.Fatal("foreign hook (my-security-guard.sh) must survive install + migration")
 	}
+	if !entriesContainRawCommand(pre, "linter check --hook ci") {
+		t.Fatal("third-party 'linter check --hook ci' must survive install (anchoring: not a beekeeper program)")
+	}
+	if !entriesContainRawCommand(post, "audit-logger audit-record") {
+		t.Fatal("third-party 'audit-logger audit-record' must survive install (anchoring: NOT clobbered by migration)")
+	}
+	// Exactly one beekeeper PreToolUse entry (migrated, not duplicated).
 	bkCount := 0
 	for _, entry := range pre {
 		em, _ := entry.(map[string]any)
@@ -2419,8 +2541,13 @@ func TestPreservationRegressionClaudeCode(t *testing.T) {
 	if bkCount != 1 {
 		t.Errorf("expected exactly 1 beekeeper entry after migration, got %d", bkCount)
 	}
+	// The beekeeper installer adds its OWN PostToolUse audit-record entry, so
+	// PostToolUse now has the foreign audit-logger entry + the beekeeper entry.
+	if len(post) != 2 {
+		t.Errorf("expected 2 PostToolUse entries (foreign + beekeeper), got %d", len(post))
+	}
 
-	// Uninstall: foreign hook must survive.
+	// Uninstall: third-party hooks must survive; beekeeper entries removed.
 	buf.Reset()
 	if err := uninstallClaudeCode(settingsPath, false, &buf); err != nil {
 		t.Fatalf("uninstallClaudeCode: %v", err)
@@ -2428,10 +2555,33 @@ func TestPreservationRegressionClaudeCode(t *testing.T) {
 	m = readJSON(t, settingsPath)
 	hooks = m["hooks"].(map[string]any)
 	pre = hooks["PreToolUse"].([]any)
-	if !claudeEntriesContainCommand(pre, "my-security-guard.sh") {
-		t.Fatal("foreign hook must survive uninstall")
+	if !entriesContainRawCommand(pre, "my-security-guard.sh") {
+		t.Fatal("foreign hook (my-security-guard.sh) must survive uninstall")
+	}
+	if !entriesContainRawCommand(pre, "linter check --hook ci") {
+		t.Fatal("third-party 'linter check --hook ci' must survive uninstall (anchoring)")
 	}
 	if claudeEntriesContainCommand(pre, claudeCheckSuffix) {
-		t.Fatal("beekeeper entry must be removed by uninstall")
+		t.Fatal("beekeeper PreToolUse entry must be removed by uninstall")
+	}
+	// PostToolUse: the foreign audit-logger entry must survive; the beekeeper
+	// audit-record entry must be removed.
+	postAfter, _ := hooks["PostToolUse"].([]any)
+	if !entriesContainRawCommand(postAfter, "audit-logger audit-record") {
+		t.Fatal("third-party 'audit-logger audit-record' must survive uninstall (anchoring: NOT removed)")
+	}
+	beekeeperPostRemains := false
+	for _, entry := range postAfter {
+		em, _ := entry.(map[string]any)
+		inner, _ := em["hooks"].([]any)
+		for _, h := range inner {
+			hm, _ := h.(map[string]any)
+			if cmd, _ := hm["command"].(string); matchesBeekeeperCommand(cmd, claudeAuditSuffix) {
+				beekeeperPostRemains = true
+			}
+		}
+	}
+	if beekeeperPostRemains {
+		t.Fatal("beekeeper PostToolUse audit-record entry must be removed by uninstall")
 	}
 }

@@ -365,7 +365,7 @@ func TestUninstallCodex(t *testing.T) {
 		var f codexHooksFile
 		data, _ := os.ReadFile(path)
 		mustUnmarshal(t, data, &f)
-		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "some-other-checker") {
+		if !codexEntriesHaveRawCommand(f.Hooks["PreToolUse"], "some-other-checker") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
 		if containsCodexHookByCommand(f.Hooks["PreToolUse"], codexCheckSuffix) {
@@ -1034,9 +1034,18 @@ func TestClaudeEntriesContainCommandShapes(t *testing.T) {
 			"x", false,
 		},
 		{
+			// The "found" branch requires a beekeeper-anchored command, since
+			// claudeEntriesContainCommand uses matchesBeekeeperCommand (T-w7y-03).
 			"match",
-			[]any{map[string]any{"hooks": []any{map[string]any{"command": "x"}}}},
-			"x", true,
+			[]any{map[string]any{"hooks": []any{map[string]any{"command": "beekeeper audit-record"}}}},
+			"audit-record", true,
+		},
+		{
+			// A non-beekeeper command must NOT match even when the suffix string
+			// appears in its args — the anchoring regression guard.
+			"non_beekeeper_command_does_not_match",
+			[]any{map[string]any{"hooks": []any{map[string]any{"command": "audit-logger audit-record"}}}},
+			"audit-record", false,
 		},
 	}
 	for _, tc := range cases {
