@@ -341,10 +341,10 @@ func TestUninstallCodex(t *testing.T) {
 		var f codexHooksFile
 		data, _ := os.ReadFile(path)
 		mustUnmarshal(t, data, &f)
-		if containsCodexHookByCommand(f.Hooks["PreToolUse"], "beekeeper check --hook codex") {
+		if containsCodexHookByCommand(f.Hooks["PreToolUse"], codexCheckSuffix) {
 			t.Fatal("beekeeper PreToolUse entry must be removed after uninstall")
 		}
-		if containsCodexHookByCommand(f.Hooks["PostToolUse"], "beekeeper audit-record") {
+		if containsCodexHookByCommand(f.Hooks["PostToolUse"], codexAuditSuffix) {
 			t.Fatal("beekeeper PostToolUse entry must be removed after uninstall")
 		}
 	})
@@ -368,7 +368,7 @@ func TestUninstallCodex(t *testing.T) {
 		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "some-other-checker") {
 			t.Fatal("foreign hook must survive uninstall")
 		}
-		if containsCodexHookByCommand(f.Hooks["PreToolUse"], "beekeeper check --hook codex") {
+		if containsCodexHookByCommand(f.Hooks["PreToolUse"], codexCheckSuffix) {
 			t.Fatal("beekeeper hook must be removed")
 		}
 	})
@@ -466,7 +466,7 @@ func TestPatchHermesConfigBranches(t *testing.T) {
 		if !strings.Contains(out, "pre_tool_call:") {
 			t.Fatalf("expected pre_tool_call inserted, got:\n%s", out)
 		}
-		if !strings.Contains(out, hermesPreCommand) {
+		if !strings.Contains(out, hermesCheckSuffix) {
 			t.Fatalf("expected beekeeper command, got:\n%s", out)
 		}
 		if !strings.Contains(out, "post_tool_call:") {
@@ -484,7 +484,7 @@ func TestPatchHermesConfigBranches(t *testing.T) {
 		if !strings.Contains(out, "existing-pre") {
 			t.Fatalf("existing command must be preserved, got:\n%s", out)
 		}
-		if !strings.Contains(out, hermesPreCommand) {
+		if !strings.Contains(out, hermesCheckSuffix) {
 			t.Fatalf("beekeeper command must be added, got:\n%s", out)
 		}
 	})
@@ -504,7 +504,7 @@ func TestPatchHermesConfigBranches(t *testing.T) {
 
 	t.Run("empty_content", func(t *testing.T) {
 		out := patchHermesConfig("")
-		if !strings.Contains(out, hermesPreCommand) {
+		if !strings.Contains(out, hermesCheckSuffix) {
 			t.Fatalf("empty input must yield the full hook block, got:\n%s", out)
 		}
 	})
@@ -958,7 +958,7 @@ func TestInstallToleratesMalformedExisting(t *testing.T) {
 		data, _ := os.ReadFile(path)
 		mustUnmarshal(t, data, &f)
 		for _, ev := range cursorEvents {
-			if !containsCursorHookByCommand(f.Hooks[ev], "beekeeper check --hook cursor") {
+			if !containsCursorHookByCommand(f.Hooks[ev], cursorCheckSuffix) {
 				t.Fatalf("event %q must have beekeeper hook after recovering from malformed file", ev)
 			}
 		}
@@ -974,7 +974,7 @@ func TestInstallToleratesMalformedExisting(t *testing.T) {
 		var f codexHooksFile
 		data, _ := os.ReadFile(path)
 		mustUnmarshal(t, data, &f)
-		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], "beekeeper check --hook codex") {
+		if !containsCodexHookByCommand(f.Hooks["PreToolUse"], codexCheckSuffix) {
 			t.Fatal("beekeeper hook must be present after recovering from malformed file")
 		}
 	})
@@ -989,7 +989,7 @@ func TestInstallToleratesMalformedExisting(t *testing.T) {
 		var f geminiHooksFile
 		data, _ := os.ReadFile(path)
 		mustUnmarshal(t, data, &f)
-		if !containsGeminiHookByCommand(f.Hooks, "beekeeper check --hook gemini") {
+		if !containsGeminiHookByCommand(f.Hooks, geminiCheckSuffix) {
 			t.Fatal("beekeeper hook must be present after recovering from malformed file")
 		}
 	})
@@ -1068,14 +1068,15 @@ func TestEnsureCodexFeaturesFlagAlreadyCorrect(t *testing.T) {
 // arm runs on the current host; CI exercises the other OSes).
 func TestBeekeeperWindsurfHookOSKey(t *testing.T) {
 	h := beekeeperWindsurfHook()
-	const cmd = "beekeeper check --hook windsurf"
+	// The installed command embeds the absolute binary path (machine-specific),
+	// so assert via the stable suffix rather than exact equality.
 	if runtime.GOOS == "windows" {
-		if h.PowerShell != cmd || h.Command != "" {
-			t.Fatalf("windows: want PowerShell=%q Command empty, got PowerShell=%q Command=%q", cmd, h.PowerShell, h.Command)
+		if !matchesBeekeeperCommand(h.PowerShell, windsurfCheckSuffix) || h.Command != "" {
+			t.Fatalf("windows: want PowerShell matching suffix %q Command empty, got PowerShell=%q Command=%q", windsurfCheckSuffix, h.PowerShell, h.Command)
 		}
 	} else {
-		if h.Command != cmd || h.PowerShell != "" {
-			t.Fatalf("unix: want Command=%q PowerShell empty, got Command=%q PowerShell=%q", cmd, h.Command, h.PowerShell)
+		if !matchesBeekeeperCommand(h.Command, windsurfCheckSuffix) || h.PowerShell != "" {
+			t.Fatalf("unix: want Command matching suffix %q PowerShell empty, got Command=%q PowerShell=%q", windsurfCheckSuffix, h.Command, h.PowerShell)
 		}
 	}
 }

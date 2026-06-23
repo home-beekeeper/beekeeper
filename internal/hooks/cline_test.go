@@ -39,8 +39,8 @@ func TestInstallCline(t *testing.T) {
 
 		data, _ := os.ReadFile(hookPath)
 		content := string(data)
-		if !strings.Contains(content, clinePreCommand) {
-			t.Fatalf("PreToolUse must contain %q, got:\n%s", clinePreCommand, content)
+		if !strings.Contains(content, clineCheckSuffix) {
+			t.Fatalf("PreToolUse must contain %q, got:\n%s", clineCheckSuffix, content)
 		}
 		if !strings.HasPrefix(content, "#!/bin/sh") {
 			t.Fatalf("PreToolUse must start with #!/bin/sh shebang, got:\n%s", content)
@@ -132,7 +132,7 @@ func TestInstallCline(t *testing.T) {
 
 		// The installed script must now be the beekeeper script.
 		data, _ := os.ReadFile(hookPath)
-		if !strings.Contains(string(data), clinePreCommand) {
+		if !strings.Contains(string(data), clineCheckSuffix) {
 			t.Fatal("PreToolUse must be the beekeeper script after install")
 		}
 	})
