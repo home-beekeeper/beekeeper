@@ -35,11 +35,17 @@ var cursorEvents = []string{
 	"beforeReadFile",
 }
 
+// cursorCheckSuffix is the stable suffix for Cursor's beekeeper hook command.
+// Used for idempotent install, migration, and targeted uninstall.
+const cursorCheckSuffix = "check --hook cursor"
+
 // containsCursorHookByCommand reports whether any hook in the slice has
-// Command equal to cmd. Used to prevent duplicate entries (idempotency).
-func containsCursorHookByCommand(hooks []cursorHook, cmd string) bool {
+// a Command that matches the beekeeper cursor stable suffix.
+// Matches BOTH old bare-name ("beekeeper check --hook cursor") and new abspath
+// forms via matchesBeekeeperCommand.
+func containsCursorHookByCommand(hooks []cursorHook, suffix string) bool {
 	for _, h := range hooks {
-		if h.Command == cmd {
+		if matchesBeekeeperCommand(h.Command, suffix) {
 			return true
 		}
 	}
@@ -50,8 +56,12 @@ func containsCursorHookByCommand(hooks []cursorHook, cmd string) bool {
 // of the three real Cursor v1.7+ hook events: beforeShellExecution,
 // beforeMCPExecution, and beforeReadFile.
 //
-// The function is idempotent: it only appends the hook to an event if
-// "beekeeper check --hook cursor" is not already present in that event's array.
+// The installed command embeds the running binary's absolute path (resolved via
+// os.Executable at install time). Re-running migrates an old bare-name entry
+// to the new abspath form in place (no duplicate).
+//
+// The function is idempotent: it only appends the hook to an event if no
+// matching beekeeper entry (bare or abspath) is already present.
 // Existing hooks from other tools are preserved.
 //
 // CRITICAL: FailClosed must be true. If the hook crashes or times out, Cursor
@@ -79,18 +89,38 @@ func installCursor(hooksPath string, dryRun bool, out io.Writer) error {
 		return fmt.Errorf("cursor: read %q: %w", hooksPath, err)
 	}
 
-	// Append beekeeper hook to each of the three real Cursor v1.7+ events,
-	// skipping if already present (idempotent).
+	// Build the freshly-resolved abspath command.
+	newCmd := beekeeperCmd(cursorCheckSuffix)
+	newHook := cursorHook{
+		Command:    newCmd,
+		Type:       "command",
+		Timeout:    10,
+		Matcher:    ".*",
+		FailClosed: true, // REQUIRED: Cursor is fail-OPEN by default
+	}
+
+	// Append/migrate beekeeper hook to each of the three real Cursor v1.7+ events.
 	for _, event := range cursorEvents {
-		if !containsCursorHookByCommand(existing.Hooks[event], "beekeeper check --hook cursor") {
-			existing.Hooks[event] = append(existing.Hooks[event], cursorHook{
-				Command:    "beekeeper check --hook cursor",
-				Type:       "command",
-				Timeout:    10,
-				Matcher:    ".*",
-				FailClosed: true, // REQUIRED: Cursor is fail-OPEN by default
-			})
+		arr := existing.Hooks[event]
+		found := false
+		migrated := make([]cursorHook, 0, len(arr)+1)
+		for _, h := range arr {
+			if matchesBeekeeperCommand(h.Command, cursorCheckSuffix) {
+				found = true
+				if h.Command != newCmd {
+					// Migrate stale bare-name or stale-abspath entry to new abspath.
+					migrated = append(migrated, newHook)
+				} else {
+					migrated = append(migrated, h)
+				}
+			} else {
+				migrated = append(migrated, h)
+			}
 		}
+		if !found {
+			migrated = append(migrated, newHook)
+		}
+		existing.Hooks[event] = migrated
 	}
 
 	if dryRun {
@@ -116,10 +146,10 @@ func installCursor(hooksPath string, dryRun bool, out io.Writer) error {
 	return writeFileAtomic(hooksPath, data)
 }
 
-// uninstallCursor removes the "beekeeper check --hook cursor" entries from
-// ~/.cursor/hooks.json for all three Cursor event keys
-// (beforeShellExecution, beforeMCPExecution, beforeReadFile).
-// Other hooks are preserved. A backup is created first.
+// uninstallCursor removes beekeeper hook entries from ~/.cursor/hooks.json for
+// all three Cursor event keys (beforeShellExecution, beforeMCPExecution,
+// beforeReadFile). Suffix matching covers BOTH old bare-name and new abspath
+// forms. Other hooks are preserved. A backup is created first.
 func uninstallCursor(hooksPath string, dryRun bool, out io.Writer) error {
 	data, err := os.ReadFile(hooksPath)
 	if err != nil {
@@ -140,12 +170,12 @@ func uninstallCursor(hooksPath string, dryRun bool, out io.Writer) error {
 
 	totalRemoved := 0
 
-	// Iterate all three real Cursor event keys, filtering beekeeper entries.
+	// Iterate all three real Cursor event keys, filtering beekeeper entries by suffix.
 	for _, event := range cursorEvents {
 		arr := existing.Hooks[event]
 		filtered := make([]cursorHook, 0, len(arr))
 		for _, h := range arr {
-			if h.Command == "beekeeper check --hook cursor" {
+			if matchesBeekeeperCommand(h.Command, cursorCheckSuffix) {
 				totalRemoved++
 				continue
 			}

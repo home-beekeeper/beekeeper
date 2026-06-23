@@ -10,20 +10,26 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
-// Beekeeper's hook command strings, used both to build the entries and to detect
-// their presence for idempotent install / targeted uninstall.
+// Beekeeper's hook command stable suffixes, used both to build the entries
+// (via beekeeperCmd) and to detect their presence for idempotent install,
+// migration, and targeted uninstall via matchesBeekeeperCommand.
+//
+// These suffixes are stable invariants: the installed command is always
+// "<quoted-abspath> <suffix>" (or "beekeeper <suffix>" on fallback), so
+// matching on the suffix covers BOTH old bare-name and new abspath forms.
 const (
-	claudePreCommand  = "beekeeper check --hook claude-code"
-	claudePostCommand = "beekeeper audit-record"
+	claudeCheckSuffix  = "check --hook claude-code"
+	claudeAuditSuffix  = "audit-record"
 )
 
 // beekeeperClaudePreEntry returns the canonical PreToolUse entry for Claude Code
-// (matcher ".*" → "beekeeper check"). Schema verified from code.claude.com/docs/en/hooks.
+// (matcher ".*" → beekeeperCmd(claudeCheckSuffix)). Schema verified from
+// code.claude.com/docs/en/hooks.
 func beekeeperClaudePreEntry() map[string]any {
 	return map[string]any{
 		"matcher": ".*",
 		"hooks": []any{
-			map[string]any{"type": "command", "command": claudePreCommand},
+			map[string]any{"type": "command", "command": beekeeperCmd(claudeCheckSuffix)},
 		},
 	}
 }
@@ -33,7 +39,7 @@ func beekeeperClaudePostEntry() map[string]any {
 	return map[string]any{
 		"matcher": ".*",
 		"hooks": []any{
-			map[string]any{"type": "command", "command": claudePostCommand},
+			map[string]any{"type": "command", "command": beekeeperCmd(claudeAuditSuffix)},
 		},
 	}
 }
@@ -47,10 +53,11 @@ func claudeHookConfig() map[string]any {
 }
 
 // claudeEntriesContainCommand reports whether any entry in a Claude event array
-// has an inner "hooks" command equal to cmd. Used for idempotent install and
-// targeted uninstall. Tolerates the loosely-typed map[string]any/[]any shapes
-// that json.Unmarshal produces.
-func claudeEntriesContainCommand(entries []any, cmd string) bool {
+// has an inner "hooks" command that matches the given stable suffix.
+// Uses matchesBeekeeperCommand so BOTH old bare-name and new abspath forms are
+// detected — idempotency and migration both work on mixed-form installs.
+// Tolerates the loosely-typed map[string]any/[]any shapes that json.Unmarshal produces.
+func claudeEntriesContainCommand(entries []any, suffix string) bool {
 	for _, e := range entries {
 		em, ok := e.(map[string]any)
 		if !ok {
@@ -65,7 +72,7 @@ func claudeEntriesContainCommand(entries []any, cmd string) bool {
 			if !ok {
 				continue
 			}
-			if c, _ := hm["command"].(string); c == cmd {
+			if c, _ := hm["command"].(string); matchesBeekeeperCommand(c, suffix) {
 				return true
 			}
 		}
@@ -73,31 +80,99 @@ func claudeEntriesContainCommand(entries []any, cmd string) bool {
 	return false
 }
 
-// mergeClaudeHookEntry appends entry to an existing Claude event array, preserving
-// every existing entry. If an entry whose inner hooks already contain cmd is
-// present the array is returned unchanged (idempotent). existing may be nil.
+// mergeClaudeHookEntry appends entry to an existing Claude event array,
+// preserving every existing non-beekeeper entry.
+//
+// Migration: if an existing entry already matches the suffix (old bare-name OR
+// stale abspath), it is REPLACED in place with the freshly-built abspath command
+// from entry (exactly one beekeeper entry remains). This self-heals stale entries
+// without duplication.
 //
 // CRITICAL (clobber fix): this MERGES rather than overwrites so that a user's
 // pre-existing Claude Code hooks (e.g. a project's own PreToolUse guards) are
 // never destroyed by `beekeeper hooks install`. Before this change the installer
 // replaced the entire "hooks" key, silently wiping every non-beekeeper hook.
-func mergeClaudeHookEntry(existing any, cmd string, entry map[string]any) []any {
+func mergeClaudeHookEntry(existing any, suffix string, entry map[string]any) []any {
 	arr, _ := existing.([]any)
-	if claudeEntriesContainCommand(arr, cmd) {
-		return arr
+
+	// Extract the freshly-built command from entry for migration comparison.
+	newCmd := ""
+	if hooksArr, ok := entry["hooks"].([]any); ok && len(hooksArr) > 0 {
+		if hm, ok := hooksArr[0].(map[string]any); ok {
+			newCmd, _ = hm["command"].(string)
+		}
 	}
-	return append(arr, entry)
+
+	found := false
+	merged := make([]any, 0, len(arr)+1)
+	for _, e := range arr {
+		em, ok := e.(map[string]any)
+		if !ok {
+			merged = append(merged, e)
+			continue
+		}
+		inner, ok := em["hooks"].([]any)
+		if !ok {
+			merged = append(merged, e)
+			continue
+		}
+		// Check if any inner command matches our suffix (covers both bare and abspath).
+		matchedInner := false
+		for _, h := range inner {
+			hm, ok := h.(map[string]any)
+			if !ok {
+				continue
+			}
+			if c, _ := hm["command"].(string); matchesBeekeeperCommand(c, suffix) {
+				matchedInner = true
+				break
+			}
+		}
+		if matchedInner {
+			found = true
+			if newCmd == "" {
+				// Fallback: keep as-is if we couldn't extract the new command.
+				merged = append(merged, e)
+				continue
+			}
+			// Check if migration is needed (old bare-name or stale abspath).
+			needsMigration := false
+			for _, h := range inner {
+				hm, ok := h.(map[string]any)
+				if !ok {
+					continue
+				}
+				if c, _ := hm["command"].(string); c != newCmd {
+					needsMigration = true
+					break
+				}
+			}
+			if needsMigration {
+				// Replace in place with the freshly-built abspath entry.
+				merged = append(merged, entry)
+			} else {
+				// Already up to date.
+				merged = append(merged, e)
+			}
+		} else {
+			merged = append(merged, e)
+		}
+	}
+	if !found {
+		merged = append(merged, entry)
+	}
+	return merged
 }
 
 // removeClaudeHookEntry returns existing with every entry whose inner hooks
-// contain cmd dropped, plus the number removed. Non-beekeeper entries are
-// preserved. existing may be nil.
-func removeClaudeHookEntry(existing any, cmd string) ([]any, int) {
+// match the given suffix dropped, plus the number removed.
+// Non-beekeeper entries are preserved. existing may be nil.
+func removeClaudeHookEntry(existing any, suffix string) ([]any, int) {
 	arr, _ := existing.([]any)
 	filtered := make([]any, 0, len(arr))
 	removed := 0
 	for _, e := range arr {
-		if claudeEntriesContainCommand([]any{e}, cmd) {
+		if claudeEntriesContainCommand([]any{e}, suffix) {
 			removed++
 			continue
 		}
@@ -110,6 +185,11 @@ func removeClaudeHookEntry(existing any, cmd string) ([]any, int) {
 // Claude Code settings.json at settingsPath WITHOUT disturbing any pre-existing
 // hooks (other PreToolUse/PostToolUse entries, SessionStart, etc.) or other
 // top-level settings keys.
+//
+// The installed commands embed the running binary's absolute path (resolved via
+// os.Executable at install time) so the hook resolves regardless of PATH drift.
+// Re-running performs migration: if an old bare-name entry exists, it is replaced
+// in place with the new abspath command (no duplication).
 //
 // It reads via editorinit.ReadSettings (JSONC-safe) to compute the merged hooks
 // value, then writes via editorinit.PatchSettings (atomic, MkdirAll, sets only
@@ -136,9 +216,9 @@ func installClaudeCode(settingsPath string, dryRun bool, out io.Writer) error {
 		hooks = map[string]any{}
 	}
 
-	// Merge (append-if-absent) — never overwrite sibling hooks.
-	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], claudePreCommand, beekeeperClaudePreEntry())
-	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], claudePostCommand, beekeeperClaudePostEntry())
+	// Merge (append-if-absent, migrate-if-stale) — never overwrite sibling hooks.
+	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], claudeCheckSuffix, beekeeperClaudePreEntry())
+	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], claudeAuditSuffix, beekeeperClaudePostEntry())
 
 	if err := backupSettings(settingsPath); err != nil {
 		return err
@@ -149,11 +229,13 @@ func installClaudeCode(settingsPath string, dryRun bool, out io.Writer) error {
 	return editorinit.PatchSettings(settingsPath, "hooks", hooks)
 }
 
-// uninstallClaudeCode removes ONLY Beekeeper's entries ("beekeeper check" from
-// PreToolUse, "beekeeper audit-record" from PostToolUse) from the Claude Code
+// uninstallClaudeCode removes ONLY Beekeeper's entries from the Claude Code
 // settings.json, preserving all other hooks. If an event array becomes empty it
 // is dropped; if the whole hooks map becomes empty the "hooks" key is removed.
 // Other top-level settings keys are always preserved. A backup is created first.
+//
+// Uninstall uses suffix matching so it removes BOTH old bare-name entries and new
+// abspath entries.
 //
 // WR-01: editorinit.ReadSettings strips JSONC comments before unmarshalling so
 // settings.json files containing // or /* */ comments are parsed correctly.
@@ -180,8 +262,8 @@ func uninstallClaudeCode(settingsPath string, dryRun bool, out io.Writer) error 
 		return nil
 	}
 
-	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], claudePreCommand)
-	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], claudePostCommand)
+	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], claudeCheckSuffix)
+	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], claudeAuditSuffix)
 	removed := removedPre + removedPost
 
 	if removed == 0 {

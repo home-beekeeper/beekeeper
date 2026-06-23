@@ -10,12 +10,35 @@ package hooks
 import "path/filepath"
 
 // BeekeeperHookMarkers returns the substrings that identify a Beekeeper hook
-// entry inside a harness hook-config file. Every per-harness PreToolUse command
-// is "beekeeper check --hook <harness>", so "beekeeper check" matches all of
-// them; "beekeeper audit-record" matches the PostToolUse entry. A file that
-// contains any of these is considered to have Beekeeper installed.
+// entry inside a harness hook-config file. A file that contains any of these
+// is considered to have Beekeeper installed.
+//
+// Two forms are supported:
+//
+//   - Bare-name form (pre-v1.5.0): the installed command is the literal
+//     "beekeeper check --hook <harness>" / "beekeeper audit-record". The raw
+//     bytes contain "beekeeper check" / "beekeeper audit-record".
+//
+//   - Abspath form (v1.5.0+): the installed command is
+//     '"<absolute-path>" check --hook <harness>'. JSON-encoded, the raw bytes
+//     contain 'beekeeper\" check' (escaped inner quote). YAML/shell raw bytes
+//     contain 'beekeeper" check'. Both forms contain "check --hook" which is
+//     the stable cross-encoding marker.
+//
+// The markers include both forms so the self-protection guard (internal/check)
+// recognises hook-config files regardless of which installer generation wrote
+// the entry. "beekeeper check" / "beekeeper audit-record" remain in the set
+// for backward compatibility with bare-name form entries already on disk.
 func BeekeeperHookMarkers() []string {
-	return []string{"beekeeper check", "beekeeper audit-record"}
+	return []string{
+		// Bare-name form (pre-v1.5.0 installs):
+		"beekeeper check",
+		"beekeeper audit-record",
+		// Abspath form (v1.5.0+ installs) — invariant suffixes present in raw
+		// bytes of EVERY format (JSON-escaped, YAML, shell script):
+		"check --hook",
+		"audit-record",
+	}
 }
 
 // HookConfigFiles returns the set of hook-config file paths that Beekeeper may

@@ -8,8 +8,8 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
-// Beekeeper's hook command string for GitHub Copilot.
-const copilotPreCommand = "beekeeper check --hook copilot"
+// Beekeeper's hook command stable suffix for GitHub Copilot.
+const copilotCheckSuffix = "check --hook copilot"
 
 // copilotSettingsPath returns the path to Copilot's settings.json.
 // Copilot uses ~/.copilot/settings.json by default; the COPILOT_HOME
@@ -23,6 +23,9 @@ func copilotSettingsPath(homeDir string) string {
 // installCopilot merges Beekeeper's preToolUse hook into the Copilot
 // settings.json at settingsPath WITHOUT disturbing any pre-existing hooks or
 // other top-level settings keys.
+//
+// The installed command embeds the running binary's absolute path. Re-running
+// migrates an old bare-name entry to the new abspath form in place (no duplicate).
 //
 // Copilot's event key is "preToolUse" (camelCase). This is correct for
 // Copilot — do not confuse with the Cursor bug (Cursor has different event
@@ -44,7 +47,7 @@ func copilotSettingsPath(homeDir string) string {
 func installCopilot(settingsPath string, dryRun bool, out io.Writer) error {
 	if dryRun {
 		hooksConfig := map[string]any{
-			"preToolUse": []any{beekeeperClaudePreEntryWith(copilotPreCommand)},
+			"preToolUse": []any{beekeeperClaudePreEntryWith(beekeeperCmd(copilotCheckSuffix))},
 		}
 		data, _ := json.MarshalIndent(hooksConfig, "", "    ")
 		fmt.Fprintf(out, "[dry-run] Would merge into %s (hooks key — existing hooks preserved):\n%s\n", settingsPath, string(data))
@@ -62,7 +65,7 @@ func installCopilot(settingsPath string, dryRun bool, out io.Writer) error {
 	}
 
 	// Copilot event key is "preToolUse" (camelCase — correct for Copilot).
-	hooks["preToolUse"] = mergeClaudeHookEntry(hooks["preToolUse"], copilotPreCommand, beekeeperClaudePreEntryWith(copilotPreCommand))
+	hooks["preToolUse"] = mergeClaudeHookEntry(hooks["preToolUse"], copilotCheckSuffix, beekeeperClaudePreEntryWith(beekeeperCmd(copilotCheckSuffix)))
 
 	if err := backupSettings(settingsPath); err != nil {
 		return err
@@ -75,6 +78,7 @@ func installCopilot(settingsPath string, dryRun bool, out io.Writer) error {
 
 // uninstallCopilot removes ONLY Beekeeper's entries from the Copilot
 // settings.json, preserving all other hooks and top-level keys.
+// Suffix matching covers BOTH old bare-name and new abspath forms.
 // A backup is created before modification.
 func uninstallCopilot(settingsPath string, dryRun bool, out io.Writer) error {
 	settings, err := editorinit.ReadSettings(settingsPath)
@@ -93,7 +97,7 @@ func uninstallCopilot(settingsPath string, dryRun bool, out io.Writer) error {
 		return nil
 	}
 
-	preArr, removedPre := removeClaudeHookEntry(hooks["preToolUse"], copilotPreCommand)
+	preArr, removedPre := removeClaudeHookEntry(hooks["preToolUse"], copilotCheckSuffix)
 	removed := removedPre
 
 	if removed == 0 {

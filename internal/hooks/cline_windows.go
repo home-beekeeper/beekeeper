@@ -14,10 +14,10 @@ import (
 	"io"
 )
 
-// clinePreCommand is the command written into the PreToolUse executable script
-// (macOS/Linux only). Declared here so the hooks.go dispatch can reference it
-// without build errors on Windows.
-const clinePreCommand = "beekeeper check --hook cline"
+// clineCheckSuffix is the stable suffix for the Cline beekeeper hook command.
+// Declared here so the hooks.go dispatch and HookConfigFiles can reference it
+// without build errors on Windows. The macOS/Linux implementation is in cline.go.
+const clineCheckSuffix = "check --hook cline"
 
 // clineHooksDir returns a sentinel path on Windows. The real implementation
 // (cline.go, !windows) returns ~/Documents/Cline/Rules/Hooks.
@@ -38,4 +38,11 @@ func installCline(_ string, _ bool, out io.Writer) error {
 func uninstallCline(_ string, _ bool, out io.Writer) error {
 	fmt.Fprintf(out, "Cline hooks are macOS/Linux only (not supported on Windows) — nothing to uninstall.\n")
 	return fmt.Errorf("cline hooks are macOS/Linux only (not supported on Windows)")
+}
+
+// containsClineCommand reports whether content contains a beekeeper Cline hook
+// marker (stub for Windows; the real implementation is in cline.go !windows).
+func containsClineCommand(content string) bool {
+	_ = content
+	return false
 }

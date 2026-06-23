@@ -8,10 +8,10 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
-// Beekeeper's hook command strings for Qwen Code.
+// Beekeeper's hook command stable suffixes for Qwen Code.
 const (
-	qwenPreCommand  = "beekeeper check --hook qwen"
-	qwenPostCommand = "beekeeper audit-record"
+	qwenCheckSuffix = "check --hook qwen"
+	qwenAuditSuffix = "audit-record"
 )
 
 // qwenSettingsPath returns the path to Qwen Code's settings.json.
@@ -23,6 +23,9 @@ func qwenSettingsPath(homeDir string) string {
 // Qwen Code settings.json at settingsPath WITHOUT disturbing any pre-existing
 // hooks or other top-level settings keys.
 //
+// The installed commands embed the running binary's absolute path. Re-running
+// migrates an old bare-name entry to the new abspath form in place (no duplicate).
+//
 // Qwen Code is a Gemini CLI fork that adopted Claude's hookSpecificOutput
 // schema: settings.json with a "hooks" key containing "PreToolUse" and
 // "PostToolUse" event arrays. The merge-not-clobber trinity is reused directly.
@@ -31,8 +34,8 @@ func qwenSettingsPath(homeDir string) string {
 func installQwen(settingsPath string, dryRun bool, out io.Writer) error {
 	if dryRun {
 		hooksConfig := map[string]any{
-			"PreToolUse":  []any{beekeeperClaudePreEntryWith(qwenPreCommand)},
-			"PostToolUse": []any{beekeeperClaudePostEntryWith(qwenPostCommand)},
+			"PreToolUse":  []any{beekeeperClaudePreEntryWith(beekeeperCmd(qwenCheckSuffix))},
+			"PostToolUse": []any{beekeeperClaudePostEntryWith(beekeeperCmd(qwenAuditSuffix))},
 		}
 		data, _ := json.MarshalIndent(hooksConfig, "", "    ")
 		fmt.Fprintf(out, "[dry-run] Would merge into %s (hooks key — existing hooks preserved):\n%s\n", settingsPath, string(data))
@@ -49,8 +52,8 @@ func installQwen(settingsPath string, dryRun bool, out io.Writer) error {
 		hooks = map[string]any{}
 	}
 
-	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], qwenPreCommand, beekeeperClaudePreEntryWith(qwenPreCommand))
-	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], qwenPostCommand, beekeeperClaudePostEntryWith(qwenPostCommand))
+	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], qwenCheckSuffix, beekeeperClaudePreEntryWith(beekeeperCmd(qwenCheckSuffix)))
+	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], qwenAuditSuffix, beekeeperClaudePostEntryWith(beekeeperCmd(qwenAuditSuffix)))
 
 	if err := backupSettings(settingsPath); err != nil {
 		return err
@@ -61,6 +64,7 @@ func installQwen(settingsPath string, dryRun bool, out io.Writer) error {
 
 // uninstallQwen removes ONLY Beekeeper's entries from Qwen Code's
 // settings.json, preserving all other hooks and top-level keys.
+// Suffix matching covers BOTH old bare-name and new abspath forms.
 // A backup is created before modification.
 func uninstallQwen(settingsPath string, dryRun bool, out io.Writer) error {
 	settings, err := editorinit.ReadSettings(settingsPath)
@@ -79,8 +83,8 @@ func uninstallQwen(settingsPath string, dryRun bool, out io.Writer) error {
 		return nil
 	}
 
-	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], qwenPreCommand)
-	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], qwenPostCommand)
+	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], qwenCheckSuffix)
+	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], qwenAuditSuffix)
 	removed := removedPre + removedPost
 
 	if removed == 0 {

@@ -40,12 +40,19 @@ Codex requires you to trust this hook. Run Codex once and approve the hook
 prompt before Beekeeper interception takes effect.
 `
 
+// codexCheckSuffix / codexAuditSuffix are the stable suffixes for Codex hooks.
+const (
+	codexCheckSuffix = "check --hook codex"
+	codexAuditSuffix = "audit-record"
+)
+
 // containsCodexHookByCommand reports whether any hook in the given entry array
-// already contains a command matching cmd. Used to prevent duplicates.
-func containsCodexHookByCommand(entries []codexHookEntry, cmd string) bool {
+// already contains a command matching the given stable suffix.
+// Matches BOTH old bare-name and new abspath forms via matchesBeekeeperCommand.
+func containsCodexHookByCommand(entries []codexHookEntry, suffix string) bool {
 	for _, entry := range entries {
 		for _, h := range entry.Hooks {
-			if h.Command == cmd {
+			if matchesBeekeeperCommand(h.Command, suffix) {
 				return true
 			}
 		}
@@ -54,15 +61,15 @@ func containsCodexHookByCommand(entries []codexHookEntry, cmd string) bool {
 }
 
 // beekeeperCodexPreToolUse returns the canonical PreToolUse entry for Codex.
-// Command is "beekeeper check --hook codex" so that Codex hook invocations
-// emit exit 2 + hookSpecificOutput deny JSON on block (HPC-02).
+// Command uses the absolute binary path via beekeeperCmd so that Codex hook
+// invocations emit exit 2 + hookSpecificOutput deny JSON on block (HPC-02).
 func beekeeperCodexPreToolUse() codexHookEntry {
 	return codexHookEntry{
 		Matcher: ".*",
 		Hooks: []codexHookCmd{
 			{
 				Type:    "command",
-				Command: "beekeeper check --hook codex",
+				Command: beekeeperCmd(codexCheckSuffix),
 				Timeout: 10,
 			},
 		},
@@ -76,7 +83,7 @@ func beekeeperCodexPostToolUse() codexHookEntry {
 		Hooks: []codexHookCmd{
 			{
 				Type:    "command",
-				Command: "beekeeper audit-record",
+				Command: beekeeperCmd(codexAuditSuffix),
 			},
 		},
 	}
@@ -189,9 +196,53 @@ func splitLines(content string) []string {
 	return strings.Split(content, "\n")
 }
 
+// mergeCodexHookEntry merges beekeeper entries into a codex event array,
+// migrating stale bare-name or stale-abspath entries in place.
+func mergeCodexHookEntry(arr []codexHookEntry, suffix string, newEntry codexHookEntry) []codexHookEntry {
+	newCmd := ""
+	if len(newEntry.Hooks) > 0 {
+		newCmd = newEntry.Hooks[0].Command
+	}
+
+	found := false
+	merged := make([]codexHookEntry, 0, len(arr)+1)
+	for _, entry := range arr {
+		matched := false
+		for _, h := range entry.Hooks {
+			if matchesBeekeeperCommand(h.Command, suffix) {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			found = true
+			// Check if migration needed.
+			needsMigration := false
+			for _, h := range entry.Hooks {
+				if matchesBeekeeperCommand(h.Command, suffix) && h.Command != newCmd {
+					needsMigration = true
+					break
+				}
+			}
+			if needsMigration && newCmd != "" {
+				merged = append(merged, newEntry)
+			} else {
+				merged = append(merged, entry)
+			}
+		} else {
+			merged = append(merged, entry)
+		}
+	}
+	if !found {
+		merged = append(merged, newEntry)
+	}
+	return merged
+}
+
 // installCodex merges Beekeeper's PreToolUse and PostToolUse hooks into
 // ~/.codex/hooks.json, then ensures [features] hooks=true in config.toml.
-// The function is idempotent: it only appends entries if not already present.
+// The installed commands embed the running binary's absolute path. Re-running
+// migrates stale entries to the new abspath form in place (no duplicate).
 //
 // After writing the hooks file, it prints the Codex trust reminder.
 func installCodex(hooksPath string, dryRun bool, out io.Writer) error {
@@ -209,15 +260,9 @@ func installCodex(hooksPath string, dryRun bool, out io.Writer) error {
 		return fmt.Errorf("codex: read %q: %w", hooksPath, err)
 	}
 
-	// Idempotent: only append PreToolUse if beekeeper check --hook codex is not already present.
-	if !containsCodexHookByCommand(existing.Hooks["PreToolUse"], "beekeeper check --hook codex") {
-		existing.Hooks["PreToolUse"] = append(existing.Hooks["PreToolUse"], beekeeperCodexPreToolUse())
-	}
-
-	// Idempotent: only append PostToolUse if beekeeper audit-record is not already present.
-	if !containsCodexHookByCommand(existing.Hooks["PostToolUse"], "beekeeper audit-record") {
-		existing.Hooks["PostToolUse"] = append(existing.Hooks["PostToolUse"], beekeeperCodexPostToolUse())
-	}
+	// Merge/migrate PreToolUse and PostToolUse.
+	existing.Hooks["PreToolUse"] = mergeCodexHookEntry(existing.Hooks["PreToolUse"], codexCheckSuffix, beekeeperCodexPreToolUse())
+	existing.Hooks["PostToolUse"] = mergeCodexHookEntry(existing.Hooks["PostToolUse"], codexAuditSuffix, beekeeperCodexPostToolUse())
 
 	if dryRun {
 		data, _ := json.MarshalIndent(existing, "", "    ")
@@ -263,7 +308,8 @@ func installCodex(hooksPath string, dryRun bool, out io.Writer) error {
 }
 
 // uninstallCodex removes beekeeper entries from PreToolUse and PostToolUse in
-// ~/.codex/hooks.json. Other hooks are preserved. A backup is created first.
+// ~/.codex/hooks.json. Suffix matching covers BOTH old bare-name and new abspath
+// forms. Other hooks are preserved. A backup is created first.
 func uninstallCodex(hooksPath string, dryRun bool, out io.Writer) error {
 	data, err := os.ReadFile(hooksPath)
 	if err != nil {
@@ -288,7 +334,7 @@ func uninstallCodex(hooksPath string, dryRun bool, out io.Writer) error {
 	preToolUse := existing.Hooks["PreToolUse"]
 	filtered := make([]codexHookEntry, 0, len(preToolUse))
 	for _, entry := range preToolUse {
-		if containsCodexHookByCommand([]codexHookEntry{entry}, "beekeeper check --hook codex") {
+		if containsCodexHookByCommand([]codexHookEntry{entry}, codexCheckSuffix) {
 			removed++
 			continue
 		}
@@ -300,7 +346,7 @@ func uninstallCodex(hooksPath string, dryRun bool, out io.Writer) error {
 	postToolUse := existing.Hooks["PostToolUse"]
 	filteredPost := make([]codexHookEntry, 0, len(postToolUse))
 	for _, entry := range postToolUse {
-		if containsCodexHookByCommand([]codexHookEntry{entry}, "beekeeper audit-record") {
+		if containsCodexHookByCommand([]codexHookEntry{entry}, codexAuditSuffix) {
 			removed++
 			continue
 		}

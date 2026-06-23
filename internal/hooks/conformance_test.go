@@ -39,8 +39,18 @@ func filesUnder(t *testing.T, dir string, backups bool) []string {
 	return out
 }
 
-// hookMarkerCount counts occurrences of the universal PreToolUse hook command
-// across the given files. Idempotent installs keep this at exactly 1.
+// hookMarkerCount counts occurrences of the stable beekeeper PreToolUse hook
+// marker across the given files. Idempotent installs keep this at exactly 1.
+//
+// The marker is "check --hook" rather than "beekeeper check" because abspath
+// installs embed the binary path in JSON, which is JSON-escaped in the raw
+// file bytes (e.g. `beekeeper\" check`). The suffix "check --hook" is present
+// in both the bare-name form ("beekeeper check --hook X") and the abspath form
+// ("\"...beekeeper...\" check --hook X" → raw bytes contain "check --hook").
+//
+// Hermes uses a YAML line ("    - command: ... check --hook hermes"), and
+// Cline uses a shell script line ("... check --hook cline"). Both also contain
+// "check --hook", so this counter covers all harness formats uniformly.
 func hookMarkerCount(t *testing.T, files []string) int {
 	t.Helper()
 	n := 0
@@ -49,7 +59,7 @@ func hookMarkerCount(t *testing.T, files []string) int {
 		if err != nil {
 			continue
 		}
-		n += strings.Count(string(b), "beekeeper check")
+		n += strings.Count(string(b), "check --hook")
 	}
 	return n
 }
