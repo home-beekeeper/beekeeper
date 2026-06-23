@@ -100,6 +100,15 @@ func newRootCmd() *cobra.Command {
 		Short:        "Real-time safety harness for autonomous coding agents",
 		Long:         "Beekeeper intercepts agent tool calls before they execute and evaluates them against unified threat intelligence.",
 		SilenceUsage: true,
+		// Bare `beekeeper` (no subcommand) greets with a branded banner, then the
+		// usual help. This is the first Beekeeper-authored output a user sees after
+		// install: `go install` and the install scripts only get the binary onto
+		// the machine; the Go toolchain owns the download output, so the welcome
+		// lives here, on first run. Every subcommand is unaffected.
+		Run: func(cmd *cobra.Command, _ []string) {
+			printWelcome(cmd.OutOrStdout())
+			_ = cmd.Help()
+		},
 	}
 
 	root.AddCommand(
@@ -130,6 +139,16 @@ func newRootCmd() *cobra.Command {
 	)
 
 	return root
+}
+
+// printWelcome writes the branded first-run banner: a small honeycomb cell, the
+// build version, and the one-line purpose. Plain ASCII (no ANSI) so it renders in
+// any terminal and stays stable under output capture in tests.
+func printWelcome(w io.Writer) {
+	fmt.Fprintf(w,
+		"\n   __\n  /  \\   BEEKEEPER  %s\n  \\__/   Real-time safety harness for autonomous coding agents\n\n",
+		version.Version,
+	)
 }
 
 // newVersionCmd prints the build metadata injected via ldflags. Fully
