@@ -122,8 +122,6 @@ func TestLlamaFirewallSampleRate(t *testing.T) {
 func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 
-	nudge := DefaultNudgeConfig()
-	nudge.Mode = "block" // non-default so we prove the nudge block round-trips
 	orig := Config{
 		FailMode:       FailModeWarn,
 		Socket:         SocketConfig{APIToken: "tok_roundtrip"},
@@ -135,7 +133,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		},
 		LlamaFirewall: LlamaFirewallConfig{Enabled: true, SampleRate: 0.5},
 		SelfCatalog:   SelfCatalogConfig{URL: "https://example.com/self.json"},
-		Nudge:         &nudge,
 	}
 
 	if err := Save(path, orig); err != nil {
@@ -181,12 +178,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if got.SelfCatalog.URL != orig.SelfCatalog.URL {
 		t.Errorf("SelfCatalog.URL round-trip = %q, want %q", got.SelfCatalog.URL, orig.SelfCatalog.URL)
-	}
-	if got.Nudge == nil {
-		t.Fatal("Nudge round-trip = nil, want non-nil block")
-	}
-	if got.Nudge.Mode != "block" {
-		t.Errorf("Nudge.Mode round-trip = %q, want %q", got.Nudge.Mode, "block")
 	}
 }
 

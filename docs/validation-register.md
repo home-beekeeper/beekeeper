@@ -16,6 +16,13 @@ register is the Tier-C half of, and
 per-harness tiers and deny mechanisms (the **Expected** rows below are sourced
 from `internal/check/deny_render.go` and that matrix).
 
+For the **install-posture** feature (v1.1.0: release-age / lifecycle / git-remote
+rules, the override paths, the read-only view, and SENTRY-009), see the dedicated
+coverage report [posture-validation.md](posture-validation.md), which maps every
+rule, adapter branch, and override path to its covering test (file:func) and names
+the deliberate gaps (SENTRY-009 per-OS daemon taps are CI/Linux-only; DNS
+correlation is out of scope; the machine-wide shim is roadmap).
+
 > **How to use:** install the real harness, run its **Install** step, perform the
 > **Drive** action (a canary credential read — `~/.aws/credentials` or
 > `~/.ssh/id_rsa`), confirm the **Expected** result, then fill **Result** and

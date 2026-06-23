@@ -13,7 +13,6 @@ import (
 
 	"github.com/home-beekeeper/beekeeper/internal/audit"
 	"github.com/home-beekeeper/beekeeper/internal/config"
-	"github.com/home-beekeeper/beekeeper/internal/nudge"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 	"github.com/home-beekeeper/beekeeper/internal/policyloader"
 )
@@ -75,7 +74,7 @@ func runCheckWithIndex(ctx context.Context, stdin io.Reader, cfg config.Config, 
 	decision = policyloader.ApplyPolicyOverlay(nil, toolCall, decision)
 
 	// SPATH-01/02/03 + HARDEN-01: sensitive-path evaluation — after overlay and
-	// before NUDGE, so a path block is never downgraded by the overlay
+	// before self-protection, so a path block is never downgraded by the overlay
 	// (CR-02 ordering mirrors production runCheck). Iterates BOTH canonical forms
 	// via canonicalizePathForms (HARDEN-01) and blocks on any form, in lockstep
 	// with the handler.go SPATH loop so the test mirror stays faithful to production.
@@ -104,19 +103,9 @@ func runCheckWithIndex(ctx context.Context, stdin io.Reader, cfg config.Config, 
 	decision = mergeDecisions(decision, evaluateHookGuard(toolCall))
 	decision = mergeDecisions(decision, evaluateCLIGuard(toolCall))
 
-	// NUDGE-03/04/08: package-manager nudge evaluation — mirrors the production
-	// runCheck nudge block (handler.go) so runCheckWithIndex exercises the live
-	// nudge wiring. Runs AFTER overlay and SPATH (CR-02 ordering). Detection is
-	// resolved via nudge.DetectStateFn (the EXPORTED seam) so BTEST-02 tests can
-	// inject a synthetic PMState via defer-restore across the package boundary.
-	nudgeCfgValue := config.DefaultNudgeConfig()
-	if cfg.Nudge != nil {
-		nudgeCfgValue = *cfg.Nudge
-	}
-	if nudgeDecision, nudgeRec, nudgeOK := evaluateNudge(ctx, toolCall, nudgeCfgValue); nudgeOK {
-		decision = mergeDecisions(decision, nudgeDecision)
-		writeNudgeAuditRecord(auditPath, nudgeRec)
-	}
+	// NOTE: the former package-manager nudge block ran here in lockstep with the
+	// production handler.go path. It was removed in v1.1.0 (steer-to-pnpm/bun is
+	// gone); install posture will be re-wired in a later phase.
 
 	if ctx.Err() != nil {
 		return finalize(failDecision(cfg, "execution timeout (fail-closed)"), cfg, toolCall, auditPath)
@@ -149,38 +138,6 @@ func readLastAuditRecord(t *testing.T, auditPath string) audit.AuditRecord {
 		t.Fatalf("scan audit file: %v", err)
 	}
 	return last
-}
-
-// readAuditRecordByType reads all NDJSON records from auditPath and returns the
-// last record whose RecordType matches wantType. Returns the zero AuditRecord
-// (RecordType=="") if no matching record is found.
-func readAuditRecordByType(t *testing.T, auditPath, wantType string) audit.AuditRecord {
-	t.Helper()
-	f, err := os.Open(auditPath)
-	if err != nil {
-		t.Fatalf("open audit file: %v", err)
-	}
-	defer f.Close()
-
-	var matched audit.AuditRecord
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		var rec audit.AuditRecord
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			t.Fatalf("parse audit NDJSON line: %v", err)
-		}
-		if rec.RecordType == wantType {
-			matched = rec
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatalf("scan audit file: %v", err)
-	}
-	return matched
 }
 
 // TestIntegrationTwoSourceBlock verifies the end-to-end two-source corroboration
@@ -284,145 +241,6 @@ func TestIntegrationSingleSourceWarn(t *testing.T) {
 	}
 	if len(rec.SourcesAgreed) != 1 || rec.SourcesAgreed[0] != "bumblebee" {
 		t.Errorf("audit SourcesAgreed = %v, want [bumblebee]", rec.SourcesAgreed)
-	}
-}
-
-// TestIntegrationNudgePnpmAddEvilPkg verifies that a pnpm add of a catalog-malicious
-// package (keyed "npm::evil-pkg") is BLOCKED end-to-end through the live runCheckWithIndex
-// nudge path (BTEST-02 case (a) / F3 end-to-end / NUDGE-01 SC1).
-//
-// pnpm/bun/yarn install commands map to ecosystem "npm" in pkgparse (F3/SC1) so
-// LookupAll("npm", "evil-pkg") matches the catalog entry. No DetectStateFn injection
-// is needed — the block comes from the catalog match, not nudge detection.
-func TestIntegrationNudgePnpmAddEvilPkg(t *testing.T) {
-	// Seed the fake index with two signed sources at "npm::evil-pkg" to trigger a
-	// two-source corroboration block (pnpm maps ecosystem to "npm" — SC1/F3).
-	idx := &mapMultiIndex{
-		matchesByKey: map[string][]policy.CatalogMatch{
-			"npm::evil-pkg": {
-				{
-					CatalogSource: "bumblebee",
-					EntryID:       "bb-evil-pkg-001",
-					Ecosystem:     "npm",
-					Package:       "evil-pkg",
-					Version:       "1.0.0",
-					Severity:      "critical",
-					Signed:        true,
-				},
-				{
-					CatalogSource: "osv",
-					EntryID:       "osv-evil-pkg-001",
-					Ecosystem:     "npm",
-					Package:       "evil-pkg",
-					Version:       "1.0.0",
-					Severity:      "critical",
-					Signed:        true,
-				},
-			},
-		},
-	}
-
-	toolCallJSON := `{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"pnpm add evil-pkg"}}`
-	auditPath := auditPathIn(t)
-
-	res := runCheckWithIndex(context.Background(), strings.NewReader(toolCallJSON), closedConfig(), idx, auditPath)
-
-	// Two signed sources must block (PLCY-01 / F3 end-to-end).
-	if res.ExitCode == exitAllow {
-		t.Errorf("ExitCode = %d (allow), want non-zero; pnpm add evil-pkg with 2 catalog sources must block (F3/SC1)", res.ExitCode)
-	}
-	if res.Decision.Level != "block" {
-		t.Errorf("Level = %q, want %q", res.Decision.Level, "block")
-	}
-	if res.Decision.CorroborationCount < 2 {
-		t.Errorf("CorroborationCount = %d, want >= 2; both signed sources must be counted", res.Decision.CorroborationCount)
-	}
-
-	// Verify the final audit record carries block decision.
-	rec := readLastAuditRecord(t, auditPath)
-	if rec.Decision != "block" {
-		t.Errorf("audit Decision = %q, want %q", rec.Decision, "block")
-	}
-}
-
-// TestIntegrationNudgeSoftAdvisory verifies the soft advisory path for a pnpm install
-// command when pnpm >= 11 is injected via the EXPORTED nudge.DetectStateFn seam
-// (BTEST-02 case (b) / NUDGE-03 live wiring).
-//
-// The DetectStateFn is swapped with a stub that returns a synthetic pnpm-11 PMState;
-// the original is defer-restored. This is the cross-package injection pattern —
-// the unexported pnpmVersionFn/nodeVersionFn CANNOT be assigned from package check.
-//
-// Expected: exit 0 (soft advisory = warn level), audit record_type "nudge",
-// nudge_action "advise", reason_code "pnpm-available-soft".
-func TestIntegrationNudgeSoftAdvisory(t *testing.T) {
-	// Inject a synthetic pnpm-11 PMState via the EXPORTED seam (T-08-10b).
-	orig := nudge.DetectStateFn
-	nudge.DetectStateFn = func(_ context.Context, _ nudge.Config) nudge.PMState {
-		return nudge.PMState{
-			PnpmInstalled: true,
-			PnpmVersion:   "11.5.1",
-			NodeVersion:   "22.5.0",
-			PnpmHardened:  true,
-		}
-	}
-	defer func() { nudge.DetectStateFn = orig }()
-
-	// Empty catalog index: catalog match does not block; only nudge fires.
-	idx := &mapMultiIndex{matchesByKey: map[string][]policy.CatalogMatch{}}
-
-	// npm install foo — an UNHARDENED install command; pnpm is installed and
-	// hardened → soft mode → Advise / pnpm-available-soft. (A `pnpm install`
-	// command would instead Proceed/already-hardened-pm — you don't nudge
-	// pnpm→pnpm — so the advisory case must use an npm/yarn command.)
-	toolCallJSON := `{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm install foo"}}`
-	auditPath := auditPathIn(t)
-
-	res := runCheckWithIndex(context.Background(), strings.NewReader(toolCallJSON), closedConfig(), idx, auditPath)
-
-	// Soft advisory: exit 0 (warn level does not block — NUDGE-03).
-	if res.ExitCode != exitAllow {
-		t.Errorf("ExitCode = %d, want 0; soft advisory must not block (NUDGE-03 / BTEST-02 case (b))", res.ExitCode)
-	}
-
-	// The nudge audit record must carry record_type "nudge" and the closed §9 reason.
-	nudgeRec := readAuditRecordByType(t, auditPath, "nudge")
-	if nudgeRec.RecordType == "" {
-		t.Fatalf("no record_type=nudge audit record found; nudge wiring must write §9 record (BTEST-02 case (b))")
-	}
-	if nudgeRec.NudgeAction != "advise" {
-		t.Errorf("nudge_action = %q, want %q (pnpm-available-soft → Advise)", nudgeRec.NudgeAction, "advise")
-	}
-	wantReason := nudge.ReasonPnpmAvailableSoft
-	if nudgeRec.ReasonCode != wantReason {
-		t.Errorf("reason_code = %q, want %q", nudgeRec.ReasonCode, wantReason)
-	}
-}
-
-// TestIntegrationNudgeNonInstallSkipped verifies that a non-install Bash command
-// (e.g. "npm ls") does NOT emit a nudge audit record (BTEST-02 case (c) / §10-7).
-//
-// Non-install commands must NEVER trigger nudge detection or write a nudge record.
-// No DetectStateFn injection needed — the skip happens before detection.
-func TestIntegrationNudgeNonInstallSkipped(t *testing.T) {
-	// No catalog entries; non-install commands should not be nudged.
-	idx := &mapMultiIndex{matchesByKey: map[string][]policy.CatalogMatch{}}
-
-	// "npm ls" is NOT an install command (§10-7); nudge must not fire.
-	toolCallJSON := `{"agent_name":"test-agent","tool_name":"Bash","tool_input":{"command":"npm ls"}}`
-	auditPath := auditPathIn(t)
-
-	res := runCheckWithIndex(context.Background(), strings.NewReader(toolCallJSON), closedConfig(), idx, auditPath)
-
-	// Non-install must allow (no catalog match, no nudge block).
-	if res.ExitCode != exitAllow {
-		t.Errorf("ExitCode = %d, want 0; non-install npm ls must not block", res.ExitCode)
-	}
-
-	// Confirm no nudge audit record was written (§10-7 / Pitfall 2).
-	rec := readAuditRecordByType(t, auditPath, "nudge")
-	if rec.RecordType == "nudge" {
-		t.Errorf("unexpected record_type=nudge record found for non-install command (§10-7 violation)")
 	}
 }
 

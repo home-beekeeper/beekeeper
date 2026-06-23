@@ -19,7 +19,8 @@
 - ✅ **v1.4.0 — "Adjudicated Corpus (Local Loop)"** — Phases 22–25 (shipped 2026-06-15)
   Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). Requirements: [`milestones/v1.4.0-REQUIREMENTS.md`](milestones/v1.4.0-REQUIREMENTS.md). Audit: RESOLVED — found the FRB-05 enforcement BLOCKER, fixed same-day at close ([`milestones/v1.4.0-MILESTONE-AUDIT.md`](milestones/v1.4.0-MILESTONE-AUDIT.md)).
 
-- 📋 **Next milestone (after v1.4.0)** — TBD (carried candidates below; v1.1.0 Pollen resume is independent)
+- ✅ **v1.5.0 — "Install Posture"** — Phases 26–31 (shipped 2026-06-22 as release `v1.1.0`)
+  Full detail: [`milestones/v1.5.0-ROADMAP.md`](milestones/v1.5.0-ROADMAP.md). Requirements: [`milestones/v1.5.0-REQUIREMENTS.md`](milestones/v1.5.0-REQUIREMENTS.md). Audit: `tech_debt` (zero blockers) — [`milestones/v1.5.0-MILESTONE-AUDIT.md`](milestones/v1.5.0-MILESTONE-AUDIT.md). Maintainer-signed `v1.1.0` tag on merged `main`. *Internal GSD number v1.5.0 (decoupled from the parked v1.1.0 "Pollen" milestone); released publicly as v1.1.0.*
 
 ## Phases
 
@@ -93,12 +94,27 @@ Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). The
 
 </details>
 
+<details>
+<summary>✅ v1.5.0 Install Posture (Phases 26–31) — SHIPPED 2026-06-22 (released as v1.1.0)</summary>
+
+- [x] Phase 26: Nudge Removal & Posture Rule Foundation (2/2) — NMIG-01/02/04, IPST-04/05
+- [x] Phase 27: Layer 1 Hook Enforcement + Sentry Observation (4/4) — IPST-01/02/03/06, IPBND-01, NMIG-04 (**Gate 1 PASSED**; IPOVR-03 added to v1.0; shim made real; SENTRY-009)
+- [x] Phase 28: Layer 2 `beekeeper posture` View (1/1) — IPVIEW-01/02, IPBND-01
+- [x] Phase 29: Layer 3 Scoped Override + Per-Rule Severity (2/2) — IPOVR-01/02/03
+- [x] Phase 30: Docs, Home Page & Boundary Statements (1/1) — IPBND-02, NMIG-03, REL-01 (prep)
+- [x] Phase 31: Test, Coverage & E2E + CI Matrix (1/1) — test coverage, REL-01 (finalize) (**Gate 2 after**)
+
+Full detail: [`milestones/v1.5.0-ROADMAP.md`](milestones/v1.5.0-ROADMAP.md). Released as `v1.1.0` (maintainer-signed tag on merged `main`). Audit `tech_debt` (zero blockers). Deferred to roadmap: per-ecosystem policy matrix, the shim as a first-class enforcement surface, config mutation (PRD Layer 4).
+
+</details>
+
 ## Carried Candidates for the Next Milestone
 
 - Live external `beekeeper-self` hosting (separate host + signing key) + end-to-end refuse-to-run validation; independent external security review + VDP publication (from v1.0.0).
 - Deferred nudge/corroboration follow-ups: NUDGE-F1 (hard-rewrite on-by-default), NUDGE-F2 (Yarn Berry + pip/cargo/gem/composer), NUDGE-F3 (`GHSA-*` vs `MAL-*`), CORR-F1 (OSV/Socket as automatic hot-path second source).
 - **SITE-03** — live Vercel deploy of the v1.3.0 site (page already build-verified; pending repo push / Vercel setup).
 - Docs: command-card-per-copy split + a full Fumadocs-theme redesign (own UI-SPEC).
+- **From v1.5.0 (install posture):** deep per-rule per-ecosystem policy matrix + custom thresholds; the package-manager shim as a first-class machine-wide enforcement surface; config mutation (opt-in/reversible/audited recommended-config generation, PRD Layer 4); the deferred tech-debt items M-01/M-02 + lows (see `phases/31-test-coverage-e2e-ci/31-REVIEW-DECISION.md`).
 - **Independent of any milestone:** v1.1.0 "Pollen" resumes via `docs/release-runbook.md` when the maintainer chooses.
 
 ## Progress
@@ -142,3 +158,9 @@ Full detail: [`milestones/v1.4.0-ROADMAP.md`](milestones/v1.4.0-ROADMAP.md). The
 | 23. Corpus Store & Adjudication Engine | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 24. First Responder Corpus Binding | v1.4.0 | 3/3 | Complete | 2026-06-14 |
 | 25. Launch Readiness | v1.4.0 | 3/3 | Complete | 2026-06-14 |
+| 26. Nudge Removal & Posture Rule Foundation | v1.5.0 | 2/2 | Complete | 2026-06-21 |
+| 27. Layer 1 Hook Enforcement + Sentry Observation (Gate 1) | v1.5.0 | 4/4 | Complete — **Gate 1 PASSED** (+ IPOVR-03 added to v1.0) | 2026-06-21 |
+| 28. Layer 2 `beekeeper posture` View | v1.5.0 | 1/1 | Complete | 2026-06-21 |
+| 29. Layer 3 Scoped Override + Per-Rule Severity | v1.5.0 | 2/2 | Complete | 2026-06-21 |
+| 30. Docs, Home Page & Boundary Statements | v1.5.0 | 1/1 | Complete | 2026-06-22 |
+| 31. Test, Coverage & E2E + CI Matrix (Gate 2 after) | v1.5.0 | 1/1 | Complete — **Gate 2 PASSED** (maintainer-signed v1.1.0 tag) | 2026-06-22 |

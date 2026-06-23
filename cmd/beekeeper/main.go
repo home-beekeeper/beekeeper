@@ -32,7 +32,6 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/hooks"
 	"github.com/home-beekeeper/beekeeper/internal/llamafirewall"
 	"github.com/home-beekeeper/beekeeper/internal/notify"
-	"github.com/home-beekeeper/beekeeper/internal/nudge"
 	"github.com/home-beekeeper/beekeeper/internal/platform"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 	"github.com/home-beekeeper/beekeeper/internal/quarantine"
@@ -101,6 +100,15 @@ func newRootCmd() *cobra.Command {
 		Short:        "Real-time safety harness for autonomous coding agents",
 		Long:         "Beekeeper intercepts agent tool calls before they execute and evaluates them against unified threat intelligence.",
 		SilenceUsage: true,
+		// Bare `beekeeper` (no subcommand) greets with a branded banner, then the
+		// usual help. This is the first Beekeeper-authored output a user sees after
+		// install: `go install` and the install scripts only get the binary onto
+		// the machine; the Go toolchain owns the download output, so the welcome
+		// lives here, on first run. Every subcommand is unaffected.
+		Run: func(cmd *cobra.Command, _ []string) {
+			printWelcome(cmd.OutOrStdout())
+			_ = cmd.Help()
+		},
 	}
 
 	root.AddCommand(
@@ -116,6 +124,8 @@ func newRootCmd() *cobra.Command {
 		newHooksCmd(),
 		newGatewayCmd(),
 		newShimCmd(),
+		// Phase 28: read-only install-posture view (IPVIEW-01/02, IPBND-01).
+		newPostureCmd(),
 		newAuditRecordCmd(),
 		newProtectCmd(),
 		newSentryCmd(),
@@ -124,13 +134,21 @@ func newRootCmd() *cobra.Command {
 		// Phase 9: policy-as-code (CODE-02/03/04) and diagnostics (CODE-06).
 		newPolicyCmd(),
 		newDiagCmd(),
-		// Phase 8: package-manager nudge CLI (NUDGE-07 / SC5).
-		newNudgeCmd(),
-		// Phase 8: config set nudge.* with audit logging (§10-17).
+		// config set with audit logging.
 		newConfigCmd(),
 	)
 
 	return root
+}
+
+// printWelcome writes the branded first-run banner: a small honeycomb cell, the
+// build version, and the one-line purpose. Plain ASCII (no ANSI) so it renders in
+// any terminal and stays stable under output capture in tests.
+func printWelcome(w io.Writer) {
+	fmt.Fprintf(w,
+		"\n   __\n  /  \\   BEEKEEPER  %s\n  \\__/   Real-time safety harness for autonomous coding agents\n\n",
+		version.Version,
+	)
 }
 
 // newVersionCmd prints the build metadata injected via ldflags. Fully
@@ -370,14 +388,7 @@ func newCheckCmd() *cobra.Command {
 				allArgs := make([]string, 0, len(toolArgs)+len(args))
 				allArgs = append(allArgs, toolArgs...)
 				allArgs = append(allArgs, args...)
-				tc := map[string]any{
-					"tool_name":  "execute",
-					"agent_name": "shim",
-					"tool_input": map[string]any{
-						"command": toolName,
-						"args":    allArgs,
-					},
-				}
+				tc := buildShimToolCall(toolName, allArgs)
 				data, merr := json.Marshal(tc)
 				if merr != nil {
 					return failClosed(fmt.Errorf("marshal shim tool call: %w", merr))
@@ -424,6 +435,29 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&toolArgs, "args", nil, "Arguments for shim invocations (used with --tool)")
 	cmd.Flags().StringVar(&hookTarget, "hook", "", "Harness name for hook invocations (emits exit 2 + harness-specific deny JSON on block; default mode unchanged)")
 	return cmd
+}
+
+// buildShimToolCall constructs the tool call JSON for a shim invocation
+// (beekeeper check --tool <tool> --args <args...>). It reconstructs the full
+// shell command and shapes it as a Bash tool call, because the shim intercepts a
+// shell invocation of a package manager and Bash is the shape the catalog engine
+// (policy extract) and the install-posture adapter (evaluatePosture) parse. This
+// is what makes the shim actually enforce: without the reconstruction, command is
+// the bare tool name ("npm") and no install is identified, so beekeeper check
+// would allow it. Injection-safe: the command is a JSON string value built by
+// json.Marshal and parsed by the pure pkgparse, never executed by a shell.
+func buildShimToolCall(tool string, args []string) map[string]any {
+	command := tool
+	if len(args) > 0 {
+		command = tool + " " + strings.Join(args, " ")
+	}
+	return map[string]any{
+		"tool_name":  "Bash",
+		"agent_name": "shim",
+		"tool_input": map[string]any{
+			"command": command,
+		},
+	}
 }
 
 // newCatalogsCmd groups catalog-management subcommands.
@@ -1211,57 +1245,6 @@ func newSelftestCmd() *cobra.Command {
 	}
 }
 
-// ensureNudgeBlockDefault sets nudge.mode = "block" in the user config the first
-// time Beekeeper hooks are installed, so installing protection DEFAULTS to
-// supply-chain enforcement (npm/yarn installs are denied, steering the agent to
-// pnpm/bun). The shipped library default stays "soft" (PRD §3.2) — block is opted
-// in here because installing the hook is an explicit "protect this machine" action.
-//
-// It NEVER overrides an existing nudge.mode (a user who chose soft/hard/block keeps
-// it), preserves all other config keys, and never clobbers an unparseable config.
-// Best-effort: any failure is silent and does NOT fail the install (the hook is
-// already written).
-func ensureNudgeBlockDefault(out io.Writer) {
-	cfgPath, err := platform.ConfigPath()
-	if err != nil {
-		return
-	}
-	cfg := map[string]any{}
-	if data, rerr := os.ReadFile(cfgPath); rerr == nil {
-		if jerr := json.Unmarshal(data, &cfg); jerr != nil {
-			return // existing config is unparseable — do not clobber it
-		}
-		if cfg == nil {
-			cfg = map[string]any{}
-		}
-	}
-	nudge, _ := cfg["nudge"].(map[string]any)
-	if nudge == nil {
-		nudge = map[string]any{}
-	}
-	if mode, _ := nudge["mode"].(string); mode != "" {
-		return // user already chose a mode — respect it
-	}
-	nudge["mode"] = "block"
-	if _, ok := nudge["enabled"]; !ok {
-		nudge["enabled"] = true
-	}
-	cfg["nudge"] = nudge
-
-	data, merr := json.MarshalIndent(cfg, "", "  ")
-	if merr != nil {
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
-		return
-	}
-	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
-		return
-	}
-	fmt.Fprintf(out, "Enabled supply-chain enforcement: nudge.mode=block in %s\n", cfgPath)
-	fmt.Fprintf(out, "  npm/yarn installs are now DENIED (use pnpm or bun). Set nudge.mode=soft to opt down.\n")
-}
-
 // newHooksCmd groups hook installer subcommands for writing Beekeeper
 // PreToolUse/PostToolUse hooks to agent CLIs (INTG-01, INTG-02).
 func newHooksCmd() *cobra.Command {
@@ -1283,9 +1266,6 @@ func newHooksCmd() *cobra.Command {
 			}
 			if !dryRun {
 				fmt.Fprintf(cmd.OutOrStdout(), "Beekeeper hooks installed for target %q.\n", target)
-				// Installing a hook is an explicit "protect this machine" action, so
-				// default the nudge to block (supply-chain enforcement) on first install.
-				ensureNudgeBlockDefault(cmd.OutOrStdout())
 				// CSYNC-06: populate the threat-intel index now (best-effort) and
 				// offer to register the unprivileged background sync daemon.
 				offerCatalogSyncDaemon(cmd)
@@ -1416,41 +1396,6 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 				}
 			}
 
-			// WARNING-3 daemon-side nudge wiring (Plan 08, Wave 5):
-			// Populate gatewayCfg.Nudge via the single nudge.ConfigFrom mapper from the
-			// layered cfg.Nudge so the gateway evaluates against the operator's config.
-			// Plan 06 (newGatewayHandler) still defaults a zero-value Nudge to
-			// nudge.DefaultConfig() as a safety net (T-08-29), but this wiring ensures
-			// the daemon carries the operator's explicit layered config.
-			var nudgeNC = cfg.Nudge
-			if nudgeNC == nil {
-				d := nudge.DefaultConfig()
-				// Use DefaultConfig() directly rather than ConfigFrom to avoid nil-deref.
-				_ = d         // assigned below via ConfigFrom with defaults
-				nudgeNC = nil // handled by ConfigFrom empty-string fallbacks
-			}
-			var (
-				nudgeEnabled       = true
-				nudgeMode          = ""
-				nudgePreferred     = ""
-				nudgeCheckScanner  = true
-				nudgeFloorPnpm     = ""
-				nudgeFloorBun      = ""
-				nudgeFloorNode     = ""
-				nudgeDriftEnabled  = true
-				nudgeDriftInterval = ""
-			)
-			if nudgeNC != nil {
-				nudgeEnabled = nudgeNC.Enabled
-				nudgeMode = nudgeNC.Mode
-				nudgePreferred = nudgeNC.Preferred
-				nudgeCheckScanner = nudgeNC.CheckSocketScanner
-				nudgeFloorPnpm = nudgeNC.VersionFloors.Pnpm
-				nudgeFloorBun = nudgeNC.VersionFloors.Bun
-				nudgeFloorNode = nudgeNC.VersionFloors.Node
-				nudgeDriftEnabled = nudgeNC.MajorDriftCheck.Enabled
-				nudgeDriftInterval = nudgeNC.MajorDriftCheck.Interval
-			}
 			gatewayCfg := gateway.Config{
 				UpstreamURL: upstream,
 				BindAddr:    bind,
@@ -1463,18 +1408,6 @@ Note: --upstream is the URL of the upstream MCP server to proxy to (required).`,
 				SocketToken: cfg.SocketAPIToken(),
 				FailOpen:    !cfg.FailClosed(),
 				Scanner:     llmfScanner,
-				// Plan 08 WARNING-3: populate Nudge from layered config via single mapper.
-				Nudge: nudge.ConfigFrom(
-					nudgeEnabled,
-					nudgeMode,
-					nudgePreferred,
-					nudgeCheckScanner,
-					nudgeFloorPnpm,
-					nudgeFloorBun,
-					nudgeFloorNode,
-					nudgeDriftEnabled,
-					nudgeDriftInterval,
-				),
 			}
 
 			bindAddr := bind
@@ -1581,6 +1514,15 @@ func newShimCmd() *cobra.Command {
 	shimCmd := &cobra.Command{
 		Use:   "shim",
 		Short: "Manage PATH shims for package managers and toolchains",
+		Long: `Install PATH-prepended wrapper scripts that run 'beekeeper check' before each
+package-manager install, so catalog corroboration and install posture apply to
+installs you run yourself in a terminal.
+
+This is an experimental surface with real limits: it only covers tools invoked
+through the shimmed PATH, it can be bypassed by calling a tool by its absolute
+path, and it requires adding the shim directory to the front of your PATH. It is
+not a complete machine-wide guarantee. For hooked agents the pre-exec hook is the
+primary enforcement point; see the install-posture docs for the full boundary.`,
 	}
 
 	// shim install
@@ -1632,11 +1574,13 @@ func newShimCmd() *cobra.Command {
 }
 
 // newProtectCmd groups the Sentry daemon lifecycle subcommands.
-// On non-Linux platforms each subcommand prints a not-supported message (see protect_other.go).
+// Linux (systemd), macOS (launchd/eslogger), and Windows (Service/ETW) are
+// supported via build-tagged implementations (protect_{linux,darwin,windows}.go);
+// only genuinely unsupported platforms print a not-supported message (protect_other.go).
 func newProtectCmd() *cobra.Command {
 	protect := &cobra.Command{
 		Use:   "protect",
-		Short: "Manage the Beekeeper Sentry daemon (Linux only)",
+		Short: "Manage the Beekeeper Sentry runtime-monitor daemon",
 	}
 	protect.AddCommand(
 		newProtectInstallCmd(),
@@ -1649,7 +1593,7 @@ func newProtectCmd() *cobra.Command {
 func newProtectInstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install",
-		Short: "Install and start the Sentry daemon via systemd",
+		Short: "Install and start the Sentry daemon as an OS service (systemd / launchd / Windows Service)",
 		Args:  cobra.NoArgs,
 		RunE:  runProtectInstall,
 	}
@@ -1674,12 +1618,13 @@ func newProtectStatusCmd() *cobra.Command {
 }
 
 // newSentryCmd is the Sentry daemon subcommand. When invoked directly it runs
-// the daemon (this is the ExecStart target in the systemd unit). The rules
-// subcommand group provides live rule management via IPC.
+// the daemon (the ExecStart target of the OS service: the systemd unit on Linux,
+// launchd on macOS, the Windows Service on Windows). The rules subcommand group
+// provides live rule management via IPC.
 func newSentryCmd() *cobra.Command {
 	daemon := &cobra.Command{
 		Use:   "sentry",
-		Short: "Sentry daemon (invoked by systemd; Linux only)",
+		Short: "Sentry daemon (invoked by the OS service manager)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Phase 9 (CTLG-04/SFDF-06): self-quarantine guard.

@@ -395,10 +395,18 @@ func correlationEngineLoop(
 func alertToAuditRecord(alert sentry.SentryAlert) audit.AuditRecord {
 	recordType := "sentry_alert"
 	decision := "block"
-	if alert.BaselineMode {
+	switch {
+	case alert.Severity == "info":
+		// SENTRY-009 install observation (IPST-06): DETECTION ONLY. Sentry never
+		// blocks/warns/quarantines an observed install, it records THAT one
+		// happened. Distinct record_type + "observe" decision so the audit log and
+		// the TUI never mistake it for a prevention.
+		recordType = "sentry_install_observed"
+		decision = "observe"
+	case alert.BaselineMode:
 		recordType = "sentry_alert_baseline"
 		decision = "warn"
-	} else if !alert.QuarantineRec {
+	case !alert.QuarantineRec:
 		decision = "warn"
 	}
 

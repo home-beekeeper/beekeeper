@@ -2,7 +2,6 @@ package shim_test
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/home-beekeeper/beekeeper/internal/config"
-	"github.com/home-beekeeper/beekeeper/internal/nudge"
 	"github.com/home-beekeeper/beekeeper/internal/shim"
 )
 
@@ -300,78 +297,9 @@ func TestShimInstallCreatesDir(t *testing.T) {
 	}
 }
 
-// TestShimNudgeBeforeProxy verifies that NudgeCheck (the nudge-before-proxy logic)
-// correctly evaluates an npm install command and surfaces an advisory without
-// blocking (soft mode). Uses the exported nudge.DetectStateFn seam to inject a
-// synthetic pnpm-hardened PMState so no real pnpm binary is required.
-//
-// This test proves the shim calls nudge (via DetectStateFn) before proxying
-// (NUDGE-03: advisory surfaces; NUDGE-04: soft mode does not block; T-08-10b:
-// cross-package seam injection).
-func TestShimNudgeBeforeProxy(t *testing.T) {
-	// Inject synthetic PMState: pnpm installed and hardened.
-	orig := nudge.DetectStateFn
-	nudge.DetectStateFn = func(_ context.Context, _ nudge.Config) nudge.PMState {
-		return nudge.PMState{
-			PnpmInstalled: true,
-			PnpmVersion:   "11.5.0",
-			PnpmHardened:  true,
-			NodeVersion:   "22.5.0",
-		}
-	}
-	defer func() { nudge.DetectStateFn = orig }()
-
-	nc := config.DefaultNudgeConfig()
-	// Soft mode: advise + proceed, never block.
-	nc.Mode = "soft"
-	nc.RequireHardened = false
-
-	ctx := context.Background()
-	result := shim.NudgeCheck(ctx, "npm install lodash", nc)
-
-	// NudgeCheck must report Applicable=true for an install command.
-	if !result.Applicable {
-		t.Errorf("NudgeCheck.Applicable = false, want true for npm install")
-	}
-
-	// Soft mode with hardened pnpm → Advise, not Block.
-	if result.ShouldBlock {
-		t.Errorf("NudgeCheck.ShouldBlock = true, want false in soft mode")
-	}
-
-	// Decision must be "advise" (pnpm available, soft mode).
-	if result.Decision != "advise" {
-		t.Errorf("NudgeCheck.Decision = %q, want advise", result.Decision)
-	}
-
-	// Advisory message must be non-empty for Advise action.
-	if result.Advisory == "" {
-		t.Errorf("NudgeCheck.Advisory is empty, want non-empty advisory for Advise action")
-	}
-}
-
-// TestShimNudgeNonInstallSkipped verifies that NudgeCheck returns Applicable=false
-// for non-install commands (npm ls, npm run, etc.) — no exec triggered (Pitfall 2).
-func TestShimNudgeNonInstallSkipped(t *testing.T) {
-	// DetectStateFn should NOT be called for non-install commands.
-	orig := nudge.DetectStateFn
-	called := false
-	nudge.DetectStateFn = func(_ context.Context, _ nudge.Config) nudge.PMState {
-		called = true
-		return nudge.PMState{}
-	}
-	defer func() { nudge.DetectStateFn = orig }()
-
-	nc := config.DefaultNudgeConfig()
-	result := shim.NudgeCheck(context.Background(), "npm ls", nc)
-
-	if result.Applicable {
-		t.Errorf("NudgeCheck.Applicable = true for npm ls, want false (non-install)")
-	}
-	if called {
-		t.Error("DetectStateFn was called for a non-install command, want skip")
-	}
-}
+// NOTE: TestShimNudgeBeforeProxy and TestShimNudgeNonInstallSkipped lived here.
+// They exercised the shim's nudge-before-proxy helper, removed in v1.1.0. The
+// generated shim scripts now defer all policy to `beekeeper check`.
 
 // TestShimMultiArgContent verifies TM-A-04: the generated shim script passes
 // individual args so that multi-word installs (e.g. npm install left-pad react)

