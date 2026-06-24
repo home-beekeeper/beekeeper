@@ -1,7 +1,7 @@
 # Validation Posture
 
 **Phase 21 (VAL-07).** This document makes Beekeeper's "fully validated" claim
-**auditable**: it states exactly what is verified, at which tier, and how — so an
+**auditable**: it states exactly what is verified, at which tier, and how, so an
 external reader can check the coverage claim rather than take it on faith. It is
 consistent with the honesty spine in
 [THREAT-MODEL.md §8](THREAT-MODEL.md) and the
@@ -31,17 +31,17 @@ A flat coverage-percentage number would be dishonest for a security tool: a
 kernel eBPF probe cannot run on a Windows dev box, and a live harness block
 cannot be automated without that vendor's client installed. Splitting validation
 into A/B/C states precisely which guarantee each behavior has, and the manual
-register names exactly what remains hand-verified — no behavior sits in an
+register names exactly what remains hand-verified. No behavior sits in an
 untested, unregistered fourth bucket.
 
 ---
 
-## Tier A — the coverage gate (VAL-01 / VAL-08)
+## Tier A: the coverage gate (VAL-01 / VAL-08)
 
 `internal/coveragegate` walks every production `.go` file under `internal/` and
 `cmd/` and classifies each as **package-tested** (its directory contains at least
 one `_test.go`) or **reason-coded allowlisted**. Any file that is neither is
-**UNACCOUNTED** and fails `TestCoverageManifest` — and therefore `go test ./...`
+**UNACCOUNTED** and fails `TestCoverageManifest`, and therefore `go test ./...`
 and CI.
 
 Linkage is package-level, not same-name-sibling: ~70 of ~184 production files
@@ -54,7 +54,7 @@ A file may be exempted from package-test linkage only with an explicit,
 reason-coded entry of the form `path<TAB># reason: <code>`. The parser **fails
 closed**: a bare path, an empty reason, or a reason code outside the closed
 taxonomy below breaks the gate loudly (`TestAllowlistFailsClosed`). The coverage
-bar therefore cannot be silently lowered — growing the allowlist requires a
+bar therefore cannot be silently lowered. Growing the allowlist requires a
 recognized reason code, which is reviewable in the diff (VAL-08 self-defense).
 
 **Closed reason-code taxonomy:**
@@ -69,17 +69,17 @@ recognized reason code, which is reviewable in the diff (VAL-08 self-defense).
 | `gen-directive` | `go:generate` directive carrier |
 
 As of Phase 21, `internal/version` (three ldflag-injected build-metadata strings)
-is the only entry — every other production file is package-tested.
+is the only entry. Every other production file is package-tested.
 
 ---
 
-## Tier B — the CI matrix (VAL-03 / VAL-04)
+## Tier B: the CI matrix (VAL-03 / VAL-04)
 
 `.github/workflows/ci.yml` gates the platform-bound behavior that cannot run on
 the Windows dev box:
 
 - **build** (native + a 3×GOOS cross-compile, build-only) and **vet**
-- **test** with **`-race`** (CGO enabled — the race detector requires it)
+- **test** with **`-race`** (CGO enabled: the race detector requires it)
 - **eslogger** field-schema validation on macOS, **ETW** on Windows
 - **Unix peer-cred** auth (the `internal/ipc` server/client/peer Tier-B tests run
   on the Linux/macOS legs)
@@ -107,7 +107,7 @@ branch ruleset.
 
 ---
 
-## Tier C — the manual register (VAL-06)
+## Tier C: the manual register (VAL-06)
 
 Everything that is irreducibly manual is enumerated in
 [validation-register.md](validation-register.md): a live-block procedure for each

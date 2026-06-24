@@ -3,7 +3,7 @@
 **Document:** D-5 maintainer hand-off procedure (Phase 5, Plan 04)
 **Scope:** Push both repos (`home-beekeeper/pollen`, `home-beekeeper/beekeeper`), cut four signed
 Pollen tags in order, cosign-verify each release, push beekeeper main.
-**Executor:** Maintainer (auth-gated, outward-facing steps — NOT the autonomous executor)
+**Executor:** Maintainer (auth-gated, outward-facing steps, NOT the autonomous executor)
 **Reference:** `05-04-SUMMARY.md`, `05-RESEARCH.md` RQ-6, `02-04-SUMMARY.md`, `03-03-SUMMARY.md`
 
 ---
@@ -19,7 +19,7 @@ cosign keylessly signs `checksums.txt` (bundle `checksums.txt.sigstore.json`), a
 SLSA L3 provenance plus CycloneDX SBOMs are attached. After the release publishes:
 
 - [ ] **Bump the pinned `go install` version in the docs.** Beekeeper pins its own
-  install command to an exact tag (no `@latest` — it is the supply-chain practice the
+  install command to an exact tag (no `@latest`: it is the supply-chain practice the
   product enforces, so the docs must not drift to a stale or mutable reference). Update
   `go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@vX.Y.Z` to the new tag in
   **both repos** (run `grep -rn 'cmd/beekeeper@v' .` in each to find every occurrence):
@@ -32,7 +32,7 @@ SLSA L3 provenance plus CycloneDX SBOMs are attached. After the release publishe
 - [ ] **Confirm the release is immutable.** GitHub immutable releases / tag protection
   should be enabled on `home-beekeeper/beekeeper` so a published tag cannot be
   overwritten. (The installer's cosign verification is the runtime tamper defense;
-  tag immutability is the upstream one — the two are complementary.)
+  tag immutability is the upstream one; the two are complementary.)
 - [ ] **Spot-check the installers** still resolve the new tag and pass verification:
   `BEEKEEPER_VERSION=vX.Y.Z` is honored, the cosign step prints `Verified OK`, and an
   unpinned install older than the cool-down window prints the advisory (warn, not block).
@@ -46,9 +46,9 @@ Verify ALL of the following before starting:
 - [ ] `../pollen` local work is committed:
   - pollen.2 release-prep commit `c94b271` present (`git -C ../pollen log --oneline`)
   - pollen.3 release-prep commit `19695e3` present
-  - pollen.4 work and release-prep commit `b906404` (or `a9db7b3` — see Step 4 note) present
+  - pollen.4 work and release-prep commit `b906404` (or `a9db7b3`, see Step 4 note) present
   - pollen.5 VERSION / CHANGES.md / UPSTREAM.md commits present (Phase 5 Plan 01 done)
-- [ ] beekeeper BKINT-02 CI edit committed (`internal/scan/pollen_version.go` + `.github/workflows/ci.yml` — Phase 5 Plan 04 Task 1 done)
+- [ ] beekeeper BKINT-02 CI edit committed (`internal/scan/pollen_version.go` + `.github/workflows/ci.yml`, Phase 5 Plan 04 Task 1 done)
 - [ ] `gh auth status` shows authenticated with push access to the `home-beekeeper` org
 - [ ] `cosign version` returns v3.x
 - [ ] No uncommitted changes in either repo (`git status` is clean)
@@ -68,7 +68,7 @@ Correct order: Steps 1–5 (pollen push + tags + cosign verify) → Step 6 (beek
 
 ---
 
-## Step 1 — Create the beekeeper GitHub repository (if it does not exist)
+## Step 1: Create the beekeeper GitHub repository (if it does not exist)
 
 **Auth gate:** requires `gh` authenticated with repo-create/push access to the `home-beekeeper` org.
 
@@ -86,7 +86,7 @@ module path in `go.mod`. GitHub normalises display casing; the URL is always low
 
 ---
 
-## Step 2 — Push pollen main and wait for 3-OS CI green
+## Step 2: Push pollen main and wait for 3-OS CI green
 
 **Auth gate:** requires push access to `github.com/home-beekeeper/pollen` (capital B).
 
@@ -103,7 +103,7 @@ gh -R home-beekeeper/pollen run watch
 
 ---
 
-## Step 3 — Cut and push tag v0.1.1-pollen.2
+## Step 3: Cut and push tag v0.1.1-pollen.2
 
 **Confirm commit hash first:**
 
@@ -127,7 +127,7 @@ git -C C:/Users/Bantu/mzansi-agentive/pollen push origin v0.1.1-pollen.2
 gh -R home-beekeeper/pollen run watch
 ```
 
-**Cosign verify (Step 7 covers all four releases — you may batch the verify at the end,
+**Cosign verify (Step 7 covers all four releases; you may batch the verify at the end,
 or verify each one inline. Inline is recommended for early failure detection):**
 
 See Step 7 for the exact cosign verify command. Download
@@ -136,7 +136,7 @@ See Step 7 for the exact cosign verify command. Download
 
 ---
 
-## Step 4 — Cut and push tag v0.1.1-pollen.3
+## Step 4: Cut and push tag v0.1.1-pollen.3
 
 **Confirm commit hash first:**
 
@@ -162,7 +162,7 @@ gh -R home-beekeeper/pollen run watch
 
 ---
 
-## Step 5 — Cut and push tag v0.1.1-pollen.4
+## Step 5: Cut and push tag v0.1.1-pollen.4
 
 ### Decision point: which commit to tag as pollen.4?
 
@@ -170,8 +170,8 @@ Two candidate commits exist in the pollen repo:
 
 | Hash | Description | Includes WEXT fix? |
 |------|-------------|-------------------|
-| `a9db7b3` | release-prep "Windows extension & MCP coverage" (WEXT-01/02/03) — the Phase 4 release-prep commit | No — the `.vscode-oss` labelling fix lands after this |
-| `b906404` | "label .vscode-oss extensions as vscodium" — the WR-01 production fix committed after `a9db7b3` | Yes |
+| `a9db7b3` | release-prep "Windows extension & MCP coverage" (WEXT-01/02/03), the Phase 4 release-prep commit | No: the `.vscode-oss` labelling fix lands after this |
+| `b906404` | "label .vscode-oss extensions as vscodium", the WR-01 production fix committed after `a9db7b3` | Yes |
 
 **Recommendation: tag pollen.4 at `b906404`** so that the VSCodium extension labelling
 fix (WR-01) ships in the pollen.4 release. `a9db7b3` predates this fix and would ship
@@ -207,11 +207,11 @@ gh -R home-beekeeper/pollen run watch
 
 ---
 
-## Step 5b — Cut and push tag v0.1.1-pollen.5
+## Step 5b: Cut and push tag v0.1.1-pollen.5
 
 Tag pollen.5 at the pollen HEAD **after** Phase 5 Plan 01 commits land
 (VERSION bump to 0.1.1-pollen.5, CHANGES.md pollen.5 section, UPSTREAM.md delta).
-**Do NOT tag at `a9db7b3`** — that is the Phase 4 HEAD before Phase 5 local work
+**Do NOT tag at `a9db7b3`**: that is the Phase 4 HEAD before Phase 5 local work
 (Pitfall 6, `05-RESEARCH.md`).
 
 ```bash
@@ -233,7 +233,7 @@ gh -R home-beekeeper/pollen run watch
 
 ---
 
-## Step 6 — Cosign verify all four releases
+## Step 6: Cosign verify all four releases
 
 For **each** of the four releases (pollen.2, pollen.3, pollen.4, pollen.5):
 
@@ -276,7 +276,7 @@ gh -R home-beekeeper/pollen release view v0.1.1-pollen.N --json assets \
 
 ---
 
-## Step 7 — Push beekeeper main
+## Step 7: Push beekeeper main
 
 **Only after all four pollen tags are live and cosign-verified (Steps 3–6).**
 
@@ -289,7 +289,7 @@ gh run watch
 ```
 
 **Expected CI behaviour:**
-- "Install Pollen (BKINT-02 — pinned binary for inventory tests)" step succeeds on all 3 OSes
+- "Install Pollen (BKINT-02, pinned binary for inventory tests)" step succeeds on all 3 OSes
   (`go install github.com/home-beekeeper/pollen/cmd/pollen@v0.1.1-pollen.4` resolves now that
   the pollen tag is live)
 - `go test -v -race ./...` passes with zero `t.Skip` in `internal/scan/`
@@ -335,7 +335,7 @@ before running Step 7 (beekeeper push). The `go install` step resolves from the 
 which caches the module only after it is publicly tagged (Pitfall 3).
 
 **GoReleaser fails on old-commit tag**
-GoReleaser builds from the tag's target commit (not HEAD). Tagging an old commit is safe —
+GoReleaser builds from the tag's target commit (not HEAD). Tagging an old commit is safe.
 GoReleaser reads the tag reference directly. If the release job fails, check the GoReleaser
 logs; the most common cause is a missing `GITHUB_TOKEN` permission (needs `contents: write`).
 

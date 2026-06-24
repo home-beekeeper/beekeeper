@@ -3,8 +3,8 @@
 **Covers:** v1.0.0 + v1.2.0 (Runtime Hardening) + v1.3.0 (Multi-Harness Hook Enforcement) + v1.4.0 (Adjudicated Corpus, Local Loop)  
 **Originally published:** 2026-05-29 (v1.0.0, Phase 9 capstone)  
 **Last full codebase audit:** 2026-06-05  
-**Last security remediation:** 2026-06-15 (system-wide review — see §14)  
-**Status:** Published — refreshed for v1.2.0, v1.3.0, and v1.4.0; remediated 2026-06-15
+**Last security remediation:** 2026-06-15 (system-wide review, see §14)  
+**Status:** Published, refreshed for v1.2.0, v1.3.0, and v1.4.0; remediated 2026-06-15
 
 This document describes the security properties Beekeeper provides, the
 attack surfaces it exposes, the known gaps in its defenses, and the
@@ -39,7 +39,7 @@ CI pipeline or developer workstation.
 10. [Multi-Harness Hook Enforcement (v1.3.0)](#10-multi-harness-hook-enforcement-v130)
 11. [Runtime Hardening (v1.2.0): SPATH, CORR, and install posture (v1.1.0)](#11-runtime-hardening-v120-spath-corr-and-install-posture-v110)
 12. [First-Responder Quarantine and Catalog-to-Sentry Targeting (v1.3.0)](#12-first-responder-quarantine-and-catalog-to-sentry-targeting-v130-post-ship)
-13. [Adjudicated Corpus (Local Loop) (v1.4.0)](#13-adjudicated-corpus-local-loop--v140)
+13. [Adjudicated Corpus (Local Loop) (v1.4.0)](#13-adjudicated-corpus-local-loop-v140)
 14. [Security Remediation (2026-06-15)](#14-security-remediation-2026-06-15)
 
 ---
@@ -51,16 +51,16 @@ CI pipeline or developer workstation.
 Beekeeper is a real-time safety harness that intercepts autonomous coding
 agent tool calls before they execute. It defends against:
 
-- **Malicious package installation** — an agent that installs a compromised
+- **Malicious package installation:** an agent that installs a compromised
   npm, PyPI, or extension package as part of legitimate-looking work.
-- **Sensitive path access** — an agent that reads `~/.ssh/`, `~/.aws/`, or
+- **Sensitive path access:** an agent that reads `~/.ssh/`, `~/.aws/`, or
   other credential paths outside the project working directory.
-- **Lifecycle script abuse** — a package whose `postinstall` script executes
+- **Lifecycle script abuse:** a package whose `postinstall` script executes
   arbitrary code.
-- **Supply-chain corroboration evasion** — a single attacker-controlled catalog
+- **Supply-chain corroboration evasion:** a single attacker-controlled catalog
   that flags a legitimate package as malicious (or misses a truly malicious
   one).
-- **Prompt injection** — adversarial content in the developer's codebase that
+- **Prompt injection:** adversarial content in the developer's codebase that
   hijacks the agent's next action.
 
 ### What Compromising Beekeeper Gives an Attacker
@@ -88,14 +88,14 @@ build + Sigstore pipeline (see Section 2).
 |---------|------|------------|
 | Beekeeper binary supply chain | Critical | Reproducible builds, Sigstore, SLSA Level 3, `beekeeper-self` feed |
 | Catalog feeds (bumblebee, OSV, Socket) | High | Corroboration semantics (see Section 3 + §11 CORR), sanity bounds, signatures |
-| Harness deny delivery (does the block actually stop the tool?) | High | exit-2 universal deny + per-harness deny JSON (see §10); fail-closed on unknown harness. **Tier-3 harnesses (Kilo/Trae) leave native tools unguarded; Hermes is structurally fail-OPEN** — see §10 |
-| Agent tool-call intake (`beekeeper check` stdin) | High | 1MB oversize probe, bounded JSON decode, 8s exec deadline, 256MB cap, top-level panic-recover — every path fails **closed** |
-| MCP gateway listener (`127.0.0.1:7837`) | High | constant-time bearer auth, 1MB body cap, bounded JSON-RPC parser (fuzzed), echo-back `id` correlation, token stripped before upstream. **`--bind 0.0.0.0` exposes it over plaintext HTTP — see §8** |
-| Sensitive-path runtime reads (`~/.ssh`, `.env`, MCP dirs) | High | SPATH blocklist applied **after** the allowlist overlay (most-restrictive-wins) so an allowlist cannot downgrade a credential-read block — see §11 |
-| Per-harness config-file installers (15 targets) | Medium | merge-not-clobber, per-target 0600 backup, atomic temp+rename, foreign-script preservation, user privileges only — see §10 |
-| Project/env config layer (`fail_mode`, `self_catalog.*`) | Medium | merged above user config and reaches every decision — a project-local `fail_mode:open` relaxes fail-closed; see §8 |
+| Harness deny delivery (does the block actually stop the tool?) | High | exit-2 universal deny + per-harness deny JSON (see §10); fail-closed on unknown harness. **Tier-3 harnesses (Kilo/Trae) leave native tools unguarded; Hermes is structurally fail-OPEN**, see §10 |
+| Agent tool-call intake (`beekeeper check` stdin) | High | 1MB oversize probe, bounded JSON decode, 8s exec deadline, 256MB cap, top-level panic-recover. Every path fails **closed** |
+| MCP gateway listener (`127.0.0.1:7837`) | High | constant-time bearer auth, 1MB body cap, bounded JSON-RPC parser (fuzzed), echo-back `id` correlation, token stripped before upstream. **`--bind 0.0.0.0` exposes it over plaintext HTTP, see §8** |
+| Sensitive-path runtime reads (`~/.ssh`, `.env`, MCP dirs) | High | SPATH blocklist applied **after** the allowlist overlay (most-restrictive-wins) so an allowlist cannot downgrade a credential-read block, see §11 |
+| Per-harness config-file installers (15 targets) | Medium | merge-not-clobber, per-target 0600 backup, atomic temp+rename, foreign-script preservation, user privileges only, see §10 |
+| Project/env config layer (`fail_mode`, `self_catalog.*`) | Medium | merged above user config and reaches every decision. A project-local `fail_mode:open` relaxes fail-closed; see §8 |
 | Policy file injection | Medium | `policyloader.ValidateSchema` rejects unknown fields and `exec` actions |
-| Policy allowlist override (escape hatch) | Medium | `package_allowlist` allow rules can override catalog blocks — see Section 9 |
+| Policy allowlist override (escape hatch) | Medium | `package_allowlist` allow rules can override catalog blocks, see Section 9 |
 | Audit log tampering / leakage | Low | Owner-only permissions (0600), append-only writes, redaction at check/gateway chokepoints, OTLP/syslog fan-out (see §8 for redaction field-coverage limits) |
 | IPC named pipe / Unix socket | Low | SO_PEERCRED / LOCAL_PEERCRED UID check + 0600 (Unix); SDDL DACL scoped to installing-user SID (Windows); 64KB framed cap |
 
@@ -144,7 +144,7 @@ cosign verify \
 ### SLSA Level 3 Provenance
 
 Release provenance is generated via `slsa-github-generator@v2.1.0` (full
-semver tag required — pinning to `@v2` is insufficient for SLSA Level 3).
+semver tag required: pinning to `@v2` is insufficient for SLSA Level 3).
 SLSA Level 3 guarantees:
 
 - Build was triggered by a source commit the attacker cannot forge without
@@ -203,8 +203,8 @@ By default (configurable via `corroboration_threshold` policy rules):
 
 | Source count flagging a package | Action |
 |----------------------------------|--------|
-| 1 source | Warn — investigate but do not block |
-| 2 sources | Block — enforce |
+| 1 source | Warn: investigate but do not block |
+| 2 sources | Block: enforce |
 | 3+ sources | Block + quarantine |
 
 An adversary who controls a single catalog source (bumblebee, OSV, or Socket)
@@ -219,7 +219,7 @@ The `beekeeper-self` self-quarantine feed is cryptographically verified against
 an embedded Ed25519 public key before its entries are applied (§6); an
 invalid/absent signature is an integrity failure that fails closed. For the
 **primary bumblebee** catalog, integrity in the live decision path rests on
-corroboration (the two-source requirement) plus the sanity bounds below — a
+corroboration (the two-source requirement) plus the sanity bounds below. A
 bumblebee entry's `signed` flag is currently a *presence* check, not Ed25519
 verification (TM-B-02; see the §11 honesty note). When bumblebee's sync trips a
 sanity bound the source is marked degraded and per-severity escalation overrides
@@ -228,7 +228,7 @@ single degraded-feed match cannot escalate a `critical` to a block on its own).
 The OSV and Socket sources are per-request network adapters that degrade to
 *no-match* on error, so a degraded adapter contributes nothing toward escalation.
 (An earlier draft of this section described a fractional "0.5 weight" for degraded
-sources; that fractional weighting is **not implemented** — escalation suppression
+sources; that fractional weighting is **not implemented**. Escalation suppression
 on canonical-feed degradation is the actual mechanism.)
 
 ### Sanity Bounds
@@ -302,7 +302,7 @@ review catalog state changes.
 
 ### How fanotify Works
 
-The Linux Sentry uses `fanotify` to intercept `FAN_OPEN_PERM` events — kernel
+The Linux Sentry uses `fanotify` to intercept `FAN_OPEN_PERM` events, kernel
 notifications for file-open operations on watched paths. When a process opens
 a file, Beekeeper's Sentry can evaluate the access before the kernel grants
 the open permission.
@@ -369,7 +369,7 @@ itself is the malicious package?"
 2. **Sync check**: After every `beekeeper catalogs sync`, the same check runs
    so that a newly-published compromise entry is acted on immediately.
 
-3. **On a version match**: Beekeeper self-quarantines — it writes an audit
+3. **On a version match**: Beekeeper self-quarantines. It writes an audit
    record, prints a prominent warning to stderr with the full verification
    path, and refuses to run enforcement commands. Diagnostic commands
    (`beekeeper version`, `beekeeper diag`, `beekeeper selftest`,
@@ -410,14 +410,14 @@ The `beekeeper-self` feed is a static signed JSON file:
 }
 ```
 
-The signature is an Ed25519 signature over `json.Marshal(entries)` — the
-canonical JSON encoding of the entries array — not over the full feed JSON
+The signature is an Ed25519 signature over `json.Marshal(entries)`, the
+canonical JSON encoding of the entries array, not over the full feed JSON
 (which would be circular). The public key is embedded in the binary.
 
 ### Governance Honesty Note (v1.0.0)
 
 **For v1.0.0, the `beekeeper-self` feed is maintained by a single maintainer
-(Mzansi Agentive Pty Ltd — Mfanafuthi Mhlanga).** This means that an attacker
+(Mzansi Agentive Pty Ltd, Mfanafuthi Mhlanga).** This means that an attacker
 who compromises the maintainer's GitHub account and the feed hosting has full
 control over the self-quarantine signal.
 
@@ -510,7 +510,7 @@ If verification fails at any step:
 If `beekeeper` refuses to run with a self-quarantine message, run the
 verification steps above on the installed binary. If the binary passes all
 verification steps but the self-quarantine fires, the `beekeeper-self` feed
-entry may be incorrect — file a private advisory to report the false positive.
+entry may be incorrect. File a private advisory to report the false positive.
 
 Diagnostic commands remain usable during self-quarantine:
 
@@ -589,19 +589,19 @@ for a multi-day outage was not acceptable for v1.0.0.
 
 Beekeeper intercepts agent tool calls through one of two mechanisms: a
 **pre-exec hook** (Tier 1/2 harnesses) or the **MCP gateway** (Tier 3). Two
-supported harnesses — **Kilo** and **Trae** — have no upstream pre-exec hook
+supported harnesses, **Kilo** and **Trae**, have no upstream pre-exec hook
 mechanism at all. For these, Beekeeper can only intercept tool calls that are
 routed through the MCP gateway.
 
-**The consequence:** any *native* built-in tool a Kilo or Trae agent invokes —
-Bash, file read/write, shell execution — bypasses Beekeeper entirely. Coverage
+**The consequence:** any *native* built-in tool a Kilo or Trae agent invokes
+(Bash, file read/write, shell execution) bypasses Beekeeper entirely. Coverage
 is opt-in via gateway routing and is **partial by construction**. This is an
 upstream limitation (e.g. Kilo FR #5827), not a Beekeeper implementation bug,
 but it is a real residual coverage gap that depends on user configuration.
 
 To a lesser degree, **Windsurf** (fail-OPEN on any non-2 exit code) and
-**OpenCode** (its JS plugin does not intercept subagent `task` calls — issue
-#5894 — or, historically, MCP calls — issue #2319) also have coverage holes.
+**OpenCode** (its JS plugin does not intercept subagent `task` calls, issue
+#5894, or, historically, MCP calls, issue #2319) also have coverage holes.
 Users who require complete pre-exec coverage should use a Tier-1 harness. See
 `docs/harness-support-matrix.md` and §10 for the full per-harness breakdown.
 
@@ -618,7 +618,7 @@ reliable enforcement path for Hermes use cases.
 
 #### Gateway Remote-Bind Exposure and the Missing `allow_remote_gateway` Gate
 
-> **Updated 2026-06-15 (§14):** the second-factor gate **does** exist — a
+> **Updated 2026-06-15 (§14):** the second-factor gate **does** exist. A
 > non-loopback bind is refused unless `--allow-remote` is passed (`gateway.go`
 > `Start`, CLI-only, not settable from config). The residual is that a deliberate
 > `--allow-remote` bind is still plaintext HTTP (no TLS), so the bearer token
@@ -628,13 +628,13 @@ reliable enforcement path for Hermes use cases.
 The gateway binds to `127.0.0.1` by default. The CLI help text states that
 binding to a public interface (`--bind 0.0.0.0`) "requires
 `allow_remote_gateway:true` in config." **In the current code this second-factor
-config gate does not exist** — there is no such config field and no validation;
+config gate does not exist**: there is no such config field and no validation;
 `--bind` flows straight to `net.Listen`. A single `--bind` flag therefore
 exposes the policy-decision proxy (and the upstream MCP server behind it) to
 off-host clients, protected only by the per-session bearer token.
 
 This is operator-initiated, not remotely triggerable (`--bind` is a CLI flag
-only — it cannot be set from a config file, so a poisoned project config cannot
+only; it cannot be set from a config file, so a poisoned project config cannot
 expose the gateway). However, two honesty caveats apply: (1) the help text
 promises a gate that is not implemented, which can create false confidence; and
 (2) the gateway is plain HTTP with no TLS, so a non-loopback bind sends the
@@ -654,11 +654,11 @@ implementing the gate or correcting the help text.
 
 Beekeeper merges a project-local `.beekeeper/config.json` (discovered by walking
 up from the working directory) **above** the user config. In Beekeeper's own
-threat model the working tree is an untrusted surface — it is exactly the
+threat model the working tree is an untrusted surface. It is exactly the
 agent-cloned repository the tool exists to police. A project-local
 `{"fail_mode":"open"}` (or a dependency `postinstall` that writes one) therefore
-converts every fail-closed safety net — crash, timeout, oversized stdin,
-missing/corrupt index — into fail-open, and the same layer can disable the
+converts every fail-closed safety net (crash, timeout, oversized stdin,
+missing/corrupt index) into fail-open, and the same layer can disable the
 LlamaFirewall sidecar or repoint the `self_catalog` URL+key. (Install posture is
 the exception: an untrusted project/env layer is tighten-only, so it can raise a
 posture rule to block but never lower one below the default warn.)
@@ -699,7 +699,7 @@ limit.
 #### Detection-Completeness Gaps in the Behavioral Sentry
 
 The Sentry is a behavioral *correlation* layer (detect/audit), not an
-enforcement chokepoint — the hook and gateway are where blocks happen.
+enforcement chokepoint. The hook and gateway are where blocks happen.
 SENTRY-004/005 now fire in production: all three daemons build a live extension
 `InventoryStore` (mod-time-based) and pass `Snapshot(now)` into `EvaluateEvent`,
 and the Linux fanotify path counts drops (`EventsDropped`). v1.3.0 (Phase 20)
@@ -720,7 +720,7 @@ kills, or quarantines. The remaining honest gaps are:
    opencode/hermes). CI/CD runners and system daemons outside those trees are not
    monitored.
 2. **SENTRY-003 has no domain allowlist** and is not tied to extension
-   activation — it fires on the first outbound by any monitored descendant, so it
+   activation. It fires on the first outbound by any monitored descendant, so it
    is noisy and cannot identify the destination.
 3. **DNS queries are ingested but not yet correlated; no process-memory event
    source.** DNS query events are now captured on Linux (eBPF kprobe on
@@ -739,11 +739,11 @@ path.
 
 #### Windows Sentry: Missing Parent-PID on File and Network Events (TM-RS-02)
 
-**Accepted detection-completeness gap — backlog.**
+**Accepted detection-completeness gap, backlog.**
 
 The Windows ETW parser (`internal/sentry/windows/parser.go`) does not populate
 the PPID field on file-access (`EventFileAccess`) or network-connect
-(`EventNetworkConnect`) events — only process-create events carry PPID in the
+(`EventNetworkConnect`) events. Only process-create events carry PPID in the
 ETW schema consumed here. The `isEditorDescendant` check (`rules.go:84-102`)
 walks the PPID chain to attribute behaviors to an editor-descended process. A
 malicious child process that:
@@ -766,30 +766,30 @@ This is tracked as a backlog item; it does not affect the fail-closed invariant.
 
 #### Package-Parse Evasion Classes Accepted as Zero-Day Semantics (TM-B-06)
 
-**Accepted limitation — specific evasion classes documented here.**
+**Accepted limitation, specific evasion classes documented here.**
 
 The package-manager command parser (`internal/pkgparse/pkgparse.go`) uses a
 `HasPrefix`-based approach on the command string. The following input patterns
 produce `ok=false` from `pkgparse.Parse`, which causes `engine.go` to return
 an `allow` decision with reason "no package identified":
 
-1. **Command chaining:** `npm install evil-pkg && curl attacker.com` — the
+1. **Command chaining:** `npm install evil-pkg && curl attacker.com`. The
    `&&`, `;`, and `|` tokens are not pre-stripped. The install command
    substring matches, but the parsed package may be empty or wrong because
    the entire shell expression (including the chained command) is passed as
    the package token.
 
-2. **Leading environment-variable assignments:** `FOO=bar npm install evil-pkg`
-   — the `FOO=bar` prefix prevents the `HasPrefix("npm install")` from
+2. **Leading environment-variable assignments:** `FOO=bar npm install evil-pkg`.
+   The `FOO=bar` prefix prevents the `HasPrefix("npm install")` from
    matching; the parser returns `ok=false`; the tool call is allowed.
 
 3. **Unlisted package managers:** `deno install evil-pkg`, `mvn install:install-file`,
-   `nuget install EvilPackage` — these are not in the install-prefix table
+   `nuget install EvilPackage`. These are not in the install-prefix table
    and parse as "no package identified" → `allow`.
 
 The result for all three classes is a fail-**OPEN** parse: the tool call is
 allowed, not blocked. This is the zero-day tool-call semantics gap described
-earlier in this section — any novel agent tool or tool-call format that
+earlier in this section. Any novel agent tool or tool-call format that
 Beekeeper has not been updated to handle produces an allow-by-default decision
 rather than a block.
 
@@ -803,7 +803,7 @@ substrings.
 
 #### Catalog Sanity Bounds Do Not Defend Against Content-Preserving Feed Tampering (TM-B-07)
 
-**Accepted limitation — scope of sanity bounds documented here.**
+**Accepted limitation, scope of sanity bounds documented here.**
 
 The catalog sanity gate (`internal/catalog/sanity.go:CheckSanity`) validates
 that a refreshed catalog snapshot does not deviate from baseline **count metrics**:
@@ -847,7 +847,7 @@ can **override a catalog-corroborated block or warn decision** for the exact lis
 package.
 
 **This is intentional behavior.** The purpose is to let operators make explicit,
-version-controlled trust decisions — for example, to allowlist an internal package
+version-controlled trust decisions: for example, to allowlist an internal package
 that a fresh catalog source incorrectly flags, or to express that a particular
 "flagged" package is a known false-positive in the operator's environment.
 
@@ -879,7 +879,7 @@ configuration. Place policy files in version-controlled directories and review
 ### Dashboard Policy Editor (`beekeeper dashboard --admin`)
 
 The TUI policy panel edits a **real, enforced** policy file
-(`~/.beekeeper/policies/beekeeper-tui.json`) — a valid typed `PolicyFile` that
+(`~/.beekeeper/policies/beekeeper-tui.json`), a valid typed `PolicyFile` that
 `LoadPolicyDir` loads like any other. It supersedes the retired prototype
 `tui_rules.json`, whose foreign schema the engine silently skipped (so its toggles
 were cosmetic).
@@ -907,19 +907,19 @@ line that could corrupt the hook's JSON/deny protocol. Regression-guarded by
 
 Beekeeper guards an agent that runs with the developer's full filesystem
 permissions, so OS file permissions (0600) cannot stop the agent from tampering
-with Beekeeper itself — the agent *is* the owner. The only layer that can tell
+with Beekeeper itself. The agent *is* the owner. The only layer that can tell
 "this access is coming through the agent" is the tool-call hook, so `beekeeper
 check` blocks the agent's tool calls that target Beekeeper's own footprint
 (`internal/check/selfprotect.go`, `hookguard.go`; pure matcher
 `internal/policy/selfpath.go`). Enforced in `beekeeper check` only (D-03), after
-`ApplyPolicyOverlay` and before the install-posture merge, merged most-restrictive — so a
+`ApplyPolicyOverlay` and before the install-posture merge, merged most-restrictive, so a
 `package_allowlist` allow can never downgrade a self-protection block.
 
 - **State directory (read + write).** The resolved `platform.StateDir()` prefix
   (config.json, policies/, audit/, catalogs/, quarantine/, baselines/,
   state.json) is treated as a secret: agent reads AND writes are blocked. This
   closes the policy-file-injection and config-tamper escalation paths above at
-  their source — the agent cannot add a `package_allowlist` allow rule, set
+  their source. The agent cannot add a `package_allowlist` allow rule, set
   `fail_mode:open`, or truncate the audit log.
 - **Binary (write).** The running executable is write-protected so the agent
   cannot overwrite the guard with a no-op. Reads are allowed; `go install`
@@ -929,19 +929,19 @@ check` blocks the agent's tool calls that target Beekeeper's own footprint
   guard does NOT lock the file. Instead, for a write/edit targeting a hook-config
   file that currently contains Beekeeper's marker (`beekeeper check` /
   `beekeeper audit-record`), it inspects the proposed content and blocks ONLY when
-  the change would remove that marker. Edits that touch other hooks — and edits to
-  files without a Beekeeper entry — pass untouched. Bash rewrites of a
+  the change would remove that marker. Edits that touch other hooks, and edits to
+  files without a Beekeeper entry, pass untouched. Bash rewrites of a
   Beekeeper-installed hook file are blocked conservatively (content not reliably
   inspectable).
 - **CLI mutation.** The agent is blocked from invoking Beekeeper's mutating
   subcommands via Bash (`config set`, `hooks install`/`uninstall`, `protect
-  install`/`uninstall`) — quote-aware, so a literal phrase inside a commit message
+  install`/`uninstall`), quote-aware, so a literal phrase inside a commit message
   is not a false positive. Read-only subcommands (`scan`, `policy list`, …) pass.
 
 **Human channels are unaffected** (none pass through the agent tool-call hook):
 editing the files directly, running `beekeeper` yourself in a terminal, the
 `beekeeper dashboard --admin` policy editor, and `/config`. There is deliberately
-**no in-band agent bypass** — an env var or flag the agent could also set would
+**no in-band agent bypass**: an env var or flag the agent could also set would
 defeat the protection.
 
 **Fail-safe:** self-protection prefix resolution is best-effort; a resolver error
@@ -993,8 +993,8 @@ informational only and must not be relied upon for enforcement.
 A block decision is only worth as much as the harness's willingness to honor
 it. Beekeeper's policy engine can return a perfectly correct "block," but if the
 agent runtime ("harness") ignores it and runs the tool anyway, the user is not
-protected. This section documents the **deny-delivery** trust boundary — the
-contract between `beekeeper check` and each of the 17 supported harnesses — which
+protected. This section documents the **deny-delivery** trust boundary, the
+contract between `beekeeper check` and each of the 17 supported harnesses, which
 is new in v1.3.0 and was not covered by the v1.0.0 model.
 
 ### The exit-1 → exit-2 Protocol Bug and Fix
@@ -1020,10 +1020,10 @@ Harnesses do not agree on how a hook signals a block. `RenderDeny`
 |--------|-----------|----------------|
 | Nested `hookSpecificOutput` | Claude Code, Codex, Augment, CodeBuddy, Qwen | exit 2 + stderr; OR stdout `hookSpecificOutput.permissionDecision:"deny"` |
 | Gemini-native `decision` | Gemini CLI, Antigravity | exit 2; OR stdout `{"decision":"deny","reason":"..."}` |
-| Cursor permission JSON | Cursor | exit 2; OR `{"permission":"deny","user_message":...,"agent_message":...}` (requires `failClosed:true` — Cursor is fail-OPEN by default) |
+| Cursor permission JSON | Cursor | exit 2; OR `{"permission":"deny","user_message":...,"agent_message":...}` (requires `failClosed:true`; Cursor is fail-OPEN by default) |
 | Flat permission JSON | Copilot | exit 2; OR flat `{"permissionDecision":"deny",...}` |
 | Cline cancel JSON | Cline | exit 2; OR `{"cancel":true,"errorMessage":"..."}` (macOS/Linux only) |
-| Hermes fail-OPEN (JSON-only) | Hermes | stdout `{"action":"block","message":"..."}` ONLY — **exit codes ignored** |
+| Hermes fail-OPEN (JSON-only) | Hermes | stdout `{"action":"block","message":"..."}` ONLY, **exit codes ignored** |
 | exit-2-only (no stdout JSON) | Windsurf, OpenCode, Kilo, Trae | exit 2 + stderr; deny carried by exit code / plugin throw / gateway |
 
 ### Hermes: the Fail-OPEN / JSON-only Deny Path and the Raw-Decision-JSON Leak
@@ -1037,7 +1037,7 @@ call.
 A subtle silent-allow bug existed here. In `--hook` mode, the check handler also
 prints its own raw machine-readable decision (e.g. `{"Allow":false,...}`) to
 stdout. For Hermes, that raw line **preceded** the deny JSON, so Hermes parsed
-the *first* object — the raw decision — and (mis)interpreted it as an allow. The
+the *first* object, the raw decision, and (mis)interpreted it as an allow. The
 fix (commit f315c81) is the **`RunCheckTo(io.Discard)` seam**: in `--hook` mode
 the raw Decision JSON is written to `io.Discard` instead of stdout, so the only
 thing Hermes sees on stdout is the rendered harness deny form. An empty reason is
@@ -1045,14 +1045,14 @@ also substituted with a non-empty sentinel so the required `message` field is
 never blank.
 
 This closes the *known* leak, but the Hermes block still rests entirely on
-Hermes parsing stdout as documented — there is no exit-code backstop. This class
+Hermes parsing stdout as documented. There is no exit-code backstop. This class
 is listed as a known gap in §8.
 
 ### The Installer Trust Boundary (15 Per-Harness Config Writers)
 
 `beekeeper hooks install --target <harness>` writes a hook entry into each
 harness's own configuration file (`~/.claude`, `~/.cursor`, `~/.hermes`, …).
-These installers run **with user privileges only — no escalation** — and follow
+These installers run **with user privileges only, no escalation**, and follow
 fail-closed file-handling discipline:
 
 - **Merge-not-clobber:** the installer appends its hook entry only if absent; it
@@ -1065,7 +1065,7 @@ fail-closed file-handling discipline:
 - **JSONC-safe:** configs that allow comments are parsed without corrupting
   them.
 
-Cline is **macOS/Linux only** — its hook requires a Unix executable file, so the
+Cline is **macOS/Linux only**. Its hook requires a Unix executable file, so the
 Cline installer is guarded `//go:build !windows` and returns an explicit error
 on Windows rather than writing a config that cannot work.
 
@@ -1075,7 +1075,7 @@ Beekeeper is honest about how much each harness can actually be protected. Only
 **Claude Code** is *live-verified* on a real running harness (the hook was
 confirmed to block a credential-read tool call and audit it). Every other
 harness is implemented against published vendor documentation and validated by
-contract-shape unit tests that assert the correct exit code and JSON — but those
+contract-shape unit tests that assert the correct exit code and JSON. But those
 tests **do not run a real harness**, and CI cannot verify that a given harness
 actually honors the contract.
 
@@ -1083,8 +1083,8 @@ actually honors the contract.
   Augment, CodeBuddy, Qwen, Gemini CLI, Copilot, Antigravity, Windsurf
   (documented, not locally verified).
 - **Tier 2 (hook-block with caveats):** Hermes (fail-OPEN), Cline (no Windows),
-  OpenCode (plugin gaps — subagent/MCP).
-- **Tier 3 (MCP gateway only — native tools UNGUARDED):** Kilo, Trae.
+  OpenCode (plugin gaps: subagent/MCP).
+- **Tier 3 (MCP gateway only, native tools UNGUARDED):** Kilo, Trae.
 
 The full per-harness matrix, deny mechanisms, caveats, and source citations are
 in **`docs/harness-support-matrix.md`**. The Tier-3 native-tool gap and the
@@ -1100,7 +1100,7 @@ that v1.2.0 originally shipped here was removed in v1.1.0 "Install Posture" and
 replaced by the tool-agnostic install-posture warn layer described at the end of
 this section (see also [install-posture.md](install-posture.md)).
 
-### SPATH — Sensitive-Path Runtime Enforcement
+### SPATH: Sensitive-Path Runtime Enforcement
 
 Beekeeper now blocks agent reads of credential and secret paths that fall
 outside the project working directory. The default blocklist
@@ -1114,7 +1114,7 @@ streams and trailing-dot tricks. In the Sentry, paths are normalized with
 handler, the declarative policy overlay is applied **first**, then the SPATH
 (sensitive-path) block, then the install-posture decision, each merged in using
 **most-restrictive-wins**. The practical guarantee is that a `package_allowlist`
-`allow` escape hatch (§9) can **never downgrade a credential-read block** — the
+`allow` escape hatch (§9) can **never downgrade a credential-read block**. The
 allowlist can only relax the catalog/engine base decision, which is computed
 before the SPATH and posture merges. Install posture is a fail-soft warn by
 default rather than a block (an operator can opt an individual rule up to block
@@ -1124,7 +1124,7 @@ sensitive-path, or self-protection block above it. The same parity check runs in
 the MCP gateway, so a tool call cannot escape SPATH by going through the gateway
 instead of the hook.
 
-### CORR — Per-Severity Corroboration and Anti-Poisoning Sanity Bounds
+### CORR: Per-Severity Corroboration and Anti-Poisoning Sanity Bounds
 
 The §3 corroboration model (1 source → warn, 2 → block, 3+ → quarantine) is
 extended with **per-severity thresholds**. A `critical`-severity catalog match
@@ -1141,30 +1141,30 @@ anti-poisoning guards protect this stronger escalation:
 
 > **Honesty note (audited 2026-06-05; updated post-remediation).**
 >
-> **Degraded-source escalation (TM-B-01, reassessed 2026-06-06 — by design):**
+> **Degraded-source escalation (TM-B-01, reassessed 2026-06-06, by design):**
 > `ResolveHealthy` gates per-severity escalation on the health of the **canonical
-> bumblebee feed** — the only locally-synced, sanity-tracked source (the watch
+> bumblebee feed**, the only locally-synced, sanity-tracked source (the watch
 > daemon writes a degradation flag only for bumblebee). This is intentional: OSV
 > and Socket are per-request adapters that degrade to *no-match* (so they cannot
 > drive escalation regardless of any "health" signal), and gating escalation on a
 > transient OSV/Socket outage would suppress bumblebee's legitimate `critical`
-> escalation — weakening true-positive detection, especially offline / on Windows.
+> escalation, weakening true-positive detection, especially offline / on Windows.
 > The "degraded source counts at most 0.5 toward corroboration" fractional weight
 > once described in §3 is **not implemented, and not planned as a mechanical
 > change**: it is a core decision-semantics change, and for *gross* feed poisoning
 > it is already covered by the sanity-bound degradation suppression above, while
 > *subtle* content-preserving single-entry tamper is the corroboration + signature
 > layer's job (TM-B-07, §8). The residual is a *false-positive* single-source block
-> on a `critical` entry from a tampered-but-not-sanity-tripping canonical feed — a
+> on a `critical` entry from a tampered-but-not-sanity-tripping canonical feed, a
 > coercion/DoS primitive, not a malicious-allow bypass. A prior change that made
 > `ResolveHealthy` loop over all sources was reverted as a no-op (only bumblebee is
 > ever present in `state.Sources`) whose comment implied a multi-source degradation
 > model that does not exist.
 >
-> **Signature verification (TM-B-02, partially remediated 2026-06-15 — see §14):**
+> **Signature verification (TM-B-02, partially remediated 2026-06-15, see §14):**
 > In the live decision
 > path, a Bumblebee entry's "signed" status remains a **presence check**
-> (`catalog_signature` is non-empty), **not** an Ed25519 verification — real
+> (`catalog_signature` is non-empty), **not** an Ed25519 verification. Real
 > cryptographic verification (`VerifySignatureWithKey`) is wired only for the
 > `beekeeper-self` feed (§6). Production Bumblebee entries are already
 > `Signed:false`, so the realistic primitive is a single tampered critical entry
@@ -1173,12 +1173,12 @@ anti-poisoning guards protect this stronger escalation:
 > remediation. **2026-06-15 hardening (§14 #2):** the local overlay can no longer
 > be promoted to a signed source (it is forced `Signed=false`), the catalog index
 > is now written owner-only under the self-protected StateDir, the catalog dir is
-> `0o700`, and `BEEKEEPER_HOME` can no longer repoint the trust root — so
+> `0o700`, and `BEEKEEPER_HOME` can no longer repoint the trust root, so
 > tampering the presence byte now requires defeating StateDir self-protection.
 > These discrepancies are disclosed here rather than silently
 > edited so the audit trail is honest.
 
-### Install posture — package-install hardening (v1.1.0)
+### Install posture: package-install hardening (v1.1.0)
 
 Install posture replaced the v1.2.0 package-manager nudge. At the agent pre-exec
 hook it evaluates three tool-agnostic structural rules on every package install
@@ -1297,7 +1297,7 @@ or mitigations change. For the vulnerability disclosure process, see
 
 ---
 
-## 13. Adjudicated Corpus (Local Loop) — v1.4.0
+## 13. Adjudicated Corpus (Local Loop): v1.4.0
 
 The v1.4.0 corpus is local-first, append-only, and owner-only (0600 on Unix;
 owner-only DACL on Windows). No corpus data leaves the machine in v1:
@@ -1353,7 +1353,7 @@ pkgparse, check handler + self-protection, MCP gateway + IPC, catalog integrity,
 config + audit, corpus + first-responder). The review verified the documented
 gaps against the code and surfaced additional, previously-undocumented issues.
 
-**Every finding — High through Low — was remediated the same day** on branch
+**Every finding, High through Low, was remediated the same day** on branch
 `security/remediation-260615`. Validation after the fixes: the full Go test suite
 (26 packages) is green, both live-binary E2E gates pass (the `internal/check`
 `--hook` exit-2 / SPATH / CORR / install-posture gate and the `cmd/beekeeper` corpus moat
@@ -1370,21 +1370,21 @@ annotated with pointers here.
 | 2 | High | Block decisions trusted an unauthenticated on-disk `Signed` presence byte; the local overlay could be counted as a signed corroborating source | The overlay is forced `Signed=false` in `MultiIndex`; all catalog index/JSON files are written owner-only structurally (`writeFileAtomic`->`SetOwnerOnly`) and the catalog dir is `0o700`, so the on-disk byte cannot be tampered without defeating StateDir self-protection. Cryptographic Bumblebee verification stays future work (TM-B-02; see Residuals). |
 | 3 | High | The scheduled `catalogs sync` daemon ignored `dry_run` and hardcoded the threshold -> live quarantine `os.Rename` moves when the operator chose observe-only | The daemon threads `AutoQuarantineDryRun()` (default true) and `AutoQuarantineThreshold()`; `RunFirstResponder`'s corpus branch enforces the dry-run gate in-function. |
 | 4 | High | The untrusted (project/env) config layer relaxed LlamaFirewall `fail_mode`/`sample_rate`, defeating the adjacent `Enabled` disable gate | `mergeLlamaFirewallUntrusted` refuses a `fail_mode` relaxation and a `sample_rate` reduction from the untrusted layer. |
-| 5 | High | The three Sentry daemons wrote audit records without redaction — the exact fields the redactor targets were persisted verbatim at their source | All daemons (linux/darwin/windows) route records through `RedactRecord`; the two check-handler writers that skipped it now redact too. |
+| 5 | High | The three Sentry daemons wrote audit records without redaction. The exact fields the redactor targets were persisted verbatim at their source | All daemons (linux/darwin/windows) route records through `RedactRecord`; the two check-handler writers that skipped it now redact too. |
 | 6 / 7 | High | Self-protection guards were defeatable: neutering the hook while keeping the marker (`\|\| true`, comment-out, binary repoint), or running mutating subcommands via `sh -c` / `$(...)` / `env` / alias | The hook-entry guard blocks any edit that modifies the marker-bearing invocation (not only removal); the CLI guard recurses into `sh -c`/`bash -c` strings, command substitutions and `env`/alias indirection. StateDir prefix matching resolves a symlinked parent of a not-yet-existing leaf; `ln`/`mklink`/`of=`/`sed -i`/`tee`/`<<<` write forms are covered. |
 | 8 | High | The gateway continued with default thresholds (fail-open) when the policies dir was unreadable; `FailOpen` was derivable from the untrusted config layer; the `--allow-remote` gate the docs denied actually exists | An unreadable policies dir now blocks unconditionally regardless of `FailOpen`; the untrusted layer cannot relax `fail_mode`. The `--allow-remote` gate is confirmed present (CLI-only); section 8 corrected. |
 | 9 | Med | IPC Unix-socket create->`chmod 0600` TOCTOU window | The socket is created under a restrictive umask so it is never momentarily group/other-accessible; `SO_PEERCRED` + 0600 remain as defense-in-depth. |
-| 10 | Med | Gateway request-smuggling: policy evaluated the parsed object while the raw bytes were forwarded (duplicate-key divergence) | The JSON-RPC parser rejects any request whose object (top-level or nested `params`) declares a duplicate key — fail-closed (`-32600`) before forwarding. |
+| 10 | Med | Gateway request-smuggling: policy evaluated the parsed object while the raw bytes were forwarded (duplicate-key divergence) | The JSON-RPC parser rejects any request whose object (top-level or nested `params`) declares a duplicate key, fail-closed (`-32600`) before forwarding. |
 | 11 | Med | Egress allow/deny suffix match had no label boundary (`evilpypi.org` satisfied allow `pypi.org`); host-extraction failures collapsed a block to warn | Matching requires a label boundary; deny matching additionally scans the raw URL when host extraction is ambiguous. |
 | 12 | Med | Untrusted config could set remote audit-sink URLs and `corpus.path` (latent exfil/SSRF); sinks did no scheme/SSRF validation | The untrusted layer can no longer set remote-sink endpoints or `corpus.path`; `NewMultiSink` rejects non-`https` and loopback/link-local/private-range hosts. |
 | 13 | Med | Self-quarantine version comparison was exact-string (missed `v`-prefix / build-metadata / case variants) | Comparison is normalized (strip leading `v`, strip build metadata, lowercase). |
 | 14 | Med | The catalog sanity baseline self-poisoned: a degrading sync re-baselined to the inflated count (and `verify --clear-degraded` cleared to the poisoned value) | While degraded, the baseline `Count` is frozen at the pre-degradation floor. |
-| — | Low | mmap record-count overflow guard; manual-forward header sanitization (hop-by-hop + `X-Beekeeper-*`); Windows pipe first-instance confirmation; corpus reader fuzz target; flag-value package extraction; overlay `sensitive_path` ADS/trailing-dot normalization; `RedactPatternsWith` helper; `extractBashWriteTargets` `of=`/`sed -i`/`tee`/`<<<`; exit-2 under `--hook` for self-quarantine/setup failures | All addressed. |
+| n/a | Low | mmap record-count overflow guard; manual-forward header sanitization (hop-by-hop + `X-Beekeeper-*`); Windows pipe first-instance confirmation; corpus reader fuzz target; flag-value package extraction; overlay `sensitive_path` ADS/trailing-dot normalization; `RedactPatternsWith` helper; `extractBashWriteTargets` `of=`/`sed -i`/`tee`/`<<<`; exit-2 under `--hook` for self-quarantine/setup failures | All addressed. |
 
 ### Recurring exploitation pattern (from the commit history)
 
 The review's central finding was a *pattern*: several fixed vulnerability classes
-had **live sibling instances** that the original point-fix missed — a boundary-less
+had **live sibling instances** that the original point-fix missed: a boundary-less
 suffix/prefix match (fixed once for paths, unfixed for egress hosts), a low-trust
 config layer relaxing a safety lever (gated for top-level `fail_mode`, ungated for
 LlamaFirewall / audit sinks / `corpus.path`), redaction applied at a consumer but
@@ -1394,7 +1394,7 @@ patch.
 
 ### Residuals (accepted, with compensating controls)
 
-- **TM-B-02 — Bumblebee `Signed` is a presence check, not Ed25519.** No per-source
+- **TM-B-02: Bumblebee `Signed` is a presence check, not Ed25519.** No per-source
   Bumblebee verification key is distributed, so the live path still trusts the
   presence byte. The exploitable preconditions are now closed by index integrity
   (owner-only index under the self-protected StateDir, overlay never a signed

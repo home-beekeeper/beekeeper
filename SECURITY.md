@@ -51,17 +51,17 @@ anonymous.
 
 Every released binary is:
 
-- **Reproducibly built** — deterministic Go build flags
+- **Reproducibly built**: deterministic Go build flags
   (`-trimpath -buildvcs=false -mod=readonly`); verify locally with
   `make verify-release VERSION=X.Y.Z`.
-- **Keylessly signed** — Sigstore/cosign v3 keyless signing via GitHub Actions
+- **Keylessly signed**: Sigstore/cosign v3 keyless signing via GitHub Actions
   OIDC. No long-lived signing keys exist to be stolen.
-- **Dependency-pinned** — `go.mod` + `go.sum` with CI `go mod verify`; updates
+- **Dependency-pinned**: `go.mod` + `go.sum` with CI `go mod verify`; updates
   are proposed by Renovate and require human review.
 
 ## Maintainer / Contact
 
-Maintained by **Mzansi Agentive Pty Ltd** — Mfanafuthi Mhlanga.
+Maintained by **Mzansi Agentive Pty Ltd**, Mfanafuthi Mhlanga.
 
 For security matters, always use the GitHub private security advisory process
 described above rather than direct email, so reports are tracked and
