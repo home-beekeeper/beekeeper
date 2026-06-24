@@ -32,11 +32,10 @@ beekeeper catalogs sync
 beekeeper hooks install --target claude-code
 ```
 
-Check a tool call by hand (stdin is the tool-call JSON):
+Check a tool call by hand. The flag form builds the call and runs the same in any shell (PowerShell, cmd, POSIX):
 
 ```sh
-echo '{"tool_name":"Bash","tool_input":{"command":"cat ~/.ssh/id_rsa"}}' \
-  | beekeeper check --hook claude-code
+beekeeper check --hook claude-code --tool Bash --args "cat ~/.ssh/id_rsa"
 # exit 2 + a Claude Code deny payload: the read is blocked before it runs
 ```
 
