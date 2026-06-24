@@ -11,6 +11,7 @@ package hooks
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -20,15 +21,23 @@ import (
 func TestResolveBeekeeperBin(t *testing.T) {
 	t.Run("success_returns_quoted_toslash_path", func(t *testing.T) {
 		orig := execResolver
-		execResolver = func() (string, error) {
-			return `C:\Users\x\beekeeper.exe`, nil
-		}
+		// Build the fake path with the OS-native separator (FromSlash) so the
+		// ToSlash conversion is exercised on whatever runner this is: on Windows
+		// that is backslash -> forward slash; on Unix the separator is already "/".
+		// filepath.ToSlash is OS-dependent, so a hardcoded Windows literal would
+		// (correctly) fail on Linux, where "\" is not a path separator. The
+		// expectation is computed the same way, and we assert no backslash survives.
+		exe := filepath.FromSlash("/opt/bk/beekeeper")
+		execResolver = func() (string, error) { return exe, nil }
 		t.Cleanup(func() { execResolver = orig })
 
 		got := resolveBeekeeperBin()
-		// Must be double-quoted and use forward slashes.
-		if got != `"C:/Users/x/beekeeper.exe"` {
-			t.Fatalf("resolveBeekeeperBin() = %q, want %q", got, `"C:/Users/x/beekeeper.exe"`)
+		want := `"` + filepath.ToSlash(exe) + `"`
+		if got != want {
+			t.Fatalf("resolveBeekeeperBin() = %q, want %q", got, want)
+		}
+		if strings.Contains(got, `\`) {
+			t.Fatalf("resolveBeekeeperBin() must forward-slash the path, got: %s", got)
 		}
 	})
 
@@ -47,15 +56,16 @@ func TestResolveBeekeeperBin(t *testing.T) {
 
 	t.Run("path_with_spaces_is_quoted", func(t *testing.T) {
 		orig := execResolver
-		execResolver = func() (string, error) {
-			return `C:\Program Files\bk\beekeeper.exe`, nil
-		}
+		// A path containing a space, built OS-native (see the subtest above for why).
+		exe := filepath.FromSlash("/opt/Program Files/bk/beekeeper")
+		execResolver = func() (string, error) { return exe, nil }
 		t.Cleanup(func() { execResolver = orig })
 
 		got := resolveBeekeeperBin()
+		want := `"` + filepath.ToSlash(exe) + `"`
 		// The quote is essential: without it the harness shell would split on the space.
-		if got != `"C:/Program Files/bk/beekeeper.exe"` {
-			t.Fatalf("resolveBeekeeperBin() with spaces = %q, want quoted form", got)
+		if got != want {
+			t.Fatalf("resolveBeekeeperBin() with spaces = %q, want %q", got, want)
 		}
 		if !strings.HasPrefix(got, `"`) || !strings.HasSuffix(got, `"`) {
 			t.Fatalf("path with spaces must be double-quoted, got: %s", got)
