@@ -10,7 +10,7 @@ This document describes the security properties Beekeeper provides, the
 attack surfaces it exposes, the known gaps in its defenses, and the
 verification path an operator uses to confirm binary integrity. It is written
 for a technical audience: security researchers, operators, and developers who
-want to understand what they are trusting when they add Beekeeper to their
+need to understand what they are trusting when they add Beekeeper to their
 CI pipeline or developer workstation.
 
 > **Version note.** The v1.0.0 sections below remain accurate and are preserved
@@ -78,7 +78,7 @@ account. The attacker gains:
 - The ability to silently suppress block decisions, allowing the agent to
   install malicious packages or exfiltrate data undetected.
 
-This threat is not hypothetical — it is the reason Beekeeper implements the
+This threat is not hypothetical. It is the reason Beekeeper implements the
 `beekeeper-self` self-quarantine catalog (see Section 6) and the reproducible
 build + Sigstore pipeline (see Section 2).
 
@@ -177,6 +177,18 @@ SBOM to verify no unexpected dependencies were introduced:
 cat beekeeper.cyclonedx.json | jq '.components[].name'
 ```
 
+### Install and Distribution Integrity
+
+The install path is attack surface. Beekeeper warns developers about mutable version tags, unvetted fresh releases, and tampered packages, so its own installers and docs hold to the same standard. Four controls enforce it.
+
+**Pin exact versions. No mutable tags.** Every documented install command pins an exact release. The `go install` examples target `cmd/beekeeper@vX.Y.Z`, never `@latest`, across the README, the docs, and the home page. The release runbook bumps the pin on every release (`docs/release-runbook.md`), so the published version, the docs, and the version badge always agree. A mutable tag resolves to whatever the registry serves at that moment. That is the path the March 2026 Trivy registry compromise took to reach downstream users in the eight-day window before it was publicly reported.
+
+**Cool-down on fresh releases.** The signed installers (`install.sh`, `install.ps1`) read the release publish time from the GitHub API. When the resolved latest release is younger than the cool-down window, the installer warns and recommends pinning a known-good version or waiting. The default window is 24 hours, the same threshold Beekeeper's own install posture applies to package installs (`policy.DefaultReleaseAgeConfig`, 1440 minutes). `BEEKEEPER_COOLDOWN_DAYS` tunes it, `0` disables it, and pinning `BEEKEEPER_VERSION` skips it as an explicit choice.
+
+**Fail soft on the cool-down, fail closed on the signature.** The cool-down is advisory. It warns and proceeds, and it stays silent when it cannot compute the release age. Authenticity is the hard gate. When `cosign` is present, the installer verifies the keyless signature on `checksums.txt` against the pinned release-workflow identity and aborts on a present-but-invalid signature. The signature, not the cool-down, is what stops a tampered binary.
+
+**Immutability.** A keyless cosign signature bound to the release-workflow identity cannot be reproduced by an attacker who overwrites a tag, so the installer's verification detects a rewritten release at install time. Enabling GitHub immutable releases and tag protection on the repository closes the upstream half: a published tag then cannot be overwritten at all. The two controls compose. Verification catches tampering when a user installs, immutability prevents the rewrite in the first place.
+
 ---
 
 ## 3. Catalog Feed Integrity: The 2FA Principle
@@ -256,7 +268,7 @@ for any legitimate package. For example:
 5. With enforcement disabled, the attacker can now install genuinely malicious
    packages undetected.
 
-This is a **denial of service / coercion attack** — the attacker does not need
+This is a **denial of service / coercion attack**. The attacker does not need
 to install malicious code directly; they degrade the developer's trust in
 Beekeeper's signal quality until enforcement is disabled.
 
@@ -551,10 +563,10 @@ system for humans.
 #### Sophisticated Prompt Injection Beyond LlamaFirewall's Detection Capability
 
 LlamaFirewall's CodeShield and AlignmentCheck models detect common prompt
-injection patterns. Novel, highly-tailored prompt injection attacks that
-specifically craft payloads to evade the current model versions may succeed
-undetected. Model detection quality improves with each LlamaFirewall release
-but is inherently bounded by training data and adversarial capability.
+injection patterns. Novel, highly-tailored prompt injection attacks that craft
+payloads to evade the current model versions may succeed undetected. Model
+detection quality improves with each LlamaFirewall release but is bounded by
+training data and adversarial capability.
 
 #### Zero-Day Agent Tool-Call Semantics
 
@@ -602,7 +614,7 @@ exact JSON Hermes expects and suppresses its own raw decision line so it cannot
 leak ahead of the deny form (see §10), but there is no exit-code backstop: the
 block rests entirely on Hermes parsing stdout as documented. Any future Hermes
 stdout-format drift re-opens a silent-allow window. The MCP gateway is the more
-robust enforcement path for Hermes use cases.
+reliable enforcement path for Hermes use cases.
 
 #### Gateway Remote-Bind Exposure and the Missing `allow_remote_gateway` Gate
 
