@@ -8,6 +8,37 @@ Pollen tags in order, cosign-verify each release, push beekeeper main.
 
 ---
 
+## Standard release checklist (every release)
+
+> The detailed sections below are the one-time M2 "Pollen" tag sequence (parked).
+> This short checklist applies to **every** beekeeper release (v1.1.2, v1.2.0, ...).
+
+A release is cut by pushing a signed semver tag, which triggers
+`.github/workflows/release.yml`: GoReleaser builds the multi-platform binaries,
+cosign keylessly signs `checksums.txt` (bundle `checksums.txt.sigstore.json`), and
+SLSA L3 provenance plus CycloneDX SBOMs are attached. After the release publishes:
+
+- [ ] **Bump the pinned `go install` version in the docs.** Beekeeper pins its own
+  install command to an exact tag (no `@latest` — it is the supply-chain practice the
+  product enforces, so the docs must not drift to a stale or mutable reference). Update
+  `go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@vX.Y.Z` to the new tag in
+  **both repos** (run `grep -rn 'cmd/beekeeper@v' .` in each to find every occurrence):
+  - `beekeeper`: `README.md`
+  - `beekeeper-web`: `web/content/docs/{getting-started,installation,troubleshooting}.mdx`,
+    `web/content/blog/{introducing-beekeeper,install-posture-and-the-corpus}.mdx`, and
+    `web/components/home/{install-chip,quickstart-card,how-it-works}.tsx`
+- [ ] **Bump the version badges + changelog** in beekeeper-web so the site, the pinned
+  install command, and the published release all agree on the version.
+- [ ] **Confirm the release is immutable.** GitHub immutable releases / tag protection
+  should be enabled on `home-beekeeper/beekeeper` so a published tag cannot be
+  overwritten. (The installer's cosign verification is the runtime tamper defense;
+  tag immutability is the upstream one — the two are complementary.)
+- [ ] **Spot-check the installers** still resolve the new tag and pass verification:
+  `BEEKEEPER_VERSION=vX.Y.Z` is honored, the cosign step prints `Verified OK`, and an
+  unpinned install older than the cool-down window prints the advisory (warn, not block).
+
+---
+
 ## Preconditions
 
 Verify ALL of the following before starting:
