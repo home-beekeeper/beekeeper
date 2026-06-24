@@ -26,6 +26,10 @@ type geminiHookEntry struct {
 	Command string `json:"command"`
 }
 
+// geminiCheckSuffix is the stable suffix for Gemini CLI's beekeeper hook command.
+// Used for idempotent install, migration, and targeted uninstall.
+const geminiCheckSuffix = "check --hook gemini"
+
 // geminiSettingsPath returns the path to Gemini CLI's settings.json.
 // Gemini CLI stores hooks under the "hooks" array in this file.
 func geminiSettingsPath(homeDir string) string {
@@ -33,11 +37,12 @@ func geminiSettingsPath(homeDir string) string {
 }
 
 // containsGeminiHookByCommand reports whether any entry in the given hook
-// array has a Command equal to cmd. Used for idempotent install and targeted
-// uninstall.
-func containsGeminiHookByCommand(hooks []geminiHookEntry, cmd string) bool {
+// array has a Command matching the given stable suffix. Used for idempotent
+// install and targeted uninstall.
+// Matches BOTH old bare-name and new abspath forms via matchesBeekeeperCommand.
+func containsGeminiHookByCommand(hooks []geminiHookEntry, suffix string) bool {
 	for _, h := range hooks {
-		if h.Command == cmd {
+		if matchesBeekeeperCommand(h.Command, suffix) {
 			return true
 		}
 	}
@@ -46,18 +51,21 @@ func containsGeminiHookByCommand(hooks []geminiHookEntry, cmd string) bool {
 
 // beekeeperGeminiEntry returns the canonical BeforeTool hook entry for
 // Gemini CLI. The Matcher ".*" matches all tool names.
+// Command uses the absolute binary path via beekeeperCmd (resolved at install
+// time) so that Gemini CLI hook invocations are fail-closed on PATH miss.
 func beekeeperGeminiEntry() geminiHookEntry {
 	return geminiHookEntry{
 		Event:   "BeforeTool",
 		Matcher: ".*",
-		Command: "beekeeper check --hook gemini",
+		Command: beekeeperCmd(geminiCheckSuffix),
 	}
 }
 
-// installGemini appends a BeforeTool hook entry for "beekeeper check --hook gemini"
+// installGemini appends a BeforeTool hook entry for beekeeper check --hook gemini
 // to the Gemini CLI settings.json at settingsPath. The function is idempotent:
-// it only appends the entry if "beekeeper check --hook gemini" is not already
-// present in the hooks array.
+// it only appends the entry if no matching beekeeper entry (bare or abspath) is
+// already present. Re-running migrates a stale bare-name entry to the new
+// abspath form in place (no duplicate).
 //
 // Gemini CLI honors either exit 2 OR stdout {"decision":"deny","reason":"..."}.
 // The deny JSON is rendered at runtime by RenderDeny(HarnessGemini). The
@@ -75,6 +83,8 @@ func installGemini(settingsPath string, dryRun bool, out io.Writer) error {
 		return fmt.Errorf("gemini: read %q: %w", settingsPath, err)
 	}
 
+	newCmd := beekeeperCmd(geminiCheckSuffix)
+
 	if dryRun {
 		entry := beekeeperGeminiEntry()
 		preview := geminiHooksFile{Hooks: append(existing.Hooks, entry)}
@@ -83,10 +93,26 @@ func installGemini(settingsPath string, dryRun bool, out io.Writer) error {
 		return nil
 	}
 
-	// Idempotent: only append if not already present.
-	if !containsGeminiHookByCommand(existing.Hooks, "beekeeper check --hook gemini") {
-		existing.Hooks = append(existing.Hooks, beekeeperGeminiEntry())
+	// Merge/migrate: replace stale bare-name or stale-abspath entry in place.
+	found := false
+	migrated := make([]geminiHookEntry, 0, len(existing.Hooks)+1)
+	for _, h := range existing.Hooks {
+		if matchesBeekeeperCommand(h.Command, geminiCheckSuffix) {
+			found = true
+			if h.Command != newCmd {
+				// Migrate stale entry to new abspath form.
+				migrated = append(migrated, beekeeperGeminiEntry())
+			} else {
+				migrated = append(migrated, h)
+			}
+		} else {
+			migrated = append(migrated, h)
+		}
 	}
+	if !found {
+		migrated = append(migrated, beekeeperGeminiEntry())
+	}
+	existing.Hooks = migrated
 
 	if err := backupSettings(settingsPath); err != nil {
 		return err
@@ -105,8 +131,9 @@ func installGemini(settingsPath string, dryRun bool, out io.Writer) error {
 	return writeFileAtomic(settingsPath, data)
 }
 
-// uninstallGemini removes the "beekeeper check --hook gemini" entry from the
-// Gemini CLI settings.json hooks array. Other hook entries are preserved.
+// uninstallGemini removes beekeeper check --hook gemini entries from the
+// Gemini CLI settings.json hooks array. Suffix matching covers BOTH old
+// bare-name and new abspath forms. Other hook entries are preserved.
 // A backup is created before modification.
 func uninstallGemini(settingsPath string, dryRun bool, out io.Writer) error {
 	data, err := os.ReadFile(settingsPath)
@@ -126,7 +153,7 @@ func uninstallGemini(settingsPath string, dryRun bool, out io.Writer) error {
 	filtered := make([]geminiHookEntry, 0, len(existing.Hooks))
 	removed := 0
 	for _, h := range existing.Hooks {
-		if h.Command == "beekeeper check --hook gemini" {
+		if matchesBeekeeperCommand(h.Command, geminiCheckSuffix) {
 			removed++
 			continue
 		}

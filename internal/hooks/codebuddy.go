@@ -8,10 +8,10 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
-// Beekeeper's hook command strings for CodeBuddy.
+// Beekeeper's hook command stable suffixes for CodeBuddy.
 const (
-	codebuddyPreCommand  = "beekeeper check --hook codebuddy"
-	codebuddyPostCommand = "beekeeper audit-record"
+	codebuddyCheckSuffix = "check --hook codebuddy"
+	codebuddyAuditSuffix = "audit-record"
 )
 
 // codebuddySettingsPath returns the path to CodeBuddy's settings.json.
@@ -23,6 +23,9 @@ func codebuddySettingsPath(homeDir string) string {
 // CodeBuddy settings.json at settingsPath WITHOUT disturbing any pre-existing
 // hooks or other top-level settings keys.
 //
+// The installed commands embed the running binary's absolute path. Re-running
+// migrates an old bare-name entry to the new abspath form in place (no duplicate).
+//
 // CodeBuddy is a Claude Code clone that uses the same nested hookSpecificOutput
 // schema: settings.json with a "hooks" key containing "PreToolUse" and
 // "PostToolUse" event arrays. The merge-not-clobber trinity is reused directly.
@@ -31,8 +34,8 @@ func codebuddySettingsPath(homeDir string) string {
 func installCodeBuddy(settingsPath string, dryRun bool, out io.Writer) error {
 	if dryRun {
 		hooksConfig := map[string]any{
-			"PreToolUse":  []any{beekeeperClaudePreEntryWith(codebuddyPreCommand)},
-			"PostToolUse": []any{beekeeperClaudePostEntryWith(codebuddyPostCommand)},
+			"PreToolUse":  []any{beekeeperClaudePreEntryWith(beekeeperCmd(codebuddyCheckSuffix))},
+			"PostToolUse": []any{beekeeperClaudePostEntryWith(beekeeperCmd(codebuddyAuditSuffix))},
 		}
 		data, _ := json.MarshalIndent(hooksConfig, "", "    ")
 		fmt.Fprintf(out, "[dry-run] Would merge into %s (hooks key — existing hooks preserved):\n%s\n", settingsPath, string(data))
@@ -49,8 +52,8 @@ func installCodeBuddy(settingsPath string, dryRun bool, out io.Writer) error {
 		hooks = map[string]any{}
 	}
 
-	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], codebuddyPreCommand, beekeeperClaudePreEntryWith(codebuddyPreCommand))
-	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], codebuddyPostCommand, beekeeperClaudePostEntryWith(codebuddyPostCommand))
+	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], codebuddyCheckSuffix, beekeeperClaudePreEntryWith(beekeeperCmd(codebuddyCheckSuffix)))
+	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], codebuddyAuditSuffix, beekeeperClaudePostEntryWith(beekeeperCmd(codebuddyAuditSuffix)))
 
 	if err := backupSettings(settingsPath); err != nil {
 		return err
@@ -61,6 +64,7 @@ func installCodeBuddy(settingsPath string, dryRun bool, out io.Writer) error {
 
 // uninstallCodeBuddy removes ONLY Beekeeper's entries from CodeBuddy's
 // settings.json, preserving all other hooks and top-level keys.
+// Suffix matching covers BOTH old bare-name and new abspath forms.
 // A backup is created before modification.
 func uninstallCodeBuddy(settingsPath string, dryRun bool, out io.Writer) error {
 	settings, err := editorinit.ReadSettings(settingsPath)
@@ -79,8 +83,8 @@ func uninstallCodeBuddy(settingsPath string, dryRun bool, out io.Writer) error {
 		return nil
 	}
 
-	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], codebuddyPreCommand)
-	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], codebuddyPostCommand)
+	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], codebuddyCheckSuffix)
+	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], codebuddyAuditSuffix)
 	removed := removedPre + removedPost
 
 	if removed == 0 {

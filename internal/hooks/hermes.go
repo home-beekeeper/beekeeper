@@ -30,25 +30,41 @@ import (
 	"strings"
 )
 
-// hermesPreCommand is the command written into the Hermes pre_tool_call hook.
-// The --hook hermes flag causes beekeeper check to emit RenderDeny output
-// (exit 0 + {"action":"block","message":"..."} on block) rather than the
-// default exit-1 path used by the shim/gateway.
-const hermesPreCommand = "beekeeper check --hook hermes"
+// hermesCheckSuffix is the stable suffix for the Hermes beekeeper hook command.
+// Used for idempotent install, migration, and targeted uninstall via line scan.
+// Both old bare-name ("beekeeper check --hook hermes") and new abspath forms
+// contain this suffix, so matchesBeekeeperCommand works on either.
+const hermesCheckSuffix = "check --hook hermes"
 
 // hermesConfigPath returns the path to the Hermes config file.
 func hermesConfigPath(homeDir string) string {
 	return homeDir + "/.hermes/config.yaml"
 }
 
+// hermesLineIsBeekeeperCommand reports whether a YAML config line is a beekeeper
+// pre_tool_call command entry. The line has the form `- command: <cmd>` (after
+// leading indentation is trimmed). It extracts the <cmd> value and runs the
+// beekeeper-anchored matchesBeekeeperCommand on it, so a third-party entry such
+// as `- command: audit-logger check --hook hermes` is NOT matched (the command's
+// program token must be beekeeper). Matches BOTH old bare-name and new abspath
+// forms.
+func hermesLineIsBeekeeperCommand(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	const prefix = "- command:"
+	if !strings.HasPrefix(trimmed, prefix) {
+		return false
+	}
+	cmd := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+	return matchesBeekeeperCommand(cmd, hermesCheckSuffix)
+}
+
 // hasHermesBeekeeperHook reports whether content already has a pre_tool_call
-// entry pointing at hermesPreCommand. It does a simple line scan — sufficient
-// for the single-command case and avoids a YAML parser dependency.
+// entry that is a beekeeper command. It does a simple line scan — sufficient for
+// the single-command case and avoids a YAML parser dependency.
 func hasHermesBeekeeperHook(content string) bool {
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.Contains(line, hermesPreCommand) {
+		if hermesLineIsBeekeeperCommand(scanner.Text()) {
 			return true
 		}
 	}
@@ -56,19 +72,21 @@ func hasHermesBeekeeperHook(content string) bool {
 }
 
 // hermesHookBlock returns the YAML block to append for the beekeeper
-// pre_tool_call hook entry. The block includes the required `hooks:` and
-// `pre_tool_call:` nesting.
+// pre_tool_call hook entry using the current binary's absolute path.
+// The block includes the required `hooks:` and `pre_tool_call:` nesting.
 //
 // Example output (appended at end of config):
 //
 //	hooks:
 //	  pre_tool_call:
-//	    - command: beekeeper check --hook hermes
-const hermesHookBlock = `
+//	    - command: "/path/to/beekeeper" check --hook hermes
+func hermesHookBlock() string {
+	return `
 hooks:
   pre_tool_call:
-    - command: ` + hermesPreCommand + `
+    - command: ` + beekeeperCmd(hermesCheckSuffix) + `
 `
+}
 
 // patchHermesConfig returns a new YAML string that idempotently ensures a
 // pre_tool_call beekeeper entry is present. It handles three cases:
@@ -82,6 +100,7 @@ hooks:
 //
 // Pre-condition: hasHermesBeekeeperHook(content) must be false (caller checks).
 func patchHermesConfig(content string) string {
+	newCmd := beekeeperCmd(hermesCheckSuffix)
 	lines := strings.Split(content, "\n")
 
 	// Locate `hooks:` section.
@@ -97,9 +116,9 @@ func patchHermesConfig(content string) string {
 		// No hooks section — append the full block.
 		trimmed := strings.TrimRight(content, "\n")
 		if trimmed == "" {
-			return hermesHookBlock
+			return hermesHookBlock()
 		}
-		return trimmed + "\n" + hermesHookBlock
+		return trimmed + "\n" + hermesHookBlock()
 	}
 
 	// Find a `pre_tool_call:` sub-key directly under `hooks:`.
@@ -125,7 +144,7 @@ func patchHermesConfig(content string) string {
 			if i == hooksIdx {
 				newLines = append(newLines,
 					"  pre_tool_call:",
-					"    - command: "+hermesPreCommand,
+					"    - command: "+newCmd,
 				)
 			}
 		}
@@ -137,15 +156,34 @@ func patchHermesConfig(content string) string {
 	for i, line := range lines {
 		newLines = append(newLines, line)
 		if i == preIdx {
-			newLines = append(newLines, "    - command: "+hermesPreCommand)
+			newLines = append(newLines, "    - command: "+newCmd)
+		}
+	}
+	return strings.Join(newLines, "\n")
+}
+
+// patchHermesConfigMigrate returns a new YAML string that replaces a stale
+// beekeeper pre_tool_call line (bare-name or stale-abspath) with the current
+// absolute-path command, while leaving all other content untouched.
+func patchHermesConfigMigrate(content string) string {
+	newCmd := "    - command: " + beekeeperCmd(hermesCheckSuffix)
+	lines := strings.Split(content, "\n")
+	newLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		// Replace only a beekeeper-anchored "- command: <beekeeper> …" line.
+		if hermesLineIsBeekeeperCommand(line) {
+			newLines = append(newLines, newCmd)
+		} else {
+			newLines = append(newLines, line)
 		}
 	}
 	return strings.Join(newLines, "\n")
 }
 
 // installHermes installs the Beekeeper pre_tool_call hook into
-// ~/.hermes/config.yaml. The edit is idempotent: if hermesPreCommand is
-// already present the function no-ops (and prints a message). Existing
+// ~/.hermes/config.yaml. The edit is idempotent: if an entry matching the
+// stable suffix is already present the function either migrates it (if the
+// command differs from the freshly-resolved abspath) or no-ops. Existing
 // content is always preserved. A backup is created before any modification.
 //
 // Deny contract reminder: Hermes ignores exit codes. The actual block is
@@ -160,8 +198,38 @@ func installHermes(configPath string, dryRun bool, out io.Writer) error {
 	}
 	content := string(data)
 
+	newCmd := beekeeperCmd(hermesCheckSuffix)
+	expectedLine := "    - command: " + newCmd
+
+	// Check if present and if migration is needed.
 	if hasHermesBeekeeperHook(content) {
-		fmt.Fprintf(out, "Hermes config.yaml already has a beekeeper pre_tool_call entry — no change.\n")
+		// Check if the current entry already has the correct abspath command.
+		alreadyCurrent := false
+		scanner := bufio.NewScanner(strings.NewReader(content))
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.TrimSpace(line) == strings.TrimSpace(expectedLine) {
+				alreadyCurrent = true
+				break
+			}
+		}
+		if alreadyCurrent {
+			fmt.Fprintf(out, "Hermes config.yaml already has a current beekeeper pre_tool_call entry — no change.\n")
+			return nil
+		}
+		// Entry present but stale (bare-name or stale abspath) — migrate in place.
+		updated := patchHermesConfigMigrate(content)
+		if dryRun {
+			fmt.Fprintf(out, "[dry-run] Would migrate beekeeper entry in %s to abspath form:\n%s\n", configPath, updated)
+			return nil
+		}
+		if err := backupSettings(configPath); err != nil {
+			return err
+		}
+		if err := writeFileAtomic(configPath, []byte(updated)); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Migrated Hermes pre_tool_call hook to abspath form in %s\n", configPath)
 		return nil
 	}
 
@@ -192,7 +260,8 @@ func installHermes(configPath string, dryRun bool, out io.Writer) error {
 
 // uninstallHermes removes the beekeeper pre_tool_call line/block from
 // ~/.hermes/config.yaml. Other hooks and all other content are preserved.
-// If the command is not found, uninstallHermes is a no-op.
+// If no entry matching the suffix is found, uninstallHermes is a no-op.
+// Suffix matching covers BOTH old bare-name and new abspath forms.
 func uninstallHermes(configPath string, dryRun bool, out io.Writer) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -229,18 +298,20 @@ func uninstallHermes(configPath string, dryRun bool, out io.Writer) error {
 }
 
 // removeHermesBeekeeperHook returns a new YAML string with the beekeeper
-// command entry removed. It removes the `    - command: hermesPreCommand` line
-// and, if the surrounding pre_tool_call block becomes empty, the surrounding
-// structure (empty pre_tool_call: + empty hooks:) is also cleaned up.
+// command entry removed. It removes any `    - command: …` line that matches
+// the stable suffix (covers both bare-name and abspath forms), and if the
+// surrounding pre_tool_call block becomes empty, the surrounding structure
+// (empty pre_tool_call: + empty hooks:) is also cleaned up.
 func removeHermesBeekeeperHook(content string) string {
 	lines := strings.Split(content, "\n")
 	filtered := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if strings.TrimSpace(line) == "- command: "+hermesPreCommand {
+		// Drop only a beekeeper-anchored "- command: <beekeeper> …" line; a
+		// third-party "- command: audit-logger …" line is preserved.
+		if hermesLineIsBeekeeperCommand(line) {
 			continue
 		}
 		filtered = append(filtered, line)
 	}
 	return strings.Join(filtered, "\n")
 }
-

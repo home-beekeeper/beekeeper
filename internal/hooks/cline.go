@@ -17,7 +17,7 @@ package hooks
 // The PreToolUse file must be executable (mode 0o755) or Cline will not run it.
 //
 // Threat T-10-20: installCline backs up and refuses to silently destroy a
-// foreign PreToolUse script that does not contain clinePreCommand.
+// foreign PreToolUse script that does not contain a beekeeper hook marker.
 // uninstallCline verifies the beekeeper marker before removing.
 
 import (
@@ -29,8 +29,10 @@ import (
 	"strings"
 )
 
-// clinePreCommand is the command written into the PreToolUse executable script.
-const clinePreCommand = "beekeeper check --hook cline"
+// clineCheckSuffix is the stable suffix for the Cline beekeeper hook command.
+// Used for idempotent install, migration, and targeted uninstall.
+// Matches BOTH old bare-name and new abspath forms via matchesBeekeeperCommand.
+const clineCheckSuffix = "check --hook cline"
 
 // clineHooksDir returns the path to the global Cline hooks directory.
 // The project-local alternative (.clinerules/hooks/) is documented here but
@@ -47,18 +49,25 @@ func clinePreToolUsePath(hooksDir string) string {
 	return filepath.Join(hooksDir, "PreToolUse")
 }
 
-// clineScript is the content written to the PreToolUse executable.
-// It is a POSIX shell script that passes stdin to beekeeper check.
-const clineScript = "#!/bin/sh\n" + clinePreCommand + "\n"
+// clineScript returns the content written to the PreToolUse executable.
+// It is a POSIX shell script that invokes beekeeper with its absolute path
+// (resolved at install time) so the hook does not fail with exit 127 when
+// beekeeper was installed after Cline captured its PATH.
+func clineScript() string {
+	return "#!/bin/sh\n" + beekeeperCmd(clineCheckSuffix) + "\n"
+}
 
 // installCline writes an executable PreToolUse script to hooksDir.
 // Behaviour:
 //   - If the file does not exist: create it with mode 0o755.
-//   - If the file already contains clinePreCommand: no-op (idempotent).
+//   - If the file already contains a current abspath beekeeper command: no-op.
+//   - If the file contains a stale beekeeper command (bare-name or stale abspath):
+//     migrate in place (rewrite with current abspath command).
 //   - If the file exists but contains a FOREIGN script: back it up and report;
 //     do NOT silently overwrite (T-10-20: preserves the user's existing hook).
 func installCline(hooksDir string, dryRun bool, out io.Writer) error {
 	hookPath := clinePreToolUsePath(hooksDir)
+	newScript := clineScript()
 
 	existing, err := os.ReadFile(hookPath)
 	switch {
@@ -66,7 +75,23 @@ func installCline(hooksDir string, dryRun bool, out io.Writer) error {
 		// File exists — check its content.
 		content := string(existing)
 		if containsClineCommand(content) {
-			fmt.Fprintf(out, "Cline PreToolUse hook already contains beekeeper command — no change.\n")
+			// Already has a beekeeper hook marker. Check if migration needed.
+			if content == newScript {
+				fmt.Fprintf(out, "Cline PreToolUse hook already has current beekeeper command — no change.\n")
+				return nil
+			}
+			// Stale bare-name or stale-abspath form — migrate in place.
+			if dryRun {
+				fmt.Fprintf(out, "[dry-run] Would migrate Cline PreToolUse at %s to abspath form\n", hookPath)
+				return nil
+			}
+			if err := backupSettings(hookPath); err != nil {
+				return err
+			}
+			if err := os.WriteFile(hookPath, []byte(newScript), 0o755); err != nil {
+				return fmt.Errorf("cline migrate: write %q: %w", hookPath, err)
+			}
+			fmt.Fprintf(out, "Migrated Cline PreToolUse hook to abspath form at %s (mode 0755)\n", hookPath)
 			return nil
 		}
 		// Foreign script: back up and report, but still install.
@@ -101,7 +126,7 @@ func installCline(hooksDir string, dryRun bool, out io.Writer) error {
 		return fmt.Errorf("cline: mkdir %q: %w", hooksDir, err)
 	}
 
-	if err := os.WriteFile(hookPath, []byte(clineScript), 0o755); err != nil {
+	if err := os.WriteFile(hookPath, []byte(newScript), 0o755); err != nil {
 		return fmt.Errorf("cline: write %q: %w", hookPath, err)
 	}
 
@@ -110,8 +135,9 @@ func installCline(hooksDir string, dryRun bool, out io.Writer) error {
 }
 
 // uninstallCline removes the beekeeper PreToolUse script from hooksDir.
-// It only removes the script if it contains clinePreCommand; foreign scripts
-// are preserved (T-10-20).
+// It only removes the script if it contains the beekeeper hook marker (suffix);
+// foreign scripts are preserved (T-10-20). Suffix matching covers BOTH old
+// bare-name and new abspath forms.
 func uninstallCline(hooksDir string, dryRun bool, out io.Writer) error {
 	hookPath := clinePreToolUsePath(hooksDir)
 
@@ -142,8 +168,14 @@ func uninstallCline(hooksDir string, dryRun bool, out io.Writer) error {
 	return nil
 }
 
-// containsClineCommand reports whether content contains the beekeeper command
-// that marks a script as a beekeeper-managed PreToolUse hook.
+// containsClineCommand reports whether content contains a beekeeper hook marker.
+// Matches BOTH old bare-name ("beekeeper check --hook cline") and new abspath
+// forms (e.g. '"/path/to/beekeeper" check --hook cline') via stable-suffix matching.
 func containsClineCommand(content string) bool {
-	return strings.Contains(content, clinePreCommand)
+	for _, line := range strings.Split(content, "\n") {
+		if matchesBeekeeperCommand(line, clineCheckSuffix) {
+			return true
+		}
+	}
+	return false
 }

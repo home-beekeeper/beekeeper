@@ -37,6 +37,10 @@ var windsurfEvents = []string{
 	"pre_read_code",
 }
 
+// windsurfCheckSuffix is the stable suffix for Windsurf's beekeeper hook command.
+// Used for idempotent install, migration, and targeted uninstall.
+const windsurfCheckSuffix = "check --hook windsurf"
+
 // windsurfHooksPath returns the path to Windsurf's hooks.json.
 func windsurfHooksPath(homeDir string) string {
 	return homeDir + "/.codeium/windsurf/hooks.json"
@@ -46,8 +50,11 @@ func windsurfHooksPath(homeDir string) string {
 // current OS. On Windows, Windsurf requires the "powershell" key; on
 // Linux/macOS it uses "command". This distinction is critical: using the wrong
 // key means the hook silently never executes on the primary platform.
+// The command uses the absolute binary path (resolved at install time) to
+// prevent exit-127 fail-open when beekeeper is installed after Windsurf
+// captured its PATH.
 func beekeeperWindsurfHook() windsurfHook {
-	const cmd = "beekeeper check --hook windsurf"
+	cmd := beekeeperCmd(windsurfCheckSuffix)
 	if runtime.GOOS == "windows" {
 		return windsurfHook{
 			PowerShell: cmd,
@@ -61,11 +68,12 @@ func beekeeperWindsurfHook() windsurfHook {
 }
 
 // containsWindsurfHookByCommand reports whether the given hook slice already
-// contains a beekeeper entry (matched by either Command or PowerShell field).
-// Used for idempotent install and targeted uninstall.
-func containsWindsurfHookByCommand(hooks []windsurfHook, cmd string) bool {
+// contains a beekeeper entry (matched by either Command or PowerShell field
+// via stable suffix matching). Used for idempotent install and targeted uninstall.
+// Matches BOTH old bare-name and new abspath forms via matchesBeekeeperCommand.
+func containsWindsurfHookByCommand(hooks []windsurfHook, suffix string) bool {
 	for _, h := range hooks {
-		if h.Command == cmd || h.PowerShell == cmd {
+		if matchesBeekeeperCommand(h.Command, suffix) || matchesBeekeeperCommand(h.PowerShell, suffix) {
 			return true
 		}
 	}
@@ -74,7 +82,8 @@ func containsWindsurfHookByCommand(hooks []windsurfHook, cmd string) bool {
 
 // installWindsurf appends Beekeeper's hook to the three Windsurf pre-exec
 // event arrays (pre_run_command, pre_mcp_tool_use, pre_read_code) in
-// ~/.codeium/windsurf/hooks.json. The function is idempotent.
+// ~/.codeium/windsurf/hooks.json. The function is idempotent: re-running
+// migrates an old bare-name entry to the new abspath form in place.
 //
 // CRITICAL: Windsurf's deny contract is exit 2 ONLY — there is no stdout-JSON
 // deny form. RenderDeny(HarnessWindsurf) emits nil Stdout. The installer wires
@@ -99,15 +108,31 @@ func installWindsurf(hooksPath string, dryRun bool, out io.Writer) error {
 		return fmt.Errorf("windsurf: read %q: %w", hooksPath, err)
 	}
 
-	const cmd = "beekeeper check --hook windsurf"
 	hook := beekeeperWindsurfHook()
+	newCmd := beekeeperCmd(windsurfCheckSuffix)
 
-	// Append beekeeper hook to each of the three Windsurf events, skipping if
-	// already present (idempotent).
+	// Append/migrate beekeeper hook to each of the three Windsurf events.
 	for _, event := range windsurfEvents {
-		if !containsWindsurfHookByCommand(existing.Hooks[event], cmd) {
-			existing.Hooks[event] = append(existing.Hooks[event], hook)
+		arr := existing.Hooks[event]
+		found := false
+		migrated := make([]windsurfHook, 0, len(arr)+1)
+		for _, h := range arr {
+			if matchesBeekeeperCommand(h.Command, windsurfCheckSuffix) || matchesBeekeeperCommand(h.PowerShell, windsurfCheckSuffix) {
+				found = true
+				// Check if migration needed (stale command in either key).
+				if h.Command != newCmd && h.PowerShell != newCmd {
+					migrated = append(migrated, hook)
+				} else {
+					migrated = append(migrated, h)
+				}
+			} else {
+				migrated = append(migrated, h)
+			}
 		}
+		if !found {
+			migrated = append(migrated, hook)
+		}
+		existing.Hooks[event] = migrated
 	}
 
 	if dryRun {
@@ -133,8 +158,10 @@ func installWindsurf(hooksPath string, dryRun bool, out io.Writer) error {
 	return writeFileAtomic(hooksPath, data)
 }
 
-// uninstallWindsurf removes the "beekeeper check --hook windsurf" entries from
+// uninstallWindsurf removes the beekeeper check --hook windsurf entries from
 // all three Windsurf event keys in ~/.codeium/windsurf/hooks.json.
+// Suffix matching covers BOTH old bare-name and new abspath forms, and matches
+// both the Command (Linux/macOS) and PowerShell (Windows) field.
 // Other hooks are preserved. A backup is created before modification.
 func uninstallWindsurf(hooksPath string, dryRun bool, out io.Writer) error {
 	data, err := os.ReadFile(hooksPath)
@@ -154,15 +181,14 @@ func uninstallWindsurf(hooksPath string, dryRun bool, out io.Writer) error {
 		existing.Hooks = make(map[string][]windsurfHook)
 	}
 
-	const cmd = "beekeeper check --hook windsurf"
 	totalRemoved := 0
 
-	// Iterate all three Windsurf event keys, filtering beekeeper entries.
+	// Iterate all three Windsurf event keys, filtering beekeeper entries by suffix.
 	for _, event := range windsurfEvents {
 		arr := existing.Hooks[event]
 		filtered := make([]windsurfHook, 0, len(arr))
 		for _, h := range arr {
-			if h.Command == cmd || h.PowerShell == cmd {
+			if matchesBeekeeperCommand(h.Command, windsurfCheckSuffix) || matchesBeekeeperCommand(h.PowerShell, windsurfCheckSuffix) {
 				totalRemoved++
 				continue
 			}

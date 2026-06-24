@@ -8,8 +8,8 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
-// Beekeeper's hook command string for Antigravity (Google).
-const antigravityPreCommand = "beekeeper check --hook antigravity"
+// Beekeeper's hook command stable suffix for Antigravity (Google).
+const antigravityCheckSuffix = "check --hook antigravity"
 
 // antigravitySettingsPath returns the path to Antigravity's hooks.json.
 // The primary location is ~/.gemini/antigravity/hooks.json.
@@ -23,6 +23,9 @@ func antigravitySettingsPath(homeDir string) string {
 // installAntigravity merges Beekeeper's PreToolUse hook into the Antigravity
 // hooks.json at settingsPath WITHOUT disturbing any pre-existing hooks or
 // other top-level settings keys.
+//
+// The installed command embeds the running binary's absolute path. Re-running
+// migrates an old bare-name entry to the new abspath form in place (no duplicate).
 //
 // Antigravity uses the PreToolUse event. The deny-field name is MED-confidence
 // (Antigravity docs are ambiguous between "decision":"deny",
@@ -38,7 +41,7 @@ func antigravitySettingsPath(homeDir string) string {
 func installAntigravity(settingsPath string, dryRun bool, out io.Writer) error {
 	if dryRun {
 		hooksConfig := map[string]any{
-			"PreToolUse": []any{beekeeperClaudePreEntryWith(antigravityPreCommand)},
+			"PreToolUse": []any{beekeeperClaudePreEntryWith(beekeeperCmd(antigravityCheckSuffix))},
 		}
 		data, _ := json.MarshalIndent(hooksConfig, "", "    ")
 		fmt.Fprintf(out, "[dry-run] Would merge into %s (hooks key — existing hooks preserved):\n%s\n", settingsPath, string(data))
@@ -55,7 +58,7 @@ func installAntigravity(settingsPath string, dryRun bool, out io.Writer) error {
 		hooks = map[string]any{}
 	}
 
-	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], antigravityPreCommand, beekeeperClaudePreEntryWith(antigravityPreCommand))
+	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], antigravityCheckSuffix, beekeeperClaudePreEntryWith(beekeeperCmd(antigravityCheckSuffix)))
 
 	if err := backupSettings(settingsPath); err != nil {
 		return err
@@ -68,6 +71,7 @@ func installAntigravity(settingsPath string, dryRun bool, out io.Writer) error {
 
 // uninstallAntigravity removes ONLY Beekeeper's entries from the Antigravity
 // hooks.json, preserving all other hooks and top-level keys.
+// Suffix matching covers BOTH old bare-name and new abspath forms.
 // A backup is created before modification.
 func uninstallAntigravity(settingsPath string, dryRun bool, out io.Writer) error {
 	settings, err := editorinit.ReadSettings(settingsPath)
@@ -86,7 +90,7 @@ func uninstallAntigravity(settingsPath string, dryRun bool, out io.Writer) error
 		return nil
 	}
 
-	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], antigravityPreCommand)
+	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], antigravityCheckSuffix)
 	removed := removedPre
 
 	if removed == 0 {

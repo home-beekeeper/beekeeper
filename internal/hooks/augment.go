@@ -8,10 +8,10 @@ import (
 	"github.com/home-beekeeper/beekeeper/internal/editorinit"
 )
 
-// Beekeeper's hook command strings for Augment.
+// Beekeeper's hook command stable suffixes for Augment.
 const (
-	augmentPreCommand  = "beekeeper check --hook augment"
-	augmentPostCommand = "beekeeper audit-record"
+	augmentCheckSuffix = "check --hook augment"
+	augmentAuditSuffix = "audit-record"
 )
 
 // augmentSettingsPath returns the path to Augment's settings.json.
@@ -23,6 +23,9 @@ func augmentSettingsPath(homeDir string) string {
 // Augment settings.json at settingsPath WITHOUT disturbing any pre-existing
 // hooks or other top-level settings keys.
 //
+// The installed commands embed the running binary's absolute path. Re-running
+// migrates an old bare-name entry to the new abspath form in place (no duplicate).
+//
 // Augment uses the same nested hookSpecificOutput schema as Claude Code:
 // settings.json with a "hooks" key containing "PreToolUse" and "PostToolUse"
 // event arrays. The merge-not-clobber trinity (mergeClaudeHookEntry,
@@ -32,8 +35,8 @@ func augmentSettingsPath(homeDir string) string {
 func installAugment(settingsPath string, dryRun bool, out io.Writer) error {
 	if dryRun {
 		hooksConfig := map[string]any{
-			"PreToolUse":  []any{beekeeperClaudePreEntryWith(augmentPreCommand)},
-			"PostToolUse": []any{beekeeperClaudePostEntryWith(augmentPostCommand)},
+			"PreToolUse":  []any{beekeeperClaudePreEntryWith(beekeeperCmd(augmentCheckSuffix))},
+			"PostToolUse": []any{beekeeperClaudePostEntryWith(beekeeperCmd(augmentAuditSuffix))},
 		}
 		data, _ := json.MarshalIndent(hooksConfig, "", "    ")
 		fmt.Fprintf(out, "[dry-run] Would merge into %s (hooks key — existing hooks preserved):\n%s\n", settingsPath, string(data))
@@ -50,8 +53,8 @@ func installAugment(settingsPath string, dryRun bool, out io.Writer) error {
 		hooks = map[string]any{}
 	}
 
-	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], augmentPreCommand, beekeeperClaudePreEntryWith(augmentPreCommand))
-	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], augmentPostCommand, beekeeperClaudePostEntryWith(augmentPostCommand))
+	hooks["PreToolUse"] = mergeClaudeHookEntry(hooks["PreToolUse"], augmentCheckSuffix, beekeeperClaudePreEntryWith(beekeeperCmd(augmentCheckSuffix)))
+	hooks["PostToolUse"] = mergeClaudeHookEntry(hooks["PostToolUse"], augmentAuditSuffix, beekeeperClaudePostEntryWith(beekeeperCmd(augmentAuditSuffix)))
 
 	if err := backupSettings(settingsPath); err != nil {
 		return err
@@ -62,6 +65,7 @@ func installAugment(settingsPath string, dryRun bool, out io.Writer) error {
 
 // uninstallAugment removes ONLY Beekeeper's entries from Augment's
 // settings.json, preserving all other hooks and top-level keys.
+// Suffix matching covers BOTH old bare-name and new abspath forms.
 // A backup is created before modification.
 func uninstallAugment(settingsPath string, dryRun bool, out io.Writer) error {
 	settings, err := editorinit.ReadSettings(settingsPath)
@@ -80,8 +84,8 @@ func uninstallAugment(settingsPath string, dryRun bool, out io.Writer) error {
 		return nil
 	}
 
-	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], augmentPreCommand)
-	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], augmentPostCommand)
+	preArr, removedPre := removeClaudeHookEntry(hooks["PreToolUse"], augmentCheckSuffix)
+	postArr, removedPost := removeClaudeHookEntry(hooks["PostToolUse"], augmentAuditSuffix)
 	removed := removedPre + removedPost
 
 	if removed == 0 {
