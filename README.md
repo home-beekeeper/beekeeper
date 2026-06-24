@@ -8,7 +8,7 @@
 
 Beekeeper sits between an agent and its tools. It evaluates each package install, file access, network call, and tool call before it runs, against corroboration-based threat intelligence and structural policy, and blocks what does not pass. It is a single static Go binary with no external runtime dependencies.
 
-The threat is the supply chain, not the model. Your agent installs the dependency the task needs, with no way to know that version shipped a credential stealer after its training cutoff. Beekeeper carries the fresh, corroborated knowledge the model lacks and checks the install before it runs. What it covers, and where coverage stops, is in [Harness support](#harness-support) and [Known gaps](#known-gaps). Read those before you trust it with anything.
+The threat is the supply chain, not the model. Your agent installs the dependency the task needs, with no way to know that version shipped a credential stealer after its training cutoff. Beekeeper carries the fresh, corroborated knowledge the model lacks and checks the install before it runs. [Harness support](#harness-support) and [Known gaps](#known-gaps) state what it covers and where coverage stops. Read those before you trust it with anything.
 
 > **v1.0.0** is the first public release. License: Apache 2.0.
 
@@ -16,7 +16,7 @@ The threat is the supply chain, not the model. Your agent installs the dependenc
 
 ## Why
 
-A coding agent's knowledge of which packages are safe is frozen at its training cutoff. It installs `some-build-tool@1.4.2` because the task needs it, with no way to know that version published a postinstall credential stealer after that cutoff, and no instinct to treat a routine dependency as a risk. The 2026 supply-chain wave (Nx Console, Shai-Hulud, the npm trusted-publisher OIDC attacks) targets exactly that gap: code that reaches a developer through a trusted, well-meaning install. Beekeeper puts a corroborated threat check, synced every two hours, with a second-source requirement and an audit trail, in front of the install.
+A coding agent's knowledge of which packages are safe is frozen at its training cutoff. It installs `some-build-tool@1.4.2` because the task needs it, with no way to know that version published a postinstall credential stealer after that cutoff, and no instinct to treat a routine dependency as a risk. The 2026 supply-chain wave (Nx Console, Shai-Hulud, the npm trusted-publisher OIDC attacks) targets exactly that gap: code that reaches a developer through a trusted, well-meaning install. Beekeeper puts a corroborated threat check in front of the install, synced every two hours, with a second-source requirement and an audit trail.
 
 ## Install
 
@@ -54,7 +54,7 @@ For harnesses without a pre-exec hook, an MCP gateway intercepts in-flight MCP t
 
 Sensitive-path enforcement blocks agent reads, and shell-redirect writes, of credential paths outside the working directory (`~/.ssh`, `~/.aws`, `~/.cargo/credentials`, `.env` globs, editor MCP config dirs), with canonicalization that closes tilde, `$VAR`, symlink, Windows alternate-data-stream, and trailing-dot evasion. The block merges most-restrictive-wins, so an allowlist cannot downgrade a credential-read block.
 
-Everything here is fail-closed: a crash, timeout, oversized input, or missing index produces a block, not an allow. `fail_mode: open` is an explicit opt-in, and a project-level config can set it, so the default is fail-closed but it can be turned off per working tree.
+Everything here is fail-closed: a crash, timeout, oversized input, or missing index produces a block, not an allow. `fail_mode: open` is an explicit opt-in, and a project-level config can set it, so the default is fail-closed but a working tree can turn it off.
 
 ### 2. Catalog corroboration (the supply-chain layer)
 
@@ -96,7 +96,7 @@ Sentry is detection-only: it writes audit records, it does not quarantine or kil
 
 ## Known gaps
 
-Documented so you do not build false confidence. None of these relax the fail-closed enforcement path; most are detection-coverage or configuration-trust limits.
+These are documented so you do not build false confidence. None relax the fail-closed enforcement path; most are detection-coverage or configuration-trust limits.
 
 - **Only Claude Code is live-verified.** The other 16 are contract-tested, not run against a real harness.
 - **Tier-3 native tools are unguarded.** Kilo and Trae have no upstream hook; only MCP tools route through the gateway. Native Bash, file, and shell tools bypass Beekeeper.
