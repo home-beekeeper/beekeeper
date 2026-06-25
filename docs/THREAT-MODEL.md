@@ -376,11 +376,21 @@ itself is the malicious package?"
    `beekeeper policy validate`) remain runnable so the developer can
    investigate.
 
-4. **Separate key, separate host**: The `beekeeper-self` feed is hosted
-   separately from the main repository and verified against a distinct Ed25519
-   public key embedded in the binary at compile time. Compromising the release
-   pipeline key does NOT allow forging a `beekeeper-self` feed signature. Both
-   systems must be compromised independently.
+4. **Separate signing key**: The `beekeeper-self` feed is verified against a
+   distinct Ed25519 public key embedded in the binary at compile time, separate
+   from the Sigstore/cosign release-signing identity. Compromising the release
+   pipeline key does NOT by itself allow forging a `beekeeper-self` feed
+   signature.
+
+   **Key rotation (v1.1.x):** The key embedded through v1.1.2 (`e09f12f0...`)
+   shared its private half with the committed test key in `selfcatalog_test.go`,
+   so the "separate key" property did not actually hold: anyone with a clone of
+   the public repository had the signing key. The impact was latent because no
+   feed has ever been published (the channel only ever degraded safely), but it
+   is a real defect. It is remediated by rotating to a new key whose private half
+   is held only by the maintainer and is never committed, and by giving the test
+   suite its own independent key. See "Feed publication status and key rotation"
+   below.
 
 5. **Fail-closed vs. transient network failure**: Beekeeper distinguishes
    between "signature invalid" (integrity failure → fail closed) and "network
@@ -413,6 +423,25 @@ The `beekeeper-self` feed is a static signed JSON file:
 The signature is an Ed25519 signature over `json.Marshal(entries)`, the
 canonical JSON encoding of the entries array, not over the full feed JSON
 (which would be circular). The public key is embedded in the binary.
+
+### Feed publication status and key rotation (v1.1.x)
+
+No `beekeeper-self` feed is currently published at the embedded default URL, so
+the startup and sync checks degrade safely (network error, warn-and-continue) on
+every run. This is the intended state until the rotation below completes.
+
+The embedded key was rotated because the pre-rotation key's private half was
+committed in the repository test fixtures (see item 4 above). Two constraints
+govern the rollout:
+
+- The feed is a single global resource fetched by every binary version, and an
+  Ed25519 signature validates against exactly one key. A feed signed with the new
+  key therefore fails verification on every pre-rotation binary (a
+  `SelfCatalogFailClosed` result that blocks enforcement). The new-key feed must
+  not be published until pre-rotation binaries are retired.
+- Until then, the safe degradation (no feed, warn-and-continue) is the correct
+  state. Publishing a feed signed with the old, public key would be security
+  theater and is explicitly avoided.
 
 ### Governance Honesty Note (v1.0.0)
 
