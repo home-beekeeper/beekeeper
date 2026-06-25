@@ -163,7 +163,7 @@ func TestDefaultFirstResponder(t *testing.T) {
 		},
 	}
 
-	err := defaultFirstResponder(context.Background(), cfg)
+	_, err := defaultFirstResponder(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("defaultFirstResponder returned error: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestDefaultFirstResponder_PropagatesError(t *testing.T) {
 		},
 	}
 
-	err := defaultFirstResponder(context.Background(), cfg)
+	_, err := defaultFirstResponder(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("defaultFirstResponder with failing CrossRefFn returned nil error; want error")
 	}
@@ -339,7 +339,7 @@ func TestRunFirstResponder_ThresholdDefault(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -376,7 +376,7 @@ func TestRunFirstResponder_SentryTargetsPathEmpty(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with empty SentryTargetsPath returned error: %v", err)
 	}
 }
@@ -404,7 +404,7 @@ func TestRunFirstResponder_CorpusDisabledSkipsRead(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder returned error: %v", err)
 	}
 }
@@ -425,7 +425,7 @@ func TestRunFirstResponder_CorpusPathEmptySkipsRead(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder returned error: %v", err)
 	}
 }
@@ -455,7 +455,7 @@ func TestRunFirstResponder_CorpusReadError(t *testing.T) {
 	}
 
 	// Must not return an error — corpus read failures are non-fatal (logged + skipped).
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with corrupt corpus returned error: %v", err)
 	}
 }
@@ -495,7 +495,7 @@ func TestRunFirstResponder_SentryTargetsLoadCorrupt(t *testing.T) {
 	}
 
 	// Must not error — a corrupt prior sentry-targets.json is not a hard failure.
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with corrupt sentry targets returned error: %v", err)
 	}
 }
@@ -531,7 +531,7 @@ func TestRunFirstResponder_CorpusNilOrEmptyEnvelopeSkipped(t *testing.T) {
 	}
 
 	// Must not error — nil envelope records are silently skipped.
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with nil-envelope corpus record returned error: %v", err)
 	}
 }
