@@ -466,12 +466,26 @@ func newCatalogsCmd() *cobra.Command {
 		Use:   "catalogs",
 		Short: "Manage cached threat-intel catalogs",
 	}
-	var syncForce bool
+	var syncForce, syncBackground bool
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Fetch and cache catalogs, then build the mmap index (interval-gated; --force to override)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// --background is the OS-scheduler entry point: hide the console
+			// (Windows; no-op elsewhere) so the hourly heartbeat does not flash a
+			// blank window, and tee output to <state>/logs/sync.log so a scheduled
+			// run is observable. Both are best-effort — a failure to hide or open
+			// the log never blocks the sync (fail-open on VISIBILITY only; the
+			// sync's own fail-closed semantics are unchanged).
+			if syncBackground {
+				HideConsoleWindow()
+				if lf, err := openSyncLog(); err == nil {
+					defer lf.Close()
+					cmd.SetOut(teeWriter(cmd.OutOrStdout(), lf))
+					cmd.SetErr(teeWriter(cmd.ErrOrStderr(), lf))
+				}
+			}
 			// Interval gate + ETag-conditional sync + freshness tracking live in
 			// runCatalogsSync so the OS-scheduled daemon and manual invocation
 			// share one implementation (Phase 20, CSYNC).
@@ -479,6 +493,7 @@ func newCatalogsCmd() *cobra.Command {
 		},
 	}
 	syncCmd.Flags().BoolVar(&syncForce, "force", false, "Sync now even if the configured interval has not elapsed (manual/TUI use)")
+	syncCmd.Flags().BoolVar(&syncBackground, "background", false, "Scheduled-daemon mode: hide the console (Windows) and log to <state>/logs/sync.log")
 	catalogs.AddCommand(syncCmd)
 
 	// catalogs daemon — unprivileged user-level background sync scheduler (CSYNC-04/05).
