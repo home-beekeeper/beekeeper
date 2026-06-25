@@ -116,6 +116,22 @@ func TestAuditDirUnderStateDir(t *testing.T) {
 	}
 }
 
+func TestLogDirUnderStateDir(t *testing.T) {
+	state, err := StateDir()
+	if err != nil {
+		t.Fatalf("StateDir() returned error: %v", err)
+	}
+	logs, err := LogDir()
+	if err != nil {
+		t.Fatalf("LogDir() returned error: %v", err)
+	}
+
+	want := filepath.Join(state, "logs")
+	if logs != want {
+		t.Fatalf("LogDir() = %q, want %q", logs, want)
+	}
+}
+
 func TestConfigPathUnderStateDir(t *testing.T) {
 	state, err := StateDir()
 	if err != nil {
