@@ -445,6 +445,101 @@ func TestUpdateNewRecordsTriggersCritical(t *testing.T) {
 	}
 }
 
+// catalogQuarantineRecord builds an FRSP audit record for the Gap-4 TUI tests.
+func catalogQuarantineRecord(recordType, pkg string) audit.AuditRecord {
+	return audit.AuditRecord{
+		RecordType: recordType,
+		ToolName:   pkg,
+		RuleIDs:    []string{"FRSP-01"},
+		Timestamp:  makeTS(0),
+		Reason:     "catalog match: 2 sources corroborated",
+	}
+}
+
+// TestUpdateCatalogQuarantineRaisesCard proves a background catalog_quarantine
+// record raises the quarantine card (with human-gated [r]/[p]/[a]) WITHOUT
+// entering sentry-critical mode.
+func TestUpdateCatalogQuarantineRaisesCard(t *testing.T) {
+	a := NewApp(false)
+	m, _ := a.Update(newRecordsMsg{catalogQuarantineRecord("catalog_quarantine", "evil-pkg")})
+	app := m.(App)
+	if app.critical {
+		t.Error("a catalog_quarantine must not set sentry-critical")
+	}
+	if !app.quarantineAlert {
+		t.Fatal("a catalog_quarantine should raise the quarantine card")
+	}
+	keys := map[string]bool{}
+	for _, act := range app.quarantineIncident.Actions {
+		keys[act.Key] = true
+	}
+	if !keys["r"] || !keys["p"] || !keys["a"] {
+		t.Errorf("catalog-quarantine card should expose [r]/[p]/[a], got %+v", app.quarantineIncident.Actions)
+	}
+}
+
+// TestUpdatePendingQuarantineAcknowledgeOnly proves a pending-quarantine record
+// raises an acknowledge-only card (nothing to restore/purge yet).
+func TestUpdatePendingQuarantineAcknowledgeOnly(t *testing.T) {
+	a := NewApp(false)
+	m, _ := a.Update(newRecordsMsg{catalogQuarantineRecord("pending-quarantine", "evil-wheel")})
+	app := m.(App)
+	if !app.quarantineAlert {
+		t.Fatal("a pending-quarantine should raise the quarantine card")
+	}
+	for _, act := range app.quarantineIncident.Actions {
+		if act.Key == "r" || act.Key == "p" {
+			t.Errorf("pending-quarantine must not expose restore/purge, got %q", act.Key)
+		}
+	}
+}
+
+// TestSentryCriticalPreemptsQuarantine proves a sentry critical takes precedence
+// over a showing background quarantine card.
+func TestSentryCriticalPreemptsQuarantine(t *testing.T) {
+	a := NewApp(false)
+	m, _ := a.Update(newRecordsMsg{catalogQuarantineRecord("catalog_quarantine", "evil-pkg")})
+	a = m.(App)
+	if !a.quarantineAlert {
+		t.Fatal("setup: quarantine card should be showing")
+	}
+	m2, _ := a.Update(newRecordsMsg{sampleSentryRecord()})
+	app := m2.(App)
+	if !app.critical {
+		t.Fatal("sentry critical should preempt and set critical")
+	}
+	if app.quarantineAlert {
+		t.Error("sentry critical should clear the lower-precedence quarantine card")
+	}
+}
+
+// TestHandleKeyQuarantineAcknowledge proves 'a' dismisses the quarantine card.
+func TestHandleKeyQuarantineAcknowledge(t *testing.T) {
+	a := NewApp(false)
+	a.quarantineAlert = true
+	a.quarantineIncident = CatalogQuarantineIncidentFromRecord(catalogQuarantineRecord("catalog_quarantine", "evil-pkg"), false)
+	m, _ := a.handleKey(keyText("a"))
+	if m.(App).quarantineAlert {
+		t.Error("'a' should acknowledge and clear the quarantine card")
+	}
+}
+
+// TestHandleKeyQuarantineRestoreOpensPanel proves 'r' on the card opens the
+// quarantine panel (where restore runs admin-gated) and clears the card.
+func TestHandleKeyQuarantineRestoreOpensPanel(t *testing.T) {
+	a := NewApp(false)
+	a.quarantineAlert = true
+	a.quarantineIncident = CatalogQuarantineIncidentFromRecord(catalogQuarantineRecord("catalog_quarantine", "evil-pkg"), false)
+	m, _ := a.handleKey(keyText("r"))
+	app := m.(App)
+	if app.quarantineAlert {
+		t.Error("'r' should clear the card")
+	}
+	if app.mode != modePanel || app.panel != panelQuarantine {
+		t.Errorf("'r' should open the quarantine panel; got mode=%d panel=%s", app.mode, app.panel)
+	}
+}
+
 // TestUpdateNewRecordsRoutedToPanel proves newRecordsMsg is also delivered to an
 // open panel.
 func TestUpdateNewRecordsRoutedToPanel(t *testing.T) {

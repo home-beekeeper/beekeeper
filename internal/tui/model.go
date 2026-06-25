@@ -41,7 +41,13 @@ type App struct {
 	palette   PaletteModel
 	panelM    PanelModel
 	incident  IncidentModel
-	toast     ToastModel
+	// quarantineAlert + quarantineIncident hold the catalog-quarantine card raised
+	// by a BACKGROUND sync hit (FRSP-01/02). It is lower precedence than a sentry
+	// critical: a.critical is checked first in both rendering and key handling, so
+	// a live sentry incident always preempts the quarantine card.
+	quarantineAlert    bool
+	quarantineIncident IncidentModel
+	toast              ToastModel
 	health    HealthState
 	status    string
 	clock     time.Time
@@ -114,6 +120,28 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.status = "⚠ 1 CRITICAL: " + a.incident.RuleName
 				a.health.LastBlock = "sentry firing"
 				a.health.SentryOK = false
+				// A sentry critical preempts a background quarantine card.
+				a.quarantineAlert = false
+				a.quarantineIncident = IncidentModel{}
+				continue
+			}
+			// Background catalog-quarantine from a scheduled sync (FRSP-01/02): raise
+			// the catalog-quarantine card so an operator with the TUI open sees it.
+			// Skip when a sentry critical is already showing (it takes precedence).
+			if !a.critical && !a.quarantineAlert &&
+				(rec.RecordType == "catalog_quarantine" || rec.RecordType == "pending-quarantine") {
+				pending := rec.RecordType == "pending-quarantine"
+				a.quarantineAlert = true
+				a.quarantineIncident = CatalogQuarantineIncidentFromRecord(rec, pending)
+				pkg := rec.ToolName
+				if pkg == "" {
+					pkg = "package"
+				}
+				if pending {
+					a.status = "⚠ scan hit pending quarantine: " + pkg
+				} else {
+					a.status = "⚠ package quarantined: " + pkg
+				}
 			}
 		}
 		return a, nil
@@ -282,6 +310,26 @@ func (a App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Background catalog-quarantine card keys (lower precedence than critical).
+	if a.quarantineAlert {
+		switch k {
+		case "a", "A":
+			return a.acknowledgeQuarantineAlert()
+		case "r", "R", "p", "P":
+			// Restore/purge are performed in the quarantine panel (admin-gated, with
+			// confirmation). Open it rather than claiming a direct action on the card.
+			a.quarantineAlert = false
+			a.quarantineIncident = IncidentModel{}
+			return a.openPanel(panelQuarantine, NewQuarantinePanel(a.adminMode))
+		case "up", "left", "down", "right":
+			var cmd tea.Cmd
+			a.quarantineIncident, cmd = a.quarantineIncident.Update(msg)
+			return a, cmd
+		case "enter":
+			return a.doQuarantineIncidentAction()
+		}
+	}
+
 	// Calm mode global key bindings. Prototype-locked set, intentionally extended
 	// 2026-06-10 with `p` so the real policy editor has a first-class shortcut
 	// (it was previously reachable only via the `:` palette → "policy edit").
@@ -319,6 +367,37 @@ func (a App) acknowledgeIncident() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	a.toast, cmd = a.toast.Show("incident acknowledged: no automated containment; remediate via CLI", toastWarn)
 	return a, cmd
+}
+
+// acknowledgeQuarantineAlert dismisses the background catalog-quarantine card.
+// It claims no action beyond dismissal: the artifact is already (reversibly)
+// quarantined and persists in the quarantine panel for restore/purge.
+func (a App) acknowledgeQuarantineAlert() (tea.Model, tea.Cmd) {
+	a.quarantineAlert = false
+	a.quarantineIncident = IncidentModel{}
+	a.status = "acknowledged · review held items via : → quarantine"
+	var cmd tea.Cmd
+	a.toast, cmd = a.toast.Show("quarantine acknowledged", toastOK)
+	return a, cmd
+}
+
+// doQuarantineIncidentAction executes the selected action on the background
+// catalog-quarantine card. Restore/purge route to the quarantine panel (where
+// they run admin-gated with confirmation); acknowledge dismisses the card.
+func (a App) doQuarantineIncidentAction() (tea.Model, tea.Cmd) {
+	if len(a.quarantineIncident.Actions) == 0 {
+		return a, nil
+	}
+	sel := a.quarantineIncident.Actions[a.quarantineIncident.SelAction]
+	switch sel.Key {
+	case "a":
+		return a.acknowledgeQuarantineAlert()
+	case "r", "p":
+		a.quarantineAlert = false
+		a.quarantineIncident = IncidentModel{}
+		return a.openPanel(panelQuarantine, NewQuarantinePanel(a.adminMode))
+	}
+	return a, nil
 }
 
 // doIncidentAction executes the currently selected incident action button.
