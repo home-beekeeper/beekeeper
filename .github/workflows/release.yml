@@ -83,3 +83,29 @@ jobs:
     with:
       base64-subjects: "${{ needs.goreleaser.outputs.hashes }}"
       upload-assets: true
+
+  publish:
+    # Publish the draft release only AFTER provenance has been attached. GoReleaser
+    # creates the release as a draft (.goreleaser.yaml release.draft: true) so every
+    # asset, including the SLSA provenance from the provenance job, is in place
+    # before the release is published. This is required for GitHub immutable
+    # releases: a published (immutable) release cannot receive new assets. If
+    # provenance fails this job does not run, so the release stays a draft rather
+    # than publishing incomplete.
+    needs: [goreleaser, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # flip the draft release to published
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - name: Publish the draft release
+        # Tag and repo are passed via env (not interpolated into the run script) to
+        # avoid template injection from a tag-controlled github.ref_name.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release edit "$TAG" --repo "$REPO" --draft=false
