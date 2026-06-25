@@ -88,6 +88,19 @@ func AuditDir() (string, error) {
 	return filepath.Join(dir, "audit"), nil
 }
 
+// LogDir returns the daemon-log directory under the state directory. The
+// background catalog-sync run (`catalogs sync --background`) tees its
+// human-readable output here so a scheduled run is never invisible — on Windows
+// the scheduler used to flash a console that discarded the output, and macOS
+// launchd discards stdout entirely.
+func LogDir() (string, error) {
+	dir, err := StateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "logs"), nil
+}
+
 // ConfigPath returns the path to the Beekeeper config file under the state
 // directory.
 func ConfigPath() (string, error) {

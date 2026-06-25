@@ -23,6 +23,62 @@ func TestLoadStateMissing(t *testing.T) {
 	}
 }
 
+func TestSyncSummaryRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	at := time.Now().UTC().Truncate(time.Second)
+	next := at.Add(2 * time.Hour)
+	original := WatchState{
+		Sources: map[string]SourceState{"bumblebee": {Count: 10}},
+		LastSync: &SyncSummary{
+			At:              at,
+			Result:          "synced",
+			Entries:         10,
+			ScanHits:        2,
+			Quarantined:     1,
+			Pending:         1,
+			WouldQuarantine: 0,
+			NextDue:         next,
+		},
+	}
+	if err := SaveState(path, original); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	got, err := LoadState(path)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if got.LastSync == nil {
+		t.Fatal("LastSync was nil after round-trip")
+	}
+	s := got.LastSync
+	if s.Result != "synced" || s.Entries != 10 || s.ScanHits != 2 || s.Quarantined != 1 || s.Pending != 1 {
+		t.Fatalf("LastSync fields lost in round-trip: %+v", *s)
+	}
+	if !s.At.Equal(at) || !s.NextDue.Equal(next) {
+		t.Fatalf("LastSync timestamps lost: At=%v NextDue=%v", s.At, s.NextDue)
+	}
+}
+
+// TestSyncSummaryAbsentParsesNil verifies back-compat: a state.json written
+// before the last_sync field existed parses cleanly with LastSync == nil.
+func TestSyncSummaryAbsentParsesNil(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(path, []byte(`{"sources":{"bumblebee":{"hash":"x","count":1}}}`), 0o600); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+	got, err := LoadState(path)
+	if err != nil {
+		t.Fatalf("LoadState legacy: %v", err)
+	}
+	if got.LastSync != nil {
+		t.Fatalf("legacy state without last_sync should parse LastSync as nil, got %+v", *got.LastSync)
+	}
+}
+
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")

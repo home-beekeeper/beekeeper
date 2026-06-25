@@ -12,10 +12,17 @@ import (
 
 	"github.com/home-beekeeper/beekeeper/internal/audit"
 	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/notify"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 	"github.com/home-beekeeper/beekeeper/internal/quarantine"
 	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
+
+// notifyFn is the package-level seam for desktop notifications, so a real
+// sync-hit quarantine surfaces a toast even with the TUI closed. Production code
+// leaves it as notify.Notify (best-effort, errors swallowed); tests replace it
+// to assert the toast fires only on a real move.
+var notifyFn = notify.Notify
 
 // FirstResponderConfig holds all parameters for RunFirstResponder.
 // The CrossRefFn field is injectable for tests; production code leaves it nil
@@ -23,6 +30,11 @@ import (
 type FirstResponderConfig struct {
 	// Enabled mirrors AutoQuarantineConfig.Enabled.
 	Enabled bool
+	// NotifyConfig controls the best-effort desktop notification fired on a real
+	// (non-dry-run) quarantine, mirroring the watch daemon (handler.go). The zero
+	// value (Enabled:false) sends nothing — so the synchronous hook path, which
+	// never sets it, never notifies.
+	NotifyConfig notify.Config
 	// DryRun: when true, audits findings without moving any artifact.
 	DryRun bool
 	// Threshold is the minimum CorroborationCount to trigger auto-quarantine.
@@ -61,6 +73,25 @@ type FirstResponderConfig struct {
 	CorpusSentryThreshold int
 }
 
+// FirstResponderResult reports what a RunFirstResponder pass did, so the caller
+// (the catalog-sync daemon) can record an honest SyncSummary instead of guessing.
+// Counts span BOTH the scan-hit and corpus-adjudication paths.
+type FirstResponderResult struct {
+	// ScanHits is the number of installed packages that matched the catalog at or
+	// above the auto-quarantine threshold (the actionable findings), regardless of
+	// whether auto-quarantine was enabled.
+	ScanHits int
+	// Quarantined is the number of artifacts actually moved to quarantine
+	// (reversible). Zero in dry-run mode.
+	Quarantined int
+	// Pending is the number of hits whose on-disk path could not be resolved
+	// (recorded as pending-quarantine rather than guessing a path).
+	Pending int
+	// WouldQuarantine is the number of hits that would have been quarantined but
+	// were not because auto-quarantine is in dry-run mode.
+	WouldQuarantine int
+}
+
 // firstResponderFn is the package-level injectable seam for cmd/beekeeper.
 // Mirrors scanOnDeltaFn: production code leaves it as defaultFirstResponder;
 // cmd tests can replace it with a no-op to avoid requiring a live scan binary.
@@ -68,7 +99,7 @@ var firstResponderFn = defaultFirstResponder
 
 // defaultFirstResponder is the production implementation. It is separate from
 // RunFirstResponder so the injectable var is a stable target.
-func defaultFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
+func defaultFirstResponder(ctx context.Context, cfg FirstResponderConfig) (FirstResponderResult, error) {
 	return RunFirstResponder(ctx, cfg)
 }
 
@@ -92,7 +123,9 @@ func defaultFirstResponder(ctx context.Context, cfg FirstResponderConfig) error 
 //   - Scan is READ-ONLY: never removes/disables/edits a package.
 //   - Quarantine is a REVERSIBLE move (os.Rename + manifest). Purge stays human-gated.
 //   - Sentry target-list is DETECTION-ONLY: no kill/isolate/network-cut.
-func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
+func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) (FirstResponderResult, error) {
+	var result FirstResponderResult
+
 	crossRef := cfg.CrossRefFn
 	if crossRef == nil {
 		crossRef = CrossReference
@@ -109,7 +142,7 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 	if err != nil {
 		// CrossReference failure is propagated — callers should log and continue
 		// (fail-closed: a broken scan is not a license to skip quarantine checks).
-		return fmt.Errorf("first-responder: cross-reference scan: %w", err)
+		return result, fmt.Errorf("first-responder: cross-reference scan: %w", err)
 	}
 
 	// Load the Sentry target list (best-effort; missing file is an empty list).
@@ -135,9 +168,14 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 		// credential alerts (the exact single-source threat corroboration is
 		// meant to neutralize). Record a target ONLY when the hit is corroborated
 		// to threshold, regardless of the Enabled/DryRun move gate below.
-		if targets != nil && hit.CorroborationCount >= threshold {
-			expectedProcess := ecosystemToProcess(hit.Ecosystem)
-			targets.AddTarget(hit.Package, hit.InstalledPath, expectedProcess)
+		if hit.CorroborationCount >= threshold {
+			// Count every corroborated match as a scan hit for the summary, even
+			// when auto-quarantine is disabled — a match is meaningful visibility.
+			result.ScanHits++
+			if targets != nil {
+				expectedProcess := ecosystemToProcess(hit.Ecosystem)
+				targets.AddTarget(hit.Package, hit.InstalledPath, expectedProcess)
+			}
 		}
 
 		// Only act if enabled and corroboration meets threshold.
@@ -148,12 +186,14 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 		if cfg.DryRun {
 			// Dry-run: audit "would-quarantine" without moving.
 			writeFirstResponderAudit(cfg.AuditPath, "would-quarantine", hit)
+			result.WouldQuarantine++
 			continue
 		}
 
 		if !hit.PathResolved || hit.InstalledPath == "" {
 			// Path unknown: emit pending-quarantine audit record.
 			writeFirstResponderAudit(cfg.AuditPath, "pending-quarantine", hit)
+			result.Pending++
 			continue
 		}
 
@@ -182,6 +222,13 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 		}
 
 		writeFirstResponderAudit(cfg.AuditPath, "catalog_quarantine", hit)
+		result.Quarantined++
+
+		// Best-effort desktop toast so a background sync-hit is surfaced even with
+		// the TUI closed. Fires only on a REAL move (not dry-run, not pending), at
+		// the same site as the catalog_quarantine audit.
+		notifyFn(cfg.NotifyConfig, "Beekeeper: package quarantined",
+			fmt.Sprintf("%s/%s@%s — %d sources corroborated", hit.Ecosystem, hit.Package, hit.Version, hit.CorroborationCount))
 	}
 
 	// FRB-01/02/04: corpus-adjudication path.
@@ -253,6 +300,7 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 					// DryRun:true.
 					if cfg.DryRun {
 						writeCorpusFirstResponderAudit(cfg.AuditPath, "would-quarantine", ecosystem, pkg, version)
+						result.WouldQuarantine++
 						continue
 					}
 
@@ -280,9 +328,16 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 					}
 
 					writeCorpusFirstResponderAudit(cfg.AuditPath, "catalog_quarantine", ecosystem, pkg, version)
+					result.Quarantined++
+
+					// Best-effort desktop toast (corpus-adjudication path), mirroring
+					// the scan-hit branch. Real move only.
+					notifyFn(cfg.NotifyConfig, "Beekeeper: package quarantined",
+						fmt.Sprintf("%s/%s@%s — corpus adjudication: confirmed malicious", ecosystem, pkg, version))
 				} else {
 					// No local install found — emit pending-quarantine.
 					writeCorpusFirstResponderAudit(cfg.AuditPath, "pending-quarantine", ecosystem, pkg, version)
+					result.Pending++
 				}
 			}
 		}
@@ -295,7 +350,7 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) error {
 		}
 	}
 
-	return nil
+	return result, nil
 }
 
 // writeFirstResponderAudit appends a FRSP-01 audit record to the audit log.

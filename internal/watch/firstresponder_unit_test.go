@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/home-beekeeper/beekeeper/internal/notify"
 	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
 
@@ -163,7 +164,7 @@ func TestDefaultFirstResponder(t *testing.T) {
 		},
 	}
 
-	err := defaultFirstResponder(context.Background(), cfg)
+	_, err := defaultFirstResponder(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("defaultFirstResponder returned error: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestDefaultFirstResponder_PropagatesError(t *testing.T) {
 		},
 	}
 
-	err := defaultFirstResponder(context.Background(), cfg)
+	_, err := defaultFirstResponder(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("defaultFirstResponder with failing CrossRefFn returned nil error; want error")
 	}
@@ -339,7 +340,7 @@ func TestRunFirstResponder_ThresholdDefault(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -376,7 +377,7 @@ func TestRunFirstResponder_SentryTargetsPathEmpty(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with empty SentryTargetsPath returned error: %v", err)
 	}
 }
@@ -404,7 +405,7 @@ func TestRunFirstResponder_CorpusDisabledSkipsRead(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder returned error: %v", err)
 	}
 }
@@ -425,7 +426,7 @@ func TestRunFirstResponder_CorpusPathEmptySkipsRead(t *testing.T) {
 		},
 	}
 
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder returned error: %v", err)
 	}
 }
@@ -455,7 +456,7 @@ func TestRunFirstResponder_CorpusReadError(t *testing.T) {
 	}
 
 	// Must not return an error — corpus read failures are non-fatal (logged + skipped).
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with corrupt corpus returned error: %v", err)
 	}
 }
@@ -495,7 +496,7 @@ func TestRunFirstResponder_SentryTargetsLoadCorrupt(t *testing.T) {
 	}
 
 	// Must not error — a corrupt prior sentry-targets.json is not a hard failure.
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with corrupt sentry targets returned error: %v", err)
 	}
 }
@@ -531,8 +532,65 @@ func TestRunFirstResponder_CorpusNilOrEmptyEnvelopeSkipped(t *testing.T) {
 	}
 
 	// Must not error — nil envelope records are silently skipped.
-	if err := RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder with nil-envelope corpus record returned error: %v", err)
+	}
+}
+
+// TestFirstResponderNotifiesOnRealMoveOnly verifies the Gap-3 toast discipline:
+// a REAL (non-dry-run) quarantine fires exactly one desktop notification naming
+// the package; a dry-run move fires none. The NotifyConfig.Enabled gate itself
+// is notify.Notify's own contract (covered in the notify package) — here we stub
+// notifyFn to observe the call SITE, which must fire only on a real move.
+func TestFirstResponderNotifiesOnRealMoveOnly(t *testing.T) {
+	origNotify := notifyFn
+	t.Cleanup(func() { notifyFn = origNotify })
+	var calls []string
+	notifyFn = func(_ notify.Config, title, message string) {
+		calls = append(calls, title+"|"+message)
+	}
+
+	base := func(dryRun bool) FirstResponderConfig {
+		pkgDir := filepath.Join(t.TempDir(), "evil-pkg")
+		if err := os.MkdirAll(pkgDir, 0o700); err != nil {
+			t.Fatalf("mkdir pkgDir: %v", err)
+		}
+		return FirstResponderConfig{
+			Enabled:           true,
+			DryRun:            dryRun,
+			Threshold:         2,
+			QuarantineDir:     t.TempDir(),
+			AuditPath:         filepath.Join(t.TempDir(), "a.ndjson"),
+			SentryTargetsPath: filepath.Join(t.TempDir(), "st.json"),
+			NotifyConfig:      notify.Config{Enabled: true},
+			CrossRefFn: func(_ context.Context, _ CrossRefConfig) ([]ScanHit, error) {
+				return []ScanHit{{
+					Ecosystem: "npm", Package: "evil-package", Version: "1.0.0",
+					InstalledPath: pkgDir, PathResolved: true, CorroborationCount: 2,
+				}}, nil
+			},
+		}
+	}
+
+	// Real move → exactly one toast naming the package.
+	calls = nil
+	if _, err := RunFirstResponder(context.Background(), base(false)); err != nil {
+		t.Fatalf("RunFirstResponder real: %v", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("real move: want 1 notification, got %d (%v)", len(calls), calls)
+	}
+	if !containsStr(calls[0], "evil-package") {
+		t.Errorf("notification missing package name: %q", calls[0])
+	}
+
+	// Dry-run → no toast (no move happened).
+	calls = nil
+	if _, err := RunFirstResponder(context.Background(), base(true)); err != nil {
+		t.Fatalf("RunFirstResponder dry-run: %v", err)
+	}
+	if len(calls) != 0 {
+		t.Errorf("dry-run: want 0 notifications, got %d (%v)", len(calls), calls)
 	}
 }
 

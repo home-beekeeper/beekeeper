@@ -12,6 +12,7 @@ import (
 
 	"github.com/home-beekeeper/beekeeper/internal/catalog"
 	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/notify"
 	"github.com/home-beekeeper/beekeeper/internal/platform"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 	"github.com/home-beekeeper/beekeeper/internal/watch"
@@ -26,7 +27,7 @@ const catalogSyncSourceName = "bumblebee"
 // firstResponderFn is the package-level injectable seam for runCatalogsSync.
 // Mirrors scanOnDeltaFn: production code leaves it as watch.RunFirstResponder;
 // cmd tests replace it with a no-op or a closure to isolate the FRB wiring.
-var firstResponderFn = func(ctx context.Context, cfg watch.FirstResponderConfig) error {
+var firstResponderFn = func(ctx context.Context, cfg watch.FirstResponderConfig) (watch.FirstResponderResult, error) {
 	return watch.RunFirstResponder(ctx, cfg)
 }
 
@@ -83,8 +84,36 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 	ss := st.Sources[catalogSyncSourceName] // zero value if absent — preserves any watch-daemon fields
 
 	out := cmd.OutOrStdout()
+	// errOut is the command's error stream (teed to sync.log under --background),
+	// used in place of os.Stderr so a scheduled run's diagnostics are captured.
+	errOut := cmd.ErrOrStderr()
 	interval := cfg.CatalogSyncInterval()
 	now := catalogSyncNow()
+
+	// frResult is populated by the first-responder pass below (stays zero when
+	// corpus is disabled); its counts feed the persisted SyncSummary so
+	// `beekeeper catalogs status` reports what this run actually did.
+	var frResult watch.FirstResponderResult
+
+	// buildSummary constructs the SyncSummary for the current run. NextDue is
+	// derived from the persisted LastSuccess + interval (zero when never synced).
+	buildSummary := func(result, lastErr string, entries int) *catalog.SyncSummary {
+		var nextDue time.Time
+		if cur := st.Sources[catalogSyncSourceName]; !cur.LastSuccess.IsZero() {
+			nextDue = cur.LastSuccess.Add(interval)
+		}
+		return &catalog.SyncSummary{
+			At:              now,
+			Result:          result,
+			Entries:         entries,
+			ScanHits:        frResult.ScanHits,
+			Quarantined:     frResult.Quarantined,
+			Pending:         frResult.Pending,
+			WouldQuarantine: frResult.WouldQuarantine,
+			LastError:       lastErr,
+			NextDue:         nextDue,
+		}
+	}
 
 	// Phase 23 (OQ-3 / ADJ-01): bounded adjudication batch pass.
 	// Run BEFORE the HTTP catalog fetch (so a fetch failure never skips adjudication
@@ -93,7 +122,7 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 	if cfg.Corpus.Enabled {
 		corpusPath, cpErr := corpus.ResolveCorpusPath(cfg.Corpus, stateDir)
 		if cpErr != nil {
-			fmt.Fprintf(os.Stderr, "beekeeper: corpus: resolve corpus path for adjudication: %v\n", cpErr)
+			fmt.Fprintf(errOut, "beekeeper: corpus: resolve corpus path for adjudication: %v\n", cpErr)
 		} else {
 			// Default corroboration thresholds (PLCY-01). Thresholds from policy files
 			// are not loaded here to keep the sync fast; catalog_confirmation uses the
@@ -128,7 +157,7 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 			cleanDays := cfg.CorpusDownstreamCleanDays()
 			if batchErr := corpus.RunAdjudicationBatch(batchCtx, corpusPath, stateFile, idx, thresholds, cleanDays); batchErr != nil {
 				// Non-fatal: log to stderr and continue. The sync must proceed.
-				fmt.Fprintf(os.Stderr, "beekeeper: corpus adjudication batch: %v\n", batchErr)
+				fmt.Fprintf(errOut, "beekeeper: corpus adjudication batch: %v\n", batchErr)
 			}
 
 			// Phase 24 (FRB-01/04): first-responder corpus pass.
@@ -137,10 +166,10 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 			// Resolve the audit directory for the audit log path.
 			auditDir, adErr := platform.AuditDir()
 			if adErr != nil {
-				fmt.Fprintf(os.Stderr, "beekeeper: corpus first-responder: resolve audit dir: %v\n", adErr)
+				fmt.Fprintf(errOut, "beekeeper: corpus first-responder: resolve audit dir: %v\n", adErr)
 				// Non-fatal: continue without the first-responder pass.
 			} else {
-				if frErr := firstResponderFn(cmd.Context(), watch.FirstResponderConfig{
+				frRes, frErr := firstResponderFn(cmd.Context(), watch.FirstResponderConfig{
 					CorpusPath:            corpusPath,
 					CorpusEnabled:         cfg.Corpus.Enabled,
 					CorpusSentryThreshold: 2,
@@ -157,9 +186,15 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 					// safe-default dry_run:true, and ignored a tightened threshold.
 					DryRun:    cfg.AutoQuarantineDryRun(),
 					Threshold: cfg.AutoQuarantineThreshold(),
-				}); frErr != nil {
+					// Notify on a real quarantine, mirroring the watch daemon
+					// (main.go NewHandler notify.Config{Enabled:true}). Best-effort
+					// toast so a background sync-hit is surfaced with the TUI closed.
+					NotifyConfig: notify.Config{Enabled: true},
+				})
+				frResult = frRes
+				if frErr != nil {
 					// Non-fatal: log to stderr and continue. The sync must proceed.
-					fmt.Fprintf(os.Stderr, "beekeeper: corpus first-responder: %v\n", frErr)
+					fmt.Fprintf(errOut, "beekeeper: corpus first-responder: %v\n", frErr)
 				}
 			}
 
@@ -169,7 +204,7 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 			malicious, rdErr := corpus.ReadMaliciousRecords(corpusPath)
 			if rdErr != nil {
 				// Non-fatal: log to stderr and continue. The sync must proceed.
-				fmt.Fprintf(os.Stderr, "beekeeper: corpus: read malicious records for overlay: %v\n", rdErr)
+				fmt.Fprintf(errOut, "beekeeper: corpus: read malicious records for overlay: %v\n", rdErr)
 			} else {
 				for _, rec := range malicious {
 					if rec.PushEnvelope == nil || rec.PushEnvelope.Signature.PackageOrExtensionID == "" {
@@ -177,7 +212,7 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 					}
 					if ovErr := catalog.AddLocalOverlayEntry(dir, buildOverlayEntry(rec)); ovErr != nil {
 						// Non-fatal per record: log to stderr and continue.
-						fmt.Fprintf(os.Stderr, "beekeeper: catalog overlay: add entry: %v\n", ovErr)
+						fmt.Fprintf(errOut, "beekeeper: catalog overlay: add entry: %v\n", ovErr)
 					}
 				}
 			}
@@ -186,12 +221,20 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 
 	if !cfg.CatalogSyncEnabled() && !force {
 		fmt.Fprintln(out, "Catalog sync is disabled (catalog_sync.enabled=false). Use --force to sync once.")
+		st.LastSync = buildSummary("disabled", "", ss.Count)
+		if saveErr := catalog.SaveState(stateFile, st); saveErr != nil {
+			fmt.Fprintf(errOut, "beekeeper: failed to record sync summary: %v\n", saveErr)
+		}
 		return nil
 	}
 	if !catalogSyncDue(ss.LastSuccess, interval, now, force) {
 		nextDue := ss.LastSuccess.Add(interval)
 		fmt.Fprintf(out, "Catalog sync skipped: not due (last success %s ago, interval %s, next due %s). Use --force to override.\n",
 			now.Sub(ss.LastSuccess).Round(time.Second), interval, nextDue.Format(time.RFC3339))
+		st.LastSync = buildSummary("skipped", "", ss.Count)
+		if saveErr := catalog.SaveState(stateFile, st); saveErr != nil {
+			fmt.Fprintf(errOut, "beekeeper: failed to record sync summary: %v\n", saveErr)
+		}
 		return nil
 	}
 
@@ -205,8 +248,9 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 		// any WriteFile/BuildIndex), so we only persist the freshness fields.
 		ss.LastError = syncErr.Error()
 		st.Sources[catalogSyncSourceName] = ss
+		st.LastSync = buildSummary("error", syncErr.Error(), ss.Count)
 		if saveErr := catalog.SaveState(stateFile, st); saveErr != nil {
-			fmt.Fprintf(os.Stderr, "beekeeper: failed to record sync error in state: %v\n", saveErr)
+			fmt.Fprintf(errOut, "beekeeper: failed to record sync error in state: %v\n", saveErr)
 		}
 		return fmt.Errorf("catalog sync failed: %w", syncErr)
 	}
@@ -219,6 +263,11 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 		ss.Count = res.Count
 	}
 	st.Sources[catalogSyncSourceName] = ss
+	syncResult := "synced"
+	if res.NotModified {
+		syncResult = "unchanged"
+	}
+	st.LastSync = buildSummary(syncResult, "", ss.Count)
 	if err := catalog.SaveState(stateFile, st); err != nil {
 		return fmt.Errorf("save state %q: %w", stateFile, err)
 	}

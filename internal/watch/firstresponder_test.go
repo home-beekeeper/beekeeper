@@ -58,7 +58,7 @@ func TestFirstResponderAuditRedacted(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -75,6 +75,72 @@ func TestFirstResponderAuditRedacted(t *testing.T) {
 	}
 	if !strings.Contains(got, "[REDACTED]") && !strings.Contains(got, "[JWT_REDACTED]") {
 		t.Errorf("first-responder audit missing redaction marker (redaction not applied):\n%s", got)
+	}
+}
+
+// TestFirstResponderResultCounts verifies RunFirstResponder returns accurate
+// counts: a corroborated, path-resolved hit is quarantined; a corroborated but
+// path-unresolved hit is pending; both count as scan hits.
+func TestFirstResponderResultCounts(t *testing.T) {
+	quarantineDir := t.TempDir()
+	auditPath := filepath.Join(t.TempDir(), "beekeeper.ndjson")
+
+	pkgDir := filepath.Join(t.TempDir(), "evil-pkg")
+	if err := os.MkdirAll(pkgDir, 0o700); err != nil {
+		t.Fatalf("mkdir pkgDir: %v", err)
+	}
+
+	hits := []watch.ScanHit{
+		{ // resolved path → real quarantine move
+			Ecosystem:          "npm",
+			Package:            "evil-package",
+			Version:            "1.0.0",
+			InstalledPath:      pkgDir,
+			PathResolved:       true,
+			CorroborationCount: 2,
+		},
+		{ // unresolved path → pending-quarantine
+			Ecosystem:          "pypi",
+			Package:            "evil-wheel",
+			Version:            "2.0.0",
+			PathResolved:       false,
+			CorroborationCount: 2,
+		},
+		{ // below threshold → not a hit, no action
+			Ecosystem:          "cargo",
+			Package:            "benign-crate",
+			Version:            "0.1.0",
+			CorroborationCount: 1,
+		},
+	}
+
+	cfg := watch.FirstResponderConfig{
+		Enabled:           true,
+		DryRun:            false,
+		Threshold:         2,
+		QuarantineDir:     quarantineDir,
+		AuditPath:         auditPath,
+		SentryTargetsPath: filepath.Join(t.TempDir(), "sentry-targets.json"),
+		CrossRefFn: func(_ context.Context, _ watch.CrossRefConfig) ([]watch.ScanHit, error) {
+			return hits, nil
+		},
+	}
+
+	res, err := watch.RunFirstResponder(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("RunFirstResponder error: %v", err)
+	}
+	if res.ScanHits != 2 {
+		t.Errorf("ScanHits = %d, want 2 (two corroborated hits, one below threshold)", res.ScanHits)
+	}
+	if res.Quarantined != 1 {
+		t.Errorf("Quarantined = %d, want 1", res.Quarantined)
+	}
+	if res.Pending != 1 {
+		t.Errorf("Pending = %d, want 1", res.Pending)
+	}
+	if res.WouldQuarantine != 0 {
+		t.Errorf("WouldQuarantine = %d, want 0 (not dry-run)", res.WouldQuarantine)
 	}
 }
 
@@ -114,7 +180,7 @@ func TestFirstResponderDryRun(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -168,7 +234,7 @@ func TestFirstResponderRealQuarantine(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -216,7 +282,7 @@ func TestFirstResponderPendingQuarantine(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -263,7 +329,7 @@ func TestFirstResponderBelowThreshold(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -312,7 +378,7 @@ func TestFirstResponderMoveTypedErrorFailClosed(t *testing.T) {
 	}
 
 	// Must not return error — fail-closed means log+continue, not crash.
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 
@@ -359,7 +425,7 @@ func TestFirstResponderSentryTargetsCorroborationGate(t *testing.T) {
 			},
 		}
 
-		if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+		if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 			t.Fatalf("RunFirstResponder error: %v", err)
 		}
 
@@ -412,7 +478,7 @@ func TestFirstResponderSentryTargetsCorroborationGate(t *testing.T) {
 			},
 		}
 
-		if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+		if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 			t.Fatalf("RunFirstResponder error: %v", err)
 		}
 
@@ -469,7 +535,7 @@ func TestFirstResponderSentryTargetsWritten(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder error: %v", err)
 	}
 

@@ -89,9 +89,13 @@ var scanOnDeltaFn = func(ctx context.Context, cfg scan.Config, out io.Writer) er
 // callback to cross-reference installed packages against the updated catalog
 // and optionally auto-quarantine high-corroboration hits. It is a package-level
 // var so tests can replace it without spawning a real pollen process.
-// Production code leaves this as the default (watch.RunFirstResponder).
+// Production code leaves this as the default (watch.RunFirstResponder). The
+// watch onDelta path does not use the returned counts (it is not the sync-summary
+// surface), so the seam discards the FirstResponderResult and keeps the
+// error-only contract its caller expects.
 var runFirstResponderFn = func(ctx context.Context, cfg watch.FirstResponderConfig) error {
-	return watch.RunFirstResponder(ctx, cfg)
+	_, err := watch.RunFirstResponder(ctx, cfg)
+	return err
 }
 
 func newRootCmd() *cobra.Command {
@@ -466,12 +470,26 @@ func newCatalogsCmd() *cobra.Command {
 		Use:   "catalogs",
 		Short: "Manage cached threat-intel catalogs",
 	}
-	var syncForce bool
+	var syncForce, syncBackground bool
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Fetch and cache catalogs, then build the mmap index (interval-gated; --force to override)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// --background is the OS-scheduler entry point: hide the console
+			// (Windows; no-op elsewhere) so the hourly heartbeat does not flash a
+			// blank window, and tee output to <state>/logs/sync.log so a scheduled
+			// run is observable. Both are best-effort — a failure to hide or open
+			// the log never blocks the sync (fail-open on VISIBILITY only; the
+			// sync's own fail-closed semantics are unchanged).
+			if syncBackground {
+				HideConsoleWindow()
+				if lf, err := openSyncLog(); err == nil {
+					defer lf.Close()
+					cmd.SetOut(teeWriter(cmd.OutOrStdout(), lf))
+					cmd.SetErr(teeWriter(cmd.ErrOrStderr(), lf))
+				}
+			}
 			// Interval gate + ETag-conditional sync + freshness tracking live in
 			// runCatalogsSync so the OS-scheduled daemon and manual invocation
 			// share one implementation (Phase 20, CSYNC).
@@ -479,10 +497,68 @@ func newCatalogsCmd() *cobra.Command {
 		},
 	}
 	syncCmd.Flags().BoolVar(&syncForce, "force", false, "Sync now even if the configured interval has not elapsed (manual/TUI use)")
+	syncCmd.Flags().BoolVar(&syncBackground, "background", false, "Scheduled-daemon mode: hide the console (Windows) and log to <state>/logs/sync.log")
 	catalogs.AddCommand(syncCmd)
 
 	// catalogs daemon — unprivileged user-level background sync scheduler (CSYNC-04/05).
 	catalogs.AddCommand(newCatalogsDaemonCmd())
+
+	// catalogs status — report the last sync result, next-due time, daemon
+	// registration, and the background log path. Read-only: it reports, it does
+	// not itself fetch or block.
+	catalogs.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Show the last catalog-sync result, next-due time, and daemon registration",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out := cmd.OutOrStdout()
+			stateDir, err := platform.StateDir()
+			if err != nil {
+				return fmt.Errorf("resolve state directory: %w", err)
+			}
+			st, err := catalog.LoadState(filepath.Join(stateDir, "state.json"))
+			if err != nil {
+				return fmt.Errorf("load state: %w", err)
+			}
+			cfg, err := resolveConfig(cmd)
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
+			if cfg.CatalogSyncEnabled() {
+				fmt.Fprintf(out, "Catalog sync: enabled (interval %s)\n", cfg.CatalogSyncInterval())
+			} else {
+				fmt.Fprintln(out, "Catalog sync: disabled (catalog_sync.enabled=false)")
+			}
+
+			if s := st.LastSync; s != nil {
+				fmt.Fprintf(out, "Last run:     %s (%s)\n", s.At.Local().Format(time.RFC3339), s.Result)
+				fmt.Fprintf(out, "  entries:    %d\n", s.Entries)
+				fmt.Fprintf(out, "  scan hits:  %d (quarantined %d, pending %d, would-quarantine %d)\n",
+					s.ScanHits, s.Quarantined, s.Pending, s.WouldQuarantine)
+				if s.LastError != "" {
+					fmt.Fprintf(out, "  error:      %s\n", s.LastError)
+				}
+				if !s.NextDue.IsZero() {
+					fmt.Fprintf(out, "  next due:   %s\n", s.NextDue.Local().Format(time.RFC3339))
+				}
+			} else {
+				fmt.Fprintln(out, "Last run:     never synced")
+			}
+
+			installed, detail, _ := catalogDaemonStatus()
+			if installed {
+				fmt.Fprintf(out, "Daemon:       installed — %s\n", detail)
+			} else {
+				fmt.Fprintf(out, "Daemon:       not installed (%s)\n", detail)
+			}
+
+			if lp, lerr := syncLogPath(); lerr == nil {
+				fmt.Fprintf(out, "Log:          %s\n", lp)
+			}
+			return nil
+		},
+	})
 
 	// catalogs watch — foreground catalog watch daemon.
 	catalogs.AddCommand(&cobra.Command{

@@ -158,7 +158,7 @@ func TestFirstResponderCorpusMaliciousArmsCard(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder: %v", err)
 	}
 
@@ -213,7 +213,7 @@ func TestFirstResponderCorpusSentryGate(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder: %v", err)
 	}
 
@@ -255,7 +255,7 @@ func TestFirstResponderCorpusSingleSourceNoSentry(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder: %v", err)
 	}
 
@@ -306,7 +306,7 @@ func TestFirstResponderCorpusNoPurge(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder: %v", err)
 	}
 
@@ -349,7 +349,7 @@ func TestFirstResponderCorpusPendingQuarantine(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder: %v", err)
 	}
 
@@ -421,7 +421,7 @@ func TestFirstResponderCorpusDryRunPathResolvedNoMove(t *testing.T) {
 		},
 	}
 
-	if err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
+	if _, err := watch.RunFirstResponder(context.Background(), cfg); err != nil {
 		t.Fatalf("RunFirstResponder: %v", err)
 	}
 

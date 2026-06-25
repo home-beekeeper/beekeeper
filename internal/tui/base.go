@@ -30,9 +30,12 @@ func renderBase(a App) string {
 	// -- Status line --
 	brandStr := styleBrand.Render("BEEKEEPER")
 	var statusStr string
-	if a.critical {
+	switch {
+	case a.critical:
 		statusStr = "  " + styleRed.Render(a.status)
-	} else {
+	case a.quarantineAlert:
+		statusStr = "  " + styleAmber.Render(a.status)
+	default:
 		statusStr = "  " + styleDim.Render(a.status)
 	}
 	statusLine := "\n  " + brandStr + statusStr + "\n"
@@ -66,6 +69,8 @@ func renderBase(a App) string {
 	incidentSlot := ""
 	if a.critical {
 		incidentSlot = "\n" + a.incident.View(w) + "\n"
+	} else if a.quarantineAlert {
+		incidentSlot = "\n" + a.quarantineIncident.View(w) + "\n"
 	}
 
 	// -- Horizontal rule --

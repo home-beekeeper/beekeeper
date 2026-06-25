@@ -168,7 +168,7 @@ func TestRunCatalogsSyncFirstResponder(t *testing.T) {
 	// avoiding a real pollen scan (no binary required in unit tests).
 	orig := firstResponderFn
 	t.Cleanup(func() { firstResponderFn = orig })
-	firstResponderFn = func(ctx context.Context, cfg watch.FirstResponderConfig) error {
+	firstResponderFn = func(ctx context.Context, cfg watch.FirstResponderConfig) (watch.FirstResponderResult, error) {
 		// Inject a fake CrossRefFn that returns a matching ScanHit for nx-console.
 		cfg.CrossRefFn = func(_ context.Context, _ watch.CrossRefConfig) ([]watch.ScanHit, error) {
 			return []watch.ScanHit{
@@ -576,7 +576,7 @@ func TestRunCatalogsSyncOpenIndexSuccess(t *testing.T) {
 	// Stub firstResponderFn to avoid a real RunFirstResponder (no pollen binary).
 	orig := firstResponderFn
 	t.Cleanup(func() { firstResponderFn = orig })
-	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) (watch.FirstResponderResult, error) { return watch.FirstResponderResult{}, nil }
 
 	cmd := newFastTestCmd(t)
 	// runCatalogsSync will error on the HTTP fetch (context deadline); expected.
@@ -619,8 +619,8 @@ func TestRunCatalogsSyncFirstResponderError(t *testing.T) {
 	orig := firstResponderFn
 	t.Cleanup(func() { firstResponderFn = orig })
 	sentinelErr := errors.New("injected first-responder error for coverage")
-	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error {
-		return sentinelErr
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) (watch.FirstResponderResult, error) {
+		return watch.FirstResponderResult{}, sentinelErr
 	}
 
 	var errBuf bytes.Buffer
@@ -680,7 +680,7 @@ func TestRunCatalogsSyncOverlaySkipsNilEnvelope(t *testing.T) {
 
 	orig := firstResponderFn
 	t.Cleanup(func() { firstResponderFn = orig })
-	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) (watch.FirstResponderResult, error) { return watch.FirstResponderResult{}, nil }
 
 	cmd := newFastTestCmd(t)
 	// Must not panic or return the nil-envelope as an error.
@@ -717,7 +717,7 @@ func TestRunCatalogsSyncOverlaySkipsEmptyPackageID(t *testing.T) {
 
 	orig := firstResponderFn
 	t.Cleanup(func() { firstResponderFn = orig })
-	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) (watch.FirstResponderResult, error) { return watch.FirstResponderResult{}, nil }
 
 	cmd := newFastTestCmd(t)
 	_ = runCatalogsSync(cmd, true /*force*/)
@@ -766,7 +766,7 @@ func TestRunCatalogsSyncOverlayError(t *testing.T) {
 
 	orig := firstResponderFn
 	t.Cleanup(func() { firstResponderFn = orig })
-	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) error { return nil }
+	firstResponderFn = func(_ context.Context, _ watch.FirstResponderConfig) (watch.FirstResponderResult, error) { return watch.FirstResponderResult{}, nil }
 
 	cmd := newFastTestCmd(t)
 

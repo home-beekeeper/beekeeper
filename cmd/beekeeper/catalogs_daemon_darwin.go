@@ -47,6 +47,7 @@ func installCatalogDaemon(out io.Writer, selfPath string) error {
     <string>%s</string>
     <string>catalogs</string>
     <string>sync</string>
+    <string>--background</string>
   </array>
   <key>StartInterval</key><integer>3600</integer>
   <key>RunAtLoad</key><true/>

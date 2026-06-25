@@ -6,7 +6,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -23,13 +25,45 @@ func installCatalogDaemon(out io.Writer, selfPath string) error {
 	// /f overwrites an existing task (idempotent re-install). The run-as-SYSTEM
 	// and highest-run-level flags are deliberately omitted → the task runs as the
 	// current standard user with no elevation.
-	tr := fmt.Sprintf(`"%s" catalogs sync`, selfPath)
+	//
+	// --background hides the console (the binary self-hides via ShowWindow) and
+	// tees output to <state>/logs/sync.log so the hourly heartbeat no longer
+	// flashes a blank window. When conhost supports --headless (Windows 11) we run
+	// the binary under it for TRUE zero-flash (no window object is ever created);
+	// otherwise we fall back to the plain self-hiding form.
+	tr := fmt.Sprintf(`"%s" catalogs sync --background`, selfPath)
+	if conhost := conhostHeadlessPath(ctx); conhost != "" {
+		tr = fmt.Sprintf(`"%s" --headless "%s" catalogs sync --background`, conhost, selfPath)
+	}
 	args := []string{"/create", "/tn", catalogTaskName, "/tr", tr, "/sc", "HOURLY", "/f"}
 	if outB, err := exec.CommandContext(ctx, "schtasks", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks /create failed: %s: %w", strings.TrimSpace(string(outB)), err)
 	}
-	fmt.Fprintf(out, "Catalog sync daemon installed (schtasks current-user task %q, hourly heartbeat).\n", catalogTaskName)
+	fmt.Fprintf(out, "Catalog sync daemon installed (schtasks current-user task %q, hourly silent heartbeat).\n", catalogTaskName)
+	fmt.Fprintln(out, "  Output is logged to <state>/logs/sync.log; run `beekeeper catalogs status` for the last result.")
 	return nil
+}
+
+// conhostHeadlessPath returns the path to conhost.exe when it supports the
+// --headless flag (Windows 11), else "". Headless conhost runs a console app
+// with no window object at all, giving true zero-flash scheduling. Best-effort:
+// any probe failure returns "" so the installer falls back to self-hide.
+func conhostHeadlessPath(ctx context.Context) string {
+	systemRoot := os.Getenv("SystemRoot")
+	if systemRoot == "" {
+		systemRoot = `C:\Windows`
+	}
+	conhost := filepath.Join(systemRoot, "System32", "conhost.exe")
+	if _, err := os.Stat(conhost); err != nil {
+		return ""
+	}
+	// `conhost.exe --headless --help` exits 0 on builds that support the flag and
+	// errors on older builds that do not. Run a trivial no-op under it to probe.
+	probe := exec.CommandContext(ctx, conhost, "--headless", "cmd.exe", "/c", "exit")
+	if err := probe.Run(); err != nil {
+		return ""
+	}
+	return conhost
 }
 
 func uninstallCatalogDaemon(out io.Writer) error {

@@ -54,11 +54,59 @@ type SourceState struct {
 	ETag string `json:"etag,omitempty"`
 }
 
+// SyncSummary is a human-facing record of the most recent `catalogs sync` run,
+// persisted to state.json so `beekeeper catalogs status` and the TUI can report
+// what the last (often background) sync actually did — visibility the scheduled
+// hourly heartbeat otherwise discards.
+//
+// It is descriptive only: it never drives a block decision. Counts come from the
+// first-responder pass; Result/NextDue come from the sync's own exit path.
+type SyncSummary struct {
+	// At is when the sync run completed.
+	At time.Time `json:"at"`
+
+	// Result is one of: "synced" (200 fetch+rebuild), "unchanged" (304),
+	// "skipped" (interval gate — not due), "disabled" (catalog_sync.enabled=false),
+	// or "error" (the fetch failed; see LastError).
+	Result string `json:"result"`
+
+	// Entries is the catalog entry count after the run (cached count on 304/skip).
+	Entries int `json:"entries,omitempty"`
+
+	// ScanHits is the number of installed packages that matched the catalog on
+	// this run's first-responder cross-reference.
+	ScanHits int `json:"scan_hits,omitempty"`
+
+	// Quarantined is the number of artifacts moved to quarantine (reversible) on
+	// this run. Zero in dry-run mode (see WouldQuarantine).
+	Quarantined int `json:"quarantined,omitempty"`
+
+	// Pending is the number of scan hits whose on-disk path could not be resolved
+	// (recorded as pending-quarantine rather than guessing a path).
+	Pending int `json:"pending,omitempty"`
+
+	// WouldQuarantine is the number of artifacts that WOULD have been quarantined
+	// but were not because auto-quarantine is in dry-run mode.
+	WouldQuarantine int `json:"would_quarantine,omitempty"`
+
+	// LastError is the fetch error string when Result is "error"; empty otherwise.
+	LastError string `json:"last_error,omitempty"`
+
+	// NextDue is when the next sync is due (LastSuccess + configured interval).
+	NextDue time.Time `json:"next_due,omitempty"`
+}
+
 // WatchState is the complete persisted watch-daemon state, written atomically
 // to ~/.beekeeper/state.json after every poll cycle that produces a delta.
 type WatchState struct {
 	// Sources maps source name (e.g. "bumblebee") to its per-source state.
 	Sources map[string]SourceState `json:"sources"`
+
+	// LastSync is the summary of the most recent `catalogs sync` run, surfaced by
+	// `beekeeper catalogs status` and the TUI. The omitempty/pointer tag keeps
+	// existing state.json files (written before this field existed) parsing
+	// cleanly — an absent key reads as nil.
+	LastSync *SyncSummary `json:"last_sync,omitempty"`
 
 	// SelfQuarantine is set when CheckSelfCatalog determines the running
 	// binary version is listed in the beekeeper-self compromise feed.

@@ -53,7 +53,7 @@ Description=Beekeeper background catalog sync
 
 [Service]
 Type=oneshot
-ExecStart=%s catalogs sync
+ExecStart=%s catalogs sync --background
 `, selfPath)
 	timer := `[Unit]
 Description=Beekeeper hourly catalog-sync heartbeat

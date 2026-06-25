@@ -361,6 +361,17 @@ func (p *CatalogsPanel) buildBody() string {
 
 		sb.WriteString("  " + pip + " " + nameStr + "  " + typeStr + "  " + syncStr + "\n")
 	}
+
+	// Last-sync activity line from the persisted SyncSummary (often a background
+	// run): result + age, plus scan-hit/quarantine counts when non-zero.
+	if s := p.watchState.LastSync; s != nil {
+		line := "last sync: " + s.Result + " " + fmtAge(s.At)
+		if s.ScanHits > 0 || s.Quarantined > 0 {
+			line += fmt.Sprintf(" · %d hit(s) · %d quarantined", s.ScanHits, s.Quarantined)
+		}
+		sb.WriteString("\n  " + styleDimmer.Render(line) + "\n")
+	}
+
 	sb.WriteString(styleDimmer.Render(catalogExplainerText))
 	sb.WriteString("\n")
 	return sb.String()
