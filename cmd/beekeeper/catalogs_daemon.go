@@ -12,6 +12,7 @@ import (
 
 	"github.com/home-beekeeper/beekeeper/internal/catalog"
 	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/notify"
 	"github.com/home-beekeeper/beekeeper/internal/platform"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 	"github.com/home-beekeeper/beekeeper/internal/watch"
@@ -185,6 +186,10 @@ func runCatalogsSync(cmd *cobra.Command, force bool) error {
 					// safe-default dry_run:true, and ignored a tightened threshold.
 					DryRun:    cfg.AutoQuarantineDryRun(),
 					Threshold: cfg.AutoQuarantineThreshold(),
+					// Notify on a real quarantine, mirroring the watch daemon
+					// (main.go NewHandler notify.Config{Enabled:true}). Best-effort
+					// toast so a background sync-hit is surfaced with the TUI closed.
+					NotifyConfig: notify.Config{Enabled: true},
 				})
 				frResult = frRes
 				if frErr != nil {

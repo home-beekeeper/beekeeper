@@ -12,10 +12,17 @@ import (
 
 	"github.com/home-beekeeper/beekeeper/internal/audit"
 	"github.com/home-beekeeper/beekeeper/internal/corpus"
+	"github.com/home-beekeeper/beekeeper/internal/notify"
 	"github.com/home-beekeeper/beekeeper/internal/policy"
 	"github.com/home-beekeeper/beekeeper/internal/quarantine"
 	"github.com/home-beekeeper/beekeeper/internal/sentry"
 )
+
+// notifyFn is the package-level seam for desktop notifications, so a real
+// sync-hit quarantine surfaces a toast even with the TUI closed. Production code
+// leaves it as notify.Notify (best-effort, errors swallowed); tests replace it
+// to assert the toast fires only on a real move.
+var notifyFn = notify.Notify
 
 // FirstResponderConfig holds all parameters for RunFirstResponder.
 // The CrossRefFn field is injectable for tests; production code leaves it nil
@@ -23,6 +30,11 @@ import (
 type FirstResponderConfig struct {
 	// Enabled mirrors AutoQuarantineConfig.Enabled.
 	Enabled bool
+	// NotifyConfig controls the best-effort desktop notification fired on a real
+	// (non-dry-run) quarantine, mirroring the watch daemon (handler.go). The zero
+	// value (Enabled:false) sends nothing — so the synchronous hook path, which
+	// never sets it, never notifies.
+	NotifyConfig notify.Config
 	// DryRun: when true, audits findings without moving any artifact.
 	DryRun bool
 	// Threshold is the minimum CorroborationCount to trigger auto-quarantine.
@@ -211,6 +223,12 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) (FirstResp
 
 		writeFirstResponderAudit(cfg.AuditPath, "catalog_quarantine", hit)
 		result.Quarantined++
+
+		// Best-effort desktop toast so a background sync-hit is surfaced even with
+		// the TUI closed. Fires only on a REAL move (not dry-run, not pending), at
+		// the same site as the catalog_quarantine audit.
+		notifyFn(cfg.NotifyConfig, "Beekeeper: package quarantined",
+			fmt.Sprintf("%s/%s@%s — %d sources corroborated", hit.Ecosystem, hit.Package, hit.Version, hit.CorroborationCount))
 	}
 
 	// FRB-01/02/04: corpus-adjudication path.
@@ -311,6 +329,11 @@ func RunFirstResponder(ctx context.Context, cfg FirstResponderConfig) (FirstResp
 
 					writeCorpusFirstResponderAudit(cfg.AuditPath, "catalog_quarantine", ecosystem, pkg, version)
 					result.Quarantined++
+
+					// Best-effort desktop toast (corpus-adjudication path), mirroring
+					// the scan-hit branch. Real move only.
+					notifyFn(cfg.NotifyConfig, "Beekeeper: package quarantined",
+						fmt.Sprintf("%s/%s@%s — corpus adjudication: confirmed malicious", ecosystem, pkg, version))
 				} else {
 					// No local install found — emit pending-quarantine.
 					writeCorpusFirstResponderAudit(cfg.AuditPath, "pending-quarantine", ecosystem, pkg, version)
