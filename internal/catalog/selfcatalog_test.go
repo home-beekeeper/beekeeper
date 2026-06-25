@@ -14,10 +14,15 @@ import (
 	"time"
 )
 
-// testSelfCatalogPrivKeyHex is the Ed25519 private key used to sign test fixtures.
-// The corresponding public key is the SelfCatalogPublicKey embedded in selfkey.go.
-// THIS KEY IS TEST-ONLY — it is never shipped in production binaries.
-const testSelfCatalogPrivKeyHex = "5d5ae492cb93049032ec1eca0fd2b2cfa52084c58b0bdd9adb7a4f302b713db2e09f12f0cb1e09cfcf238ccffaeafb301fabd187756ee140ef56f6d62dbae23e"
+// testSelfCatalogPrivKeyHex is the Ed25519 private key used to sign test
+// fixtures. It is INDEPENDENT of the production key embedded in selfkey.go:
+// tests verify fixtures against testSelfPubKey (this key's public half), never
+// against the embedded production SelfCatalogPublicKey. This key is test-only
+// and intentionally committed; its public half MUST NOT equal the embedded
+// production key. Before the v1.1.x self-catalog key rotation the two were the
+// same value, which published the production signing key in the repo. See
+// THREAT-MODEL T-09-12.
+const testSelfCatalogPrivKeyHex = "a0bd03e6e4738160557871ad4020418240dd5442227d1a091c8d443b12c2889e5d5d0314010707dbc494defd366900a6dfd5ac1e02d47a64b090c1d344afd2a1"
 
 // testSelfPrivKey decodes the test private key for fixture signing helpers.
 func testSelfPrivKey(t *testing.T) ed25519.PrivateKey {
@@ -27,6 +32,14 @@ func testSelfPrivKey(t *testing.T) ed25519.PrivateKey {
 		t.Fatalf("decode test private key: %v", err)
 	}
 	return ed25519.PrivateKey(b)
+}
+
+// testSelfPubKey returns the public half of the test signing key. Tests verify
+// fixtures against THIS key (via PubKeyOverride), keeping the test key fully
+// independent of the embedded production SelfCatalogPublicKey.
+func testSelfPubKey(t *testing.T) ed25519.PublicKey {
+	t.Helper()
+	return testSelfPrivKey(t).Public().(ed25519.PublicKey)
 }
 
 // signFeedEntries returns a base64-encoded Ed25519 signature over the canonical
@@ -79,7 +92,7 @@ func TestSelfCatalog_VersionMatch(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "test-v0.0.1", // matches the fixture
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		PubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: testSelfPubKey(t),
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -110,7 +123,7 @@ func TestSelfCatalog_InvalidSignature(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "test-v0.0.1",
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		PubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: testSelfPubKey(t),
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -138,7 +151,7 @@ func TestSelfCatalog_NetworkError_NoCache(t *testing.T) {
 		Client:     &http.Client{Timeout: 100 * time.Millisecond},
 		Version:    "test-v0.0.1",
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		PubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: testSelfPubKey(t),
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -186,7 +199,7 @@ func TestSelfCatalog_NetworkError_FreshCache(t *testing.T) {
 		Client:     &http.Client{Timeout: 100 * time.Millisecond},
 		Version:    "different-version", // does not match v99.99.99 in the no_match fixture
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		PubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: testSelfPubKey(t),
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -212,7 +225,7 @@ func TestSelfCatalog_NoMatch(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "v1.0.0-unaffected", // not in any entry
 		StatePath:  filepath.Join(t.TempDir(), "state.json"),
-		PubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: testSelfPubKey(t),
 	}
 
 	result := CheckSelfCatalog(opts)
@@ -263,7 +276,7 @@ func TestSelfCatalog_OfflinePersistence(t *testing.T) {
 		Client:     srv.Client(),
 		Version:    "v0.4.2", // matches the persisted quarantine
 		StatePath:  statePath,
-		PubKeyOverride: SelfCatalogPublicKey,
+		PubKeyOverride: testSelfPubKey(t),
 	}
 
 	result := CheckSelfCatalog(opts)

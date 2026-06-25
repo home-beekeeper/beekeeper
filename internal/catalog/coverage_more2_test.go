@@ -220,7 +220,7 @@ func TestParseAndVerifySelfFeedValid(t *testing.T) {
 	feed := selfFeed{SchemaVersion: "1", Entries: entries, CatalogSignature: sig}
 	data, _ := json.Marshal(feed)
 
-	got, err := parseAndVerifySelfFeed(data, SelfCatalogPublicKey)
+	got, err := parseAndVerifySelfFeed(data, testSelfPubKey(t))
 	if err != nil {
 		t.Fatalf("valid feed failed to verify: %v", err)
 	}
