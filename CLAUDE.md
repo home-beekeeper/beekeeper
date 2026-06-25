@@ -47,6 +47,29 @@ Current phase and status: see `.planning/STATE.md`
 - **No WSL integration tests** — RAM/disk constraints; integration tests are CI-only
 - **Reproducible builds required from v0.1.0** — `-trimpath -buildvcs=false -mod=readonly`; `make verify-release` must work
 
+## Release Documentation (MANDATORY — do not skip)
+
+After cutting ANY release (patch, minor, or major), you MUST work through
+**`docs/release-docs-checklist.md`** before the release is considered done (the
+`/release-docs-sync` skill drives it). A pushed tag is not a finished release. The
+checklist updates every doc surface and bumps every displayed version across BOTH
+repos (beekeeper README/THREAT-MODEL/SECURITY/docs and beekeeper-web header+footer
+badge / install pins / changelog / docs), writing copy to the tech-marketing content
+guidelines
+(`../beekeeper-product-launch/tech-marketing-framework/.claude/rules/content-guidelines.md`;
+web copy uses ZERO em-dashes).
+
+- The web badge has a single source of truth: `web/lib/site-version.ts` (`SITE_VERSION`).
+- The hard gate `web/tests/unit/version-consistency.test.ts` FAILS the build if the
+  changelog or any `go install` pin drifts from `SITE_VERSION`. Never weaken it to
+  get green; fix the docs.
+- A release without a `web/content/changelog/<version>/` entry is incomplete.
+
+Version-numbering footgun (read before tagging): the PUBLIC release line is
+decoupled from internal GSD milestone tags, which exist as local-only tags and
+collide. Never `git push --tags`; push the one specific tag. See the
+`release-version-line-and-tag-collisions` memory.
+
 ## File Structure (intended)
 
 ```
