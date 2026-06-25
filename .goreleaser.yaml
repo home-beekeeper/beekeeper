@@ -100,9 +100,4 @@ archives:
         formats: [zip]
 
 release:
-  # draft: true so the SLSA provenance job can upload multiple.intoto.jsonl to the
-  # release BEFORE it is published. GitHub immutable releases freeze a published
-  # release's assets, so every asset (binaries, checksums, cosign bundle, SBOMs,
-  # provenance) must be attached while the release is still a draft. The release.yml
-  # "publish" job flips the draft to published once provenance has landed.
-  draft: true
+  draft: false
