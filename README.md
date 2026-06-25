@@ -23,7 +23,7 @@ A coding agent's knowledge of which packages are safe is frozen at its training 
 Beekeeper is a supply-chain security tool, so its own install commands follow the practice it recommends: pin an exact release rather than a mutable `@latest` tag. Bump the tag when you upgrade; the signed installers (see the docs) add cosign signature verification and a release-age cool-down on top.
 
 ```sh
-go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@v1.1.2
+go install github.com/home-beekeeper/beekeeper/cmd/beekeeper@v1.2.0
 
 # Sync the threat catalog
 beekeeper catalogs sync
