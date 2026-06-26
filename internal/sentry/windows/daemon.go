@@ -119,62 +119,12 @@ func runDaemonBody(ctx context.Context, cfg *config.Config, auditPath string) er
 	}
 	defer auditWriter.Close() //nolint:errcheck
 
-	// 2. Create ETW session and enable providers.
-	//    ETW sessions must be started before the consumer can attach by name.
-	sess := etw.NewRealTimeSession(SessionName)
-	if startErr := sess.Start(); startErr != nil {
-		return fmt.Errorf("etw session start: %w", startErr)
-	}
-	defer sess.Stop() //nolint:errcheck
-
-	// Enable providers with ACCESS_DENIED fallback (RESEARCH Pitfall 4).
-	// Microsoft-Windows-Security-Auditing requires the SeSecurityPrivilege
-	// which LocalService does not hold. The daemon gracefully degrades to
-	// Kernel-File + Kernel-Network when Security-Auditing is denied.
-	requested := []struct {
-		name string
-		guid string
-	}{
-		{"Microsoft-Windows-Kernel-Process", ProviderGUIDs["Microsoft-Windows-Kernel-Process"]},
-		{"Microsoft-Windows-Security-Auditing", ProviderGUIDs["Microsoft-Windows-Security-Auditing"]},
-		{"Microsoft-Windows-Kernel-File", ProviderGUIDs["Microsoft-Windows-Kernel-File"]},
-		{"Microsoft-Windows-Kernel-Network", ProviderGUIDs["Microsoft-Windows-Kernel-Network"]},
-		// SENT-11 (OPTIONAL): DNS-Client is a manifest provider. If golang-etw
-		// cannot enable it on this session, the same access-denied-continue
-		// fallback below leaves DNS ingestion absent without failing the daemon.
-		{"Microsoft-Windows-DNS-Client", ProviderGUIDs["Microsoft-Windows-DNS-Client"]},
-	}
-
-	var enabledCount int
-	for _, p := range requested {
-		guid := etw.MustParseGUID(p.guid)
-		prov := etw.Provider{
-			GUID:        *guid,
-			EnableLevel: 0xFF, // capture all levels
-		}
-		if provErr := sess.EnableProvider(prov); provErr != nil {
-			if errors.Is(provErr, etw.ERROR_ACCESS_DENIED) {
-				state.mu.Lock()
-				state.tierReason = fmt.Sprintf("Windows ETW (LocalService): provider %s not accessible (access denied) — using fallback set", p.name)
-				state.mu.Unlock()
-				fmt.Fprintf(os.Stderr, "beekeeper sentry: ETW EnableProvider %s: access denied; continuing without this provider\n", p.name)
-				continue
-			}
-			return fmt.Errorf("etw EnableProvider %s: %w", p.name, provErr)
-		}
-		enabledCount++
-	}
-
-	if enabledCount == 0 {
-		return fmt.Errorf("etw: no providers could be enabled — service privileges insufficient")
-	}
-
-	// 3. Start ETW consumer goroutine.
-	events := make(chan sentry.SentryEvent, 10000)
-	consumerDone := make(chan error, 1)
-	go func() { consumerDone <- StartETWConsumer(ctx, SessionName, events) }()
-
-	// 4. IPC named pipe server.
+	// 2. IPC named pipe server FIRST. `beekeeper protect install` waits on this
+	//    pipe to confirm the daemon is up. ETW init below can take several seconds
+	//    (start a real-time session, enable five providers), and on a machine
+	//    where ETW cannot start at all it would never come up. Bringing the pipe
+	//    online before ETW lets `protect install` succeed promptly, and keeps the
+	//    daemon reachable for `protect status` even in the degraded tier.
 	stateDir, err := platform.StateDir()
 	if err != nil {
 		return fmt.Errorf("state dir: %w", err)
@@ -192,8 +142,9 @@ func runDaemonBody(ctx context.Context, cfg *config.Config, auditPath string) er
 		})
 	}()
 
-	// 5. Build live extension inventory (TM-RS-01): seed from watch directories
-	// at startup, refresh every 30 s so SENTRY-004/005 can fire in production.
+	// 3. Live extension inventory (TM-RS-01): seed from watch directories at
+	//    startup, refresh every 30 s so SENTRY-004/005 can fire in production.
+	//    Independent of ETW.
 	invStore := sentry.NewInventoryStore()
 	watchDirs := sentry.ExpandedWatchDirs(cfg.WatchDirectories())
 	invStore.ScanDirs(watchDirs, time.Now().UTC())
@@ -210,20 +161,92 @@ func runDaemonBody(ctx context.Context, cfg *config.Config, auditPath string) er
 		}
 	}()
 
-	// 6. Start correlation engine goroutine.
+	// 4. ETW session + providers — DEGRADE, do not die. A LocalService that cannot
+	//    start an ETW session, or enable any provider, keeps running (serving IPC +
+	//    inventory) in a degraded "no OS events" tier rather than crashing the
+	//    Windows service. `protect status` surfaces the degradation via tierReason.
+	//    Microsoft-Windows-Security-Auditing needs SeSecurityPrivilege which
+	//    LocalService lacks; the per-provider access-denied fallback drops it and
+	//    continues on the Kernel-* set (RESEARCH Pitfall 4).
+	events := make(chan sentry.SentryEvent, 10000)
+	consumerDone := make(chan error, 1)
+	etwUp := false
+
+	sess := etw.NewRealTimeSession(SessionName)
+	if startErr := sess.Start(); startErr != nil {
+		fmt.Fprintf(os.Stderr, "beekeeper sentry: ETW session start failed: %v; continuing in degraded tier (no OS events)\n", startErr)
+		state.mu.Lock()
+		state.tierReason = fmt.Sprintf("Windows ETW unavailable: session start failed (%v) — degraded, no OS events", startErr)
+		state.mu.Unlock()
+	} else {
+		defer sess.Stop() //nolint:errcheck
+
+		requested := []struct {
+			name string
+			guid string
+		}{
+			{"Microsoft-Windows-Kernel-Process", ProviderGUIDs["Microsoft-Windows-Kernel-Process"]},
+			{"Microsoft-Windows-Security-Auditing", ProviderGUIDs["Microsoft-Windows-Security-Auditing"]},
+			{"Microsoft-Windows-Kernel-File", ProviderGUIDs["Microsoft-Windows-Kernel-File"]},
+			{"Microsoft-Windows-Kernel-Network", ProviderGUIDs["Microsoft-Windows-Kernel-Network"]},
+			// SENT-11 (OPTIONAL): DNS-Client is a manifest provider. If golang-etw
+			// cannot enable it the access-denied-continue fallback leaves DNS
+			// ingestion absent without failing the daemon.
+			{"Microsoft-Windows-DNS-Client", ProviderGUIDs["Microsoft-Windows-DNS-Client"]},
+		}
+
+		var enabledCount int
+		for _, p := range requested {
+			guid := etw.MustParseGUID(p.guid)
+			prov := etw.Provider{
+				GUID:        *guid,
+				EnableLevel: 0xFF, // capture all levels
+			}
+			if provErr := sess.EnableProvider(prov); provErr != nil {
+				// Any provider failure (access-denied or otherwise) is non-fatal:
+				// drop that provider and continue on whatever set enables, rather
+				// than crashing the service on one unavailable provider.
+				state.mu.Lock()
+				state.tierReason = fmt.Sprintf("Windows ETW (LocalService): provider %s not accessible (%v) — using fallback set", p.name, provErr)
+				state.mu.Unlock()
+				fmt.Fprintf(os.Stderr, "beekeeper sentry: ETW EnableProvider %s: %v; continuing without this provider\n", p.name, provErr)
+				continue
+			}
+			enabledCount++
+		}
+
+		if enabledCount == 0 {
+			fmt.Fprintln(os.Stderr, "beekeeper sentry: no ETW providers could be enabled — continuing in degraded tier (no OS events)")
+			state.mu.Lock()
+			state.tierReason = "Windows ETW unavailable: no providers enabled (insufficient privileges) — degraded, no OS events"
+			state.mu.Unlock()
+		} else {
+			etwUp = true
+			// Start the ETW consumer only when at least one provider is live.
+			go func() { consumerDone <- StartETWConsumer(ctx, SessionName, events) }()
+		}
+	}
+
+	// 5. Correlation engine — always on. It consumes `events`; in the degraded
+	//    tier no events arrive, so it simply idles until shutdown.
 	baselinePath := filepath.Join(stateDir, "sentry-baseline.json")
 	go correlationEngineLoop(ctx, events, auditWriter, baselinePath, state, invStore)
 
-	// 6. Block until ctx cancelled or consumer exits.
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-consumerDone:
-		if err != nil && !errors.Is(err, context.Canceled) {
-			return fmt.Errorf("etw consumer: %w", err)
+	// 6. Block until shutdown. When ETW is up an unexpected consumer exit is also
+	//    terminal; in the degraded tier there is no consumer, so we wait on ctx.
+	if etwUp {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-consumerDone:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				return fmt.Errorf("etw consumer: %w", err)
+			}
+			return nil
 		}
-		return nil
 	}
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 // handleIPCConn decodes a single IPCCommand from conn, dispatches it, and

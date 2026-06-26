@@ -76,9 +76,17 @@ func runProtectInstall(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("install service: %w", err)
 	}
 
+	const pipeWait = 20 * time.Second
 	fmt.Fprintln(cmd.OutOrStdout(), "Waiting for IPC named pipe...")
-	if err := winsentry.WaitForPipe(10 * time.Second); err != nil {
-		return fmt.Errorf("wait for pipe: %w", err)
+	if err := winsentry.WaitForPipe(pipeWait); err != nil {
+		// The service is installed and started (InstallService returned without
+		// error); the pipe simply has not answered yet. The daemon brings the pipe
+		// up before ETW init now, so a miss here is unusual, but do NOT present it
+		// as a hard failure — the service is running and may still be initializing.
+		fmt.Fprintf(cmd.OutOrStdout(),
+			"Service installed and started, but its IPC pipe did not respond within %v.\n"+
+				"The daemon may still be initializing. Check `beekeeper protect status` shortly.\n", pipeWait)
+		return nil
 	}
 
 	// SWIN-03: surface NT Kernel Logger conflict status at install time.
